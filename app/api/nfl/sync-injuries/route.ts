@@ -240,7 +240,7 @@ type NormalizedInjury = {
 
 
 /* =========================================================
-   SUPABASE ADMIN CLIENT
+   SUPABASE
 ========================================================= */
 
 function getAdminClient() {
@@ -281,7 +281,7 @@ function getAdminClient() {
 
 
 /* =========================================================
-   AUTOMATIC SYNC AUTHORIZATION
+   AUTHORIZATION
 ========================================================= */
 
 function authorizeSync(
@@ -388,12 +388,6 @@ function extractEspnPlayerId(
     }
 
 
-    /*
-     * Example:
-     *
-     * https://www.espn.com/nfl/player/_/id/4870808/...
-     */
-
     const normalMatch =
       href.match(
         /\/id\/(\d+)/
@@ -406,12 +400,6 @@ function extractEspnPlayerId(
       return normalMatch[1];
     }
 
-
-    /*
-     * ESPN deep-link format:
-     *
-     * ~a:4870808
-     */
 
     const appMatch =
       href.match(
@@ -432,7 +420,7 @@ function extractEspnPlayerId(
 
 
 /* =========================================================
-   BASIC NORMALIZATION
+   NORMALIZATION
 ========================================================= */
 
 function normalizeText(
@@ -553,7 +541,7 @@ function normalizePosition(
 
 
 /* =========================================================
-   CURRENT INJURY DESIGNATIONS
+   CURRENT INJURY STATUSES
 ========================================================= */
 
 function normalizeInjuryStatus(
@@ -656,7 +644,7 @@ function normalizeInjuryStatus(
 
 
 /* =========================================================
-   INJURY FINGERPRINT
+   FINGERPRINT
 ========================================================= */
 
 function fingerprint(
@@ -739,7 +727,7 @@ export async function POST(
 
 
     /* =====================================================
-       1. ESPN LEAGUE-WIDE FEED
+       1. ESPN FEED
     ===================================================== */
 
     const espnUrl =
@@ -812,10 +800,6 @@ export async function POST(
     }
 
 
-    /* =====================================================
-       2. SAFETY VALIDATION
-    ===================================================== */
-
     if (
       espnData.status !==
       "success"
@@ -866,7 +850,7 @@ export async function POST(
 
 
     /* =====================================================
-       3. FLATTEN ESPN FEED
+       2. FLATTEN FEED
     ===================================================== */
 
     const rawRecords:
@@ -1060,10 +1044,6 @@ export async function POST(
     }
 
 
-    /* =====================================================
-       4. FAIL CLOSED IF FEED LOOKS WRONG
-    ===================================================== */
-
     if (
       totalEspnRecords ===
         0 ||
@@ -1120,7 +1100,7 @@ export async function POST(
 
 
     /* =====================================================
-       5. DEDUPE LATEST ESPN RECORD PER PLAYER
+       3. LATEST ESPN RECORD PER PLAYER
     ===================================================== */
 
     const latestRecordByEspnPlayerId =
@@ -1185,7 +1165,7 @@ export async function POST(
 
 
     /* =====================================================
-       6. LOAD GRIDIRON365 PLAYERS
+       4. LOAD NFL PLAYERS FROM PUBLIC SCHEMA
     ===================================================== */
 
     const {
@@ -1196,6 +1176,9 @@ export async function POST(
         playerError,
     } =
       await supabase
+        .schema(
+          "public"
+        )
         .from(
           "nfl_players"
         )
@@ -1284,7 +1267,7 @@ export async function POST(
 
 
     /* =====================================================
-       7. MATCH CURRENT FANTASY INJURIES
+       5. MATCH CURRENT FANTASY INJURIES
     ===================================================== */
 
     const fantasyPositions =
@@ -1381,11 +1364,6 @@ export async function POST(
       }
 
 
-      /*
-       * Active/general-news entries are not
-       * current injuries.
-       */
-
       if (
         !injury.status
       ) {
@@ -1429,13 +1407,6 @@ export async function POST(
     }
 
 
-    /*
-     * Fail closed.
-     *
-     * We know ESPN normally gives us actual designations.
-     * If suddenly none match, do not wipe Supabase.
-     */
-
     if (
       normalized.length ===
       0
@@ -1473,7 +1444,7 @@ export async function POST(
 
 
     /* =====================================================
-       8. LOAD CURRENT ACTIVE INJURY ROWS
+       6. LOAD CURRENT INJURIES FROM PUBLIC SCHEMA
     ===================================================== */
 
     const {
@@ -1484,6 +1455,9 @@ export async function POST(
         existingError,
     } =
       await supabase
+        .schema(
+          "public"
+        )
         .from(
           "nfl_player_injuries"
         )
@@ -1640,7 +1614,7 @@ export async function POST(
 
 
     /* =====================================================
-       9. INSERT / UPDATE / REFRESH
+       7. INSERT / UPDATE
     ===================================================== */
 
     const now =
@@ -1668,8 +1642,6 @@ export async function POST(
         );
 
 
-      /* ---------------- NEW ---------------- */
-
       if (
         !existing
       ) {
@@ -1678,6 +1650,9 @@ export async function POST(
             insertError,
         } =
           await supabase
+            .schema(
+              "public"
+            )
             .from(
               "nfl_player_injuries"
             )
@@ -1745,8 +1720,6 @@ export async function POST(
         );
 
 
-      /* ------------- UNCHANGED ------------- */
-
       if (
         oldFingerprint ===
         newFingerprint
@@ -1756,6 +1729,9 @@ export async function POST(
             refreshError,
         } =
           await supabase
+            .schema(
+              "public"
+            )
             .from(
               "nfl_player_injuries"
             )
@@ -1792,13 +1768,14 @@ export async function POST(
       }
 
 
-      /* -------------- CHANGED -------------- */
-
       const {
         error:
           closeError,
       } =
         await supabase
+          .schema(
+            "public"
+          )
           .from(
             "nfl_player_injuries"
           )
@@ -1832,6 +1809,9 @@ export async function POST(
           insertChangedError,
       } =
         await supabase
+          .schema(
+            "public"
+          )
           .from(
             "nfl_player_injuries"
           )
@@ -1870,7 +1850,7 @@ export async function POST(
 
 
     /* =====================================================
-       10. CLEAR NO-LONGER-INJURED PLAYERS
+       8. CLEAR STALE INJURIES
     ===================================================== */
 
     const currentlyInjuredPlayerIds =
@@ -1906,6 +1886,9 @@ export async function POST(
           clearError,
       } =
         await supabase
+          .schema(
+            "public"
+          )
           .from(
             "nfl_player_injuries"
           )
@@ -1940,7 +1923,7 @@ export async function POST(
 
 
     /* =====================================================
-       11. SUCCESS
+       9. SUCCESS
     ===================================================== */
 
     return NextResponse.json({
