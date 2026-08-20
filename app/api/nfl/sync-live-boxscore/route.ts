@@ -2786,11 +2786,34 @@ export async function POST(
       0;
 
 
+    let weeksAdvanced =
+      0;
+
+
+    const advancementResults:
+      Array<{
+        leagueId: string;
+        result: any;
+      }> =
+      [];
+
+
     const affectedLeagueIds =
       new Set<string>();
 
 
+    /*
+     * Traditional fantasy scoring uses NFL
+     * regular-season games only. This prevents
+     * preseason Week 1/2/etc. from colliding
+     * with fantasy regular-season weeks.
+     */
+    const isRegularSeason =
+      nflGame.season_type === 2;
+
+
     if (
+      isRegularSeason &&
       uniquePlayerIds.length >
       0
     ) {
@@ -2941,44 +2964,91 @@ export async function POST(
 
 
     /* =====================================================
-       REFRESH AFFECTED MATCHUPS
+       REFRESH AFFECTED MATCHUPS + AUTO ADVANCE
     ===================================================== */
 
-    for (
-      const leagueId
-      of affectedLeagueIds
-    ) {
-
-      const {
-        error:
-          matchupError,
-      } =
-        await supabase.rpc(
-          "refresh_traditional_week_matchups",
-          {
-            p_league_id:
-              leagueId,
-
-            p_season:
-              nflGame.season,
-
-            p_week:
-              nflGame.week,
-          }
-        );
-
-
-      if (
-        matchupError
+    if (isRegularSeason) {
+      for (
+        const leagueId
+        of affectedLeagueIds
       ) {
-        throw new Error(
-          `Unable to refresh league matchups: ${matchupError.message}`
-        );
+
+        const {
+          error:
+            matchupError,
+        } =
+          await supabase.rpc(
+            "refresh_traditional_week_matchups",
+            {
+              p_league_id:
+                leagueId,
+
+              p_season:
+                nflGame.season,
+
+              p_week:
+                nflGame.week,
+            }
+          );
+
+
+        if (
+          matchupError
+        ) {
+          throw new Error(
+            `Unable to refresh league matchups: ${matchupError.message}`
+          );
+        }
+
+
+        matchupWeeksRefreshed +=
+          1;
+
+
+        /* =================================================
+           CHECK FOR AUTOMATIC WEEK ADVANCEMENT
+        ================================================= */
+
+        const {
+          data:
+            advanceResult,
+
+          error:
+            advanceError,
+        } =
+          await supabase.rpc(
+            "auto_advance_traditional_week",
+            {
+              p_league_id:
+                leagueId,
+            }
+          );
+
+
+        if (
+          advanceError
+        ) {
+          throw new Error(
+            `Unable to auto-advance Traditional week: ${advanceError.message}`
+          );
+        }
+
+
+        advancementResults.push({
+          leagueId,
+          result:
+            advanceResult,
+        });
+
+
+        if (
+          advanceResult?.advanced ===
+          true
+        ) {
+          weeksAdvanced +=
+            1;
+        }
       }
-
-
-      matchupWeeksRefreshed +=
-        1;
     }
 
 
@@ -3068,6 +3138,9 @@ export async function POST(
 
 
       fantasy: {
+        regularSeason:
+          isRegularSeason,
+
         fantasyScoresRefreshed,
 
         affectedLeagues:
@@ -3075,6 +3148,10 @@ export async function POST(
             .size,
 
         matchupWeeksRefreshed,
+
+        weeksAdvanced,
+
+        advancementResults,
       },
 
 
