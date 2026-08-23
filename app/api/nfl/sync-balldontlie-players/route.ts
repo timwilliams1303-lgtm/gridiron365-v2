@@ -80,7 +80,7 @@ function normalizeName(
     .trim()
     .toLowerCase()
     .replace(/[.’']/g, "")
-    .replace(/[-]/g, " ")
+    .replace(/-/g, " ")
     .replace(/\s+/g, " ");
 }
 
@@ -107,7 +107,7 @@ function normalizePosition(
   return position;
 }
 
-function fullName(
+function getFullName(
   player: BdlPlayer
 ) {
   return [
@@ -156,6 +156,19 @@ function isAuthorized(
   return customHeader === secret;
 }
 
+function sleep(
+  milliseconds: number
+) {
+  return new Promise<void>(
+    (resolve) => {
+      setTimeout(
+        resolve,
+        milliseconds
+      );
+    }
+  );
+}
+
 async function fetchBdlPlayers(
   apiKey: string,
   cursor?: number
@@ -183,6 +196,8 @@ async function fetchBdlPlayers(
     await fetch(
       url.toString(),
       {
+        method: "GET",
+
         headers: {
           Authorization:
             apiKey,
@@ -198,6 +213,22 @@ async function fetchBdlPlayers(
 
   const text =
     await response.text();
+
+  if (
+    response.status ===
+    429
+  ) {
+    const retryAfter =
+      response.headers.get(
+        "retry-after"
+      );
+
+    throw new Error(
+      retryAfter
+        ? `BALLDONTLIE rate limit reached. Retry after ${retryAfter} seconds.`
+        : "BALLDONTLIE rate limit reached. Wait at least 60 seconds and try again."
+    );
+  }
 
   let data:
     BdlPlayersResponse | null =
@@ -303,7 +334,6 @@ async function runSync(
       );
     }
 
-
     /* =====================================================
        LOAD EXISTING NFL PLAYERS
     ===================================================== */
@@ -335,7 +365,6 @@ async function runSync(
     const existingPlayers =
       (playerRows ??
         []) as ExistingPlayer[];
-
 
     /* =====================================================
        BUILD MATCH INDEXES
@@ -406,7 +435,6 @@ async function runSync(
         teamMatches
       );
 
-
       const nameMatches =
         playersByNameOnly.get(
           normalizedFullName
@@ -421,7 +449,6 @@ async function runSync(
         nameMatches
       );
     }
-
 
     /* =====================================================
        COUNTERS / REPORTING
@@ -460,7 +487,6 @@ async function runSync(
           number[];
       }> = [];
 
-
     /* =====================================================
        PAGINATE BALLDONTLIE PLAYERS
     ===================================================== */
@@ -487,15 +513,42 @@ async function runSync(
       providerPlayers +=
         providerPagePlayers.length;
 
-
       for (
         const bdlPlayer
         of providerPagePlayers
       ) {
         const bdlName =
-          fullName(
+          getFullName(
             bdlPlayer
           );
+
+        if (!bdlName) {
+          playersUnmatched +=
+            1;
+
+          unmatchedPlayers.push({
+            balldontliePlayerId:
+              bdlPlayer.id,
+
+            name:
+              "",
+
+            team:
+              bdlPlayer.team
+                ?.abbreviation ??
+              null,
+
+            position:
+              bdlPlayer
+                .position_abbreviation ??
+              null,
+
+            reason:
+              "BALLDONTLIE player had no usable name.",
+          });
+
+          continue;
+        }
 
         const normalizedBdlName =
           normalizeName(
@@ -514,7 +567,6 @@ async function runSync(
             bdlPlayer
               .position_abbreviation
           );
-
 
         /* =================================================
            TEAM MAPPING
@@ -582,9 +634,8 @@ async function runSync(
           }
         }
 
-
         /* =================================================
-           PLAYER ALREADY MAPPED BY BALLDONTLIE ID
+           PLAYER ALREADY MAPPED
         ================================================= */
 
         const existingByBdlId =
@@ -627,10 +678,9 @@ async function runSync(
           continue;
         }
 
-
         /* =================================================
            PRIMARY MATCH:
-           NORMALIZED NAME + TEAM
+           NAME + TEAM
         ================================================= */
 
         const nameTeamKey =
@@ -641,13 +691,9 @@ async function runSync(
             nameTeamKey
           ) ?? [];
 
-
         /* =================================================
            FALLBACK:
-           NAME ONLY, BUT ONLY WHEN UNIQUE.
-
-           Useful for stale ESPN team assignment or
-           free-agent/offseason transitions.
+           UNIQUE NAME ONLY
         ================================================= */
 
         if (
@@ -668,9 +714,8 @@ async function runSync(
           }
         }
 
-
         /* =================================================
-           POSITION FILTER WHEN MULTIPLE NAME MATCHES EXIST
+           POSITION DISAMBIGUATION
         ================================================= */
 
         if (
@@ -697,9 +742,8 @@ async function runSync(
           }
         }
 
-
         /* =================================================
-           EXACTLY ONE MATCH → MAP
+           UNIQUE MATCH
         ================================================= */
 
         if (
@@ -709,27 +753,6 @@ async function runSync(
           const matchedPlayer =
             candidates[0];
 
-          const updatePayload:
-            Record<
-              string,
-              unknown
-            > = {
-              balldontlie_player_id:
-                bdlPlayer.id,
-
-              balldontlie_last_synced_at:
-                new Date()
-                  .toISOString(),
-            };
-
-          /*
-           * Do NOT overwrite ESPN's
-           * player identity fields here.
-           *
-           * We are only establishing
-           * cross-provider identity.
-           */
-
           const {
             error:
               updatePlayerError,
@@ -738,9 +761,14 @@ async function runSync(
               .from(
                 "nfl_players"
               )
-              .update(
-                updatePayload
-              )
+              .update({
+                balldontlie_player_id:
+                  bdlPlayer.id,
+
+                balldontlie_last_synced_at:
+                  new Date()
+                    .toISOString(),
+              })
               .eq(
                 "id",
                 matchedPlayer.id
@@ -767,7 +795,6 @@ async function runSync(
 
           continue;
         }
-
 
         /* =================================================
            AMBIGUOUS
@@ -800,14 +827,8 @@ async function runSync(
           continue;
         }
 
-
         /* =================================================
            UNMATCHED
-
-           IMPORTANT:
-           Do not insert a new nfl_players row automatically.
-
-           ESPN remains our canonical player universe for now.
         ================================================= */
 
         playersUnmatched +=
@@ -831,7 +852,6 @@ async function runSync(
             "No unique existing Gridiron365 player match.",
         });
       }
-
 
       /* ===================================================
          NEXT CURSOR
@@ -867,25 +887,16 @@ async function runSync(
       cursor =
         nextCursor;
 
-
       /*
-       * ALL-STAR allows 60 requests/minute.
-       * This sync uses pages of 100, so the
-       * normal NFL player pool should remain
-       * comfortably below that ceiling.
+       * Conservative throttle.
        *
-       * Small pause gives us additional
-       * headroom.
+       * This is intentionally slow enough
+       * for restricted/trial rate limits.
        */
-      await new Promise(
-        (resolve) =>
-          setTimeout(
-            resolve,
-            150
-          )
+      await sleep(
+        13000
       );
     }
-
 
     return NextResponse.json({
       success: true,
@@ -922,12 +933,6 @@ async function runSync(
           playersUnmatched,
       },
 
-      /*
-       * Keep the response manageable.
-       * We can inspect the first 100 of
-       * each category and address them
-       * systematically.
-       */
       ambiguousPlayers:
         ambiguousPlayers.slice(
           0,
