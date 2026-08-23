@@ -25,6 +25,7 @@ type BdlPlayer = {
 
 type BdlPlayersResponse = {
   data?: BdlPlayer[];
+
   meta?: {
     next_cursor?: number | null;
     per_page?: number | null;
@@ -73,6 +74,43 @@ function createSupabaseAdmin() {
   );
 }
 
+function isAuthorized(
+  request: Request
+) {
+  if (
+    process.env.NODE_ENV !==
+    "production"
+  ) {
+    return true;
+  }
+
+  const secret =
+    process.env.NFL_SYNC_SECRET;
+
+  if (!secret) {
+    return false;
+  }
+
+  const authorization =
+    request.headers.get(
+      "authorization"
+    );
+
+  if (
+    authorization ===
+    `Bearer ${secret}`
+  ) {
+    return true;
+  }
+
+  const customHeader =
+    request.headers.get(
+      "x-gridiron-sync-secret"
+    );
+
+  return customHeader === secret;
+}
+
 function normalizeName(
   value: string | null | undefined
 ) {
@@ -119,57 +157,7 @@ function getFullName(
     .trim();
 }
 
-function isAuthorized(
-  request: Request
-) {
-  if (
-    process.env.NODE_ENV !==
-    "production"
-  ) {
-    return true;
-  }
-
-  const secret =
-    process.env.NFL_SYNC_SECRET;
-
-  if (!secret) {
-    return false;
-  }
-
-  const authorization =
-    request.headers.get(
-      "authorization"
-    );
-
-  if (
-    authorization ===
-    `Bearer ${secret}`
-  ) {
-    return true;
-  }
-
-  const customHeader =
-    request.headers.get(
-      "x-gridiron-sync-secret"
-    );
-
-  return customHeader === secret;
-}
-
-function sleep(
-  milliseconds: number
-) {
-  return new Promise<void>(
-    (resolve) => {
-      setTimeout(
-        resolve,
-        milliseconds
-      );
-    }
-  );
-}
-
-async function fetchBdlPlayers(
+async function fetchBdlPlayerPage(
   apiKey: string,
   cursor?: number
 ) {
@@ -215,8 +203,7 @@ async function fetchBdlPlayers(
     await response.text();
 
   if (
-    response.status ===
-    429
+    response.status === 429
   ) {
     const retryAfter =
       response.headers.get(
@@ -226,7 +213,7 @@ async function fetchBdlPlayers(
     throw new Error(
       retryAfter
         ? `BALLDONTLIE rate limit reached. Retry after ${retryAfter} seconds.`
-        : "BALLDONTLIE rate limit reached. Wait at least 60 seconds and try again."
+        : "BALLDONTLIE rate limit reached. Wait before running the next batch."
     );
   }
 
@@ -285,11 +272,48 @@ async function runSync(
       );
     }
 
+    const requestUrl =
+      new URL(request.url);
+
+    const cursorParam =
+      requestUrl.searchParams.get(
+        "cursor"
+      );
+
+    let cursor:
+      number | undefined =
+        undefined;
+
+    if (cursorParam) {
+      const parsedCursor =
+        Number(cursorParam);
+
+      if (
+        !Number.isFinite(
+          parsedCursor
+        )
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "cursor must be a valid number.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      cursor =
+        parsedCursor;
+    }
+
     const supabase =
       createSupabaseAdmin();
 
     /* =====================================================
-       LOAD EXISTING NFL TEAMS
+       LOAD TEAMS
     ===================================================== */
 
     const {
@@ -335,7 +359,7 @@ async function runSync(
     }
 
     /* =====================================================
-       LOAD EXISTING NFL PLAYERS
+       LOAD PLAYERS
     ===================================================== */
 
     const {
@@ -367,7 +391,7 @@ async function runSync(
         []) as ExistingPlayer[];
 
     /* =====================================================
-       BUILD MATCH INDEXES
+       BUILD LOOKUPS
     ===================================================== */
 
     const playersByBdlId =
@@ -394,8 +418,8 @@ async function runSync(
     ) {
       if (
         player
-          .balldontlie_player_id
-          !== null
+          .balldontlie_player_id !==
+        null
       ) {
         playersByBdlId.set(
           player
@@ -418,44 +442,54 @@ async function runSync(
           .trim()
           .toUpperCase();
 
-      const nameTeamKey =
+      const teamKey =
         `${normalizedFullName}|${teamAbbreviation}`;
 
-      const teamMatches =
+      const teamList =
         playersByNameTeam.get(
-          nameTeamKey
+          teamKey
         ) ?? [];
 
-      teamMatches.push(
+      teamList.push(
         player
       );
 
       playersByNameTeam.set(
-        nameTeamKey,
-        teamMatches
+        teamKey,
+        teamList
       );
 
-      const nameMatches =
+      const nameList =
         playersByNameOnly.get(
           normalizedFullName
         ) ?? [];
 
-      nameMatches.push(
+      nameList.push(
         player
       );
 
       playersByNameOnly.set(
         normalizedFullName,
-        nameMatches
+        nameList
       );
     }
 
     /* =====================================================
-       COUNTERS / REPORTING
+       FETCH EXACTLY ONE BALLDONTLIE PAGE
     ===================================================== */
 
-    let pagesFetched = 0;
-    let providerPlayers = 0;
+    const page =
+      await fetchBdlPlayerPage(
+        apiKey,
+        cursor
+      );
+
+    const providerPlayers =
+      page.data ?? [];
+
+    /* =====================================================
+       COUNTERS
+    ===================================================== */
 
     let teamsMapped = 0;
     let teamsAlreadyMapped = 0;
@@ -487,354 +521,266 @@ async function runSync(
           number[];
       }> = [];
 
+    const syncedAt =
+      new Date()
+        .toISOString();
+
     /* =====================================================
-       PAGINATE BALLDONTLIE PLAYERS
+       PROCESS PAGE
     ===================================================== */
 
-    let cursor:
-      number | undefined =
-        undefined;
-
-    const seenCursors =
-      new Set<number>();
-
-    while (true) {
-      const page =
-        await fetchBdlPlayers(
-          apiKey,
-          cursor
+    for (
+      const bdlPlayer
+      of providerPlayers
+    ) {
+      const bdlName =
+        getFullName(
+          bdlPlayer
         );
 
-      pagesFetched += 1;
+      const normalizedBdlName =
+        normalizeName(
+          bdlName
+        );
 
-      const providerPagePlayers =
-        page.data ?? [];
+      const bdlTeamAbbreviation =
+        bdlPlayer.team
+          ?.abbreviation
+          ?.trim()
+          .toUpperCase() ??
+        null;
 
-      providerPlayers +=
-        providerPagePlayers.length;
+      const bdlPosition =
+        normalizePosition(
+          bdlPlayer
+            .position_abbreviation
+        );
 
-      for (
-        const bdlPlayer
-        of providerPagePlayers
+      /* ===================================================
+         MAP TEAM
+      =================================================== */
+
+      if (
+        bdlPlayer.team &&
+        bdlTeamAbbreviation
       ) {
-        const bdlName =
-          getFullName(
-            bdlPlayer
+        const existingTeam =
+          teamsByAbbreviation.get(
+            bdlTeamAbbreviation
           );
 
-        if (!bdlName) {
-          playersUnmatched +=
-            1;
-
-          unmatchedPlayers.push({
-            balldontliePlayerId:
-              bdlPlayer.id,
-
-            name:
-              "",
-
-            team:
-              bdlPlayer.team
-                ?.abbreviation ??
-              null,
-
-            position:
-              bdlPlayer
-                .position_abbreviation ??
-              null,
-
-            reason:
-              "BALLDONTLIE player had no usable name.",
-          });
-
-          continue;
-        }
-
-        const normalizedBdlName =
-          normalizeName(
-            bdlName
-          );
-
-        const bdlTeamAbbreviation =
-          bdlPlayer.team
-            ?.abbreviation
-            ?.trim()
-            .toUpperCase() ??
-          null;
-
-        const bdlPosition =
-          normalizePosition(
-            bdlPlayer
-              .position_abbreviation
-          );
-
-        /* =================================================
-           TEAM MAPPING
-        ================================================= */
-
-        if (
-          bdlPlayer.team &&
-          bdlTeamAbbreviation
+        if (!existingTeam) {
+          teamsNotFound += 1;
+        } else if (
+          existingTeam
+            .balldontlie_team_id ===
+          bdlPlayer.team.id
         ) {
-          const existingTeam =
-            teamsByAbbreviation.get(
-              bdlTeamAbbreviation
-            );
-
-          if (!existingTeam) {
-            teamsNotFound += 1;
-          } else if (
-            existingTeam
-              .balldontlie_team_id ===
-            bdlPlayer.team.id
-          ) {
-            teamsAlreadyMapped +=
-              1;
-          } else if (
-            existingTeam
-              .balldontlie_team_id ===
-            null
-          ) {
-            const {
-              error:
-                updateTeamError,
-            } =
-              await supabase
-                .from(
-                  "nfl_teams"
-                )
-                .update({
-                  balldontlie_team_id:
-                    bdlPlayer
-                      .team.id,
-
-                  balldontlie_last_synced_at:
-                    new Date()
-                      .toISOString(),
-                })
-                .eq(
-                  "id",
-                  existingTeam.id
-                );
-
-            if (
-              updateTeamError
-            ) {
-              throw new Error(
-                `Unable to map BALLDONTLIE team ${bdlTeamAbbreviation}: ${updateTeamError.message}`
-              );
-            }
-
-            existingTeam
-              .balldontlie_team_id =
-                bdlPlayer
-                  .team.id;
-
-            teamsMapped += 1;
-          }
-        }
-
-        /* =================================================
-           PLAYER ALREADY MAPPED
-        ================================================= */
-
-        const existingByBdlId =
-          playersByBdlId.get(
-            bdlPlayer.id
-          );
-
-        if (
-          existingByBdlId
-        ) {
-          playersAlreadyMapped +=
+          teamsAlreadyMapped +=
             1;
-
+        } else if (
+          existingTeam
+            .balldontlie_team_id ===
+          null
+        ) {
           const {
             error:
-              refreshMappedError,
+              updateTeamError,
           } =
             await supabase
               .from(
-                "nfl_players"
+                "nfl_teams"
               )
               .update({
+                balldontlie_team_id:
+                  bdlPlayer
+                    .team.id,
+
                 balldontlie_last_synced_at:
-                  new Date()
-                    .toISOString(),
+                  syncedAt,
               })
               .eq(
                 "id",
-                existingByBdlId.id
+                existingTeam.id
               );
 
           if (
-            refreshMappedError
+            updateTeamError
           ) {
             throw new Error(
-              `Unable to refresh BALLDONTLIE mapping for ${bdlName}: ${refreshMappedError.message}`
+              `Unable to map BALLDONTLIE team ${bdlTeamAbbreviation}: ${updateTeamError.message}`
             );
           }
 
-          continue;
+          existingTeam
+            .balldontlie_team_id =
+              bdlPlayer.team.id;
+
+          teamsMapped += 1;
         }
+      }
 
-        /* =================================================
-           PRIMARY MATCH:
-           NAME + TEAM
-        ================================================= */
+      /* ===================================================
+         PLAYER ALREADY MAPPED
+      =================================================== */
 
-        const nameTeamKey =
-          `${normalizedBdlName}|${bdlTeamAbbreviation ?? ""}`;
+      const existingByBdlId =
+        playersByBdlId.get(
+          bdlPlayer.id
+        );
 
-        let candidates =
-          playersByNameTeam.get(
-            nameTeamKey
-          ) ?? [];
-
-        /* =================================================
-           FALLBACK:
-           UNIQUE NAME ONLY
-        ================================================= */
-
-        if (
-          candidates.length ===
-          0
-        ) {
-          const nameOnlyMatches =
-            playersByNameOnly.get(
-              normalizedBdlName
-            ) ?? [];
-
-          if (
-            nameOnlyMatches
-              .length === 1
-          ) {
-            candidates =
-              nameOnlyMatches;
-          }
-        }
-
-        /* =================================================
-           POSITION DISAMBIGUATION
-        ================================================= */
-
-        if (
-          candidates.length >
-            1 &&
-          bdlPosition
-        ) {
-          const positionMatches =
-            candidates.filter(
-              (candidate) =>
-                normalizePosition(
-                  candidate
-                    .primary_position
-                ) ===
-                bdlPosition
-            );
-
-          if (
-            positionMatches
-              .length === 1
-          ) {
-            candidates =
-              positionMatches;
-          }
-        }
-
-        /* =================================================
-           UNIQUE MATCH
-        ================================================= */
-
-        if (
-          candidates.length ===
-          1
-        ) {
-          const matchedPlayer =
-            candidates[0];
-
-          const {
-            error:
-              updatePlayerError,
-          } =
-            await supabase
-              .from(
-                "nfl_players"
-              )
-              .update({
-                balldontlie_player_id:
-                  bdlPlayer.id,
-
-                balldontlie_last_synced_at:
-                  new Date()
-                    .toISOString(),
-              })
-              .eq(
-                "id",
-                matchedPlayer.id
-              );
-
-          if (
-            updatePlayerError
-          ) {
-            throw new Error(
-              `Unable to map BALLDONTLIE player ${bdlName}: ${updatePlayerError.message}`
-            );
-          }
-
-          matchedPlayer
-            .balldontlie_player_id =
-              bdlPlayer.id;
-
-          playersByBdlId.set(
-            bdlPlayer.id,
-            matchedPlayer
-          );
-
-          playersMapped += 1;
-
-          continue;
-        }
-
-        /* =================================================
-           AMBIGUOUS
-        ================================================= */
-
-        if (
-          candidates.length >
-          1
-        ) {
-          playersAmbiguous +=
-            1;
-
-          ambiguousPlayers.push({
-            balldontliePlayerId:
-              bdlPlayer.id,
-
-            name:
-              bdlName,
-
-            team:
-              bdlTeamAbbreviation,
-
-            candidateIds:
-              candidates.map(
-                (candidate) =>
-                  candidate.id
-              ),
-          });
-
-          continue;
-        }
-
-        /* =================================================
-           UNMATCHED
-        ================================================= */
-
-        playersUnmatched +=
+      if (
+        existingByBdlId
+      ) {
+        playersAlreadyMapped +=
           1;
 
-        unmatchedPlayers.push({
+        const {
+          error:
+            refreshError,
+        } =
+          await supabase
+            .from(
+              "nfl_players"
+            )
+            .update({
+              balldontlie_last_synced_at:
+                syncedAt,
+            })
+            .eq(
+              "id",
+              existingByBdlId.id
+            );
+
+        if (
+          refreshError
+        ) {
+          throw new Error(
+            `Unable to refresh BALLDONTLIE mapping for ${bdlName}: ${refreshError.message}`
+          );
+        }
+
+        continue;
+      }
+
+      /* ===================================================
+         NAME + TEAM
+      =================================================== */
+
+      const teamKey =
+        `${normalizedBdlName}|${bdlTeamAbbreviation ?? ""}`;
+
+      let candidates =
+        playersByNameTeam.get(
+          teamKey
+        ) ?? [];
+
+      /* ===================================================
+         UNIQUE NAME FALLBACK
+      =================================================== */
+
+      if (
+        candidates.length ===
+        0
+      ) {
+        const nameMatches =
+          playersByNameOnly.get(
+            normalizedBdlName
+          ) ?? [];
+
+        if (
+          nameMatches.length ===
+          1
+        ) {
+          candidates =
+            nameMatches;
+        }
+      }
+
+      /* ===================================================
+         POSITION DISAMBIGUATION
+      =================================================== */
+
+      if (
+        candidates.length >
+          1 &&
+        bdlPosition
+      ) {
+        const positionMatches =
+          candidates.filter(
+            (candidate) =>
+              normalizePosition(
+                candidate
+                  .primary_position
+              ) ===
+              bdlPosition
+          );
+
+        if (
+          positionMatches
+            .length === 1
+        ) {
+          candidates =
+            positionMatches;
+        }
+      }
+
+      /* ===================================================
+         UNIQUE MATCH
+      =================================================== */
+
+      if (
+        candidates.length ===
+        1
+      ) {
+        const matchedPlayer =
+          candidates[0];
+
+        const {
+          error:
+            updatePlayerError,
+        } =
+          await supabase
+            .from(
+              "nfl_players"
+            )
+            .update({
+              balldontlie_player_id:
+                bdlPlayer.id,
+
+              balldontlie_last_synced_at:
+                syncedAt,
+            })
+            .eq(
+              "id",
+              matchedPlayer.id
+            );
+
+        if (
+          updatePlayerError
+        ) {
+          throw new Error(
+            `Unable to map BALLDONTLIE player ${bdlName}: ${updatePlayerError.message}`
+          );
+        }
+
+        playersMapped += 1;
+
+        continue;
+      }
+
+      /* ===================================================
+         AMBIGUOUS
+      =================================================== */
+
+      if (
+        candidates.length >
+        1
+      ) {
+        playersAmbiguous +=
+          1;
+
+        ambiguousPlayers.push({
           balldontliePlayerId:
             bdlPlayer.id,
 
@@ -844,59 +790,46 @@ async function runSync(
           team:
             bdlTeamAbbreviation,
 
-          position:
-            bdlPosition ||
-            null,
-
-          reason:
-            "No unique existing Gridiron365 player match.",
+          candidateIds:
+            candidates.map(
+              (candidate) =>
+                candidate.id
+            ),
         });
+
+        continue;
       }
 
       /* ===================================================
-         NEXT CURSOR
+         UNMATCHED
       =================================================== */
 
-      const nextCursor =
-        page.meta
-          ?.next_cursor;
+      playersUnmatched +=
+        1;
 
-      if (
-        nextCursor ===
-          null ||
-        nextCursor ===
-          undefined
-      ) {
-        break;
-      }
+      unmatchedPlayers.push({
+        balldontliePlayerId:
+          bdlPlayer.id,
 
-      if (
-        seenCursors.has(
-          nextCursor
-        )
-      ) {
-        throw new Error(
-          `BALLDONTLIE pagination repeated cursor ${nextCursor}.`
-        );
-      }
+        name:
+          bdlName,
 
-      seenCursors.add(
-        nextCursor
-      );
+        team:
+          bdlTeamAbbreviation,
 
-      cursor =
-        nextCursor;
+        position:
+          bdlPosition ||
+          null,
 
-      /*
-       * Conservative throttle.
-       *
-       * This is intentionally slow enough
-       * for restricted/trial rate limits.
-       */
-      await sleep(
-        13000
-      );
+        reason:
+          "No unique existing Gridiron365 player match.",
+      });
     }
+
+    const nextCursor =
+      page.meta
+        ?.next_cursor ??
+      null;
 
     return NextResponse.json({
       success: true,
@@ -904,9 +837,18 @@ async function runSync(
       provider:
         "BALLDONTLIE",
 
-      pagesFetched,
+      batch: {
+        requestedCursor:
+          cursor ?? null,
 
-      providerPlayers,
+        playersReceived:
+          providerPlayers.length,
+
+        nextCursor,
+
+        hasMore:
+          nextCursor !== null,
+      },
 
       teams: {
         mapped:
@@ -933,21 +875,13 @@ async function runSync(
           playersUnmatched,
       },
 
-      ambiguousPlayers:
-        ambiguousPlayers.slice(
-          0,
-          100
-        ),
+      ambiguousPlayers,
 
-      unmatchedPlayers:
-        unmatchedPlayers.slice(
-          0,
-          100
-        ),
+      unmatchedPlayers,
     });
   } catch (error) {
     console.error(
-      "BALLDONTLIE player sync failed:",
+      "BALLDONTLIE player batch sync failed:",
       error
     );
 
