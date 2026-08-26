@@ -1620,6 +1620,17 @@ export default function TraditionalDraftPage() {
 
 
   const [
+    onlineUserIds,
+    setOnlineUserIds,
+  ] =
+    useState<
+      string[]
+    >(
+      []
+    );
+
+
+  const [
     clock,
     setClock,
   ] =
@@ -3011,6 +3022,115 @@ export default function TraditionalDraftPage() {
   useEffect(
     () => {
       if (
+        !draft?.id ||
+        !currentUserId
+      ) {
+        setOnlineUserIds(
+          []
+        );
+
+        return;
+      }
+
+
+      const channel =
+        supabase.channel(
+          `traditional-draft-presence:${draft.id}`,
+          {
+            config: {
+              presence: {
+                key:
+                  currentUserId,
+              },
+            },
+          }
+        );
+
+
+      const syncPresence =
+        () => {
+          const state =
+            channel.presenceState();
+
+          setOnlineUserIds(
+            Object.keys(
+              state
+            )
+          );
+        };
+
+
+      channel
+        .on(
+          "presence",
+          {
+            event:
+              "sync",
+          },
+          syncPresence
+        )
+        .on(
+          "presence",
+          {
+            event:
+              "join",
+          },
+          syncPresence
+        )
+        .on(
+          "presence",
+          {
+            event:
+              "leave",
+          },
+          syncPresence
+        )
+        .subscribe(
+          async (
+            status
+          ) => {
+            if (
+              status ===
+              "SUBSCRIBED"
+            ) {
+              await channel.track({
+                user_id:
+                  currentUserId,
+
+                league_id:
+                  leagueId,
+
+                draft_id:
+                  draft.id,
+
+                online_at:
+                  new Date()
+                    .toISOString(),
+              });
+            }
+          }
+        );
+
+
+      return () => {
+        void channel.untrack();
+
+        void supabase.removeChannel(
+          channel
+        );
+      };
+    },
+    [
+      draft?.id,
+      currentUserId,
+      leagueId,
+    ]
+  );
+
+
+  useEffect(
+    () => {
+      if (
         !draft
       ) {
         return;
@@ -4346,6 +4466,38 @@ export default function TraditionalDraftPage() {
                 item.fantasyTeamId ===
                   myTeamId;
 
+              const slot =
+                slots.find(
+                  (
+                    row
+                  ) =>
+                    row.draft_slot ===
+                    item.draftSlot
+                ) ??
+                null;
+
+              const ownerIsOnline =
+                Boolean(
+                  team
+                    ?.owner_id &&
+                  onlineUserIds.includes(
+                    team.owner_id
+                  )
+                );
+
+              const participationLabel =
+                slot
+                  ?.is_cpu
+                  ? "CPU"
+                  : slot
+                      ?.auto_pick
+                    ? "AUTO-PICK"
+                    : ownerIsOnline
+                      ? current
+                        ? "ONLINE • PICKING"
+                        : "ONLINE • MANUAL"
+                      : "OFFLINE • MANUAL";
+
 
               return (
                 <div
@@ -4396,6 +4548,24 @@ export default function TraditionalDraftPage() {
                     }
                   >
                     R{item.round} • S{item.draftSlot}
+                  </span>
+
+                  <span
+                    style={{
+                      ...styles.trainPresence,
+
+                      ...(ownerIsOnline &&
+                      !slot?.is_cpu &&
+                      !slot?.auto_pick
+                        ? styles.trainPresenceOnline
+                        : {}),
+
+                      ...(slot?.auto_pick
+                        ? styles.trainPresenceAuto
+                        : {}),
+                    }}
+                  >
+                    {participationLabel}
                   </span>
                 </div>
               );
@@ -5102,21 +5272,123 @@ export default function TraditionalDraftPage() {
             >
               <div
                 style={
-                  styles.panelHeader
+                  styles.rosterPanelHeader
                 }
               >
-                MY ROSTER
+                <div>
+                  <div
+                    style={
+                      styles.rosterPanelEyebrow
+                    }
+                  >
+                    LEAGUE ROSTERS
+                  </div>
+
+                  <strong
+                    style={
+                      styles.rosterPanelTitle
+                    }
+                  >
+                    {(
+                      rosterTeamId ??
+                      myTeamId
+                    )
+                      ? teamMap.get(
+                          (
+                            rosterTeamId ??
+                            myTeamId
+                          ) as number
+                        )
+                          ?.team_name ??
+                        "Roster"
+                      : "Roster"}
+                  </strong>
+                </div>
+
+                <select
+                  value={
+                    rosterTeamId ??
+                    myTeamId ??
+                    ""
+                  }
+                  onChange={(
+                    event
+                  ) => {
+                    const nextId =
+                      Number(
+                        event.target.value
+                      );
+
+                    if (
+                      Number.isFinite(
+                        nextId
+                      ) &&
+                      nextId >
+                        0
+                    ) {
+                      setRosterTeamId(
+                        nextId
+                      );
+                    }
+                  }}
+                  style={
+                    styles.rosterSelect
+                  }
+                  aria-label="View league roster"
+                >
+                  {teams
+                    .filter(
+                      (
+                        team
+                      ) =>
+                        team.active
+                    )
+                    .sort(
+                      (
+                        a,
+                        b
+                      ) =>
+                        a.team_name.localeCompare(
+                          b.team_name
+                        )
+                    )
+                    .map(
+                      (
+                        team
+                      ) => (
+                        <option
+                          key={
+                            team.id
+                          }
+                          value={
+                            team.id
+                          }
+                        >
+                          {team.id ===
+                          myTeamId
+                            ? `${team.team_name} (My Team)`
+                            : team.team_name}
+                        </option>
+                      )
+                    )}
+                </select>
               </div>
 
               <MyRosterPanel
                 teamName={
-                  myTeamId
+                  (
+                    rosterTeamId ??
+                    myTeamId
+                  )
                     ? teamMap.get(
-                        myTeamId
+                        (
+                          rosterTeamId ??
+                          myTeamId
+                        ) as number
                       )
                         ?.team_name ??
-                      "My Team"
-                    : "My Team"
+                      "Roster"
+                    : "Roster"
                 }
                 picks={
                   picks.filter(
@@ -5124,7 +5396,10 @@ export default function TraditionalDraftPage() {
                       pick
                     ) =>
                       pick.fantasy_team_id ===
-                      myTeamId
+                      (
+                        rosterTeamId ??
+                        myTeamId
+                      )
                   )
                 }
                 playerMap={
@@ -9320,9 +9595,69 @@ const styles = {
 
   trainMeta: {
     color:
-      "#656c75",
+      "#7a818a",
 
     fontSize: "11px",
+  },
+
+
+  trainPresence: {
+    marginTop:
+      "3px",
+
+    padding:
+      "3px 5px",
+
+    alignSelf:
+      "flex-start",
+
+    border:
+      "1px solid rgba(255,255,255,.08)",
+
+    borderRadius:
+      "5px",
+
+    background:
+      "rgba(255,255,255,.035)",
+
+    color:
+      "#8b929b",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      950,
+
+    letterSpacing:
+      ".035em",
+
+    whiteSpace:
+      "nowrap" as const,
+  },
+
+
+  trainPresenceOnline: {
+    borderColor:
+      "rgba(66,217,130,.28)",
+
+    background:
+      "rgba(35,190,100,.09)",
+
+    color:
+      "#56e391",
+  },
+
+
+  trainPresenceAuto: {
+    borderColor:
+      "rgba(255,125,34,.30)",
+
+    background:
+      "rgba(255,100,15,.08)",
+
+    color:
+      "#ff912f",
   },
 
 
@@ -9391,6 +9726,102 @@ const styles = {
 
     letterSpacing:
       ".06em",
+  },
+
+
+  rosterPanelHeader: {
+    padding:
+      "9px",
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "space-between",
+
+    gap:
+      "8px",
+
+    borderBottom:
+      "1px solid rgba(255,255,255,.055)",
+  },
+
+
+  rosterPanelEyebrow: {
+    color:
+      "#ff7d22",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      1000,
+
+    letterSpacing:
+      ".06em",
+  },
+
+
+  rosterPanelTitle: {
+    display:
+      "block",
+
+    marginTop:
+      "2px",
+
+    maxWidth:
+      "155px",
+
+    overflow:
+      "hidden",
+
+    textOverflow:
+      "ellipsis",
+
+    whiteSpace:
+      "nowrap" as const,
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "11px",
+  },
+
+
+  rosterSelect: {
+    maxWidth:
+      "150px",
+
+    minHeight:
+      "30px",
+
+    padding:
+      "0 8px",
+
+    border:
+      "1px solid rgba(255,125,34,.28)",
+
+    borderRadius:
+      "6px",
+
+    outline:
+      "none",
+
+    background:
+      "#111317",
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "9px",
+
+    fontWeight:
+      850,
   },
 
 
@@ -12666,9 +13097,9 @@ const styles = {
       "4px",
 
     color:
-      "#9ba2aa",
+      "#ffffff",
 
-    fontSize: "13px",
+    fontSize: "15px",
   },
 
 
@@ -12686,9 +13117,9 @@ const styles = {
       "7px",
 
     color:
-      "#9da3ab",
+      "#ffffff",
 
-    fontSize: "13px",
+    fontSize: "15px",
 
     fontWeight:
       850,
@@ -12726,9 +13157,9 @@ const styles = {
       "40px",
 
     color:
-      "#8d949d",
+      "#ffffff",
 
-    fontSize: "13px",
+    fontSize: "15px",
 
     textAlign:
       "center" as const,
@@ -12764,15 +13195,15 @@ const styles = {
 
   profileSectionHeader: {
     padding:
-      "9px 10px",
+      "10px 11px",
 
     borderBottom:
-      "1px solid rgba(255,255,255,.05)",
+      "1px solid rgba(255,255,255,.08)",
 
     color:
-      "#ff7b22",
+      "#ffffff",
 
-    fontSize: "12px",
+    fontSize: "15px",
 
     fontWeight:
       1000,
@@ -12796,10 +13227,10 @@ const styles = {
 
   profileStatCard: {
     minHeight:
-      "68px",
+      "76px",
 
     padding:
-      "9px",
+      "11px",
 
     display:
       "grid",
@@ -12808,10 +13239,10 @@ const styles = {
       "center",
 
     gap:
-      "5px",
+      "6px",
 
     border:
-      "1px solid rgba(255,255,255,.05)",
+      "1px solid rgba(255,255,255,.09)",
 
     borderRadius:
       "6px",
@@ -12820,9 +13251,9 @@ const styles = {
       "#0d0f11",
 
     color:
-      "#7d858e",
+      "#ffffff",
 
-    fontSize: "12px",
+    fontSize: "15px",
   },
 
 
@@ -12834,9 +13265,9 @@ const styles = {
       "25px",
 
     color:
-      "#767e87",
+      "#ffffff",
 
-    fontSize: "12px",
+    fontSize: "15px",
 
     textAlign:
       "center" as const,
