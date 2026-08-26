@@ -22,6 +22,8 @@ export type TraditionalMatchupPlayer = {
 
   fantasyPoints: number;
 
+  projectedPoints: number;
+
   isLive: boolean;
 
   isFinal: boolean;
@@ -42,18 +44,14 @@ export type TraditionalMatchupTeam = {
 
   points: number;
 
+  projectedPoints: number;
+
   isWinner: boolean;
 
   isMyTeam: boolean;
 
   starters:
     TraditionalMatchupPlayer[];
-
-  playersLive: number;
-
-  playersRemaining: number;
-
-  playersFinished: number;
 };
 
 
@@ -200,6 +198,16 @@ type PlayerScoreRow = {
     null;
 };
 
+type WeeklyProjectionRow = {
+  player_id: number;
+
+  projected_points:
+    number |
+    string |
+    null;
+};
+
+
 
 function numericValue(
   value:
@@ -307,44 +315,6 @@ function slotSortOrder(
     ] ??
     99
   );
-}
-
-
-function getTeamGameCounts(
-  starters:
-    TraditionalMatchupPlayer[]
-) {
-  const playersLive =
-    starters.filter(
-      (
-        player
-      ) =>
-        player.isLive
-    ).length;
-
-
-  const playersFinished =
-    starters.filter(
-      (
-        player
-      ) =>
-        player.isFinal
-    ).length;
-
-
-  const playersRemaining =
-    Math.max(
-      0,
-      starters.length -
-        playersFinished
-    );
-
-
-  return {
-    playersLive,
-    playersRemaining,
-    playersFinished,
-  };
 }
 
 
@@ -788,6 +758,88 @@ export async function getTraditionalMatchupsData(
 
   /*
    * =====================================================
+   * WEEKLY PROJECTIONS
+   * =====================================================
+   */
+
+  const projectionMap =
+    new Map<
+      number,
+      number
+    >();
+
+
+  if (
+    playerIds.length >
+    0
+  ) {
+    const {
+      data:
+        projectionData,
+
+      error:
+        projectionError,
+    } =
+      await supabase
+        .from(
+          "traditional_weekly_player_projections"
+        )
+        .select(`
+          player_id,
+          projected_points
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        )
+        .eq(
+          "season_type",
+          2
+        )
+        .eq(
+          "week",
+          selectedWeek
+        )
+        .in(
+          "player_id",
+          playerIds
+        );
+
+
+    if (
+      projectionError
+    ) {
+      throw new Error(
+        `Could not load weekly projections: ${projectionError.message}`
+      );
+    }
+
+
+    for (
+      const row
+      of (
+        projectionData ??
+        []
+      ) as WeeklyProjectionRow[]
+    ) {
+      projectionMap.set(
+        Number(
+          row.player_id
+        ),
+        numericValue(
+          row.projected_points
+        )
+      );
+    }
+  }
+
+
+  /*
+   * =====================================================
    * PLAYER FANTASY SCORES
    * =====================================================
    */
@@ -947,6 +999,12 @@ export async function getTraditionalMatchupsData(
             null
           ),
 
+        projectedPoints:
+          projectionMap.get(
+            lineup.player_id
+          ) ??
+          0,
+
         isLive,
 
         isFinal,
@@ -1090,34 +1148,6 @@ export async function getTraditionalMatchupsData(
             );
 
 
-          const homeStarters =
-            startersByTeam.get(
-              matchup
-                .home_fantasy_team_id
-            ) ??
-            [];
-
-
-          const awayStarters =
-            startersByTeam.get(
-              matchup
-                .away_fantasy_team_id
-            ) ??
-            [];
-
-
-          const homeCounts =
-            getTeamGameCounts(
-              homeStarters
-            );
-
-
-          const awayCounts =
-            getTeamGameCounts(
-              awayStarters
-            );
-
-
           return {
             matchupId:
               matchup.id,
@@ -1143,6 +1173,23 @@ export async function getTraditionalMatchupsData(
                     .home_points
                 ),
 
+              projectedPoints:
+                (
+                  startersByTeam.get(
+                    matchup
+                      .home_fantasy_team_id
+                  ) ??
+                  []
+                ).reduce(
+                  (
+                    total,
+                    player
+                  ) =>
+                    total +
+                    player.projectedPoints,
+                  0
+                ),
+
               isWinner:
                 homeIsWinner,
 
@@ -1154,19 +1201,11 @@ export async function getTraditionalMatchupsData(
                   myFantasyTeamId,
 
               starters:
-                homeStarters,
-
-              playersLive:
-                homeCounts
-                  .playersLive,
-
-              playersRemaining:
-                homeCounts
-                  .playersRemaining,
-
-              playersFinished:
-                homeCounts
-                  .playersFinished,
+                startersByTeam.get(
+                  matchup
+                    .home_fantasy_team_id
+                ) ??
+                [],
             },
 
             away: {
@@ -1187,6 +1226,23 @@ export async function getTraditionalMatchupsData(
                     .away_points
                 ),
 
+              projectedPoints:
+                (
+                  startersByTeam.get(
+                    matchup
+                      .away_fantasy_team_id
+                  ) ??
+                  []
+                ).reduce(
+                  (
+                    total,
+                    player
+                  ) =>
+                    total +
+                    player.projectedPoints,
+                  0
+                ),
+
               isWinner:
                 awayIsWinner,
 
@@ -1198,19 +1254,11 @@ export async function getTraditionalMatchupsData(
                   myFantasyTeamId,
 
               starters:
-                awayStarters,
-
-              playersLive:
-                awayCounts
-                  .playersLive,
-
-              playersRemaining:
-                awayCounts
-                  .playersRemaining,
-
-              playersFinished:
-                awayCounts
-                  .playersFinished,
+                startersByTeam.get(
+                  matchup
+                    .away_fantasy_team_id
+                ) ??
+                [],
             },
 
             isLive,

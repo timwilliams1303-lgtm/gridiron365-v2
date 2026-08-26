@@ -2325,62 +2325,18 @@ export async function getTraditionalMatchupDetailData(
     }
 
 
-    const rawProjectedPoints =
+    /*
+     * The weekly projection table is authoritative.
+     *
+     * Do NOT apply the current injury designation again here. The projection
+     * engine already applies injury status with week-aware return-date logic.
+     * Applying it a second time would incorrectly zero future weeks.
+     */
+    const projectedPoints =
       projectionMap.get(
         lineup.player_id
       ) ??
       0;
-
-
-    const injuryText =
-      [
-        injury
-          ?.status,
-        injury
-          ?.injury_type,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toUpperCase();
-
-
-    let injuryMultiplier =
-      1;
-
-
-    if (
-      /\b(OUT|IR|PUP|NFI|SUSPENDED|INACTIVE)\b/.test(
-        injuryText
-      )
-    ) {
-      injuryMultiplier =
-        0;
-    } else if (
-      /\bDOUBTFUL\b/.test(
-        injuryText
-      )
-    ) {
-      injuryMultiplier =
-        0.25;
-    } else if (
-      /\bQUESTIONABLE\b/.test(
-        injuryText
-      )
-    ) {
-      injuryMultiplier =
-        0.82;
-    }
-
-
-    const projectedPoints =
-      game
-        ? Math.round(
-            rawProjectedPoints *
-            injuryMultiplier *
-            100
-          ) /
-          100
-        : 0;
 
 
     const hasPossession =
