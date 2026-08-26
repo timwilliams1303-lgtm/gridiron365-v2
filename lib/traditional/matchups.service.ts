@@ -46,6 +46,10 @@ export type TraditionalMatchupTeam = {
 
   projectedPoints: number;
 
+  playersLive: number;
+
+  playersRemaining: number;
+
   isWinner: boolean;
 
   isMyTeam: boolean;
@@ -1190,6 +1194,34 @@ export async function getTraditionalMatchupsData(
                   0
                 ),
 
+              playersLive:
+                (
+                  startersByTeam.get(
+                    matchup
+                      .home_fantasy_team_id
+                  ) ??
+                  []
+                ).filter(
+                  (
+                    player
+                  ) =>
+                    player.isLive
+                ).length,
+
+              playersRemaining:
+                (
+                  startersByTeam.get(
+                    matchup
+                      .home_fantasy_team_id
+                  ) ??
+                  []
+                ).filter(
+                  (
+                    player
+                  ) =>
+                    !player.isFinal
+                ).length,
+
               isWinner:
                 homeIsWinner,
 
@@ -1242,6 +1274,34 @@ export async function getTraditionalMatchupsData(
                     player.projectedPoints,
                   0
                 ),
+
+              playersLive:
+                (
+                  startersByTeam.get(
+                    matchup
+                      .away_fantasy_team_id
+                  ) ??
+                  []
+                ).filter(
+                  (
+                    player
+                  ) =>
+                    player.isLive
+                ).length,
+
+              playersRemaining:
+                (
+                  startersByTeam.get(
+                    matchup
+                      .away_fantasy_team_id
+                  ) ??
+                  []
+                ).filter(
+                  (
+                    player
+                  ) =>
+                    !player.isFinal
+                ).length,
 
               isWinner:
                 awayIsWinner,
