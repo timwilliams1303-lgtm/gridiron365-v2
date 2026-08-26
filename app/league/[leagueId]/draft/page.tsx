@@ -3689,7 +3689,8 @@ export default function TraditionalDraftPage() {
 
   async function handleStartDraft() {
     if (
-      !draft
+      !draft ||
+      !isCommissioner
     ) {
       return;
     }
@@ -4227,7 +4228,8 @@ export default function TraditionalDraftPage() {
             }
           >
             {draft.status ===
-            "scheduled" ? (
+              "scheduled" &&
+            isCommissioner ? (
               <button
                 type="button"
                 onClick={
@@ -4338,6 +4340,12 @@ export default function TraditionalDraftPage() {
                 item.overallPick ===
                 draft.current_overall_pick;
 
+              const isMyDraftSlot =
+                myTeamId !==
+                  null &&
+                item.fantasyTeamId ===
+                  myTeamId;
+
 
               return (
                 <div
@@ -4347,7 +4355,7 @@ export default function TraditionalDraftPage() {
                   style={{
                     ...styles.trainCard,
 
-                    ...(current
+                    ...(isMyDraftSlot
                       ? styles.trainCardCurrent
                       : {}),
                   }}
@@ -4365,9 +4373,11 @@ export default function TraditionalDraftPage() {
                       styles.trainStatus
                     }
                   >
-                    {current
-                      ? "ON THE CLOCK"
-                      : "UP NEXT"}
+                    {isMyDraftSlot
+                      ? "YOUR PICK"
+                      : current
+                        ? "ON THE CLOCK"
+                        : "UP NEXT"}
                   </div>
 
                   <strong
@@ -10111,7 +10121,7 @@ const styles = {
     color:
       "#59606a",
 
-    fontSize: "11px",
+    fontSize: "12px",
 
     fontWeight:
       950,
@@ -10185,7 +10195,7 @@ const styles = {
     color:
       "#6e757e",
 
-    fontSize: "11px",
+    fontSize: "12px",
 
     fontWeight:
       900,
@@ -10220,7 +10230,7 @@ const styles = {
     color:
       "#e8eaed",
 
-    fontSize: "12px",
+    fontSize: "13px",
   },
 
 
@@ -10234,7 +10244,7 @@ const styles = {
     borderRadius:
       "4px",
 
-    fontSize: "11px",
+    fontSize: "12px",
 
     fontWeight:
       1000,
@@ -10245,7 +10255,7 @@ const styles = {
     color:
       "#9ca2aa",
 
-    fontSize: "11px",
+    fontSize: "12px",
   },
 
 
@@ -10253,7 +10263,7 @@ const styles = {
     color:
       "#858c95",
 
-    fontSize: "11px",
+    fontSize: "12px",
   },
 
 
@@ -12644,7 +12654,7 @@ const styles = {
     color:
       "#f5f6f7",
 
-    fontSize: "16px",
+    fontSize: "17px",
 
     fontWeight:
       1000,
@@ -12658,7 +12668,7 @@ const styles = {
     color:
       "#9ba2aa",
 
-    fontSize: "12px",
+    fontSize: "13px",
   },
 
 
@@ -12678,7 +12688,7 @@ const styles = {
     color:
       "#9da3ab",
 
-    fontSize: "12px",
+    fontSize: "13px",
 
     fontWeight:
       850,
@@ -12718,7 +12728,7 @@ const styles = {
     color:
       "#8d949d",
 
-    fontSize: "12px",
+    fontSize: "13px",
 
     textAlign:
       "center" as const,
@@ -12762,7 +12772,7 @@ const styles = {
     color:
       "#ff7b22",
 
-    fontSize: "11px",
+    fontSize: "12px",
 
     fontWeight:
       1000,
@@ -12812,7 +12822,7 @@ const styles = {
     color:
       "#7d858e",
 
-    fontSize: "11px",
+    fontSize: "12px",
   },
 
 
@@ -12826,7 +12836,7 @@ const styles = {
     color:
       "#767e87",
 
-    fontSize: "11px",
+    fontSize: "12px",
 
     textAlign:
       "center" as const,
@@ -12879,6 +12889,7 @@ const styles = {
   },
 
 } as const;
+
 
 
 

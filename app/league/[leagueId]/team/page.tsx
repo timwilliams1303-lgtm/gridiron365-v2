@@ -3,6 +3,8 @@ import Link from "next/link";
 
 import Card from "@/components/ui/Card";
 
+import TraditionalTeamNameEditor from "@/components/traditional/TraditionalTeamNameEditor";
+
 import TraditionalLineupManager from "@/components/traditional/TraditionalLineupManager";
 
 import {
@@ -210,15 +212,21 @@ export default async function TraditionalTeamPage({
               MY TEAM
             </p>
 
-            <h1
-              style={
-                styles.title
+            <TraditionalTeamNameEditor
+              leagueId={
+                leagueId
               }
-            >
-              {access
-                .fantasyTeam
-                .teamName}
-            </h1>
+              fantasyTeamId={
+                access
+                  .fantasyTeam
+                  .id
+              }
+              initialTeamName={
+                access
+                  .fantasyTeam
+                  .teamName
+              }
+            />
 
             <p
               style={
