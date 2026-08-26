@@ -3022,6 +3022,77 @@ export default function TraditionalDraftPage() {
   useEffect(
     () => {
       if (
+        !draft?.id
+      ) {
+        return;
+      }
+
+
+      const slotChannel =
+        supabase
+          .channel(
+            `traditional-draft-slots:${draft.id}`
+          )
+          .on(
+            "postgres_changes",
+            {
+              event:
+                "UPDATE",
+
+              schema:
+                "public",
+
+              table:
+                "league_draft_slots",
+
+              filter:
+                `draft_id=eq.${draft.id}`,
+            },
+            (
+              payload
+            ) => {
+              const updated =
+                payload.new as
+                  DraftSlotRow;
+
+
+              setSlots(
+                (
+                  current
+                ) =>
+                  current.map(
+                    (
+                      slot
+                    ) =>
+                      slot.id ===
+                      updated.id
+                        ? {
+                            ...slot,
+                            ...updated,
+                          }
+                        : slot
+                  )
+              );
+            }
+          )
+          .subscribe();
+
+
+      return () => {
+        void supabase.removeChannel(
+          slotChannel
+        );
+      };
+    },
+    [
+      draft?.id,
+    ]
+  );
+
+
+  useEffect(
+    () => {
+      if (
         !draft?.id ||
         !currentUserId
       ) {
@@ -3830,10 +3901,10 @@ export default function TraditionalDraftPage() {
         startError,
     } =
       await supabase.rpc(
-        "start_traditional_draft",
+        "commissioner_start_traditional_draft",
         {
-          p_draft_id:
-            draft.id,
+          p_league_id:
+            leagueId,
         }
       );
 
@@ -4437,6 +4508,58 @@ export default function TraditionalDraftPage() {
             }
           >
             {error}
+          </div>
+        ) : null}
+
+
+        {mySlot &&
+        !mySlot.is_cpu &&
+        mySlot.auto_pick ? (
+          <div
+            style={
+              styles.autoPickNotice
+            }
+          >
+            <div>
+              <strong
+                style={
+                  styles.autoPickNoticeTitle
+                }
+              >
+                YOUR TEAM IS ON AUTO-PICK
+              </strong>
+
+              <span
+                style={
+                  styles.autoPickNoticeText
+                }
+              >
+                Your previous clock expired or you turned Auto-Pick on. Gridiron365 will make your picks automatically until you turn it off.
+              </span>
+            </div>
+
+            <button
+              type="button"
+              disabled={
+                autoPickWorking
+              }
+              onClick={
+                () => {
+                  void toggleAutoPick();
+                }
+              }
+              style={{
+                ...styles.autoPickNoticeButton,
+
+                ...(autoPickWorking
+                  ? styles.buttonDisabled
+                  : {}),
+              }}
+            >
+              {autoPickWorking
+                ? "UPDATING..."
+                : "TURN AUTO-PICK OFF"}
+            </button>
           </div>
         ) : null}
 
@@ -9485,6 +9608,111 @@ const styles = {
       "#ff7770",
 
     fontSize: "11px",
+  },
+
+
+  autoPickNotice: {
+    padding:
+      "10px 12px",
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "space-between",
+
+    gap:
+      "12px",
+
+    flexWrap:
+      "wrap" as const,
+
+    border:
+      "1px solid rgba(255,132,35,.38)",
+
+    borderRadius:
+      "7px",
+
+    background:
+      "linear-gradient(135deg,rgba(190,35,15,.18),rgba(255,115,15,.09))",
+
+    boxShadow:
+      "inset 0 0 22px rgba(255,85,10,.05)",
+  },
+
+
+  autoPickNoticeTitle: {
+    display:
+      "block",
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "12px",
+
+    fontWeight:
+      1000,
+
+    letterSpacing:
+      ".045em",
+  },
+
+
+  autoPickNoticeText: {
+    display:
+      "block",
+
+    marginTop:
+      "3px",
+
+    maxWidth:
+      "760px",
+
+    color:
+      "#f0f2f4",
+
+    fontSize:
+      "11px",
+
+    lineHeight:
+      1.4,
+  },
+
+
+  autoPickNoticeButton: {
+    minHeight:
+      "34px",
+
+    padding:
+      "0 12px",
+
+    border:
+      "1px solid rgba(255,143,55,.45)",
+
+    borderRadius:
+      "6px",
+
+    background:
+      "linear-gradient(135deg,#c91c18,#ff5a0a,#ff8a22)",
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "9px",
+
+    fontWeight:
+      1000,
+
+    letterSpacing:
+      ".04em",
+
+    cursor:
+      "pointer",
   },
 
 
