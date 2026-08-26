@@ -1779,6 +1779,21 @@ export default function TraditionalDraftPage() {
     );
 
 
+  const driveInFlightRef =
+    useRef(
+      false
+    );
+
+
+  const zeroRetryTimerRef =
+    useRef<
+      number |
+      null
+    >(
+      null
+    );
+
+
   const teamMap =
     useMemo(
       () =>
@@ -2890,6 +2905,141 @@ export default function TraditionalDraftPage() {
     );
 
 
+  const updateServerClockOffset =
+    useCallback(
+      (
+        serverNow:
+          string |
+          null |
+          undefined,
+        requestStartedAt:
+          number,
+        responseReceivedAt:
+          number
+      ) => {
+        if (
+          !serverNow
+        ) {
+          return;
+        }
+
+
+        /*
+         * Estimate the browser time corresponding to the server timestamp
+         * using the midpoint of the request. This avoids making the displayed
+         * clock reach zero early simply because the RPC took time to return.
+         */
+        const midpoint =
+          requestStartedAt +
+          (
+            responseReceivedAt -
+            requestStartedAt
+          ) /
+            2;
+
+
+        serverTimeOffsetMsRef.current =
+          new Date(
+            serverNow
+          ).getTime() -
+          midpoint;
+      },
+      []
+    );
+
+
+  const driveDraftNow =
+    useCallback(
+      async () => {
+        if (
+          !draft?.id ||
+          driveInFlightRef.current
+        ) {
+          return null;
+        }
+
+
+        driveInFlightRef.current =
+          true;
+
+
+        try {
+          const requestStartedAt =
+            Date.now();
+
+
+          const {
+            data,
+            error,
+          } =
+            await supabase.rpc(
+              "drive_traditional_draft",
+              {
+                p_draft_id:
+                  draft.id,
+              }
+            );
+
+
+          const responseReceivedAt =
+            Date.now();
+
+
+          if (
+            error
+          ) {
+            console.error(
+              "Live draft driver failed:",
+              error
+            );
+
+            setError(
+              error.message
+            );
+
+            return null;
+          }
+
+
+          const result =
+            data as
+              | {
+                  success?: boolean;
+                  pickProcessed?: boolean;
+                  reason?: string;
+                  clock?: ClockState;
+                }
+              | null;
+
+
+          if (
+            result?.clock
+          ) {
+            updateServerClockOffset(
+              result.clock.serverNow,
+              requestStartedAt,
+              responseReceivedAt
+            );
+
+            setClock(
+              result.clock
+            );
+          }
+
+
+          return result;
+        } finally {
+          driveInFlightRef.current =
+            false;
+        }
+      },
+      [
+        draft?.id,
+        updateServerClockOffset,
+      ]
+    );
+
+
   const refreshLiveState =
     useCallback(
       async (
@@ -2917,6 +3067,10 @@ export default function TraditionalDraftPage() {
             }
           );
         }
+
+
+        const clockRequestStartedAt =
+          Date.now();
 
 
         const [
@@ -3026,20 +3180,20 @@ export default function TraditionalDraftPage() {
           ) as DraftPickRow[]
         );
 
+        const clockResponseReceivedAt =
+          Date.now();
+
+
         const nextClock =
           clockResult.data as
             ClockState;
 
 
-        if (
-          nextClock.serverNow
-        ) {
-          serverTimeOffsetMsRef.current =
-            new Date(
-              nextClock.serverNow
-            ).getTime() -
-            Date.now();
-        }
+        updateServerClockOffset(
+          nextClock.serverNow,
+          clockRequestStartedAt,
+          clockResponseReceivedAt
+        );
 
 
         setClock(
@@ -3055,6 +3209,7 @@ export default function TraditionalDraftPage() {
       },
       [
         draft,
+        updateServerClockOffset,
       ]
     );
 
@@ -3180,8 +3335,16 @@ export default function TraditionalDraftPage() {
                     ClockState;
 
 
+                /*
+                 * Realtime payload follow-up RPC does not expose exact network
+                 * timing here. Keep the existing calibrated offset from the
+                 * normal snapshot/driver calls and update only if it has not
+                 * been calibrated yet.
+                 */
                 if (
-                  nextClock.serverNow
+                  nextClock.serverNow &&
+                  serverTimeOffsetMsRef.current ===
+                    0
                 ) {
                   serverTimeOffsetMsRef.current =
                     new Date(
@@ -3273,8 +3436,16 @@ export default function TraditionalDraftPage() {
                     ClockState;
 
 
+                /*
+                 * Realtime payload follow-up RPC does not expose exact network
+                 * timing here. Keep the existing calibrated offset from the
+                 * normal snapshot/driver calls and update only if it has not
+                 * been calibrated yet.
+                 */
                 if (
-                  nextClock.serverNow
+                  nextClock.serverNow &&
+                  serverTimeOffsetMsRef.current ===
+                    0
                 ) {
                   serverTimeOffsetMsRef.current =
                     new Date(
@@ -3493,15 +3664,10 @@ export default function TraditionalDraftPage() {
               return;
             }
 
-            void supabase.rpc(
-              "drive_traditional_draft",
-              {
-                p_draft_id:
-                  draft.id,
-              }
-            );
+
+            void driveDraftNow();
           },
-          1000
+          750
         );
 
 
@@ -3515,6 +3681,7 @@ export default function TraditionalDraftPage() {
       draft?.id,
       draft?.status,
       draft?.is_paused,
+      driveDraftNow,
     ]
   );
 
@@ -3696,13 +3863,11 @@ export default function TraditionalDraftPage() {
   /*
    * IMMEDIATE ZERO-SECOND DRIVER
    *
-   * The 1-second heartbeat remains as a safety net, but when the authoritative
-   * shared clock visibly reaches zero we immediately ask Supabase to process
-   * the due pick. This removes the gap where the UI can show 0 while waiting
-   * for the next heartbeat tick.
-   *
-   * Multiple draft-room browsers can reach zero together safely: the database
-   * pick functions lock the authoritative draft row before making a selection.
+   * Important: a browser can visually reach 0 a few hundred milliseconds
+   * before PostgreSQL considers the deadline due because of network latency.
+   * If the first drive call says "not due yet", retry until the database
+   * actually processes the pick instead of permanently marking this pick as
+   * already driven.
    */
   useEffect(
     () => {
@@ -3728,47 +3893,56 @@ export default function TraditionalDraftPage() {
         );
 
 
-      if (
-        drivenAtZeroPickRef.current ===
-        overallPick
-      ) {
-        return;
-      }
+      let cancelled =
+        false;
 
 
-      drivenAtZeroPickRef.current =
-        overallPick;
-
-
-      void (
-        async () => {
-          const {
-            data:
-              driveResult,
-            error:
-              driveError,
-          } =
-            await supabase.rpc(
-              "drive_traditional_draft",
-              {
-                p_draft_id:
-                  draft.id,
-              }
+      const clearRetry =
+        () => {
+          if (
+            zeroRetryTimerRef.current !==
+            null
+          ) {
+            window.clearTimeout(
+              zeroRetryTimerRef.current
             );
+
+            zeroRetryTimerRef.current =
+              null;
+          }
+        };
+
+
+      const attemptDrive =
+        async () => {
+          if (
+            cancelled
+          ) {
+            return;
+          }
+
+
+          const result =
+            await driveDraftNow();
 
 
           if (
-            driveError
+            cancelled
           ) {
-            /*
-             * Allow the safety heartbeat (or a later zero-effect run) to retry.
-             */
-            drivenAtZeroPickRef.current =
-              null;
+            return;
+          }
 
-            console.error(
-              "Live draft zero-second Auto-Pick failed:",
-              driveError
+
+          if (
+            result?.pickProcessed
+          ) {
+            drivenAtZeroPickRef.current =
+              overallPick;
+
+            clearRetry();
+
+            await refreshLiveState(
+              false
             );
 
             return;
@@ -3776,19 +3950,40 @@ export default function TraditionalDraftPage() {
 
 
           /*
-           * Realtime should deliver the new pick/draft row immediately.
-           * Pull one compact authoritative snapshot as a fallback so this
-           * browser also recovers even if the realtime event is delayed.
+           * The visible clock can hit 0 just before the database deadline.
+           * Keep trying until PostgreSQL confirms the pick was processed.
            */
-          if (
-            driveResult
-          ) {
-            await refreshLiveState(
-              false
+          drivenAtZeroPickRef.current =
+            null;
+
+
+          zeroRetryTimerRef.current =
+            window.setTimeout(
+              () => {
+                void attemptDrive();
+              },
+              250
             );
-          }
-        }
-      )();
+        };
+
+
+      if (
+        drivenAtZeroPickRef.current !==
+        overallPick
+      ) {
+        drivenAtZeroPickRef.current =
+          overallPick;
+
+        void attemptDrive();
+      }
+
+
+      return () => {
+        cancelled =
+          true;
+
+        clearRetry();
+      };
     },
     [
       draft?.id,
@@ -3799,6 +3994,7 @@ export default function TraditionalDraftPage() {
       clock?.isPaused,
       clock?.pickDeadlineAt,
       localSeconds,
+      driveDraftNow,
       refreshLiveState,
     ]
   );
