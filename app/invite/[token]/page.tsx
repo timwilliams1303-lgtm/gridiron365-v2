@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import {
@@ -74,6 +75,11 @@ export default function InviteAcceptancePage() {
 
   const router =
     useRouter();
+
+  const autoAcceptStarted =
+    useRef(
+      false
+    );
 
   const token =
     params.token;
@@ -265,134 +271,185 @@ export default function InviteAcceptancePage() {
   );
 
 
-  async function acceptInvitation() {
-    if (
-      accepting ||
-      !invitation
-    ) {
-      return;
-    }
+  const acceptInvitation =
+    useCallback(
+      async () => {
+        if (
+          accepting ||
+          !invitation
+        ) {
+          return;
+        }
 
-    setAccepting(
-      true
-    );
-
-    setError(
-      null
-    );
-
-    setSuccess(
-      null
-    );
-
-    try {
-      const {
-        data:
-          sessionData,
-        error:
-          sessionError,
-      } =
-        await supabase
-          .auth
-          .getSession();
-
-      if (
-        sessionError
-      ) {
-        throw new Error(
-          sessionError.message
+        setAccepting(
+          true
         );
-      }
 
-      const accessToken =
-        sessionData
-          .session
-          ?.access_token;
-
-      if (
-        !accessToken
-      ) {
-        throw new Error(
-          "Sign in or create an account before accepting this invitation."
+        setError(
+          null
         );
-      }
 
-      const response =
-        await fetch(
-          `/api/invitations/${encodeURIComponent(
-            token
-          )}`,
-          {
-            method:
-              "POST",
+        setSuccess(
+          null
+        );
 
-            headers: {
-              Authorization:
-                `Bearer ${accessToken}`,
-            },
+        try {
+          const {
+            data:
+              sessionData,
+            error:
+              sessionError,
+          } =
+            await supabase
+              .auth
+              .getSession();
+
+          if (
+            sessionError
+          ) {
+            throw new Error(
+              sessionError.message
+            );
           }
-        );
 
-      let result:
-        AcceptResponse =
-        {};
+          const accessToken =
+            sessionData
+              .session
+              ?.access_token;
 
-      try {
-        result =
-          (await response.json()) as
-            AcceptResponse;
-      } catch {
-        result =
-          {};
-      }
+          if (
+            !accessToken
+          ) {
+            throw new Error(
+              "Sign in or create an account before joining this league."
+            );
+          }
 
-      if (
-        !response.ok ||
-        result.success ===
-          false
-      ) {
-        throw new Error(
-          result.error ??
-            "The invitation could not be accepted."
-        );
-      }
+          const response =
+            await fetch(
+              `/api/invitations/${encodeURIComponent(
+                token
+              )}`,
+              {
+                method:
+                  "POST",
 
-      setSuccess(
-        result.message ??
-          "Invitation accepted."
-      );
+                headers: {
+                  Authorization:
+                    `Bearer ${accessToken}`,
+                },
+              }
+            );
 
-      const destinationLeagueId =
-        result.league
-          ?.id ??
-        invitation
-          .league
-          .id;
+          let result:
+            AcceptResponse =
+            {};
 
-      window.setTimeout(
-        () => {
-          router.replace(
-            `/league/${destinationLeagueId}`
+          try {
+            result =
+              (await response.json()) as
+                AcceptResponse;
+          } catch {
+            result =
+              {};
+          }
+
+          if (
+            !response.ok ||
+            result.success ===
+              false
+          ) {
+            throw new Error(
+              result.error ??
+                "The invitation could not be accepted."
+            );
+          }
+
+          setSuccess(
+            result.message ??
+              "Invitation accepted."
           );
 
-          router.refresh();
-        },
-        900
-      );
-    } catch (
-      acceptError
-    ) {
-      setError(
-        acceptError instanceof Error
-          ? acceptError.message
-          : "The invitation could not be accepted."
-      );
-    } finally {
-      setAccepting(
-        false
-      );
-    }
-  }
+          window.setTimeout(
+            () => {
+              router.replace(
+                "/my-leagues"
+              );
+
+              router.refresh();
+            },
+            700
+          );
+        } catch (
+          acceptError
+        ) {
+          autoAcceptStarted.current =
+            false;
+
+          setError(
+            acceptError instanceof Error
+              ? acceptError.message
+              : "The invitation could not be accepted."
+          );
+        } finally {
+          setAccepting(
+            false
+          );
+        }
+      },
+      [
+        accepting,
+        invitation,
+        router,
+        token,
+      ]
+    );
+
+
+  useEffect(
+    () => {
+      if (
+        loading ||
+        !invitation ||
+        !signedInEmail ||
+        success ||
+        accepting ||
+        autoAcceptStarted.current
+      ) {
+        return;
+      }
+
+      const invitedEmail =
+        invitation.email
+          .trim()
+          .toLowerCase();
+
+      const currentEmail =
+        signedInEmail
+          .trim()
+          .toLowerCase();
+
+      if (
+        currentEmail !==
+        invitedEmail
+      ) {
+        return;
+      }
+
+      autoAcceptStarted.current =
+        true;
+
+      void acceptInvitation();
+    },
+    [
+      acceptInvitation,
+      accepting,
+      invitation,
+      loading,
+      signedInEmail,
+      success,
+    ]
+  );
 
 
   if (
@@ -470,7 +527,7 @@ export default function InviteAcceptancePage() {
           </p>
 
           <Link
-            href="/login"
+            href="/auth/login"
             style={
               styles.secondaryLink
             }
@@ -812,7 +869,9 @@ export default function InviteAcceptancePage() {
                   styles.actionTitle
                 }
               >
-                Ready to join
+                {success
+                  ? "League Joined"
+                  : "Joining League"}
               </h2>
 
               <p
@@ -820,47 +879,40 @@ export default function InviteAcceptancePage() {
                   styles.muted
                 }
               >
-                Signed in as{" "}
-                <strong>
-                  {
-                    signedInEmail
-                  }
-                </strong>
-                . Accepting will add you to the league
-                {invitation
-                  .fantasyTeam
-                  ? ` and assign ${invitation.fantasyTeam.teamName} to your account`
-                  : ""}
-                .
+                {success
+                  ? "Your invitation has been accepted. Opening your league now…"
+                  : (
+                    <>
+                      Signed in as{" "}
+                      <strong>
+                        {
+                          signedInEmail
+                        }
+                      </strong>
+                      . Gridiron365 is automatically accepting your invitation
+                      {invitation
+                        .fantasyTeam
+                        ? ` and assigning ${invitation.fantasyTeam.teamName} to your account`
+                        : ""}
+                      .
+                    </>
+                  )}
               </p>
 
-              <button
-                type="button"
-                disabled={
-                  accepting ||
-                  Boolean(
-                    success
-                  )
-                }
-                style={{
-                  ...styles.primaryButton,
-
-                  ...(accepting ||
-                  success
-                    ? styles.disabled
-                    : {}),
-                }}
-                onClick={
-                  () =>
-                    void acceptInvitation()
-                }
-              >
-                {accepting
-                  ? "ACCEPTING…"
-                  : success
-                    ? "INVITATION ACCEPTED"
-                    : "ACCEPT INVITATION"}
-              </button>
+              {!success ? (
+                <button
+                  type="button"
+                  disabled
+                  style={{
+                    ...styles.primaryButton,
+                    ...styles.disabled,
+                  }}
+                >
+                  {accepting
+                    ? "JOINING LEAGUE…"
+                    : "PREPARING INVITATION…"}
+                </button>
+              ) : null}
             </div>
           )}
         </section>
