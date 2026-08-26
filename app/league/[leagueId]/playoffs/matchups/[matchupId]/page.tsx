@@ -11,13 +11,10 @@ import {
 
 import {
   getTraditionalPlayoffMatchupDetailData,
-} from "@/lib/traditional/playoff-matchup-detail.service";
-
-import {
   type MatchupDetailGameContext,
   type MatchupDetailPlayer,
   type MatchupDetailTeam,
-} from "@/lib/traditional/matchup-detail.service";
+} from "@/lib/traditional/playoff-matchup-detail.service";
 
 import {
   requireTraditionalLeague,
@@ -1713,7 +1710,8 @@ const styles = {
     color:
       "#ff7622",
 
-    fontSize: "14px",
+    fontSize:
+      "9px",
 
     fontWeight:
       900,
@@ -1727,7 +1725,8 @@ const styles = {
     color:
       "#f4f4f5",
 
-    fontSize: "17px",
+    fontSize:
+      "12px",
   },
 
 
@@ -1738,7 +1737,8 @@ const styles = {
     color:
       "#656b74",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
   },
 
 
@@ -1818,7 +1818,8 @@ const styles = {
     color:
       "#fff",
 
-    fontSize: "18px",
+    fontSize:
+      "16px",
 
     fontWeight:
       950,
@@ -1883,7 +1884,8 @@ const styles = {
     color:
       "#f8f8f9",
 
-    fontSize: "17px",
+    fontSize:
+      "12px",
   },
 
 
@@ -1894,7 +1896,8 @@ const styles = {
     color:
       "#767c85",
 
-    fontSize: "11px",
+    fontSize:
+      "6px",
 
     direction:
       "ltr" as const,
@@ -1926,7 +1929,8 @@ const styles = {
     color:
       "#ff8a2a",
 
-    fontSize: "11px",
+    fontSize:
+      "6px",
 
     fontWeight:
       950,
@@ -1937,7 +1941,8 @@ const styles = {
     color:
       "#4ddd89",
 
-    fontSize: "11px",
+    fontSize:
+      "6px",
 
     fontWeight:
       950,
@@ -1948,7 +1953,8 @@ const styles = {
     color:
       "#45dc84",
 
-    fontSize: "11px",
+    fontSize:
+      "6px",
 
     fontWeight:
       950,
@@ -1959,7 +1965,8 @@ const styles = {
     color:
       "#6f7680",
 
-    fontSize: "11px",
+    fontSize:
+      "6px",
 
     fontWeight:
       900,
@@ -1970,7 +1977,8 @@ const styles = {
     color:
       "#4f555e",
 
-    fontSize: "11px",
+    fontSize:
+      "6px",
   },
 
 
@@ -1978,7 +1986,8 @@ const styles = {
     color:
       "#8a919b",
 
-    fontSize: "11px",
+    fontSize:
+      "6px",
 
     fontWeight:
       900,
@@ -1989,7 +1998,8 @@ const styles = {
     color:
       "#f6f6f7",
 
-    fontSize: "28px",
+    fontSize:
+      "25px",
 
     fontVariantNumeric:
       "tabular-nums",
@@ -2030,7 +2040,8 @@ const styles = {
     color:
       "#45dc84",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
 
     fontWeight:
       950,
@@ -2041,7 +2052,8 @@ const styles = {
     color:
       "#aeb3ba",
 
-    fontSize: "13px",
+    fontSize:
+      "8px",
 
     fontWeight:
       950,
@@ -2052,7 +2064,8 @@ const styles = {
     color:
       "#767c84",
 
-    fontSize: "13px",
+    fontSize:
+      "8px",
 
     fontWeight:
       950,
@@ -2063,7 +2076,8 @@ const styles = {
     color:
       "#f2f2f3",
 
-    fontSize: "16px",
+    fontSize:
+      "11px",
   },
 
 
@@ -2071,7 +2085,8 @@ const styles = {
     color:
       "#49d888",
 
-    fontSize: "13px",
+    fontSize:
+      "8px",
   },
 
 
@@ -2079,7 +2094,8 @@ const styles = {
     color:
       "#ff4e43",
 
-    fontSize: "13px",
+    fontSize:
+      "8px",
 
     fontWeight:
       950,
@@ -2090,7 +2106,8 @@ const styles = {
     color:
       "#747a82",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
   },
 
 
@@ -2131,7 +2148,8 @@ const styles = {
     color:
       "#9ca2aa",
 
-    fontSize: "11px",
+    fontSize:
+      "6px",
 
     fontWeight:
       950,
@@ -2145,7 +2163,8 @@ const styles = {
     color:
       "#707780",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
   },
 
 
@@ -2177,7 +2196,8 @@ const styles = {
     color:
       "#8c929a",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
   },
 
 
@@ -2197,7 +2217,8 @@ const styles = {
     color:
       "#8c929a",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
   },
 
 
@@ -2205,7 +2226,8 @@ const styles = {
     color:
       "#ffffff",
 
-    fontSize: "18px",
+    fontSize:
+      "13px",
   },
 
 
@@ -2318,7 +2340,8 @@ const styles = {
     color:
       "#777d85",
 
-    fontSize: "11px",
+    fontSize:
+      "6px",
 
     fontWeight:
       900,
@@ -2329,7 +2352,8 @@ const styles = {
     color:
       "#fff",
 
-    fontSize: "17px",
+    fontSize:
+      "12px",
   },
 
 
@@ -2376,7 +2400,8 @@ const styles = {
     color:
       "#d8dbe0",
 
-    fontSize: "13px",
+    fontSize:
+      "8px",
 
     fontWeight:
       900,
@@ -2399,7 +2424,8 @@ const styles = {
     color:
       "#f3f3f4",
 
-    fontSize: "13px",
+    fontSize:
+      "8px",
   },
 
 
@@ -2407,7 +2433,8 @@ const styles = {
     color:
       "#747a83",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
   },
 
 
@@ -2460,7 +2487,8 @@ const styles = {
     color:
       "#c5c8cd",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
 
     fontWeight:
       950,
@@ -2504,7 +2532,8 @@ const styles = {
     color:
       "#8f959d",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
   },
 
 
@@ -2524,7 +2553,8 @@ const styles = {
     color:
       "#f2f2f3",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
 
     fontWeight:
       900,
@@ -2547,7 +2577,8 @@ const styles = {
     color:
       "#f2f2f3",
 
-    fontSize: "15px",
+    fontSize:
+      "10px",
   },
 
 
@@ -2555,7 +2586,8 @@ const styles = {
     color:
       "#44d982",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
   },
 
 
@@ -2575,7 +2607,8 @@ const styles = {
     color:
       "#7e848c",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
 
     lineHeight:
       1.3,
@@ -2589,7 +2622,8 @@ const styles = {
     color:
       "#6d737b",
 
-    fontSize: "13px",
+    fontSize:
+      "8px",
   },
 
 
@@ -2642,7 +2676,8 @@ const styles = {
     color:
       "#ff5449",
 
-    fontSize: "11px",
+    fontSize:
+      "5px",
 
     fontWeight:
       950,
@@ -2662,7 +2697,8 @@ const styles = {
     color:
       "#f0f0f1",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
   },
 
 
@@ -2673,7 +2709,8 @@ const styles = {
     color:
       "#44dc84",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
 
     fontWeight:
       950,
@@ -2717,7 +2754,8 @@ const styles = {
     color:
       "#e6e7e9",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
   },
 
 
@@ -2749,7 +2787,8 @@ const styles = {
     color:
       "#ff8423",
 
-    fontSize: "16px",
+    fontSize:
+      "11px",
 
     letterSpacing:
       ".08em",
@@ -2763,7 +2802,8 @@ const styles = {
     color:
       "#767c85",
 
-    fontSize: "13px",
+    fontSize:
+      "8px",
 
     lineHeight:
       1.45,
@@ -2795,7 +2835,8 @@ const styles = {
     color:
       "#747b84",
 
-    fontSize: "11px",
+    fontSize:
+      "6px",
 
     fontWeight:
       900,
@@ -2866,7 +2907,8 @@ const styles = {
     color:
       "#bbc0c7",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
   },
 
 
@@ -2931,7 +2973,8 @@ const styles = {
     color:
       "#777d85",
 
-    fontSize: "11px",
+    fontSize:
+      "6px",
   },
 
 
@@ -2975,7 +3018,8 @@ const styles = {
     color:
       "#f1f2f3",
 
-    fontSize: "13px",
+    fontSize:
+      "8px",
   },
 
 
@@ -2983,7 +3027,8 @@ const styles = {
     color:
       "#686e77",
 
-    fontSize: "11px",
+    fontSize:
+      "6px",
   },
 
 
@@ -3003,7 +3048,8 @@ const styles = {
     color:
       "#ff5e55",
 
-    fontSize: "11px",
+    fontSize:
+      "5px",
 
     fontWeight:
       950,
@@ -3026,7 +3072,8 @@ const styles = {
     color:
       "#ff9a43",
 
-    fontSize: "11px",
+    fontSize:
+      "5px",
 
     fontWeight:
       950,
@@ -3037,7 +3084,8 @@ const styles = {
     color:
       "#9a9fa7",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
   },
 
 
@@ -3045,7 +3093,8 @@ const styles = {
     color:
       "#858b94",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
   },
 
 
@@ -3053,7 +3102,8 @@ const styles = {
     color:
       "#42d982",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
   },
 
 
@@ -3064,7 +3114,8 @@ const styles = {
     color:
       "#f2f2f3",
 
-    fontSize: "14px",
+    fontSize:
+      "9px",
 
     fontVariantNumeric:
       "tabular-nums",
@@ -3102,7 +3153,8 @@ const styles = {
     color:
       "#f3f3f4",
 
-    fontSize: "13px",
+    fontSize:
+      "8px",
   },
 
 
@@ -3125,7 +3177,8 @@ const styles = {
     color:
       "#686e77",
 
-    fontSize: "12px",
+    fontSize:
+      "7px",
 
     textAlign:
       "center" as const,
