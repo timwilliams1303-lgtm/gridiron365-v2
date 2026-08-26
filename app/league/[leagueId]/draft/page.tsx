@@ -1765,6 +1765,20 @@ export default function TraditionalDraftPage() {
     );
 
 
+  /*
+   * Prevent repeated zero-second drive calls for the same overall pick.
+   * Every browser may reach zero at nearly the same moment, but the database
+   * remains authoritative and idempotent. This ref simply avoids local spam.
+   */
+  const drivenAtZeroPickRef =
+    useRef<
+      number |
+      null
+    >(
+      null
+    );
+
+
   const teamMap =
     useMemo(
       () =>
@@ -3440,6 +3454,17 @@ export default function TraditionalDraftPage() {
 
   useEffect(
     () => {
+      drivenAtZeroPickRef.current =
+        null;
+    },
+    [
+      draft?.current_overall_pick,
+    ]
+  );
+
+
+  useEffect(
+    () => {
       if (
         !draft ||
         draft.status !==
@@ -3664,6 +3689,117 @@ export default function TraditionalDraftPage() {
     },
     [
       clock,
+    ]
+  );
+
+
+  /*
+   * IMMEDIATE ZERO-SECOND DRIVER
+   *
+   * The 1-second heartbeat remains as a safety net, but when the authoritative
+   * shared clock visibly reaches zero we immediately ask Supabase to process
+   * the due pick. This removes the gap where the UI can show 0 while waiting
+   * for the next heartbeat tick.
+   *
+   * Multiple draft-room browsers can reach zero together safely: the database
+   * pick functions lock the authoritative draft row before making a selection.
+   */
+  useEffect(
+    () => {
+      if (
+        !draft ||
+        !clock ||
+        draft.status !==
+          "live" ||
+        draft.is_paused ||
+        clock.isPaused ||
+        !clock.pickDeadlineAt ||
+        localSeconds >
+          0
+      ) {
+        return;
+      }
+
+
+      const overallPick =
+        Number(
+          clock.overallPick ??
+          draft.current_overall_pick
+        );
+
+
+      if (
+        drivenAtZeroPickRef.current ===
+        overallPick
+      ) {
+        return;
+      }
+
+
+      drivenAtZeroPickRef.current =
+        overallPick;
+
+
+      void (
+        async () => {
+          const {
+            data:
+              driveResult,
+            error:
+              driveError,
+          } =
+            await supabase.rpc(
+              "drive_traditional_draft",
+              {
+                p_draft_id:
+                  draft.id,
+              }
+            );
+
+
+          if (
+            driveError
+          ) {
+            /*
+             * Allow the safety heartbeat (or a later zero-effect run) to retry.
+             */
+            drivenAtZeroPickRef.current =
+              null;
+
+            console.error(
+              "Live draft zero-second Auto-Pick failed:",
+              driveError
+            );
+
+            return;
+          }
+
+
+          /*
+           * Realtime should deliver the new pick/draft row immediately.
+           * Pull one compact authoritative snapshot as a fallback so this
+           * browser also recovers even if the realtime event is delayed.
+           */
+          if (
+            driveResult
+          ) {
+            await refreshLiveState(
+              false
+            );
+          }
+        }
+      )();
+    },
+    [
+      draft?.id,
+      draft?.status,
+      draft?.is_paused,
+      draft?.current_overall_pick,
+      clock?.overallPick,
+      clock?.isPaused,
+      clock?.pickDeadlineAt,
+      localSeconds,
+      refreshLiveState,
     ]
   );
 
