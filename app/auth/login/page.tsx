@@ -139,6 +139,8 @@ function LoginContent() {
 
     try {
       const {
+        data:
+          signInData,
         error,
       } =
         await supabase.auth
@@ -155,6 +157,123 @@ function LoginContent() {
         );
       }
 
+      /*
+       * ============================================================
+       * INVITATION LOGIN
+       * ============================================================
+       *
+       * If this login originated from:
+       *
+       *   /invite/[token]
+       *
+       * automatically accept the invitation before sending the user
+       * to My Leagues.
+       *
+       * This guarantees that My Leagues already contains the newly
+       * joined league when the page opens.
+       */
+
+      const inviteMatch =
+        nextPath.match(
+          /^\/invite\/([^/?#]+)/
+        );
+
+      if (
+        inviteMatch
+      ) {
+        const inviteToken =
+          decodeURIComponent(
+            inviteMatch[1]
+          );
+
+        const accessToken =
+          signInData
+            .session
+            ?.access_token;
+
+        if (!accessToken) {
+          throw new Error(
+            "You signed in successfully, but your session could not be loaded."
+          );
+        }
+
+        const response =
+          await fetch(
+            `/api/invitations/${encodeURIComponent(
+              inviteToken
+            )}`,
+            {
+              method:
+                "POST",
+
+              headers: {
+                Authorization:
+                  `Bearer ${accessToken}`,
+              },
+            }
+          );
+
+        let result:
+          {
+            success?: boolean;
+            error?: string;
+            message?: string;
+          } =
+          {};
+
+        try {
+          result =
+            (await response.json()) as {
+              success?: boolean;
+              error?: string;
+              message?: string;
+            };
+        } catch {
+          result =
+            {};
+        }
+
+        /*
+         * If the same user already accepted the invitation in an
+         * earlier attempt, My Leagues is still the correct destination.
+         */
+        const alreadyAccepted =
+          response.status === 409 &&
+          (
+            result.error
+              ?.toLowerCase()
+              .includes(
+                "already been accepted"
+              ) ??
+            false
+          );
+
+        if (
+          (
+            !response.ok ||
+            result.success ===
+              false
+          ) &&
+          !alreadyAccepted
+        ) {
+          throw new Error(
+            result.error ??
+              "You signed in, but the league invitation could not be accepted."
+          );
+        }
+
+        router.replace(
+          "/my-leagues"
+        );
+
+        router.refresh();
+
+        return;
+      }
+
+      /*
+       * Normal non-invitation login.
+       */
       router.replace(
         nextPath
       );
@@ -372,7 +491,14 @@ function LoginContent() {
             </span>
 
             <Link
-              href="/auth/signup"
+              href={
+                nextPath !==
+                "/my-leagues"
+                  ? `/auth/signup?next=${encodeURIComponent(
+                      nextPath
+                    )}`
+                  : "/auth/signup"
+              }
               style={
                 styles.signupLink
               }

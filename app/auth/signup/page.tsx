@@ -200,29 +200,16 @@ export default function SignupPage() {
         );
       }
 
-      if (
-        data.user &&
-        data.session
-      ) {
-        window.location.href =
-          nextPath;
+      const loginUrl =
+        `/auth/login?next=${encodeURIComponent(
+          nextPath
+        )}`;
 
-        return;
-      }
-
-      setMessage(
-        nextPath.startsWith(
-          "/invite/"
-        )
-          ? "Account created. Check your email and confirm your account. After confirmation, you will return to the invitation."
-          : "Account created. Check your email and confirm your account to continue."
+      window.location.replace(
+        loginUrl
       );
 
-      setFirstName("");
-      setLastName("");
-      setEmail("");
-      setPassword("");
-      setConfirmPassword("");
+      return;
     } catch (error) {
       setIsError(true);
 
