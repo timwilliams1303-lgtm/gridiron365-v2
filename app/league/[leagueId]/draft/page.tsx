@@ -534,6 +534,9 @@ type ClockState = {
 
   secondsRemaining:
     number;
+
+  serverNow:
+    string;
 };
 
 
@@ -1748,6 +1751,17 @@ export default function TraditionalDraftPage() {
   const realtimeConnectedRef =
     useRef(
       false
+    );
+
+
+  /*
+   * Difference between Supabase/database time and this browser's local clock.
+   * Every visible countdown uses database time so two different devices do
+   * not drift just because their operating-system clocks differ.
+   */
+  const serverTimeOffsetMsRef =
+    useRef(
+      0
     );
 
 
@@ -2998,8 +3012,24 @@ export default function TraditionalDraftPage() {
           ) as DraftPickRow[]
         );
 
+        const nextClock =
+          clockResult.data as
+            ClockState;
+
+
+        if (
+          nextClock.serverNow
+        ) {
+          serverTimeOffsetMsRef.current =
+            new Date(
+              nextClock.serverNow
+            ).getTime() -
+            Date.now();
+        }
+
+
         setClock(
-          clockResult.data as ClockState
+          nextClock
         );
 
         setSlots(
@@ -3131,9 +3161,24 @@ export default function TraditionalDraftPage() {
               if (
                 clockData
               ) {
-                setClock(
+                const nextClock =
                   clockData as
-                    ClockState
+                    ClockState;
+
+
+                if (
+                  nextClock.serverNow
+                ) {
+                  serverTimeOffsetMsRef.current =
+                    new Date(
+                      nextClock.serverNow
+                    ).getTime() -
+                    Date.now();
+                }
+
+
+                setClock(
+                  nextClock
                 );
               }
             }
@@ -3209,9 +3254,24 @@ export default function TraditionalDraftPage() {
               if (
                 clockData
               ) {
-                setClock(
+                const nextClock =
                   clockData as
-                    ClockState
+                    ClockState;
+
+
+                if (
+                  nextClock.serverNow
+                ) {
+                  serverTimeOffsetMsRef.current =
+                    new Date(
+                      nextClock.serverNow
+                    ).getTime() -
+                    Date.now();
+                }
+
+
+                setClock(
+                  nextClock
                 );
               }
 
@@ -3516,21 +3576,44 @@ export default function TraditionalDraftPage() {
       }
 
 
-      setLocalSeconds(
-        Math.max(
-          0,
-          Number(
-            clock.secondsRemaining ??
-            0
-          )
-        )
-      );
-
-
+      /*
+       * A paused draft has no running deadline. In that case the database's
+       * authoritative saved remaining value is the correct display.
+       */
       if (
-        clock.isPaused ||
+        clock.isPaused
+      ) {
+        setLocalSeconds(
+          Math.max(
+            0,
+            Number(
+              clock.secondsRemaining ??
+              0
+            )
+          )
+        );
+
+        return;
+      }
+
+
+      /*
+       * A live turn must always count down from the shared database deadline.
+       * Do NOT restart from secondsRemaining on each browser.
+       */
+      if (
         !clock.pickDeadlineAt
       ) {
+        setLocalSeconds(
+          Math.max(
+            0,
+            Number(
+              clock.secondsRemaining ??
+              0
+            )
+          )
+        );
+
         return;
       }
 
@@ -3543,13 +3626,18 @@ export default function TraditionalDraftPage() {
 
       const tick =
         () => {
+          const authoritativeNow =
+            Date.now() +
+            serverTimeOffsetMsRef.current;
+
+
           setLocalSeconds(
             Math.max(
               0,
               Math.ceil(
                 (
                   deadline -
-                  Date.now()
+                  authoritativeNow
                 ) /
                 1000
               )
@@ -3564,7 +3652,7 @@ export default function TraditionalDraftPage() {
       const timer =
         window.setInterval(
           tick,
-          250
+          100
         );
 
 
@@ -4178,7 +4266,8 @@ export default function TraditionalDraftPage() {
 
   async function handlePauseResume() {
     if (
-      !draft
+      !draft ||
+      !isCommissioner
     ) {
       return;
     }
@@ -4687,8 +4776,9 @@ export default function TraditionalDraftPage() {
               </button>
             ) : null}
 
-            {draft.status ===
-            "live" ? (
+            {isCommissioner &&
+            draft.status ===
+              "live" ? (
               <button
                 type="button"
                 onClick={
