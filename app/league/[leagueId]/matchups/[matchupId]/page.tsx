@@ -30,10 +30,85 @@ type PageProps = {
 };
 
 
+type MatchupLineupSettings = {
+  starting_qb:
+    number |
+    null;
+
+  starting_rb:
+    number |
+    null;
+
+  starting_wr:
+    number |
+    null;
+
+  starting_te:
+    number |
+    null;
+
+  starting_flex:
+    number |
+    null;
+
+  starting_superflex:
+    number |
+    null;
+
+  starting_k:
+    number |
+    null;
+
+  starting_dst:
+    number |
+    null;
+};
+
+
+type StarterRequirement = {
+  slot: string;
+
+  count: number;
+};
+
+
+type ProjectionDisplaySettings = {
+  fractional_scoring_enabled:
+    boolean |
+    null;
+
+  decimal_places:
+    number |
+    null;
+};
+
+
 function points(
   value: number
 ) {
   return value.toFixed(2);
+}
+
+
+function projectedPointsLabel(
+  value: number,
+  fractionalScoringEnabled: boolean,
+  decimalPlaces: number
+) {
+  const places =
+    fractionalScoringEnabled
+      ? Math.min(
+          4,
+          Math.max(
+            0,
+            Number.isFinite(decimalPlaces)
+              ? decimalPlaces
+              : 2
+          )
+        )
+      : 0;
+
+  return value.toFixed(places);
 }
 
 
@@ -330,6 +405,158 @@ export default async function TraditionalMatchupDetailPage({
 
   const supabase =
     await createSupabaseServerClient();
+
+
+  const [
+    lineupSettingsResult,
+    scoringDisplayResult,
+  ] =
+    await Promise.all([
+      supabase
+        .from(
+          "league_settings"
+        )
+        .select(`
+          starting_qb,
+          starting_rb,
+          starting_wr,
+          starting_te,
+          starting_flex,
+          starting_superflex,
+          starting_k,
+          starting_dst
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .maybeSingle(),
+
+      supabase
+        .from(
+          "league_scoring_settings"
+        )
+        .select(`
+          fractional_scoring_enabled,
+          decimal_places
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .maybeSingle(),
+    ]);
+
+
+  if (
+    lineupSettingsResult.error
+  ) {
+    throw new Error(
+      `Could not load lineup settings: ${lineupSettingsResult.error.message}`
+    );
+  }
+
+
+  if (
+    scoringDisplayResult.error
+  ) {
+    throw new Error(
+      `Could not load scoring display settings: ${scoringDisplayResult.error.message}`
+    );
+  }
+
+
+  const lineupSettings =
+    lineupSettingsResult.data as
+      MatchupLineupSettings |
+      null;
+
+
+  const scoringDisplaySettings =
+    scoringDisplayResult.data as
+      ProjectionDisplaySettings |
+      null;
+
+
+  const fractionalScoringEnabled =
+    scoringDisplaySettings
+      ?.fractional_scoring_enabled ??
+    true;
+
+
+  const projectionDecimalPlaces =
+    fractionalScoringEnabled
+      ? scoringDisplaySettings
+          ?.decimal_places ??
+        2
+      : 0;
+
+  const starterRequirements:
+    StarterRequirement[] =
+      [
+        {
+          slot: "QB",
+          count:
+            lineupSettings
+              ?.starting_qb ??
+            1,
+        },
+        {
+          slot: "RB",
+          count:
+            lineupSettings
+              ?.starting_rb ??
+            2,
+        },
+        {
+          slot: "WR",
+          count:
+            lineupSettings
+              ?.starting_wr ??
+            2,
+        },
+        {
+          slot: "TE",
+          count:
+            lineupSettings
+              ?.starting_te ??
+            1,
+        },
+        {
+          slot: "FLEX",
+          count:
+            lineupSettings
+              ?.starting_flex ??
+            1,
+        },
+        {
+          slot: "SUPERFLEX",
+          count:
+            lineupSettings
+              ?.starting_superflex ??
+            0,
+        },
+        {
+          slot: "K",
+          count:
+            lineupSettings
+              ?.starting_k ??
+            1,
+        },
+        {
+          slot: "DST",
+          count:
+            lineupSettings
+              ?.starting_dst ??
+            1,
+        },
+      ].filter(
+        (
+          requirement
+        ) =>
+          requirement.count >
+          0
+      );
 
 
   let data;
@@ -837,6 +1064,15 @@ export default async function TraditionalMatchupDetailPage({
             week={
               data.week
             }
+            slotRequirements={
+              starterRequirements
+            }
+            fractionalScoringEnabled={
+              fractionalScoringEnabled
+            }
+            projectionDecimalPlaces={
+              projectionDecimalPlaces
+            }
           />
 
 
@@ -965,6 +1201,15 @@ export default async function TraditionalMatchupDetailPage({
             label="STARTERS"
             week={
               data.week
+            }
+            slotRequirements={
+              starterRequirements
+            }
+            fractionalScoringEnabled={
+              fractionalScoringEnabled
+            }
+            projectionDecimalPlaces={
+              projectionDecimalPlaces
             }
           />
         </section>
@@ -1337,10 +1582,28 @@ function LiveGame({
 }
 
 
+function getSlotLabel(
+  slot: string,
+  index: number,
+  count: number
+) {
+  const normalized =
+    slot.toUpperCase();
+
+
+  return count > 1
+    ? `${normalized}${index + 1}`
+    : normalized;
+}
+
+
 function CompactRoster({
   team,
   label,
   week,
+  slotRequirements,
+  fractionalScoringEnabled,
+  projectionDecimalPlaces,
 }: {
   team:
     MatchupDetailTeam;
@@ -1348,7 +1611,70 @@ function CompactRoster({
   label: string;
 
   week: number;
+
+  slotRequirements:
+    StarterRequirement[];
+
+  fractionalScoringEnabled: boolean;
+
+  projectionDecimalPlaces: number;
 }) {
+  const destinations =
+    slotRequirements.flatMap(
+      (
+        requirement
+      ) => {
+        const playersForSlot =
+          team.starters
+            .filter(
+              (
+                player
+              ) =>
+                player.lineupSlot
+                  .toUpperCase() ===
+                requirement.slot
+                  .toUpperCase()
+            )
+            .sort(
+              (
+                a,
+                b
+              ) =>
+                a.slotIndex -
+                b.slotIndex
+            );
+
+
+        return Array.from(
+          {
+            length:
+              requirement.count,
+          },
+          (
+            _,
+            index
+          ) => ({
+            key:
+              `${requirement.slot}-${index}`,
+
+            label:
+              getSlotLabel(
+                requirement.slot,
+                index,
+                requirement.count
+              ),
+
+            player:
+              playersForSlot[
+                index
+              ] ??
+              null,
+          })
+        );
+      }
+    );
+
+
   return (
     <div
       style={
@@ -1370,113 +1696,226 @@ function CompactRoster({
       </div>
 
 
-      {team.starters.length ===
-      0 ? (
+      <div
+        style={
+          styles.tableHeader
+        }
+      >
+        <span>
+          POS
+        </span>
+
+        <span>
+          PLAYER
+        </span>
+
+        <span>
+          TEAM
+        </span>
+
+        <span>
+          STATUS
+        </span>
+
+        <span
+          style={
+            styles.rightText
+          }
+        >
+          PROJ
+        </span>
+
+        <span
+          style={
+            styles.rightText
+          }
+        >
+          PTS
+        </span>
+      </div>
+
+
+      {destinations.map(
+        (
+          destination
+        ) =>
+          destination.player ? (
+            <CompactPlayerRow
+              key={
+                destination.key
+              }
+              player={
+                destination.player
+              }
+              slotLabel={
+                destination.label
+              }
+              fractionalScoringEnabled={
+                fractionalScoringEnabled
+              }
+              projectionDecimalPlaces={
+                projectionDecimalPlaces
+              }
+            />
+          ) : (
+            <VacantPlayerRow
+              key={
+                destination.key
+              }
+              slotLabel={
+                destination.label
+              }
+              week={
+                week
+              }
+              fractionalScoringEnabled={
+                fractionalScoringEnabled
+              }
+              projectionDecimalPlaces={
+                projectionDecimalPlaces
+              }
+            />
+          )
+      )}
+
+
+      <div
+        style={
+          styles.totalRow
+        }
+      >
+        <strong>
+          TOTAL
+        </strong>
+
+        <span
+          style={
+            styles.totalProjection
+          }
+        >
+          PROJ {projectedPointsLabel(
+            team.expectedFinalPoints,
+            fractionalScoringEnabled,
+            projectionDecimalPlaces
+          )}
+        </span>
+
+        <strong>
+          {points(
+            team.points
+          )}
+        </strong>
+      </div>
+    </div>
+  );
+}
+
+
+function VacantPlayerRow({
+  slotLabel,
+  week,
+  fractionalScoringEnabled,
+  projectionDecimalPlaces,
+}: {
+  slotLabel: string;
+
+  week: number;
+
+  fractionalScoringEnabled: boolean;
+
+  projectionDecimalPlaces: number;
+}) {
+  return (
+    <div
+      style={{
+        ...styles.playerRow,
+        ...styles.vacantRow,
+      }}
+    >
+      <strong
+        style={
+          styles.slot
+        }
+      >
+        {slotLabel}
+      </strong>
+
+
+      <div
+        style={
+          styles.vacantPlayerCell
+        }
+      >
         <div
           style={
-            styles.lineupEmptyState
+            styles.vacantIcon
+          }
+        >
+          —
+        </div>
+
+        <div
+          style={
+            styles.playerNames
           }
         >
           <strong
             style={
-              styles.lineupEmptyTitle
+              styles.vacantPlayerName
             }
           >
-            LINEUP NOT SET
+            VACANT
           </strong>
 
           <span
             style={
-              styles.lineupEmptyText
+              styles.playerSub
             }
           >
-            No Week {week} lineup has
-            been created for this team
-            yet.
+            No player assigned
           </span>
         </div>
-      ) : (
-        <>
-          <div
-            style={
-              styles.tableHeader
-            }
-          >
-            <span>
-              SLOT
-            </span>
-
-            <span>
-              PLAYER
-            </span>
-
-            <span>
-              OPP
-            </span>
-
-            <span>
-              STATUS
-            </span>
-
-            <span
-              style={
-                styles.rightText
-              }
-            >
-              PROJ
-            </span>
-
-            <span
-              style={
-                styles.rightText
-              }
-            >
-              PTS
-            </span>
-          </div>
+      </div>
 
 
-          {team.starters.map(
-            (
-              player
-            ) => (
-              <CompactPlayerRow
-                key={`${player.lineupSlot}:${player.slotIndex}:${player.playerId}`}
-                player={
-                  player
-                }
-              />
-            )
-          )}
+      <span
+        style={
+          styles.vacantValue
+        }
+      >
+        —
+      </span>
 
 
-          <div
-            style={
-              styles.totalRow
-            }
-          >
-            <strong>
-              TOTAL
-            </strong>
+      <span
+        style={
+          styles.vacantStatus
+        }
+      >
+        WEEK {week}
+      </span>
 
-            <span
-              style={
-                styles.totalProjection
-              }
-            >
-              PROJ {points(
-                team.expectedFinalPoints
-              )}
-            </span>
 
-            <strong>
-              {points(
-                team.points
-              )}
-            </strong>
-          </div>
-        </>
-      )}
+      <strong
+        style={
+          styles.vacantValueRight
+        }
+      >
+        {projectedPointsLabel(
+          0,
+          fractionalScoringEnabled,
+          projectionDecimalPlaces
+        )}
+      </strong>
+
+
+      <strong
+        style={
+          styles.vacantValueRight
+        }
+      >
+        0.00
+      </strong>
     </div>
   );
 }
@@ -1546,11 +1985,20 @@ function CompactBench({
 function CompactPlayerRow({
   player,
   bench = false,
+  slotLabel,
+  fractionalScoringEnabled = true,
+  projectionDecimalPlaces = 2,
 }: {
   player:
     MatchupDetailPlayer;
 
   bench?: boolean;
+
+  slotLabel?: string;
+
+  fractionalScoringEnabled?: boolean;
+
+  projectionDecimalPlaces?: number;
 }) {
   const possession =
     !bench &&
@@ -1587,7 +2035,8 @@ function CompactPlayerRow({
       >
         {bench
           ? "BN"
-          : player.lineupSlot}
+          : slotLabel ??
+            player.lineupSlot}
       </strong>
 
 
@@ -1681,10 +2130,14 @@ function CompactPlayerRow({
         style={
           styles.opp
         }
+        title={
+          displayedOpponent
+            ? `${player.opponentPrefix ?? "vs"} ${displayedOpponent}`
+            : "BYE"
+        }
       >
-        {displayedOpponent
-          ? `${player.opponentPrefix ?? "vs"} ${displayedOpponent}`
-          : "BYE"}
+        {player.teamAbbreviation ??
+          "FA"}
       </span>
 
 
@@ -1714,12 +2167,14 @@ function CompactPlayerRow({
           styles.playerProjection
         }
       >
-        {player.projectedPoints >
-        0
-          ? points(
-              player.projectedPoints
-            )
-          : "—"}
+        {projectedPointsLabel(
+          Math.max(
+            0,
+            player.projectedPoints
+          ),
+          fractionalScoringEnabled,
+          projectionDecimalPlaces
+        )}
       </strong>
 
 
@@ -2954,6 +3409,113 @@ const styles = {
 
     borderBottom:
       "1px solid rgba(255,255,255,.045)",
+  },
+
+
+  vacantRow: {
+    background:
+      "rgba(255,255,255,.018)",
+
+    borderBottom:
+      "1px dashed rgba(255,255,255,.07)",
+  },
+
+
+  vacantPlayerCell: {
+    minWidth: 0,
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "8px",
+  },
+
+
+  vacantIcon: {
+    width:
+      "28px",
+
+    height:
+      "28px",
+
+    flex:
+      "0 0 28px",
+
+    display:
+      "grid",
+
+    placeItems:
+      "center",
+
+    border:
+      "1px dashed rgba(255,139,34,.35)",
+
+    borderRadius:
+      "50%",
+
+    color:
+      "#8b8f96",
+
+    background:
+      "rgba(255,139,34,.035)",
+
+    fontSize:
+      "12px",
+
+    fontWeight:
+      900,
+  },
+
+
+  vacantPlayerName: {
+    color:
+      "#ff8a2a",
+
+    fontSize:
+      "12px",
+
+    fontWeight:
+      950,
+
+    letterSpacing:
+      ".06em",
+  },
+
+
+  vacantValue: {
+    color:
+      "#666c74",
+
+    fontSize:
+      "11px",
+  },
+
+
+  vacantStatus: {
+    color:
+      "#666c74",
+
+    fontSize:
+      "10px",
+
+    fontWeight:
+      850,
+  },
+
+
+  vacantValueRight: {
+    color:
+      "#666c74",
+
+    fontSize:
+      "11px",
+
+    textAlign:
+      "right" as const,
   },
 
 
