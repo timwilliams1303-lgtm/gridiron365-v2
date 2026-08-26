@@ -146,6 +146,25 @@ export default function SignupPage() {
       const origin =
         window.location.origin;
 
+      const requestedNext =
+        new URLSearchParams(
+          window.location.search
+        ).get(
+          "next"
+        );
+
+      const nextPath =
+        requestedNext &&
+        requestedNext.startsWith("/") &&
+        !requestedNext.startsWith("//")
+          ? requestedNext
+          : "/my-leagues";
+
+      const callbackUrl =
+        `${origin}/auth/callback?next=${encodeURIComponent(
+          nextPath
+        )}`;
+
       const {
         data,
         error,
@@ -159,7 +178,7 @@ export default function SignupPage() {
 
             options: {
               emailRedirectTo:
-                `${origin}/auth/callback?next=/my-leagues`,
+                callbackUrl,
 
               data: {
                 first_name:
@@ -186,13 +205,17 @@ export default function SignupPage() {
         data.session
       ) {
         window.location.href =
-          "/my-leagues";
+          nextPath;
 
         return;
       }
 
       setMessage(
-        "Account created. Check your email and confirm your account to continue."
+        nextPath.startsWith(
+          "/invite/"
+        )
+          ? "Account created. Check your email and confirm your account. After confirmation, you will return to the invitation."
+          : "Account created. Check your email and confirm your account to continue."
       );
 
       setFirstName("");

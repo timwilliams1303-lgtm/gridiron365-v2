@@ -514,12 +514,12 @@ export default function InviteAcceptancePage() {
     )}`;
 
   const loginHref =
-    `/login?redirect=${encodeURIComponent(
+    `/auth/login?next=${encodeURIComponent(
       redirectPath
     )}`;
 
   const signupHref =
-    `/signup?redirect=${encodeURIComponent(
+    `/auth/signup?next=${encodeURIComponent(
       redirectPath
     )}`;
 
