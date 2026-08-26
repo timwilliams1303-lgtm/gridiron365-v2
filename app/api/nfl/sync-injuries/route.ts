@@ -195,6 +195,9 @@ type EspnPlayerRecord = {
   injuryType:
     string | null;
 
+  injuryLocation:
+    string | null;
+
   injuryDetail:
     string | null;
 
@@ -631,6 +634,18 @@ function normalizeInjuryStatus(
 
     suspension:
       "Suspended",
+
+    probable:
+      "Probable",
+
+    "day to day":
+      "Day-To-Day",
+
+    "day-to-day":
+      "Day-To-Day",
+
+    inactive:
+      "Inactive",
   };
 
 
@@ -640,6 +655,127 @@ function normalizeInjuryStatus(
     ] ??
     null
   );
+}
+
+
+function inferInjuryLocation(
+  ...values:
+    Array<
+      string |
+      null |
+      undefined
+    >
+) {
+  const text =
+    values
+      .filter(
+        Boolean
+      )
+      .join(
+        " "
+      )
+      .toLowerCase();
+
+  const locations = [
+    "achilles",
+    "ankle",
+    "back",
+    "calf",
+    "chest",
+    "concussion",
+    "elbow",
+    "finger",
+    "foot",
+    "groin",
+    "hamstring",
+    "hand",
+    "head",
+    "heel",
+    "hip",
+    "knee",
+    "leg",
+    "neck",
+    "quadriceps",
+    "quad",
+    "rib",
+    "shoulder",
+    "thigh",
+    "toe",
+    "wrist",
+  ];
+
+  for (
+    const location
+    of locations
+  ) {
+    if (
+      text.includes(
+        location
+      )
+    ) {
+      return location ===
+        "quad"
+        ? "Quadriceps"
+        : location
+            .split(" ")
+            .map(
+              part =>
+                part
+                  .charAt(0)
+                  .toUpperCase() +
+                part.slice(1)
+            )
+            .join(" ");
+    }
+  }
+
+  return null;
+}
+
+
+function hasCredibleInjuryInformation(
+  record:
+    EspnPlayerRecord
+) {
+  return Boolean(
+    record.injuryType ||
+    record.injuryDetail ||
+    record.injuryDate
+  );
+}
+
+
+function fallbackStatusForInjuryNews(
+  rawStatus:
+    string |
+    null,
+  hasInjuryInfo:
+    boolean
+) {
+  if (
+    !hasInjuryInfo
+  ) {
+    return null;
+  }
+
+  const normalizedRaw =
+    (
+      rawStatus ??
+      ""
+    )
+      .trim()
+      .toLowerCase();
+
+  if (
+    normalizedRaw ===
+      "active" ||
+    normalizedRaw ===
+      "healthy"
+  ) {
+    return null;
+  }
+
+  return "Injury";
 }
 
 
@@ -954,6 +1090,31 @@ export async function POST(
           shortComment;
 
 
+        const explicitInjuryType =
+          normalizeText(
+            injury
+              .type
+              ?.description
+          ) ??
+          normalizeText(
+            injury
+              .type
+              ?.name
+          );
+
+
+        const inferredInjuryLocation =
+          inferInjuryLocation(
+            explicitInjuryType,
+            shortComment,
+            longComment,
+            latestNote
+              ?.headline,
+            latestNote
+              ?.text
+          );
+
+
         const rawStatus =
           normalizeText(
             injury.status
@@ -965,9 +1126,25 @@ export async function POST(
           );
 
 
-        const currentStatus =
+        const normalizedStatus =
           normalizeInjuryStatus(
             rawStatus
+          );
+
+
+        const hasInjuryInfo =
+          Boolean(
+            explicitInjuryType ||
+            injuryDetail ||
+            injury.date
+          );
+
+
+        const currentStatus =
+          normalizedStatus ??
+          fallbackStatusForInjuryNews(
+            rawStatus,
+            hasInjuryInfo
           );
 
 
@@ -1012,16 +1189,11 @@ export async function POST(
             currentStatus,
 
           injuryType:
-            normalizeText(
-              injury
-                .type
-                ?.description
-            ) ??
-            normalizeText(
-              injury
-                .type
-                ?.name
-            ),
+            explicitInjuryType ??
+            inferredInjuryLocation,
+
+          injuryLocation:
+            inferredInjuryLocation,
 
           injuryDetail,
 
@@ -1311,6 +1483,9 @@ export async function POST(
     let matchedActiveOrNews =
       0;
 
+    let recordsWithNewsButNoOfficialDesignation =
+      0;
+
 
     for (
       const injury
@@ -1374,6 +1549,15 @@ export async function POST(
       }
 
 
+      if (
+        injury.status ===
+        "Injury"
+      ) {
+        recordsWithNewsButNoOfficialDesignation +=
+          1;
+      }
+
+
       normalized.push({
         nfl_player_id:
           player.id,
@@ -1390,7 +1574,7 @@ export async function POST(
           injury.injuryType,
 
         injury_location:
-          null,
+          injury.injuryLocation,
 
         injury_detail:
           injury.injuryDetail,
@@ -1864,6 +2048,37 @@ export async function POST(
       );
 
 
+    const espnPlayersWithCurrentInjuryInformation =
+      new Set<number>();
+
+
+    for (
+      const record
+      of latestEspnRecords
+    ) {
+      if (
+        !hasCredibleInjuryInformation(
+          record
+        )
+      ) {
+        continue;
+      }
+
+      const player =
+        playerByEspnId.get(
+          record.espnPlayerId
+        );
+
+      if (
+        player
+      ) {
+        espnPlayersWithCurrentInjuryInformation.add(
+          player.id
+        );
+      }
+    }
+
+
     let injuriesCleared =
       0;
 
@@ -1874,6 +2089,9 @@ export async function POST(
     ) {
       if (
         currentlyInjuredPlayerIds.has(
+          existing.nfl_player_id
+        ) ||
+        espnPlayersWithCurrentInjuryInformation.has(
           existing.nfl_player_id
         )
       ) {
@@ -1972,6 +2190,8 @@ export async function POST(
         normalized.length,
 
       matchedActiveOrNews,
+
+      recordsWithNewsButNoOfficialDesignation,
 
       nonFantasyIgnored,
 

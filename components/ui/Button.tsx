@@ -4,11 +4,13 @@ import type {
   ReactNode,
 } from "react";
 
+
 type ButtonVariant =
   | "primary"
   | "secondary"
   | "success"
   | "danger";
+
 
 type ButtonProps =
   ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -16,6 +18,7 @@ type ButtonProps =
     variant?: ButtonVariant;
     fullWidth?: boolean;
   };
+
 
 export default function Button({
   children,
@@ -49,27 +52,34 @@ export default function Button({
   );
 }
 
+
 const styles: Record<
   string,
   CSSProperties
 > = {
   base: {
-    minHeight: "46px",
+    minHeight: "48px",
 
     display: "inline-flex",
+
     alignItems: "center",
+
     justifyContent: "center",
 
-    gap: "8px",
+    gap: "9px",
 
-    padding: "11px 19px",
+    padding:
+      "12px 20px",
 
     borderRadius: "9px",
 
     color: "#ffffff",
 
-    fontSize: "14px",
+    fontSize: "16px",
+
     fontWeight: 900,
+
+    lineHeight: 1.25,
 
     letterSpacing: ".01em",
 
@@ -82,15 +92,19 @@ const styles: Record<
       "transform .12s ease, opacity .12s ease, filter .12s ease",
   },
 
+
   fullWidth: {
     width: "100%",
   },
 
+
   disabled: {
     opacity: 0.52,
+
     cursor: "not-allowed",
   },
 };
+
 
 const variantStyles: Record<
   ButtonVariant,
@@ -104,6 +118,7 @@ const variantStyles: Record<
       "0 10px 28px rgba(255,69,0,.18)",
   },
 
+
   secondary: {
     background:
       "linear-gradient(180deg,#222326,#151618)",
@@ -112,10 +127,12 @@ const variantStyles: Record<
       "1px solid rgba(255,255,255,.12)",
   },
 
+
   success: {
     background:
       "linear-gradient(135deg,#22c55e,#15803d)",
   },
+
 
   danger: {
     background:

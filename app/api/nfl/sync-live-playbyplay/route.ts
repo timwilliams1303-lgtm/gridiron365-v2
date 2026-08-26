@@ -1,0 +1,699 @@
+import {
+  NextResponse,
+} from "next/server";
+
+import {
+  createClient,
+} from "@supabase/supabase-js";
+
+
+type EspnRef = {
+  $ref?: string;
+};
+
+
+type EspnPlayItem = {
+  id?: string;
+
+  sequenceNumber?:
+    string |
+    number;
+
+  text?: string;
+
+  shortText?: string;
+
+  scoringPlay?: boolean;
+
+  scoreValue?: number;
+
+  statYardage?: number;
+
+  type?: {
+    id?: string;
+
+    text?: string;
+
+    abbreviation?: string;
+  };
+
+  period?: {
+    number?: number;
+  };
+
+  clock?: {
+    displayValue?: string;
+  };
+
+  team?: EspnRef;
+
+  participants?: Array<{
+    athlete?: EspnRef;
+  }>;
+
+  start?: {
+    down?: number;
+
+    distance?: number;
+
+    yardLine?: number;
+
+    yardsToEndzone?: number;
+  };
+
+  end?: {
+    down?: number;
+
+    distance?: number;
+
+    yardLine?: number;
+
+    yardsToEndzone?: number;
+  };
+};
+
+
+type EspnPlaysResponse = {
+  count?: number;
+
+  pageIndex?: number;
+
+  pageSize?: number;
+
+  pageCount?: number;
+
+  items?: EspnPlayItem[];
+};
+
+
+type NflGameRow = {
+  id: number;
+
+  espn_event_id: string;
+};
+
+
+function extractIdFromRef(
+  ref:
+    string |
+    undefined
+) {
+  if (!ref) {
+    return null;
+  }
+
+
+  const normalized =
+    ref.split(
+      "?"
+    )[0];
+
+
+  const parts =
+    normalized.split(
+      "/"
+    );
+
+
+  const last =
+    parts[
+      parts.length -
+      1
+    ];
+
+
+  return last ||
+    null;
+}
+
+
+function numericSequence(
+  value:
+    string |
+    number |
+    undefined
+) {
+  if (
+    typeof value ===
+    "number"
+  ) {
+    return Number.isFinite(
+      value
+    )
+      ? value
+      : null;
+  }
+
+
+  if (!value) {
+    return null;
+  }
+
+
+  const parsed =
+    Number(
+      value
+    );
+
+
+  return Number.isFinite(
+    parsed
+  )
+    ? parsed
+    : null;
+}
+
+
+function createAdminClient() {
+  const supabaseUrl =
+    process.env
+      .NEXT_PUBLIC_SUPABASE_URL;
+
+
+  const serviceRoleKey =
+    process.env
+      .SUPABASE_SERVICE_ROLE_KEY;
+
+
+  if (
+    !supabaseUrl ||
+    !serviceRoleKey
+  ) {
+    throw new Error(
+      "Supabase service role environment variables are missing."
+    );
+  }
+
+
+  return createClient(
+    supabaseUrl,
+    serviceRoleKey,
+    {
+      auth: {
+        persistSession:
+          false,
+
+        autoRefreshToken:
+          false,
+
+        detectSessionInUrl:
+          false,
+      },
+    }
+  );
+}
+
+
+function errorResponse(
+  message: string,
+  status: number
+) {
+  return NextResponse.json(
+    {
+      success: false,
+      error: message,
+    },
+    {
+      status,
+    }
+  );
+}
+
+
+export async function POST(
+  request: Request
+) {
+  try {
+    const url =
+      new URL(
+        request.url
+      );
+
+
+    const eventId =
+      url.searchParams.get(
+        "eventId"
+      );
+
+
+    if (!eventId) {
+      return errorResponse(
+        "An ESPN eventId is required.",
+        400
+      );
+    }
+
+
+    const supabase =
+      createAdminClient();
+
+
+    /*
+     * Find the matching internal NFL game.
+     */
+
+    const {
+      data:
+        nflGameData,
+
+      error:
+        nflGameError,
+    } =
+      await supabase
+        .from(
+          "nfl_games"
+        )
+        .select(
+          "id, espn_event_id"
+        )
+        .eq(
+          "espn_event_id",
+          eventId
+        )
+        .maybeSingle();
+
+
+    if (
+      nflGameError
+    ) {
+      return errorResponse(
+        `Could not load NFL game: ${nflGameError.message}`,
+        500
+      );
+    }
+
+
+    if (
+      !nflGameData
+    ) {
+      return errorResponse(
+        "NFL game was not found for this ESPN event.",
+        404
+      );
+    }
+
+
+    const nflGame =
+      nflGameData as
+        NflGameRow;
+
+
+    /*
+     * Fetch ESPN Core play-by-play.
+     */
+
+    const espnUrl =
+      `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/events/${eventId}/competitions/${eventId}/plays?limit=500`;
+
+
+    const response =
+      await fetch(
+        espnUrl,
+        {
+          cache:
+            "no-store",
+        }
+      );
+
+
+    const responseText =
+      await response.text();
+
+
+    if (
+      !response.ok
+    ) {
+      return errorResponse(
+        `ESPN play-by-play request failed (${response.status}).`,
+        502
+      );
+    }
+
+
+    let data:
+      EspnPlaysResponse;
+
+
+    try {
+      data =
+        JSON.parse(
+          responseText
+        ) as
+          EspnPlaysResponse;
+    } catch {
+      return errorResponse(
+        "ESPN returned invalid play-by-play JSON.",
+        502
+      );
+    }
+
+
+    const plays =
+      Array.isArray(
+        data.items
+      )
+        ? data.items
+        : [];
+
+
+    /*
+     * Normalize for database storage.
+     */
+
+    const now =
+      new Date()
+        .toISOString();
+
+
+    const normalized =
+      plays
+        .filter(
+          (
+            play
+          ) =>
+            Boolean(
+              play.id
+            )
+        )
+        .map(
+          (
+            play
+          ) => ({
+            nfl_game_id:
+              nflGame.id,
+
+            espn_play_id:
+              play.id as string,
+
+            sequence_number:
+              numericSequence(
+                play
+                  .sequenceNumber
+              ),
+
+            play_type_id:
+              play.type
+                ?.id ??
+              null,
+
+            play_type_text:
+              play.type
+                ?.text ??
+              null,
+
+            play_type_abbreviation:
+              play.type
+                ?.abbreviation ??
+              null,
+
+            play_text:
+              play.text ??
+              null,
+
+            short_text:
+              play.shortText ??
+              null,
+
+            scoring_play:
+              play.scoringPlay ??
+              false,
+
+            score_value:
+              play.scoreValue ??
+              null,
+
+            stat_yardage:
+              play.statYardage ??
+              null,
+
+            period:
+              play.period
+                ?.number ??
+              null,
+
+            clock_display:
+              play.clock
+                ?.displayValue ??
+              null,
+
+            possession_team_espn_id:
+              extractIdFromRef(
+                play.team
+                  ?.$ref
+              ),
+
+            start_down:
+              play.start
+                ?.down ??
+              null,
+
+            start_distance:
+              play.start
+                ?.distance ??
+              null,
+
+            start_yard_line:
+              play.start
+                ?.yardLine ??
+              null,
+
+            start_yards_to_endzone:
+              play.start
+                ?.yardsToEndzone ??
+              null,
+
+            end_down:
+              play.end
+                ?.down ??
+              null,
+
+            end_distance:
+              play.end
+                ?.distance ??
+              null,
+
+            end_yard_line:
+              play.end
+                ?.yardLine ??
+              null,
+
+            end_yards_to_endzone:
+              play.end
+                ?.yardsToEndzone ??
+              null,
+
+            participant_espn_player_ids:
+              (
+                play.participants ??
+                []
+              )
+                .map(
+                  (
+                    participant
+                  ) =>
+                    extractIdFromRef(
+                      participant
+                        .athlete
+                        ?.$ref
+                    )
+                )
+                .filter(
+                  (
+                    id
+                  ):
+                    id is string =>
+                      Boolean(
+                        id
+                      )
+                ),
+
+            source_updated_at:
+              now,
+
+            updated_at:
+              now,
+          })
+        );
+
+
+    /*
+     * Upsert all plays.
+     */
+
+    let upserted =
+      0;
+
+
+    if (
+      normalized.length >
+      0
+    ) {
+      const {
+        error:
+          upsertError,
+      } =
+        await supabase
+          .from(
+            "nfl_game_plays"
+          )
+          .upsert(
+            normalized,
+            {
+              onConflict:
+                "nfl_game_id,espn_play_id",
+            }
+          );
+
+
+      if (
+        upsertError
+      ) {
+        return errorResponse(
+          `Could not save NFL plays: ${upsertError.message}`,
+          500
+        );
+      }
+
+
+      upserted =
+        normalized.length;
+    }
+
+
+    /*
+     * Current play = highest sequence number.
+     */
+
+    const currentPlay =
+      normalized
+        .slice()
+        .sort(
+          (
+            a,
+            b
+          ) =>
+            (
+              b.sequence_number ??
+              0
+            ) -
+            (
+              a.sequence_number ??
+              0
+            )
+        )[0] ??
+      null;
+
+
+    const currentYardsToEndzone =
+      currentPlay
+        ?.end_yards_to_endzone ??
+      currentPlay
+        ?.start_yards_to_endzone ??
+      null;
+
+
+    const isRedZone =
+      currentYardsToEndzone !==
+        null &&
+      currentYardsToEndzone <=
+        20;
+
+
+    return NextResponse.json(
+      {
+        success:
+          true,
+
+        provider:
+          "ESPN",
+
+        eventId,
+
+        nflGameId:
+          nflGame.id,
+
+        totalPlayCount:
+          plays.length,
+
+        playsUpserted:
+          upserted,
+
+        currentPlay:
+          currentPlay
+            ? {
+                espnPlayId:
+                  currentPlay
+                    .espn_play_id,
+
+                sequenceNumber:
+                  currentPlay
+                    .sequence_number,
+
+                period:
+                  currentPlay
+                    .period,
+
+                clock:
+                  currentPlay
+                    .clock_display,
+
+                possessionTeamEspnId:
+                  currentPlay
+                    .possession_team_espn_id,
+
+                down:
+                  currentPlay
+                    .end_down ??
+                  currentPlay
+                    .start_down,
+
+                distance:
+                  currentPlay
+                    .end_distance ??
+                  currentPlay
+                    .start_distance,
+
+                yardLine:
+                  currentPlay
+                    .end_yard_line ??
+                  currentPlay
+                    .start_yard_line,
+
+                yardsToEndzone:
+                  currentYardsToEndzone,
+
+                redZone:
+                  isRedZone,
+
+                scoringPlay:
+                  currentPlay
+                    .scoring_play,
+
+                text:
+                  currentPlay
+                    .play_text,
+              }
+            : null,
+      },
+      {
+        status:
+          200,
+      }
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      "Live ESPN play-by-play sync failed:",
+      error
+    );
+
+
+    return errorResponse(
+      error instanceof Error
+        ? error.message
+        : "Live play-by-play sync failed.",
+      500
+    );
+  }
+}

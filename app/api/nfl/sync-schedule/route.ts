@@ -91,10 +91,48 @@ type GameRow = {
 async function validateUser(
   request: Request
 ) {
+  /*
+   * Administrative sync-secret authentication.
+   *
+   * This lets trusted local/server jobs call this
+   * schedule sync route without requiring a browser
+   * Supabase access token.
+   */
+  const suppliedSyncSecret =
+    request.headers.get(
+      "x-gridiron-sync-secret"
+    );
+
+
+  const configuredSyncSecret =
+    process.env
+      .GRIDIRON_SYNC_SECRET;
+
+
+  if (
+    suppliedSyncSecret &&
+    configuredSyncSecret &&
+    suppliedSyncSecret ===
+      configuredSyncSecret
+  ) {
+    return {
+      userId:
+        "sync-secret",
+
+      error:
+        null,
+    };
+  }
+
+
+  /*
+   * Normal logged-in-user authentication.
+   */
   const authorization =
     request.headers.get(
       "authorization"
     );
+
 
   if (
     !authorization
@@ -113,7 +151,9 @@ async function validateUser(
               false,
 
             error:
-              "Your login session is missing.",
+              suppliedSyncSecret
+                ? "The Gridiron365 sync secret is invalid."
+                : "Your login session is missing.",
           },
           {
             status:
@@ -123,18 +163,24 @@ async function validateUser(
     };
   }
 
+
   const accessToken =
     authorization.slice(
       7
     );
 
+
   const supabaseUrl =
     process.env
       .NEXT_PUBLIC_SUPABASE_URL;
 
+
   const supabaseKey =
     process.env
-      .NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+      .NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env
+      .NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
 
   if (
     !supabaseUrl ||
@@ -144,6 +190,7 @@ async function validateUser(
       "Supabase environment variables are missing."
     );
   }
+
 
   const userClient =
     createClient(
@@ -170,6 +217,7 @@ async function validateUser(
       }
     );
 
+
   const {
     data: {
       user,
@@ -182,6 +230,7 @@ async function validateUser(
       .getUser(
         accessToken
       );
+
 
   if (
     userError ||
@@ -207,6 +256,7 @@ async function validateUser(
         ),
     };
   }
+
 
   return {
     userId:

@@ -41,6 +41,14 @@ function formatStatus(
 }
 
 
+function formatPoints(
+  points: number
+) {
+  return points
+    .toFixed(2);
+}
+
+
 export default async function LeagueHomePage({
   params,
 }: PageProps) {
@@ -63,7 +71,57 @@ export default async function LeagueHomePage({
   const homeData =
     await getTraditionalHomeData(
       supabase,
-      leagueId
+      leagueId,
+      access.league.season,
+      access.fantasyTeam
+        ?.id ??
+        null
+    );
+
+
+  const matchup =
+    homeData.currentMatchup;
+
+
+  const userPoints =
+    matchup
+      ? matchup.isUserHomeTeam
+        ? matchup.homePoints
+        : matchup.awayPoints
+      : 0;
+
+
+  const opponentPoints =
+    matchup
+      ? matchup.isUserHomeTeam
+        ? matchup.awayPoints
+        : matchup.homePoints
+      : 0;
+
+
+  const opponentName =
+    matchup
+      ? matchup.isUserHomeTeam
+        ? matchup.awayTeamName
+        : matchup.homeTeamName
+      : null;
+
+
+  const seasonProgress =
+    Math.min(
+      100,
+      Math.max(
+        0,
+        (
+          homeData.activeWeek /
+          Math.max(
+            1,
+            homeData
+              .regularSeasonWeeks
+          )
+        ) *
+          100
+      )
     );
 
 
@@ -110,7 +168,9 @@ export default async function LeagueHomePage({
               }
             >
               {access.league.season}
+
               {" • "}
+
               {access.fantasyTeam
                 ?.teamName ??
                 "No Team Assigned"}
@@ -120,26 +180,56 @@ export default async function LeagueHomePage({
 
           <div
             style={
-              styles.statusBox
+              styles.headerStatusGroup
             }
           >
-            <span
+            <div
               style={
-                styles.statusLabel
+                styles.statusBox
               }
             >
-              LEAGUE STATUS
-            </span>
+              <span
+                style={
+                  styles.statusLabel
+                }
+              >
+                LEAGUE STATUS
+              </span>
 
-            <strong
+              <strong
+                style={
+                  styles.statusValue
+                }
+              >
+                {formatStatus(
+                  access.league.status
+                )}
+              </strong>
+            </div>
+
+
+            <div
               style={
-                styles.statusValue
+                styles.statusBox
               }
             >
-              {formatStatus(
-                access.league.status
-              )}
-            </strong>
+              <span
+                style={
+                  styles.statusLabel
+                }
+              >
+                CURRENT WEEK
+              </span>
+
+              <strong
+                style={
+                  styles.statusValue
+                }
+              >
+                Week{" "}
+                {homeData.activeWeek}
+              </strong>
+            </div>
           </div>
         </header>
 
@@ -176,6 +266,19 @@ export default async function LeagueHomePage({
                 "Not Assigned"}
             </strong>
 
+            <span
+              style={
+                styles.statSubtext
+              }
+            >
+              {homeData.rosterCount}
+              {" rostered player"}
+              {homeData.rosterCount ===
+              1
+                ? ""
+                : "s"}
+            </span>
+
             <Link
               href={
                 `/league/${leagueId}/team`
@@ -184,7 +287,7 @@ export default async function LeagueHomePage({
                 styles.statLink
               }
             >
-              View My Team →
+              Open My Team →
             </Link>
           </Card>
 
@@ -199,7 +302,7 @@ export default async function LeagueHomePage({
                 styles.statLabel
               }
             >
-              TEAMS
+              LEAGUE SIZE
             </span>
 
             <strong
@@ -235,7 +338,7 @@ export default async function LeagueHomePage({
                 styles.statLabel
               }
             >
-              REGULAR SEASON
+              SEASON
             </span>
 
             <strong
@@ -243,7 +346,10 @@ export default async function LeagueHomePage({
                 styles.statValue
               }
             >
-              {homeData.regularSeasonWeeks}
+              {homeData.activeWeek}
+              {" / "}
+              {homeData
+                .regularSeasonWeeks}
             </strong>
 
             <span
@@ -251,7 +357,7 @@ export default async function LeagueHomePage({
                 styles.statSubtext
               }
             >
-              weeks
+              Regular-season week
             </span>
           </Card>
 
@@ -266,31 +372,36 @@ export default async function LeagueHomePage({
                 styles.statLabel
               }
             >
-              ROLE
+              ROSTER HEALTH
             </span>
 
             <strong
-              style={
-                styles.statValueSmall
-              }
+              style={{
+                ...styles.statValue,
+
+                ...(homeData
+                  .injuredRosterPlayers >
+                0
+                  ? styles.warningValue
+                  : styles.goodValue),
+              }}
             >
-              {access.isCommissioner
-                ? "Commissioner"
-                : "League Member"}
+              {homeData
+                .injuredRosterPlayers}
             </strong>
 
-            {access.isCommissioner ? (
-              <Link
-                href={
-                  `/league/${leagueId}/commissioner`
-                }
-                style={
-                  styles.statLink
-                }
-              >
-                Commissioner Tools →
-              </Link>
-            ) : null}
+            <span
+              style={
+                styles.statSubtext
+              }
+            >
+              active injury
+              {homeData
+                .injuredRosterPlayers ===
+              1
+                ? ""
+                : " alerts"}
+            </span>
           </Card>
         </section>
 
@@ -304,6 +415,8 @@ export default async function LeagueHomePage({
             styles.dashboardGrid
           }
         >
+          {/* CURRENT MATCHUP */}
+
           <Card
             style={
               styles.mainCard
@@ -313,6 +426,184 @@ export default async function LeagueHomePage({
               aria-hidden="true"
               style={
                 styles.cardAccent
+              }
+            />
+
+            <div
+              style={
+                styles.cardHeading
+              }
+            >
+              <div>
+                <p
+                  style={
+                    styles.cardEyebrow
+                  }
+                >
+                  WEEK{" "}
+                  {homeData.activeWeek}
+                </p>
+
+                <h2
+                  style={
+                    styles.cardTitle
+                  }
+                >
+                  Current Matchup
+                </h2>
+              </div>
+
+              <Link
+                href={
+                  `/league/${leagueId}/matchups`
+                }
+                style={
+                  styles.actionLink
+                }
+              >
+                All Matchups
+              </Link>
+            </div>
+
+
+            {matchup ? (
+              <div
+                style={
+                  styles.matchupPanel
+                }
+              >
+                <div
+                  style={
+                    styles.matchupTeam
+                  }
+                >
+                  <span
+                    style={
+                      styles.matchupLabel
+                    }
+                  >
+                    YOU
+                  </span>
+
+                  <strong
+                    style={
+                      styles.matchupTeamName
+                    }
+                  >
+                    {access
+                      .fantasyTeam
+                      ?.teamName ??
+                      "Your Team"}
+                  </strong>
+
+                  <strong
+                    style={
+                      styles.matchupScore
+                    }
+                  >
+                    {formatPoints(
+                      userPoints
+                    )}
+                  </strong>
+                </div>
+
+
+                <div
+                  style={
+                    styles.matchupCenter
+                  }
+                >
+                  <span
+                    style={
+                      matchup.isLive
+                        ? styles.liveBadge
+                        : matchup.isFinal
+                          ? styles.finalBadge
+                          : styles.upcomingBadge
+                    }
+                  >
+                    {matchup.isLive
+                      ? "LIVE"
+                      : matchup.isFinal
+                        ? "FINAL"
+                        : "UPCOMING"}
+                  </span>
+
+                  <span
+                    style={
+                      styles.vsLabel
+                    }
+                  >
+                    VS
+                  </span>
+                </div>
+
+
+                <div
+                  style={
+                    styles.matchupTeam
+                  }
+                >
+                  <span
+                    style={
+                      styles.matchupLabel
+                    }
+                  >
+                    OPPONENT
+                  </span>
+
+                  <strong
+                    style={
+                      styles.matchupTeamName
+                    }
+                  >
+                    {opponentName}
+                  </strong>
+
+                  <strong
+                    style={
+                      styles.matchupScore
+                    }
+                  >
+                    {formatPoints(
+                      opponentPoints
+                    )}
+                  </strong>
+                </div>
+              </div>
+            ) : (
+              <div
+                style={
+                  styles.emptyFeature
+                }
+              >
+                <strong>
+                  No Week{" "}
+                  {homeData.activeWeek}{" "}
+                  matchup available
+                </strong>
+
+                <span>
+                  Your matchup will appear
+                  here when one is scheduled
+                  for your fantasy team.
+                </span>
+              </div>
+            )}
+          </Card>
+
+
+          {/* TEAM HEADQUARTERS */}
+
+          <Card
+            style={
+              styles.mainCard
+            }
+          >
+            <div
+              aria-hidden="true"
+              style={
+                styles.cardAccentOrange
               }
             />
 
@@ -347,29 +638,92 @@ export default async function LeagueHomePage({
                   styles.actionLink
                 }
               >
-                Open My Team
+                Open Team
               </Link>
             </div>
 
 
             <div
               style={
-                styles.emptyFeature
+                styles.teamSummary
               }
             >
-              <strong>
-                {access.fantasyTeam
-                  ?.teamName ??
-                  "Your Team"}
-              </strong>
+              <div
+                style={
+                  styles.summaryRow
+                }
+              >
+                <span>
+                  Team
+                </span>
 
-              <span>
-                Your roster and weekly lineup will appear here
-                once we complete the My Team system.
-              </span>
+                <strong>
+                  {access.fantasyTeam
+                    ?.teamName ??
+                    "Not Assigned"}
+                </strong>
+              </div>
+
+
+              <div
+                style={
+                  styles.summaryRow
+                }
+              >
+                <span>
+                  Rostered Players
+                </span>
+
+                <strong>
+                  {homeData.rosterCount}
+                </strong>
+              </div>
+
+
+              <div
+                style={
+                  styles.summaryRow
+                }
+              >
+                <span>
+                  Injury Alerts
+                </span>
+
+                <strong
+                  style={
+                    homeData
+                      .injuredRosterPlayers >
+                    0
+                      ? styles.warningValue
+                      : styles.goodValue
+                  }
+                >
+                  {homeData
+                    .injuredRosterPlayers}
+                </strong>
+              </div>
+
+
+              <div
+                style={
+                  styles.summaryRow
+                }
+              >
+                <span>
+                  Role
+                </span>
+
+                <strong>
+                  {access.isCommissioner
+                    ? "Commissioner"
+                    : "League Member"}
+                </strong>
+              </div>
             </div>
           </Card>
 
+
+          {/* SEASON PROGRESS */}
 
           <Card
             style={
@@ -377,12 +731,140 @@ export default async function LeagueHomePage({
             }
           >
             <div
-              aria-hidden="true"
               style={
-                styles.cardAccentOrange
+                styles.cardHeading
               }
-            />
+            >
+              <div>
+                <p
+                  style={
+                    styles.cardEyebrow
+                  }
+                >
+                  SEASON
+                </p>
 
+                <h2
+                  style={
+                    styles.cardTitle
+                  }
+                >
+                  League Progress
+                </h2>
+              </div>
+
+              <Link
+                href={
+                  `/league/${leagueId}/standings`
+                }
+                style={
+                  styles.actionLink
+                }
+              >
+                Standings
+              </Link>
+            </div>
+
+
+            <div
+              style={
+                styles.progressArea
+              }
+            >
+              <div
+                style={
+                  styles.progressHeading
+                }
+              >
+                <span>
+                  Week{" "}
+                  {homeData.activeWeek}
+                </span>
+
+                <span>
+                  {homeData
+                    .regularSeasonWeeks}{" "}
+                  Weeks
+                </span>
+              </div>
+
+
+              <div
+                style={
+                  styles.progressTrack
+                }
+              >
+                <div
+                  style={{
+                    ...styles.progressFill,
+
+                    width:
+                      `${seasonProgress}%`,
+                  }}
+                />
+              </div>
+
+
+              <div
+                style={
+                  styles.summaryRow
+                }
+              >
+                <span>
+                  Phase
+                </span>
+
+                <strong>
+                  {formatStatus(
+                    homeData.phase
+                  )}
+                </strong>
+              </div>
+
+
+              <div
+                style={
+                  styles.summaryRow
+                }
+              >
+                <span>
+                  Last Completed Week
+                </span>
+
+                <strong>
+                  {homeData
+                    .lastCompletedWeek ??
+                    "—"}
+                </strong>
+              </div>
+
+
+              <div
+                style={
+                  styles.summaryRow
+                }
+              >
+                <span>
+                  Playoffs
+                </span>
+
+                <strong>
+                  {homeData.playoffsStarted
+                    ? "Active"
+                    : "Not Started"}
+                </strong>
+              </div>
+            </div>
+          </Card>
+
+
+          {/* LEAGUE SETUP */}
+
+          <Card
+            style={
+              styles.mainCard
+            }
+          >
             <div
               style={
                 styles.cardHeading
@@ -402,7 +884,7 @@ export default async function LeagueHomePage({
                     styles.cardTitle
                   }
                 >
-                  League Setup
+                  League Overview
                 </h2>
               </div>
 
@@ -421,12 +903,12 @@ export default async function LeagueHomePage({
 
             <div
               style={
-                styles.setupList
+                styles.teamSummary
               }
             >
               <div
                 style={
-                  styles.setupRow
+                  styles.summaryRow
                 }
               >
                 <span>
@@ -443,7 +925,7 @@ export default async function LeagueHomePage({
 
               <div
                 style={
-                  styles.setupRow
+                  styles.summaryRow
                 }
               >
                 <span>
@@ -451,183 +933,50 @@ export default async function LeagueHomePage({
                 </span>
 
                 <strong>
-                  {homeData.regularSeasonWeeks}
-                  {" Weeks"}
+                  {homeData
+                    .regularSeasonWeeks}{" "}
+                  Weeks
                 </strong>
               </div>
 
 
               <div
                 style={
-                  styles.setupRow
+                  styles.summaryRow
                 }
               >
                 <span>
-                  Draft
+                  Player Selection
                 </span>
 
-                <strong
-                  style={
-                    styles.pendingValue
-                  }
-                >
-                  Setup
+                <strong>
+                  {formatStatus(
+                    access.league
+                      .playerSelectionMode
+                  )}
                 </strong>
               </div>
 
 
               <div
                 style={
-                  styles.setupRow
+                  styles.summaryRow
                 }
               >
                 <span>
-                  Scoring
+                  League Status
                 </span>
 
                 <strong
                   style={
-                    styles.pendingValue
+                    styles.orangeValue
                   }
                 >
-                  Setup
+                  {formatStatus(
+                    access.league.status
+                  )}
                 </strong>
               </div>
-
-
-              <div
-                style={
-                  styles.setupRow
-                }
-              >
-                <span>
-                  Playoffs
-                </span>
-
-                <strong
-                  style={
-                    styles.pendingValue
-                  }
-                >
-                  Setup
-                </strong>
-              </div>
-            </div>
-          </Card>
-
-
-          <Card
-            style={
-              styles.mainCard
-            }
-          >
-            <div
-              style={
-                styles.cardHeading
-              }
-            >
-              <div>
-                <p
-                  style={
-                    styles.cardEyebrow
-                  }
-                >
-                  MATCHUPS
-                </p>
-
-                <h2
-                  style={
-                    styles.cardTitle
-                  }
-                >
-                  Current Matchup
-                </h2>
-              </div>
-
-              <Link
-                href={
-                  `/league/${leagueId}/matchups`
-                }
-                style={
-                  styles.actionLink
-                }
-              >
-                Matchups
-              </Link>
-            </div>
-
-
-            <div
-              style={
-                styles.emptyFeature
-              }
-            >
-              <strong>
-                No matchup yet
-              </strong>
-
-              <span>
-                Your active matchup will appear here once the
-                matchup and scoring systems are completed.
-              </span>
-            </div>
-          </Card>
-
-
-          <Card
-            style={
-              styles.mainCard
-            }
-          >
-            <div
-              style={
-                styles.cardHeading
-              }
-            >
-              <div>
-                <p
-                  style={
-                    styles.cardEyebrow
-                  }
-                >
-                  LEAGUE ACTIVITY
-                </p>
-
-                <h2
-                  style={
-                    styles.cardTitle
-                  }
-                >
-                  Latest Activity
-                </h2>
-              </div>
-
-              <Link
-                href={
-                  `/league/${leagueId}/waivers`
-                }
-                style={
-                  styles.actionLink
-                }
-              >
-                Players
-              </Link>
-            </div>
-
-
-            <div
-              style={
-                styles.emptyFeature
-              }
-            >
-              <strong>
-                No transactions yet
-              </strong>
-
-              <span>
-                Adds, drops, waivers, and trades will appear here
-                after those systems are built.
-              </span>
             </div>
           </Card>
         </section>
@@ -643,124 +992,126 @@ export default async function LeagueHomePage({
               styles.sectionLabel
             }
           >
-            QUICK LINKS
+            LEAGUE CENTER
           </p>
+
 
           <div
             style={
               styles.quickGrid
             }
           >
-            <Link
+            <QuickLink
               href={
                 `/league/${leagueId}/team`
               }
-              style={
-                styles.quickCard
-              }
-            >
-              <strong>
-                My Team
-              </strong>
+              title="My Team"
+              subtitle="Roster & lineup"
+            />
 
-              <span>
-                Roster & lineup
-              </span>
-            </Link>
-
-
-            <Link
+            <QuickLink
               href={
                 `/league/${leagueId}/players`
               }
-              style={
-                styles.quickCard
+              title="Players"
+              subtitle="NFL player pool"
+            />
+
+            <QuickLink
+              href={
+                `/league/${leagueId}/matchups`
               }
-            >
-              <strong>
-                Players
-              </strong>
+              title="Matchups"
+              subtitle="Weekly scoring"
+            />
 
-              <span>
-                NFL player pool
-              </span>
-            </Link>
-
-
-            <Link
+            <QuickLink
               href={
                 `/league/${leagueId}/waivers`
               }
-              style={
-                styles.quickCard
-              }
-            >
-              <strong>
-                Waivers
-              </strong>
+              title="Waivers"
+              subtitle="Claims & free agents"
+            />
 
-              <span>
-                Claims & free agents
-              </span>
-            </Link>
-
-
-            <Link
+            <QuickLink
               href={
                 `/league/${leagueId}/trades`
               }
-              style={
-                styles.quickCard
-              }
-            >
-              <strong>
-                Trades
-              </strong>
+              title="Trades"
+              subtitle="Trade center"
+            />
 
-              <span>
-                Trade center
-              </span>
-            </Link>
-
-
-            <Link
+            <QuickLink
               href={
                 `/league/${leagueId}/standings`
               }
-              style={
-                styles.quickCard
-              }
-            >
-              <strong>
-                Standings
-              </strong>
+              title="Standings"
+              subtitle="League rankings"
+            />
 
-              <span>
-                League rankings
-              </span>
-            </Link>
-
-
-            <Link
+            <QuickLink
               href={
                 `/league/${leagueId}/playoffs`
               }
-              style={
-                styles.quickCard
-              }
-            >
-              <strong>
-                Playoffs
-              </strong>
+              title="Playoffs"
+              subtitle="Bracket & seeds"
+            />
 
-              <span>
-                Bracket & seeds
-              </span>
-            </Link>
+            <QuickLink
+              href={
+                `/league/${leagueId}/draft`
+              }
+              title="Draft"
+              subtitle="Draft center"
+            />
+
+            {access.isCommissioner ? (
+              <QuickLink
+                href={
+                  `/league/${leagueId}/commissioner`
+                }
+                title="Commissioner"
+                subtitle="League controls"
+              />
+            ) : null}
           </div>
         </section>
       </section>
     </main>
+  );
+}
+
+
+function QuickLink({
+  href,
+  title,
+  subtitle,
+}: {
+  href: string;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <Link
+      href={
+        href
+      }
+      style={
+        styles.quickCard
+      }
+    >
+      <strong>
+        {title}
+      </strong>
+
+      <span
+        style={
+          styles.quickSubtitle
+        }
+      >
+        {subtitle}
+      </span>
+    </Link>
   );
 }
 
@@ -772,7 +1123,11 @@ const styles = {
 
     padding:
       "32px 18px 60px",
+
+    background:
+      "radial-gradient(circle at 50% 0%,rgba(255,67,0,.055),transparent 34%)",
   },
+
 
   shell: {
     width:
@@ -787,6 +1142,7 @@ const styles = {
     gap:
       "28px",
   },
+
 
   pageHeader: {
     display:
@@ -805,11 +1161,24 @@ const styles = {
       "wrap" as const,
   },
 
+
+  headerStatusGroup: {
+    display:
+      "flex",
+
+    gap:
+      "9px",
+
+    flexWrap:
+      "wrap" as const,
+  },
+
+
   eyebrow: {
     margin: 0,
 
     color:
-      "#ff8c00",
+      "#ff7a18",
 
     fontSize:
       "10px",
@@ -820,6 +1189,7 @@ const styles = {
     letterSpacing:
       ".15em",
   },
+
 
   title: {
     margin:
@@ -832,6 +1202,7 @@ const styles = {
       "36px",
   },
 
+
   subtitle: {
     margin:
       "8px 0 0",
@@ -843,9 +1214,10 @@ const styles = {
       "13px",
   },
 
+
   statusBox: {
     minWidth:
-      "150px",
+      "140px",
 
     padding:
       "12px 15px",
@@ -866,6 +1238,7 @@ const styles = {
       "rgba(255,100,0,.05)",
   },
 
+
   statusLabel: {
     color:
       "#747a84",
@@ -880,6 +1253,7 @@ const styles = {
       ".10em",
   },
 
+
   statusValue: {
     color:
       "#ff8c00",
@@ -887,6 +1261,7 @@ const styles = {
     fontSize:
       "13px",
   },
+
 
   statsGrid: {
     display:
@@ -899,9 +1274,10 @@ const styles = {
       "14px",
   },
 
+
   statCard: {
     minHeight:
-      "140px",
+      "145px",
 
     padding:
       "20px",
@@ -915,6 +1291,7 @@ const styles = {
     gap:
       "8px",
   },
+
 
   statLabel: {
     color:
@@ -930,6 +1307,7 @@ const styles = {
       ".10em",
   },
 
+
   statValue: {
     color:
       "#ffffff",
@@ -937,6 +1315,7 @@ const styles = {
     fontSize:
       "29px",
   },
+
 
   statValueSmall: {
     color:
@@ -949,6 +1328,7 @@ const styles = {
       1.25,
   },
 
+
   statSubtext: {
     color:
       "#858b95",
@@ -956,6 +1336,7 @@ const styles = {
     fontSize:
       "11px",
   },
+
 
   statLink: {
     marginTop:
@@ -974,6 +1355,7 @@ const styles = {
       "none",
   },
 
+
   dashboardGrid: {
     display:
       "grid",
@@ -985,13 +1367,15 @@ const styles = {
       "16px",
   },
 
+
   mainCard: {
     minHeight:
-      "265px",
+      "285px",
 
     padding:
       "23px",
   },
+
 
   cardAccent: {
     position:
@@ -1007,8 +1391,9 @@ const styles = {
       "3px",
 
     background:
-      "linear-gradient(90deg,#ff1e1e,#ff4500)",
+      "linear-gradient(90deg,#e21d1d,#ff4500,#ff7700)",
   },
+
 
   cardAccentOrange: {
     position:
@@ -1027,6 +1412,7 @@ const styles = {
       "linear-gradient(90deg,#ff4500,#ff8c00)",
   },
 
+
   cardHeading: {
     display:
       "flex",
@@ -1040,6 +1426,7 @@ const styles = {
     gap:
       "16px",
   },
+
 
   cardEyebrow: {
     margin: 0,
@@ -1057,6 +1444,7 @@ const styles = {
       ".11em",
   },
 
+
   cardTitle: {
     margin:
       "5px 0 0",
@@ -1067,6 +1455,7 @@ const styles = {
     fontSize:
       "20px",
   },
+
 
   actionLink: {
     color:
@@ -1082,9 +1471,193 @@ const styles = {
       "none",
   },
 
+
+  matchupPanel: {
+    marginTop:
+      "24px",
+
+    minHeight:
+      "165px",
+
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "minmax(0,1fr) 70px minmax(0,1fr)",
+
+    alignItems:
+      "center",
+
+    gap:
+      "14px",
+  },
+
+
+  matchupTeam: {
+    minWidth:
+      0,
+
+    display:
+      "grid",
+
+    justifyItems:
+      "center",
+
+    gap:
+      "8px",
+
+    textAlign:
+      "center" as const,
+  },
+
+
+  matchupLabel: {
+    color:
+      "#707680",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      900,
+
+    letterSpacing:
+      ".11em",
+  },
+
+
+  matchupTeamName: {
+    maxWidth:
+      "100%",
+
+    overflow:
+      "hidden",
+
+    textOverflow:
+      "ellipsis",
+
+    whiteSpace:
+      "nowrap" as const,
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "14px",
+  },
+
+
+  matchupScore: {
+    color:
+      "#ffffff",
+
+    fontSize:
+      "34px",
+
+    lineHeight:
+      1,
+  },
+
+
+  matchupCenter: {
+    display:
+      "grid",
+
+    justifyItems:
+      "center",
+
+    gap:
+      "9px",
+  },
+
+
+  vsLabel: {
+    color:
+      "#626872",
+
+    fontSize:
+      "10px",
+
+    fontWeight:
+      900,
+  },
+
+
+  liveBadge: {
+    padding:
+      "5px 7px",
+
+    borderRadius:
+      "5px",
+
+    background:
+      "rgba(38,190,105,.12)",
+
+    color:
+      "#42d982",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      950,
+
+    letterSpacing:
+      ".08em",
+  },
+
+
+  finalBadge: {
+    padding:
+      "5px 7px",
+
+    borderRadius:
+      "5px",
+
+    background:
+      "rgba(255,255,255,.06)",
+
+    color:
+      "#a5aab1",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      950,
+
+    letterSpacing:
+      ".08em",
+  },
+
+
+  upcomingBadge: {
+    padding:
+      "5px 7px",
+
+    borderRadius:
+      "5px",
+
+    background:
+      "rgba(255,119,0,.09)",
+
+    color:
+      "#ff8a20",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      950,
+
+    letterSpacing:
+      ".08em",
+  },
+
+
   emptyFeature: {
     minHeight:
-      "150px",
+      "165px",
 
     marginTop:
       "20px",
@@ -1111,17 +1684,19 @@ const styles = {
       "#ffffff",
   },
 
-  setupList: {
+
+  teamSummary: {
     display:
       "grid",
 
     marginTop:
-      "17px",
+      "18px",
   },
 
-  setupRow: {
+
+  summaryRow: {
     minHeight:
-      "39px",
+      "45px",
 
     display:
       "flex",
@@ -1145,10 +1720,87 @@ const styles = {
       "11px",
   },
 
-  pendingValue: {
-    color:
-      "#ff8c00",
+
+  progressArea: {
+    marginTop:
+      "20px",
+
+    display:
+      "grid",
+
+    gap:
+      "12px",
   },
+
+
+  progressHeading: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "space-between",
+
+    color:
+      "#8f96a3",
+
+    fontSize:
+      "10px",
+
+    fontWeight:
+      800,
+  },
+
+
+  progressTrack: {
+    width:
+      "100%",
+
+    height:
+      "8px",
+
+    overflow:
+      "hidden",
+
+    borderRadius:
+      "999px",
+
+    background:
+      "rgba(255,255,255,.07)",
+  },
+
+
+  progressFill: {
+    height:
+      "100%",
+
+    borderRadius:
+      "999px",
+
+    background:
+      "linear-gradient(90deg,#d71919,#ff4d00,#ff8a00)",
+  },
+
+
+  warningValue: {
+    color:
+      "#ff8a20",
+  },
+
+
+  goodValue: {
+    color:
+      "#42d982",
+  },
+
+
+  orangeValue: {
+    color:
+      "#ff8a20",
+  },
+
 
   sectionLabel: {
     margin:
@@ -1167,6 +1819,7 @@ const styles = {
       ".12em",
   },
 
+
   quickGrid: {
     display:
       "grid",
@@ -1177,6 +1830,7 @@ const styles = {
     gap:
       "11px",
   },
+
 
   quickCard: {
     minHeight:
@@ -1208,5 +1862,14 @@ const styles = {
 
     textDecoration:
       "none",
+  },
+
+
+  quickSubtitle: {
+    color:
+      "#777e88",
+
+    fontSize:
+      "10px",
   },
 };

@@ -1,0 +1,245 @@
+import {
+  NextResponse,
+} from "next/server";
+
+import {
+  createSupabaseServerClient,
+} from "@/lib/supabase/server";
+
+
+type RouteContext = {
+  params:
+    Promise<{
+      leagueId: string;
+    }>;
+};
+
+
+type DropPlayerBody = {
+  fantasyTeamId?: number;
+  season?: number;
+  week?: number;
+  playerId?: number;
+};
+
+
+function errorResponse(
+  message: string,
+  status: number
+) {
+  return NextResponse.json(
+    {
+      success: false,
+      error: message,
+    },
+    {
+      status,
+    }
+  );
+}
+
+
+export async function POST(
+  request: Request,
+  context: RouteContext
+) {
+  try {
+    const {
+      leagueId,
+    } =
+      await context.params;
+
+
+    if (!leagueId) {
+      return errorResponse(
+        "A valid league ID is required.",
+        400
+      );
+    }
+
+
+    let body:
+      DropPlayerBody;
+
+
+    try {
+      body =
+        (await request.json()) as
+          DropPlayerBody;
+    } catch {
+      return errorResponse(
+        "A valid JSON request body is required.",
+        400
+      );
+    }
+
+
+    const fantasyTeamId =
+      Number(
+        body.fantasyTeamId
+      );
+
+
+    const season =
+      Number(
+        body.season
+      );
+
+
+    const week =
+      Number(
+        body.week
+      );
+
+
+    const playerId =
+      Number(
+        body.playerId
+      );
+
+
+    if (
+      !Number.isInteger(
+        fantasyTeamId
+      ) ||
+      fantasyTeamId <= 0
+    ) {
+      return errorResponse(
+        "A valid fantasy team ID is required.",
+        400
+      );
+    }
+
+
+    if (
+      !Number.isInteger(
+        season
+      ) ||
+      season < 2000 ||
+      season > 2200
+    ) {
+      return errorResponse(
+        "A valid season is required.",
+        400
+      );
+    }
+
+
+    if (
+      !Number.isInteger(
+        week
+      ) ||
+      week < 1 ||
+      week > 25
+    ) {
+      return errorResponse(
+        "A valid week is required.",
+        400
+      );
+    }
+
+
+    if (
+      !Number.isInteger(
+        playerId
+      ) ||
+      playerId <= 0
+    ) {
+      return errorResponse(
+        "A valid player ID is required.",
+        400
+      );
+    }
+
+
+    const supabase =
+      await createSupabaseServerClient();
+
+
+    const {
+      data:
+        userData,
+
+      error:
+        userError,
+    } =
+      await supabase.auth
+        .getUser();
+
+
+    if (
+      userError ||
+      !userData.user
+    ) {
+      return errorResponse(
+        "You must be signed in to manage your roster.",
+        401
+      );
+    }
+
+
+    const {
+      data,
+      error,
+    } =
+      await supabase.rpc(
+        "drop_traditional_player",
+        {
+          p_league_id:
+            leagueId,
+
+          p_fantasy_team_id:
+            fantasyTeamId,
+
+          p_season:
+            season,
+
+          p_week:
+            week,
+
+          p_player_id:
+            playerId,
+        }
+      );
+
+
+    if (error) {
+      console.error(
+        "Supabase drop player RPC error:",
+        error
+      );
+
+
+      return errorResponse(
+        error.message,
+        400
+      );
+    }
+
+
+    return NextResponse.json(
+      {
+        success: true,
+        result: data,
+      },
+      {
+        status: 200,
+      }
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      "Traditional player drop failed:",
+      error
+    );
+
+
+    return errorResponse(
+      error instanceof Error
+        ? error.message
+        : "The player could not be dropped.",
+      500
+    );
+  }
+}

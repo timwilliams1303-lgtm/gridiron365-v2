@@ -1,0 +1,854 @@
+/* ============================================================
+   GRIDIRON365 V2
+   COMPACT TRADITIONAL LEAGUE SHELL
+
+   Goals:
+   - preserve compact league header
+   - improve text readability throughout league navigation
+   - preserve the G365 identity
+   - keep league name / badges / team visible
+   - improve matchup/game-center usable screen space
+   - apply consistently to every league page
+============================================================ */
+
+
+/* ============================================================
+   ROOT
+============================================================ */
+
+.g365-league-shell {
+  min-height: 100vh;
+
+  background:
+    linear-gradient(
+      180deg,
+      #0b0b0d 0%,
+      #09090a 100%
+    );
+
+  color: #ffffff;
+}
+
+
+/* ============================================================
+   LEAGUE HEADER
+============================================================ */
+
+.g365-league-header {
+  position: relative;
+
+  min-height: 92px;
+
+  display: grid;
+
+  grid-template-columns:
+    150px
+    minmax(0, 1fr)
+    auto;
+
+  align-items: center;
+
+  gap: 20px;
+
+  padding:
+    10px
+    22px;
+
+  border-bottom:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.06
+    );
+
+  background:
+    linear-gradient(
+      180deg,
+      #101012 0%,
+      #0b0b0d 100%
+    );
+}
+
+
+/* ============================================================
+   LOGO
+============================================================ */
+
+.g365-league-logo-wrap {
+  width: 140px;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: flex-start;
+}
+
+
+.g365-league-logo {
+  display: block;
+
+  width: 130px;
+
+  max-width: 100%;
+
+  height: auto;
+
+  object-fit: contain;
+}
+
+
+/* ============================================================
+   LEAGUE IDENTITY
+============================================================ */
+
+.g365-league-identity {
+  min-width: 0;
+
+  display: grid;
+
+  justify-items: center;
+
+  align-content: center;
+
+  gap: 4px;
+
+  text-align: center;
+}
+
+
+.g365-league-badges {
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  flex-wrap: wrap;
+
+  gap: 6px;
+}
+
+
+.g365-league-badge {
+  min-height: 22px;
+
+  padding:
+    3px
+    9px;
+
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  border:
+    1px solid
+    rgba(
+      255,
+      105,
+      10,
+      0.35
+    );
+
+  border-radius: 5px;
+
+  background:
+    rgba(
+      255,
+      80,
+      0,
+      0.06
+    );
+
+  color: #ff851f;
+
+  font-size: 11px;
+
+  font-weight: 950;
+
+  letter-spacing: 0.07em;
+
+  line-height: 1;
+}
+
+
+.g365-league-badge-muted {
+  border-color:
+    rgba(
+      255,
+      255,
+      255,
+      0.09
+    );
+
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      0.03
+    );
+
+  color: #9298a2;
+}
+
+
+.g365-league-title {
+  margin: 2px 0 0;
+
+  max-width: 650px;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+
+  color: #ffffff;
+
+  font-size: 24px;
+
+  font-weight: 950;
+
+  line-height: 1.08;
+}
+
+
+.g365-league-team {
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  gap: 7px;
+
+  color: #a5abb5;
+
+  font-size: 12px;
+
+  font-weight: 700;
+
+  line-height: 1.35;
+}
+
+
+.g365-league-team::before {
+  content: "";
+
+  width: 6px;
+
+  height: 6px;
+
+  flex: 0 0 6px;
+
+  border-radius: 50%;
+
+  background:
+    linear-gradient(
+      135deg,
+      #ff2f19,
+      #ff8b16
+    );
+
+  box-shadow:
+    0 0 7px
+    rgba(
+      255,
+      85,
+      15,
+      0.55
+    );
+}
+
+
+/* ============================================================
+   HEADER ACTIONS
+============================================================ */
+
+.g365-league-actions {
+  display: flex;
+
+  align-items: center;
+
+  justify-content: flex-end;
+
+  gap: 8px;
+}
+
+
+.g365-league-action {
+  min-height: 36px;
+
+  padding:
+    0
+    14px;
+
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  border:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.09
+    );
+
+  border-radius: 7px;
+
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      0.025
+    );
+
+  color: #d1d5db;
+
+  font-size: 12px;
+
+  font-weight: 900;
+
+  line-height: 1.2;
+
+  text-decoration: none;
+
+  white-space: nowrap;
+
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+
+.g365-league-action:hover {
+  border-color:
+    rgba(
+      255,
+      120,
+      20,
+      0.35
+    );
+
+  color: #ffffff;
+}
+
+
+.g365-league-action-primary {
+  border-color:
+    rgba(
+      255,
+      90,
+      10,
+      0.38
+    );
+
+  background:
+    linear-gradient(
+      135deg,
+      #d61b15,
+      #ff4300,
+      #ff8514
+    );
+
+  color: #ffffff;
+}
+
+
+.g365-league-action-primary:hover {
+  border-color:
+    rgba(
+      255,
+      145,
+      35,
+      0.7
+    );
+
+  transform:
+    translateY(-1px);
+}
+
+
+/* ============================================================
+   NAVIGATION
+============================================================ */
+
+.g365-league-nav {
+  position: relative;
+
+  min-height: 48px;
+
+  display: flex;
+
+  align-items: stretch;
+
+  justify-content: center;
+
+  border-bottom:
+    1px solid
+    rgba(
+      255,
+      255,
+      255,
+      0.07
+    );
+
+  background: #09090a;
+
+  overflow-x: auto;
+
+  scrollbar-width: thin;
+}
+
+
+.g365-league-nav-inner {
+  width: max-content;
+
+  min-width:
+    min(
+      100%,
+      1100px
+    );
+
+  min-height: 48px;
+
+  display: flex;
+
+  align-items: stretch;
+
+  justify-content: center;
+}
+
+
+.g365-league-nav-link {
+  position: relative;
+
+  min-height: 48px;
+
+  padding:
+    0
+    16px;
+
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  border-left:
+    1px solid
+    transparent;
+
+  border-right:
+    1px solid
+    transparent;
+
+  color: #989ea8;
+
+  font-size: 12px;
+
+  font-weight: 900;
+
+  line-height: 1.2;
+
+  text-decoration: none;
+
+  white-space: nowrap;
+
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+
+.g365-league-nav-link:hover {
+  color: #ffffff;
+
+  background:
+    rgba(
+      255,
+      255,
+      255,
+      0.025
+    );
+}
+
+
+.g365-league-nav-link-active {
+  border-left-color:
+    rgba(
+      255,
+      80,
+      15,
+      0.08
+    );
+
+  border-right-color:
+    rgba(
+      255,
+      80,
+      15,
+      0.08
+    );
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(
+        175,
+        20,
+        15,
+        0.08
+      ),
+      rgba(
+        255,
+        75,
+        0,
+        0.025
+      )
+    );
+
+  color: #ffffff;
+}
+
+
+.g365-league-nav-link-active::after {
+  content: "";
+
+  position: absolute;
+
+  right: 10px;
+
+  bottom: 0;
+
+  left: 10px;
+
+  height: 3px;
+
+  border-radius:
+    2px
+    2px
+    0
+    0;
+
+  background:
+    linear-gradient(
+      90deg,
+      #e01b17,
+      #ff4f00,
+      #ff9518
+    );
+
+  box-shadow:
+    0 0 9px
+    rgba(
+      255,
+      75,
+      0,
+      0.3
+    );
+}
+
+
+/* ============================================================
+   PAGE CONTENT
+============================================================ */
+
+.g365-league-content {
+  min-width: 0;
+
+  padding-top: 0;
+}
+
+
+/* ============================================================
+   STANDARD PAGE DENSITY
+============================================================ */
+
+.g365-page {
+  padding:
+    18px
+    18px
+    34px;
+}
+
+
+.g365-page-container {
+  width:
+    min(
+      1500px,
+      100%
+    );
+
+  margin:
+    0 auto;
+}
+
+
+/* ============================================================
+   DESKTOP
+============================================================ */
+
+@media (
+  min-width: 1200px
+) {
+
+  .g365-league-header {
+    min-height: 88px;
+
+    grid-template-columns:
+      140px
+      minmax(0, 1fr)
+      auto;
+
+    padding:
+      8px
+      20px;
+  }
+
+
+  .g365-league-logo-wrap {
+    width: 130px;
+  }
+
+
+  .g365-league-logo {
+    width: 120px;
+  }
+
+
+  .g365-league-title {
+    font-size: 23px;
+  }
+
+
+  .g365-league-nav,
+  .g365-league-nav-inner,
+  .g365-league-nav-link {
+    min-height: 46px;
+  }
+
+
+  .g365-league-nav-link {
+    padding:
+      0
+      15px;
+
+    font-size: 12px;
+  }
+}
+
+
+/* ============================================================
+   TABLET
+============================================================ */
+
+@media (
+  max-width: 900px
+) {
+
+  .g365-league-header {
+    grid-template-columns:
+      90px
+      minmax(0, 1fr)
+      auto;
+
+    gap: 10px;
+
+    min-height: 82px;
+
+    padding:
+      8px
+      12px;
+  }
+
+
+  .g365-league-logo-wrap {
+    width: 84px;
+  }
+
+
+  .g365-league-logo {
+    width: 82px;
+  }
+
+
+  .g365-league-title {
+    max-width: 380px;
+
+    font-size: 20px;
+  }
+
+
+  .g365-league-badge {
+    min-height: 20px;
+
+    padding:
+      3px
+      7px;
+
+    font-size: 10px;
+  }
+
+
+  .g365-league-team {
+    font-size: 11px;
+  }
+
+
+  .g365-league-action {
+    min-height: 34px;
+
+    padding:
+      0
+      10px;
+
+    font-size: 11px;
+  }
+
+
+  .g365-league-nav {
+    justify-content: flex-start;
+  }
+
+
+  .g365-league-nav-inner {
+    justify-content: flex-start;
+  }
+
+
+  .g365-league-nav-link {
+    font-size: 11px;
+  }
+}
+
+
+/* ============================================================
+   MOBILE
+============================================================ */
+
+@media (
+  max-width: 620px
+) {
+
+  .g365-league-header {
+    grid-template-columns:
+      64px
+      minmax(0, 1fr);
+
+    min-height: 74px;
+
+    padding:
+      7px
+      9px;
+  }
+
+
+  .g365-league-logo-wrap {
+    width: 60px;
+  }
+
+
+  .g365-league-logo {
+    width: 58px;
+  }
+
+
+  .g365-league-identity {
+    justify-items: start;
+
+    text-align: left;
+  }
+
+
+  .g365-league-badges {
+    justify-content: flex-start;
+  }
+
+
+  .g365-league-title {
+    width: 100%;
+
+    max-width: none;
+
+    font-size: 18px;
+  }
+
+
+  .g365-league-badge {
+    min-height: 19px;
+
+    padding:
+      2px
+      6px;
+
+    font-size: 9px;
+  }
+
+
+  .g365-league-team {
+    justify-content: flex-start;
+
+    font-size: 10px;
+  }
+
+
+  .g365-league-actions {
+    grid-column:
+      1 /
+      -1;
+
+    width: 100%;
+
+    justify-content: flex-end;
+
+    margin-top: -2px;
+  }
+
+
+  .g365-league-action {
+    min-height: 32px;
+
+    padding:
+      0
+      9px;
+
+    font-size: 10px;
+  }
+
+
+  .g365-league-nav,
+  .g365-league-nav-inner,
+  .g365-league-nav-link {
+    min-height: 44px;
+  }
+
+
+  .g365-league-nav-link {
+    padding:
+      0
+      13px;
+
+    font-size: 11px;
+  }
+
+
+  .g365-page {
+    padding:
+      14px
+      10px
+      26px;
+  }
+}

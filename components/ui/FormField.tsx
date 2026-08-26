@@ -3,11 +3,13 @@ import type {
   InputHTMLAttributes,
 } from "react";
 
+
 type FormFieldProps =
   InputHTMLAttributes<HTMLInputElement> & {
     label: string;
     hint?: string;
   };
+
 
 export default function FormField({
   label,
@@ -24,6 +26,7 @@ export default function FormField({
         {label}
       </span>
 
+
       <input
         {...props}
         style={{
@@ -31,6 +34,7 @@ export default function FormField({
           ...props.style,
         }}
       />
+
 
       {hint ? (
         <span
@@ -43,33 +47,44 @@ export default function FormField({
   );
 }
 
+
 const styles: Record<
   string,
   CSSProperties
 > = {
   label: {
     display: "grid",
-    gap: "7px",
+
+    gap: "8px",
   },
+
 
   labelText: {
     color: "#e5e7eb",
 
-    fontSize: "13px",
+    fontSize: "15px",
+
     fontWeight: 800,
+
+    lineHeight: 1.35,
   },
+
 
   input: {
-    minHeight: "47px",
+    minHeight: "49px",
 
     padding:
-      "11px 13px",
+      "12px 14px",
+
+    fontSize: "14px",
   },
 
-  hint: {
-    color: "#737985",
 
-    fontSize: "11px",
-    lineHeight: 1.4,
+  hint: {
+    color: "#8b919c",
+
+    fontSize: "13px",
+
+    lineHeight: 1.45,
   },
 };

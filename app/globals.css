@@ -8,13 +8,14 @@
 
   --g365-charcoal: #101010;
   --g365-charcoal-light: #181818;
+
   --g365-panel: #111315;
   --g365-panel-hover: #181a1d;
 
   --g365-red: #ff1e1e;
   --g365-red-dark: #c90f16;
-  --g365-flame-red: #ff4500;
 
+  --g365-flame-red: #ff4500;
   --g365-orange: #ff8c00;
   --g365-gold: #ffb300;
 
@@ -28,8 +29,26 @@
   --g365-green: #22c55e;
   --g365-yellow: #facc15;
 
-  --g365-border: rgba(255, 255, 255, 0.10);
-  --g365-border-strong: rgba(255, 69, 0, 0.42);
+  --g365-border:
+    rgba(
+      255,
+      255,
+      255,
+      0.10
+    );
+
+  --g365-border-strong:
+    rgba(
+      255,
+      69,
+      0,
+      0.42
+    );
+
+
+  /* ========================================================
+     FLAME GRADIENTS
+     ======================================================== */
 
   --g365-flame-gradient:
     linear-gradient(
@@ -50,75 +69,280 @@
   --g365-panel-gradient:
     linear-gradient(
       145deg,
-      rgba(24, 24, 24, 0.98),
-      rgba(8, 8, 8, 0.99)
+      rgba(
+        24,
+        24,
+        24,
+        0.98
+      ),
+      rgba(
+        8,
+        8,
+        8,
+        0.99
+      )
     );
+
+
+  /* ========================================================
+     RADII
+     ======================================================== */
 
   --g365-radius-small: 8px;
   --g365-radius-medium: 12px;
   --g365-radius-large: 16px;
 
+
+  /* ========================================================
+     SHADOWS
+     ======================================================== */
+
   --g365-shadow-card:
-    0 20px 55px rgba(0, 0, 0, 0.48);
+    0 20px 55px
+    rgba(
+      0,
+      0,
+      0,
+      0.48
+    );
 
   --g365-shadow-flame:
-    0 0 28px rgba(255, 69, 0, 0.15);
+    0 0 28px
+    rgba(
+      255,
+      69,
+      0,
+      0.15
+    );
+
+
+  /* ========================================================
+     TYPOGRAPHY — READABILITY SCALE
+
+     The previous UI used many 8px–11px labels.
+     This scale establishes a more readable standard
+     throughout Gridiron365 V2.
+     ======================================================== */
+
+  --g365-font-xs: 11px;
+  --g365-font-sm: 12px;
+  --g365-font-md: 14px;
+  --g365-font-lg: 16px;
+  --g365-font-xl: 20px;
+  --g365-font-2xl: 24px;
+  --g365-font-3xl: 32px;
+
+  --g365-line-height-tight: 1.2;
+  --g365-line-height-normal: 1.45;
+  --g365-line-height-relaxed: 1.6;
 }
+
+
+/* ==========================================================
+   GLOBAL BOX MODEL
+   ========================================================== */
 
 * {
   box-sizing: border-box;
 }
 
+
+/* ==========================================================
+   DOCUMENT
+   ========================================================== */
+
 html {
   min-height: 100%;
-  background: var(--g365-black);
+
+  background:
+    var(
+      --g365-black
+    );
 }
+
+
+/* ==========================================================
+   BODY
+   ========================================================== */
 
 body {
   min-height: 100vh;
+
   margin: 0;
 
   background:
     radial-gradient(
       circle at 10% 0%,
-      rgba(255, 30, 30, 0.11),
+      rgba(
+        255,
+        30,
+        30,
+        0.11
+      ),
       transparent 32%
     ),
+
     radial-gradient(
       circle at 90% 8%,
-      rgba(255, 140, 0, 0.09),
+      rgba(
+        255,
+        140,
+        0,
+        0.09
+      ),
       transparent 30%
     ),
+
     linear-gradient(
       180deg,
       #080808 0%,
       #030303 100%
     );
 
-  color: var(--g365-text);
+  color:
+    var(
+      --g365-text
+    );
 
   font-family:
     Arial,
     Helvetica,
     sans-serif;
 
-  -webkit-font-smoothing: antialiased;
+  font-size:
+    var(
+      --g365-font-md
+    );
+
+  line-height:
+    var(
+      --g365-line-height-normal
+    );
+
+  -webkit-font-smoothing:
+    antialiased;
+
+  -moz-osx-font-smoothing:
+    grayscale;
 }
+
+
+/* ==========================================================
+   STANDARD TEXT READABILITY
+   ========================================================== */
+
+p,
+span,
+label,
+button,
+input,
+select,
+textarea,
+a,
+td,
+th {
+  line-height:
+    var(
+      --g365-line-height-normal
+    );
+}
+
+
+p {
+  font-size:
+    var(
+      --g365-font-md
+    );
+}
+
+
+small {
+  font-size:
+    var(
+      --g365-font-xs
+    );
+
+  line-height:
+    var(
+      --g365-line-height-normal
+    );
+}
+
+
+/* ==========================================================
+   HEADINGS
+
+   Do not globally inflate headings too much because
+   Gridiron365 already uses large page titles.
+   ========================================================== */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  line-height:
+    var(
+      --g365-line-height-tight
+    );
+}
+
+
+h1 {
+  font-size:
+    var(
+      --g365-font-3xl
+    );
+}
+
+
+h2 {
+  font-size:
+    var(
+      --g365-font-2xl
+    );
+}
+
+
+h3 {
+  font-size:
+    var(
+      --g365-font-xl
+    );
+}
+
+
+h4 {
+  font-size:
+    var(
+      --g365-font-lg
+    );
+}
+
+
+/* ==========================================================
+   FORM CONTROLS
+   ========================================================== */
 
 button,
 input,
 select,
 textarea {
-  font: inherit;
+  font:
+    inherit;
+
+  font-size:
+    var(
+      --g365-font-md
+    );
 }
+
 
 button {
   border: 0;
 }
 
-a {
-  color: inherit;
-}
 
 input,
 select,
@@ -127,62 +351,159 @@ textarea {
 
   border:
     1px solid
-    var(--g365-border);
+    var(
+      --g365-border
+    );
 
   border-radius:
-    var(--g365-radius-small);
+    var(
+      --g365-radius-small
+    );
 
   background:
-    rgba(5, 5, 5, 0.82);
+    rgba(
+      5,
+      5,
+      5,
+      0.82
+    );
 
   color:
-    var(--g365-text);
+    var(
+      --g365-text
+    );
 
   outline: none;
 
   transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease,
-    background 0.15s ease;
+    border-color
+      0.15s ease,
+    box-shadow
+      0.15s ease,
+    background
+      0.15s ease;
 }
+
 
 input::placeholder,
 textarea::placeholder {
   color:
-    var(--g365-text-muted);
+    var(
+      --g365-text-muted
+    );
 }
+
 
 input:hover,
 select:hover,
 textarea:hover {
   border-color:
-    rgba(255, 255, 255, 0.18);
+    rgba(
+      255,
+      255,
+      255,
+      0.18
+    );
 }
+
 
 input:focus,
 select:focus,
 textarea:focus {
   border-color:
-    var(--g365-flame-red);
+    var(
+      --g365-flame-red
+    );
 
   background:
-    rgba(10, 10, 10, 0.96);
+    rgba(
+      10,
+      10,
+      10,
+      0.96
+    );
 
   box-shadow:
     0 0 0 3px
-    rgba(255, 69, 0, 0.12);
+    rgba(
+      255,
+      69,
+      0,
+      0.12
+    );
 }
+
 
 input:disabled,
 select:disabled,
 textarea:disabled {
   opacity: 0.6;
-  cursor: not-allowed;
+
+  cursor:
+    not-allowed;
 }
+
+
+/* ==========================================================
+   LINKS
+   ========================================================== */
+
+a {
+  color: inherit;
+}
+
+
+/* ==========================================================
+   TABLE READABILITY
+   ========================================================== */
+
+table {
+  font-size:
+    var(
+      --g365-font-sm
+    );
+}
+
+
+th {
+  font-size:
+    var(
+      --g365-font-sm
+    );
+
+  line-height:
+    var(
+      --g365-line-height-normal
+    );
+}
+
+
+td {
+  font-size:
+    var(
+      --g365-font-md
+    );
+
+  line-height:
+    var(
+      --g365-line-height-normal
+    );
+}
+
+
+/* ==========================================================
+   ACCESSIBILITY / TEXT SELECTION
+   ========================================================== */
 
 ::selection {
   background:
-    rgba(255, 69, 0, 0.38);
+    rgba(
+      255,
+      69,
+      0,
+      0.38
+    );
 
-  color: #ffffff;
+  color:
+    #ffffff;
 }
