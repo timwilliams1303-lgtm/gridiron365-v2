@@ -1745,6 +1745,24 @@ export default function TraditionalDraftPage() {
     );
 
 
+  const liveSyncInFlightRef =
+    useRef(
+      false
+    );
+
+
+  const lastLiveSyncAtRef =
+    useRef(
+      0
+    );
+
+
+  const realtimeConnectedRef =
+    useRef(
+      false
+    );
+
+
   const teamMap =
     useMemo(
       () =>
@@ -3009,6 +3027,45 @@ export default function TraditionalDraftPage() {
     );
 
 
+
+
+  const syncAllMembers =
+    useCallback(
+      async (
+        drive:
+          boolean
+      ) => {
+        if (
+          !draft?.id ||
+          liveSyncInFlightRef.current
+        ) {
+          return;
+        }
+
+
+        liveSyncInFlightRef.current =
+          true;
+
+
+        try {
+          await refreshLiveState(
+            drive
+          );
+
+          lastLiveSyncAtRef.current =
+            Date.now();
+        } finally {
+          liveSyncInFlightRef.current =
+            false;
+        }
+      },
+      [
+        draft?.id,
+        refreshLiveState,
+      ]
+    );
+
+
   useEffect(
     () => {
       void loadStaticData();
@@ -3028,10 +3085,14 @@ export default function TraditionalDraftPage() {
       }
 
 
-      const slotChannel =
+      const draftId =
+        draft.id;
+
+
+      const realtimeChannel =
         supabase
           .channel(
-            `traditional-draft-slots:${draft.id}`
+            `traditional-draft-live:${draftId}`
           )
           .on(
             "postgres_changes",
@@ -3046,7 +3107,7 @@ export default function TraditionalDraftPage() {
                 "league_draft_slots",
 
               filter:
-                `draft_id=eq.${draft.id}`,
+                `draft_id=eq.${draftId}`,
             },
             (
               payload
@@ -3075,17 +3136,178 @@ export default function TraditionalDraftPage() {
               );
             }
           )
-          .subscribe();
+          .on(
+            "postgres_changes",
+            {
+              event:
+                "UPDATE",
+
+              schema:
+                "public",
+
+              table:
+                "league_drafts",
+
+              filter:
+                `id=eq.${draftId}`,
+            },
+            async (
+              payload
+            ) => {
+              const updatedDraft =
+                payload.new as
+                  DraftRow;
+
+
+              setDraft(
+                updatedDraft
+              );
+
+
+              const {
+                data:
+                  clockData,
+              } =
+                await supabase.rpc(
+                  "get_traditional_draft_clock_state",
+                  {
+                    p_draft_id:
+                      draftId,
+                  }
+                );
+
+
+              if (
+                clockData
+              ) {
+                setClock(
+                  clockData as
+                    ClockState
+                );
+              }
+            }
+          )
+          .on(
+            "postgres_changes",
+            {
+              event:
+                "INSERT",
+
+              schema:
+                "public",
+
+              table:
+                "league_draft_picks",
+
+              filter:
+                `draft_id=eq.${draftId}`,
+            },
+            async (
+              payload
+            ) => {
+              const inserted =
+                payload.new as
+                  DraftPickRow;
+
+
+              setPicks(
+                (
+                  current
+                ) => {
+                  if (
+                    current.some(
+                      (
+                        pick
+                      ) =>
+                        pick.id ===
+                        inserted.id
+                    )
+                  ) {
+                    return current;
+                  }
+
+
+                  return [
+                    ...current,
+                    inserted,
+                  ].sort(
+                    (
+                      a,
+                      b
+                    ) =>
+                      a.overall_pick -
+                      b.overall_pick
+                  );
+                }
+              );
+
+
+              const {
+                data:
+                  clockData,
+              } =
+                await supabase.rpc(
+                  "get_traditional_draft_clock_state",
+                  {
+                    p_draft_id:
+                      draftId,
+                  }
+                );
+
+
+              if (
+                clockData
+              ) {
+                setClock(
+                  clockData as
+                    ClockState
+                );
+              }
+
+
+              /*
+               * Pull the rest of the authoritative draft snapshot too.
+               * This keeps ticker, roster dropdown, board, current pick,
+               * and available-player removal aligned on every member screen.
+               */
+              void syncAllMembers(
+                false
+              );
+            }
+          )
+          .subscribe(
+            (
+              status
+            ) => {
+              realtimeConnectedRef.current =
+                status ===
+                "SUBSCRIBED";
+
+
+              if (
+                status ===
+                "SUBSCRIBED"
+              ) {
+                void syncAllMembers(
+                  false
+                );
+              }
+            }
+          );
 
 
       return () => {
+        realtimeConnectedRef.current =
+          false;
+
         void supabase.removeChannel(
-          slotChannel
+          realtimeChannel
         );
       };
     },
     [
       draft?.id,
+      syncAllMembers,
     ]
   );
 
@@ -3178,6 +3400,10 @@ export default function TraditionalDraftPage() {
                   new Date()
                     .toISOString(),
               });
+
+              void syncAllMembers(
+                false
+              );
             }
           }
         );
@@ -3195,6 +3421,7 @@ export default function TraditionalDraftPage() {
       draft?.id,
       currentUserId,
       leagueId,
+      syncAllMembers,
     ]
   );
 
@@ -3208,7 +3435,7 @@ export default function TraditionalDraftPage() {
       }
 
 
-      void refreshLiveState(
+      void syncAllMembers(
         false
       );
     },
@@ -3229,14 +3456,25 @@ export default function TraditionalDraftPage() {
       }
 
 
+      /*
+       * Safety heartbeat.
+       *
+       * Realtime is the primary sync path. This heartbeat is only a
+       * recovery layer so a browser that briefly misses an event quickly
+       * converges back to the same authoritative Supabase state.
+       *
+       * drive=true keeps timeout / CPU / Auto-Pick processing authoritative
+       * in the database. The database function is responsible for making at
+       * most one due pick.
+       */
       const timer =
         window.setInterval(
           () => {
-            void refreshLiveState(
+            void syncAllMembers(
               true
             );
           },
-          1000
+          1250
         );
 
 
@@ -3250,7 +3488,77 @@ export default function TraditionalDraftPage() {
       draft?.id,
       draft?.status,
       draft?.is_paused,
-      refreshLiveState,
+      syncAllMembers,
+    ]
+  );
+
+
+  useEffect(
+    () => {
+      if (
+        !draft?.id
+      ) {
+        return;
+      }
+
+
+      const recover =
+        () => {
+          if (
+            document.visibilityState ===
+            "visible"
+          ) {
+            void syncAllMembers(
+              false
+            );
+          }
+        };
+
+
+      const handleOnline =
+        () => {
+          void syncAllMembers(
+            false
+          );
+        };
+
+
+      window.addEventListener(
+        "focus",
+        recover
+      );
+
+      window.addEventListener(
+        "online",
+        handleOnline
+      );
+
+      document.addEventListener(
+        "visibilitychange",
+        recover
+      );
+
+
+      return () => {
+        window.removeEventListener(
+          "focus",
+          recover
+        );
+
+        window.removeEventListener(
+          "online",
+          handleOnline
+        );
+
+        document.removeEventListener(
+          "visibilitychange",
+          recover
+        );
+      };
+    },
+    [
+      draft?.id,
+      syncAllMembers,
     ]
   );
 
