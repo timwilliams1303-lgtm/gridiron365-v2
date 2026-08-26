@@ -1878,7 +1878,9 @@ export default function TraditionalDraftPage() {
             (
               pick
             ) =>
-              pick.player_id
+              Number(
+                pick.player_id
+              )
           )
         ),
       [
@@ -2272,27 +2274,49 @@ export default function TraditionalDraftPage() {
     );
 
 
-  const isMyTurn =
+  const isCurrentOwnerTurn =
     Boolean(
       draft
         ?.status ===
         "live" &&
       !draft.is_paused &&
-      myTeamId &&
-      currentTeamId ===
-        myTeamId &&
+      currentTeam
+        ?.owner_id &&
+      currentTeam.owner_id ===
+        currentUserId &&
       !currentSlot
         ?.is_cpu
     );
 
 
+  const isMyTurn =
+    Boolean(
+      isCurrentOwnerTurn
+    );
+
+
+  /*
+   * The commissioner may make the current selection for a human owner who is
+   * drafting in person. CPU slots remain automatic.
+   */
   const canDraft =
     Boolean(
-      isMyTurn &&
+      draft
+        ?.status ===
+        "live" &&
+      !draft.is_paused &&
       selectedPlayer &&
+      !working &&
       !currentSlot
-        ?.auto_pick &&
-      !working
+        ?.is_cpu &&
+      (
+        (
+          isMyTurn &&
+          !currentSlot
+            ?.auto_pick
+        ) ||
+        isCommissioner
+      )
     );
 
 
@@ -3378,9 +3402,75 @@ export default function TraditionalDraftPage() {
             async (
               payload
             ) => {
-              const inserted =
+              const rawInserted =
                 payload.new as
                   DraftPickRow;
+
+
+              const inserted: DraftPickRow =
+                {
+                  ...rawInserted,
+
+                  id:
+                    Number(
+                      rawInserted.id
+                    ),
+
+                  player_id:
+                    Number(
+                      rawInserted.player_id
+                    ),
+
+                  fantasy_team_id:
+                    Number(
+                      rawInserted.fantasy_team_id
+                    ),
+
+                  draft_slot:
+                    Number(
+                      rawInserted.draft_slot
+                    ),
+
+                  overall_pick:
+                    Number(
+                      rawInserted.overall_pick
+                    ),
+
+                  round_number:
+                    Number(
+                      rawInserted.round_number
+                    ),
+
+                  pick_in_round:
+                    Number(
+                      rawInserted.pick_in_round
+                    ),
+                };
+
+
+              setSelectedPlayerId(
+                (
+                  current
+                ) =>
+                  current ===
+                  inserted.player_id
+                    ? null
+                    : current
+              );
+
+
+              setQueueIds(
+                (
+                  current
+                ) =>
+                  current.filter(
+                    (
+                      playerId
+                    ) =>
+                      playerId !==
+                      inserted.player_id
+                  )
+              );
 
 
               setPicks(
@@ -3463,6 +3553,67 @@ export default function TraditionalDraftPage() {
 
             }
           )
+          .on(
+            "postgres_changes",
+            {
+              event:
+                "DELETE",
+
+              schema:
+                "public",
+
+              table:
+                "league_draft_picks",
+            },
+            (
+              payload
+            ) => {
+              const deleted =
+                payload.old as
+                  Partial<DraftPickRow>;
+
+
+              if (
+                deleted.draft_id &&
+                deleted.draft_id !==
+                  draftId
+              ) {
+                return;
+              }
+
+
+              if (
+                deleted.id ===
+                undefined ||
+                deleted.id ===
+                null
+              ) {
+                return;
+              }
+
+
+              const deletedId =
+                Number(
+                  deleted.id
+                );
+
+
+              setPicks(
+                (
+                  current
+                ) =>
+                  current.filter(
+                    (
+                      pick
+                    ) =>
+                      Number(
+                        pick.id
+                      ) !==
+                      deletedId
+                  )
+              );
+            }
+          )
           .subscribe(
             (
               status
@@ -3532,6 +3683,44 @@ export default function TraditionalDraftPage() {
         };
 
 
+      const touchPresence =
+        async () => {
+          await supabase.rpc(
+            "touch_traditional_draft_presence",
+            {
+              p_draft_id:
+                draft.id,
+            }
+          );
+
+
+          /*
+           * Any connected draft room may run this safe sweep. Only owners who
+           * previously had a presence heartbeat and have since gone stale are
+           * moved to Auto-Pick.
+           */
+          await supabase.rpc(
+            "sweep_traditional_draft_offline_members",
+            {
+              p_draft_id:
+                draft.id,
+            }
+          );
+        };
+
+
+      const markMeOffline =
+        () => {
+          void supabase.rpc(
+            "mark_my_traditional_draft_offline",
+            {
+              p_draft_id:
+                draft.id,
+            }
+          );
+        };
+
+
       channel
         .on(
           "presence",
@@ -3579,12 +3768,41 @@ export default function TraditionalDraftPage() {
                   new Date()
                     .toISOString(),
               });
+
+
+              await touchPresence();
             }
           }
         );
 
 
+      const presenceHeartbeat =
+        window.setInterval(
+          () => {
+            void touchPresence();
+          },
+          3000
+        );
+
+
+      window.addEventListener(
+        "pagehide",
+        markMeOffline
+      );
+
+
       return () => {
+        window.clearInterval(
+          presenceHeartbeat
+        );
+
+        window.removeEventListener(
+          "pagehide",
+          markMeOffline
+        );
+
+        markMeOffline();
+
         void channel.untrack();
 
         void supabase.removeChannel(
@@ -4189,7 +4407,7 @@ export default function TraditionalDraftPage() {
       if (
         !turnSoundsOn ||
         muted ||
-        !isMyTurn ||
+        !isCurrentOwnerTurn ||
         !clock ||
         lastTurnAnnouncedRef.current ===
           clock.overallPick
@@ -4235,7 +4453,7 @@ export default function TraditionalDraftPage() {
     [
       turnSoundsOn,
       muted,
-      isMyTurn,
+      isCurrentOwnerTurn,
       clock,
     ]
   );
@@ -4356,7 +4574,14 @@ export default function TraditionalDraftPage() {
             targetPlayerId,
 
           p_pick_type:
-            "manual",
+            (
+              isCommissioner &&
+              currentTeam
+                ?.owner_id !==
+                currentUserId
+            )
+              ? "commissioner"
+              : "manual",
         }
       );
 
