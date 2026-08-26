@@ -1071,9 +1071,9 @@ function clampProbability(
   value: number
 ) {
   return Math.max(
-    2,
+    1,
     Math.min(
-      98,
+      99,
       value
     )
   );
@@ -1122,45 +1122,31 @@ function getWinProbabilities(
 
 
   /*
-   * Compact scoreboard estimate.
+   * Keep this synchronized with Matchup Detail.
    *
-   * This uses data already available on the Matchups page:
-   * current score + unfinished starters.
-   *
-   * When true player projections are added, replace this
-   * estimate with the final projection-based win model.
+   * matchups.service.ts maps each team's projectedPoints
+   * directly from detail.expectedFinalPoints.
    */
 
-  const awayExpectedRemaining =
-    matchup.away.playersRemaining *
-    7.5;
+  const expectedDifference =
+    matchup.away.projectedPoints -
+    matchup.home.projectedPoints;
 
 
-  const homeExpectedRemaining =
-    matchup.home.playersRemaining *
-    7.5;
-
-
-  const awayExpectedFinal =
-    matchup.away.points +
-    awayExpectedRemaining;
-
-
-  const homeExpectedFinal =
-    matchup.home.points +
-    homeExpectedRemaining;
-
-
-  const difference =
-    awayExpectedFinal -
-    homeExpectedFinal;
+  const rawAway =
+    100 /
+    (
+      1 +
+      Math.exp(
+        -expectedDifference /
+        14
+      )
+    );
 
 
   const awayProbability =
     clampProbability(
-      50 +
-      difference *
-        1.35
+      rawAway
     );
 
 
@@ -1491,6 +1477,9 @@ function MatchupLinkCard({
           points={
             matchup.away.points
           }
+          projectedPoints={
+            matchup.away.projectedPoints
+          }
           isMyTeam={
             matchup.away.isMyTeam
           }
@@ -1529,6 +1518,9 @@ function MatchupLinkCard({
           }
           points={
             matchup.home.points
+          }
+          projectedPoints={
+            matchup.home.projectedPoints
           }
           isMyTeam={
             matchup.home.isMyTeam
@@ -1658,6 +1650,7 @@ function MatchupLinkCard({
 function TeamRow({
   teamName,
   points,
+  projectedPoints,
   isMyTeam,
   isWinner,
   isLive,
@@ -1669,6 +1662,8 @@ function TeamRow({
   teamName: string;
 
   points: number;
+
+  projectedPoints: number;
 
   isMyTeam: boolean;
 
@@ -1806,16 +1801,34 @@ function TeamRow({
           styles.scoreBlock
         }
       >
-        {winProbability !==
-        null ? (
+        <div
+          style={
+            styles.projectionStack
+          }
+        >
           <span
             style={
-              styles.teamProbability
+              styles.teamProjection
             }
           >
-            {winProbability}%
+            PROJ{" "}
+            {formatPoints(
+              projectedPoints
+            )}
           </span>
-        ) : null}
+
+
+          {winProbability !==
+          null ? (
+            <span
+              style={
+                styles.teamProbability
+              }
+            >
+              {winProbability}% WIN
+            </span>
+          ) : null}
+        </div>
 
 
         <strong
@@ -2794,10 +2807,43 @@ const styles = {
       "flex",
 
     alignItems:
-      "baseline",
+      "center",
 
     gap:
-      "7px",
+      "9px",
+  },
+
+
+  projectionStack: {
+    display:
+      "grid",
+
+    justifyItems:
+      "end",
+
+    gap:
+      "2px",
+  },
+
+
+  teamProjection: {
+    color:
+      "#ff942f",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      950,
+
+    letterSpacing:
+      ".03em",
+
+    fontVariantNumeric:
+      "tabular-nums",
+
+    whiteSpace:
+      "nowrap",
   },
 
 
