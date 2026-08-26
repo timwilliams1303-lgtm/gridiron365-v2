@@ -1745,18 +1745,6 @@ export default function TraditionalDraftPage() {
     );
 
 
-  const liveSyncInFlightRef =
-    useRef(
-      false
-    );
-
-
-  const lastLiveSyncAtRef =
-    useRef(
-      0
-    );
-
-
   const realtimeConnectedRef =
     useRef(
       false
@@ -3029,43 +3017,6 @@ export default function TraditionalDraftPage() {
 
 
 
-  const syncAllMembers =
-    useCallback(
-      async (
-        drive:
-          boolean
-      ) => {
-        if (
-          !draft?.id ||
-          liveSyncInFlightRef.current
-        ) {
-          return;
-        }
-
-
-        liveSyncInFlightRef.current =
-          true;
-
-
-        try {
-          await refreshLiveState(
-            drive
-          );
-
-          lastLiveSyncAtRef.current =
-            Date.now();
-        } finally {
-          liveSyncInFlightRef.current =
-            false;
-        }
-      },
-      [
-        draft?.id,
-        refreshLiveState,
-      ]
-    );
-
-
   useEffect(
     () => {
       void loadStaticData();
@@ -3265,14 +3216,6 @@ export default function TraditionalDraftPage() {
               }
 
 
-              /*
-               * Pull the rest of the authoritative draft snapshot too.
-               * This keeps ticker, roster dropdown, board, current pick,
-               * and available-player removal aligned on every member screen.
-               */
-              void syncAllMembers(
-                false
-              );
             }
           )
           .subscribe(
@@ -3284,14 +3227,6 @@ export default function TraditionalDraftPage() {
                 "SUBSCRIBED";
 
 
-              if (
-                status ===
-                "SUBSCRIBED"
-              ) {
-                void syncAllMembers(
-                  false
-                );
-              }
             }
           );
 
@@ -3307,7 +3242,6 @@ export default function TraditionalDraftPage() {
     },
     [
       draft?.id,
-      syncAllMembers,
     ]
   );
 
@@ -3400,10 +3334,6 @@ export default function TraditionalDraftPage() {
                   new Date()
                     .toISOString(),
               });
-
-              void syncAllMembers(
-                false
-              );
             }
           }
         );
@@ -3421,7 +3351,6 @@ export default function TraditionalDraftPage() {
       draft?.id,
       currentUserId,
       leagueId,
-      syncAllMembers,
     ]
   );
 
@@ -3429,13 +3358,17 @@ export default function TraditionalDraftPage() {
   useEffect(
     () => {
       if (
-        !draft
+        !draft?.id
       ) {
         return;
       }
 
 
-      void syncAllMembers(
+      /*
+       * One authoritative snapshot when this draft first loads.
+       * After that, Realtime drives the visible UI.
+       */
+      void refreshLiveState(
         false
       );
     },
@@ -3457,24 +3390,33 @@ export default function TraditionalDraftPage() {
 
 
       /*
-       * Safety heartbeat.
+       * LIGHTWEIGHT DRAFT DRIVER
        *
-       * Realtime is the primary sync path. This heartbeat is only a
-       * recovery layer so a browser that briefly misses an event quickly
-       * converges back to the same authoritative Supabase state.
+       * Do not reload all visible draft state every second.
+       * That caused the tracker to continually re-render/flicker.
        *
-       * drive=true keeps timeout / CPU / Auto-Pick processing authoritative
-       * in the database. The database function is responsible for making at
-       * most one due pick.
+       * This heartbeat only asks the authoritative database to process a
+       * pick if one is actually due. Any real change is then broadcast to
+       * every draft room through Supabase Realtime.
        */
       const timer =
         window.setInterval(
           () => {
-            void syncAllMembers(
-              true
+            if (
+              draft.is_paused
+            ) {
+              return;
+            }
+
+            void supabase.rpc(
+              "drive_traditional_draft",
+              {
+                p_draft_id:
+                  draft.id,
+              }
             );
           },
-          1250
+          1000
         );
 
 
@@ -3488,7 +3430,6 @@ export default function TraditionalDraftPage() {
       draft?.id,
       draft?.status,
       draft?.is_paused,
-      syncAllMembers,
     ]
   );
 
@@ -3508,7 +3449,7 @@ export default function TraditionalDraftPage() {
             document.visibilityState ===
             "visible"
           ) {
-            void syncAllMembers(
+            void refreshLiveState(
               false
             );
           }
@@ -3517,7 +3458,7 @@ export default function TraditionalDraftPage() {
 
       const handleOnline =
         () => {
-          void syncAllMembers(
+          void refreshLiveState(
             false
           );
         };
@@ -3558,7 +3499,6 @@ export default function TraditionalDraftPage() {
     },
     [
       draft?.id,
-      syncAllMembers,
     ]
   );
 
