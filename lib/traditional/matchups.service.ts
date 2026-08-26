@@ -2,6 +2,10 @@ import type {
   SupabaseClient,
 } from "@supabase/supabase-js";
 
+import {
+  getTraditionalMatchupDetailData,
+} from "@/lib/traditional/matchup-detail.service";
+
 
 export type TraditionalMatchupPlayer = {
   playerId: number;
@@ -1339,8 +1343,173 @@ export async function getTraditionalMatchupsData(
       );
 
 
+  /*
+   * =====================================================
+   * SYNC SCOREBOARD WITH MATCHUP DETAIL
+   * =====================================================
+   *
+   * Matchup Detail is the authoritative presentation model for
+   * weekly points, projections, live/final state and remaining
+   * starters. Re-hydrate each scoreboard matchup from that same
+   * service so the card and detail screen cannot disagree.
+   */
+  const syncedMatchups: TraditionalMatchupRow[] =
+    await Promise.all(
+      matchups.map(
+        async (matchup) => {
+          const detail =
+            await getTraditionalMatchupDetailData(
+              supabase,
+              leagueId,
+              matchup.matchupId,
+              myFantasyTeamId
+            );
+
+          const mapTeam = (
+            team: typeof detail.home
+          ): TraditionalMatchupTeam => ({
+            fantasyTeamId:
+              team.fantasyTeamId,
+
+            teamName:
+              team.teamName,
+
+            points:
+              team.points,
+
+            // This intentionally matches the number shown in the
+            // Matchup Detail scoreboard. Before kickoff this equals
+            // the weekly projection; while games are live it becomes
+            // the expected final score.
+            projectedPoints:
+              team.expectedFinalPoints,
+
+            playersLive:
+              team.playersLive,
+
+            playersRemaining:
+              team.playersRemaining,
+
+            isWinner:
+              team.isWinner,
+
+            isMyTeam:
+              team.isMyTeam,
+
+            starters:
+              team.starters.map(
+                (player) => ({
+                  playerId:
+                    player.playerId,
+
+                  fullName:
+                    player.fullName,
+
+                  position:
+                    player.position,
+
+                  teamAbbreviation:
+                    player.teamAbbreviation,
+
+                  headshotUrl:
+                    player.headshotUrl,
+
+                  lineupSlot:
+                    player.lineupSlot,
+
+                  slotIndex:
+                    player.slotIndex,
+
+                  fantasyPoints:
+                    player.fantasyPoints,
+
+                  projectedPoints:
+                    player.projectedPoints,
+
+                  isLive:
+                    Boolean(
+                      player.scoreIsLive ||
+                      player.gameContext
+                        ?.isActuallyLive
+                    ),
+
+                  isFinal:
+                    Boolean(
+                      player.scoreIsFinal ||
+                      player.gameContext
+                        ?.statusCompleted
+                    ),
+
+                  isLocked:
+                    player.isLocked,
+
+                  status:
+                    getStatus(
+                      Boolean(
+                        player.scoreIsLive ||
+                        player.gameContext
+                          ?.isActuallyLive
+                      ),
+                      Boolean(
+                        player.scoreIsFinal ||
+                        player.gameContext
+                          ?.statusCompleted
+                      )
+                    ),
+                })
+              ),
+          });
+
+          return {
+            matchupId:
+              detail.matchupId,
+
+            week:
+              detail.week,
+
+            home:
+              mapTeam(
+                detail.home
+              ),
+
+            away:
+              mapTeam(
+                detail.away
+              ),
+
+            isLive:
+              detail.isLive ||
+              detail.liveGames.some(
+                (game) =>
+                  game.isActuallyLive
+              ),
+
+            isFinal:
+              detail.isFinal,
+
+            tied:
+              detail.tied,
+
+            status:
+              getStatus(
+                detail.isLive ||
+                  detail.liveGames.some(
+                    (game) =>
+                      game.isActuallyLive
+                  ),
+                detail.isFinal
+              ),
+
+            isMyMatchup:
+              matchup.isMyMatchup,
+          };
+        }
+      )
+    );
+
+
   const myMatchup =
-    matchups.find(
+    syncedMatchups.find(
       (
         matchup
       ) =>
@@ -1356,7 +1525,8 @@ export async function getTraditionalMatchupsData(
 
     regularSeasonWeeks,
 
-    matchups,
+    matchups:
+      syncedMatchups,
 
     myMatchup,
   };
