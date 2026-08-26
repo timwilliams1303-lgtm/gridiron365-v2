@@ -37,6 +37,54 @@ function points(
 }
 
 
+function kickoffLabel(
+  value:
+    string |
+    null
+) {
+  if (
+    !value
+  ) {
+    return "—";
+  }
+
+
+  const date =
+    new Date(
+      value
+    );
+
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "—";
+  }
+
+
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      weekday:
+        "short",
+
+      hour:
+        "numeric",
+
+      minute:
+        "2-digit",
+
+      timeZone:
+        "America/New_York",
+    }
+  ).format(
+    date
+  );
+}
+
+
 function quarter(
   period:
     number |
@@ -131,7 +179,16 @@ function playerStatus(
   }
 
 
-  return "—";
+  if (
+    player.nflOpponent
+  ) {
+    return kickoffLabel(
+      player.kickoffAt
+    );
+  }
+
+
+  return "BYE";
 }
 
 
@@ -139,18 +196,8 @@ function calculateSimpleWinProbability(
   away:
     MatchupDetailTeam,
   home:
-    MatchupDetailTeam,
-  awayCurrent: number,
-  homeCurrent: number
+    MatchupDetailTeam
 ) {
-  /*
-   * Temporary win-probability model.
-   *
-   * Both teams must have starters. Current/displayed fantasy
-   * points are used immediately. Remaining-player expectation
-   * stays intentionally simple until true projections exist.
-   */
-
   if (
     away.starters.length ===
       0 ||
@@ -168,8 +215,8 @@ function calculateSimpleWinProbability(
       0
   ) {
     if (
-      awayCurrent ===
-      homeCurrent
+      away.points ===
+      home.points
     ) {
       return {
         away: 50,
@@ -180,43 +227,23 @@ function calculateSimpleWinProbability(
 
     return {
       away:
-        awayCurrent >
-        homeCurrent
+        away.points >
+        home.points
           ? 100
           : 0,
 
       home:
-        homeCurrent >
-        awayCurrent
+        home.points >
+        away.points
           ? 100
           : 0,
     };
   }
 
 
-  const awayExpectedRemaining =
-    away.playersRemaining *
-    8;
-
-
-  const homeExpectedRemaining =
-    home.playersRemaining *
-    8;
-
-
-  const awayExpectedFinal =
-    awayCurrent +
-    awayExpectedRemaining;
-
-
-  const homeExpectedFinal =
-    homeCurrent +
-    homeExpectedRemaining;
-
-
   const expectedDifference =
-    awayExpectedFinal -
-    homeExpectedFinal;
+    away.expectedFinalPoints -
+    home.expectedFinalPoints;
 
 
   const rawAway =
@@ -378,9 +405,7 @@ export default async function TraditionalMatchupDetailPage({
   const winProbability =
     calculateSimpleWinProbability(
       data.away,
-      data.home,
-      awayDisplayPoints,
-      homeDisplayPoints
+      data.home
     );
 
 
@@ -482,6 +507,9 @@ export default async function TraditionalMatchupDetailPage({
             playersRemaining={
               data.away.playersRemaining
             }
+            projectedPoints={
+              data.away.expectedFinalPoints
+            }
           />
 
 
@@ -561,6 +589,9 @@ export default async function TraditionalMatchupDetailPage({
             }
             playersRemaining={
               data.home.playersRemaining
+            }
+            projectedPoints={
+              data.home.expectedFinalPoints
             }
             right
           />
@@ -975,6 +1006,7 @@ function ScoreTeam({
   displayPoints,
   playersLive,
   playersRemaining,
+  projectedPoints,
   right = false,
 }: {
   team:
@@ -985,6 +1017,8 @@ function ScoreTeam({
   playersLive: number;
 
   playersRemaining: number;
+
+  projectedPoints: number;
 
   right?: boolean;
 }) {
@@ -1088,6 +1122,17 @@ function ScoreTeam({
           {playersRemaining} REMAINING
         </span>
       </div>
+
+
+      <span
+        style={
+          styles.teamProjection
+        }
+      >
+        PROJ {points(
+          projectedPoints
+        )}
+      </span>
     </div>
   );
 
@@ -1378,6 +1423,14 @@ function CompactRoster({
                 styles.rightText
               }
             >
+              PROJ
+            </span>
+
+            <span
+              style={
+                styles.rightText
+              }
+            >
               PTS
             </span>
           </div>
@@ -1405,6 +1458,16 @@ function CompactRoster({
             <strong>
               TOTAL
             </strong>
+
+            <span
+              style={
+                styles.totalProjection
+              }
+            >
+              PROJ {points(
+                team.expectedFinalPoints
+              )}
+            </span>
 
             <strong>
               {points(
@@ -1620,8 +1683,8 @@ function CompactPlayerRow({
         }
       >
         {displayedOpponent
-          ? `vs ${displayedOpponent}`
-          : "—"}
+          ? `${player.opponentPrefix ?? "vs"} ${displayedOpponent}`
+          : "BYE"}
       </span>
 
 
@@ -1638,6 +1701,26 @@ function CompactPlayerRow({
           player
         )}
       </span>
+
+
+      <strong
+        title={
+          player.projectionSource ===
+            "season_average"
+            ? "Weekly baseline from current season projection"
+            : "No projection available"
+        }
+        style={
+          styles.playerProjection
+        }
+      >
+        {player.projectedPoints >
+        0
+          ? points(
+              player.projectedPoints
+            )
+          : "—"}
+      </strong>
 
 
       <strong
@@ -1976,6 +2059,51 @@ const styles = {
       "#8a919b",
 
     fontSize: "11px",
+
+    fontWeight:
+      900,
+  },
+
+
+  teamProjection: {
+    color:
+      "#ff9a43",
+
+    fontSize:
+      "11px",
+
+    fontWeight:
+      900,
+  },
+
+
+  playerProjection: {
+    justifySelf:
+      "end",
+
+    color:
+      "#ff9a43",
+
+    fontSize:
+      "13px",
+
+    fontVariantNumeric:
+      "tabular-nums",
+  },
+
+
+  totalProjection: {
+    marginLeft:
+      "auto",
+
+    marginRight:
+      "16px",
+
+    color:
+      "#ff9a43",
+
+    fontSize:
+      "12px",
 
     fontWeight:
       900,
@@ -2413,7 +2541,7 @@ const styles = {
       "grid",
 
     gridTemplateColumns:
-      "minmax(340px,1fr) minmax(280px,.85fr) minmax(340px,1fr)",
+      "minmax(410px,1fr) minmax(270px,.72fr) minmax(410px,1fr)",
 
     gap:
       "7px",
@@ -2778,7 +2906,7 @@ const styles = {
       "grid",
 
     gridTemplateColumns:
-      "36px minmax(125px,1fr) 42px 58px 42px",
+      "36px minmax(125px,1fr) 48px 76px 48px 48px",
 
     alignItems:
       "center",
@@ -2816,7 +2944,7 @@ const styles = {
       "grid",
 
     gridTemplateColumns:
-      "36px minmax(125px,1fr) 42px 58px 42px",
+      "36px minmax(125px,1fr) 48px 76px 48px 48px",
 
     alignItems:
       "center",

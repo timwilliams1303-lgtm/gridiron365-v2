@@ -165,15 +165,6 @@ export default async function TraditionalTeamPage({
     );
 
 
-  const starters =
-    teamData.roster.filter(
-      (
-        player
-      ) =>
-        player.isStarter
-    );
-
-
   const bench =
     teamData.roster.filter(
       (
@@ -397,100 +388,6 @@ export default async function TraditionalTeamPage({
               teamData.rosterSettings
             }
           />
-        </section>
-
-
-        {/* ==========================================
-            CURRENT STARTERS
-        =========================================== */}
-
-        <section>
-          <div
-            style={
-              styles.sectionHeader
-            }
-          >
-            <div>
-              <p
-                style={
-                  styles.sectionEyebrow
-                }
-              >
-                CURRENT LINEUP
-              </p>
-
-              <h2
-                style={
-                  styles.sectionTitle
-                }
-              >
-                Starting Lineup
-              </h2>
-            </div>
-
-            <span
-              style={
-                styles.sectionMeta
-              }
-            >
-              {starters.length} starter
-              {starters.length ===
-              1
-                ? ""
-                : "s"}
-            </span>
-          </div>
-
-
-          <Card
-            style={
-              styles.rosterCard
-            }
-          >
-            {starters.length >
-            0 ? (
-              <div
-                style={
-                  styles.playerList
-                }
-              >
-                {starters.map(
-                  (
-                    player
-                  ) => (
-                    <PlayerRow
-                      key={
-                        player.playerId
-                      }
-
-                      player={
-                        player
-                      }
-                    />
-                  )
-                )}
-              </div>
-            ) : (
-              <div
-                style={
-                  styles.emptyState
-                }
-              >
-                <strong>
-                  No starting lineup
-                  prepared
-                </strong>
-
-                <span>
-                  Week{" "}
-                  {teamData.activeWeek}{" "}
-                  starting lineup slots
-                  will appear here once
-                  players are assigned.
-                </span>
-              </div>
-            )}
-          </Card>
         </section>
 
 

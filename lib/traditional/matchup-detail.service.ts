@@ -163,6 +163,23 @@ export type MatchupDetailPlayer = {
     string |
     null;
 
+  opponentPrefix:
+    "vs" |
+    "@" |
+    null;
+
+  kickoffAt:
+    string |
+    null;
+
+  projectedPoints:
+    number;
+
+  projectionSource:
+    "weekly" |
+    "season_average" |
+    "none";
+
   injuryStatus:
     string |
     null;
@@ -245,6 +262,10 @@ export type MatchupDetailTeam = {
   teamName: string;
 
   points: number;
+
+  projectedPoints: number;
+
+  expectedFinalPoints: number;
 
   isMyTeam: boolean;
 
@@ -544,6 +565,16 @@ type StatsRow = {
 type NflGameRow = {
   id: number;
 
+  season: number;
+
+  season_type: number;
+
+  week: number;
+
+  kickoff_at:
+    string |
+    null;
+
   home_team_id: number;
 
   away_team_id: number;
@@ -552,7 +583,50 @@ type NflGameRow = {
     string |
     null;
 
+  status_detail:
+    string |
+    null;
+
   status_completed: boolean;
+};
+
+
+type ProjectionRow = {
+  player_id: number;
+
+  projected_points:
+    number |
+    string |
+    null;
+};
+
+
+type WeeklyProjectionRow = {
+  player_id: number;
+  opponent_abbreviation: string | null;
+  projected_fantasy_points_ppr: number | string | null;
+};
+
+
+type RecentFormRow = {
+  player_id: number;
+  last_three_average: number | string | null;
+  season_average: number | string | null;
+};
+
+
+type MatchupRatingRow = {
+  defense_team_abbreviation: string;
+  fantasy_position: string;
+  matchup_score: number | string | null;
+};
+
+
+type PracticeReportRow = {
+  player_id: number;
+  practice_status: string | null;
+  injury_status: string | null;
+  report_date: string | null;
 };
 
 
@@ -719,6 +793,32 @@ function isLiveGameStatus(
     )
   );
 }
+
+
+/*
+ * =========================================================
+ * TEMPORARY LIVE MATCHUP UI TEST
+ * =========================================================
+ *
+ * REMOVE after preseason live-matchup testing is complete.
+ *
+ * This does NOT change the matchup's official scoring.
+ * It only allows Joe Milton III to use stored preseason
+ * game/stats/context data so the Matchup Detail UI can be
+ * validated before the regular season begins.
+ */
+
+const LIVE_UI_TEST = {
+  enabled: false,
+  leagueId:
+    "984564ec-abcf-41e5-bab2-ac383da512b5",
+  fantasyTeamId: 1,
+  nflPlayerId: 263,
+  nflGameId: 318,
+  season: 2026,
+  seasonType: 1,
+  week: 2,
+} as const;
 
 
 export async function getTraditionalMatchupDetailData(
@@ -1075,6 +1175,594 @@ export async function getTraditionalMatchupDetailData(
 
   /*
    * =====================================================
+   * WEEKLY PLAYER PROJECTIONS
+   * =====================================================
+   *
+   * Priority:
+   *   1. Provider weekly projection
+   *   2. Season projection / 17 fallback
+   *
+   * Then adjust every week for:
+   *   - recent form
+   *   - position-specific opponent matchup
+   *   - current injury status
+   *   - weekly practice status
+   *   - bye/no-game state
+   *
+   * This is intentionally calculated from weekly source tables so the
+   * matchup page automatically changes when those sources refresh.
+   */
+
+  const projectionMap =
+    new Map<
+      number,
+      number
+    >();
+
+
+  const projectionSourceMap =
+    new Map<
+      number,
+      "weekly" |
+      "season_average" |
+      "none"
+    >();
+
+
+  const weeklyOpponentMap =
+    new Map<
+      number,
+      string
+    >();
+
+
+  const recentFormMap =
+    new Map<
+      number,
+      RecentFormRow
+    >();
+
+
+  const matchupRatingMap =
+    new Map<
+      string,
+      number
+    >();
+
+
+  const practiceMap =
+    new Map<
+      number,
+      PracticeReportRow
+    >();
+
+
+  if (
+    playerIds.length >
+    0
+  ) {
+    const [
+      seasonProjectionResult,
+      weeklyProjectionResult,
+      recentFormResult,
+      matchupRatingResult,
+      practiceResult,
+    ] =
+      await Promise.all([
+        supabase
+          .from(
+            "traditional_default_draft_rankings"
+          )
+          .select(`
+            player_id,
+            projected_points
+          `)
+          .eq(
+            "season",
+            refreshed.season
+          )
+          .in(
+            "player_id",
+            playerIds
+          ),
+
+        supabase
+          .from(
+            "latest_player_weekly_projections"
+          )
+          .select(`
+            player_id,
+            opponent_abbreviation,
+            projected_fantasy_points_ppr
+          `)
+          .eq(
+            "season",
+            refreshed.season
+          )
+          .eq(
+            "season_type",
+            2
+          )
+          .eq(
+            "week",
+            refreshed.week
+          )
+          .in(
+            "player_id",
+            playerIds
+          ),
+
+        supabase
+          .from(
+            "player_recent_form"
+          )
+          .select(`
+            player_id,
+            last_three_average,
+            season_average
+          `)
+          .eq(
+            "season",
+            refreshed.season
+          )
+          .eq(
+            "season_type",
+            2
+          )
+          .in(
+            "player_id",
+            playerIds
+          ),
+
+        supabase
+          .from(
+            "player_matchup_ratings"
+          )
+          .select(`
+            defense_team_abbreviation,
+            fantasy_position,
+            matchup_score
+          `)
+          .eq(
+            "season",
+            refreshed.season
+          )
+          .eq(
+            "season_type",
+            2
+          )
+          .eq(
+            "week",
+            refreshed.week
+          ),
+
+        supabase
+          .from(
+            "player_practice_reports"
+          )
+          .select(`
+            player_id,
+            practice_status,
+            injury_status,
+            report_date
+          `)
+          .eq(
+            "season",
+            refreshed.season
+          )
+          .eq(
+            "season_type",
+            2
+          )
+          .eq(
+            "week",
+            refreshed.week
+          )
+          .in(
+            "player_id",
+            playerIds
+          )
+          .order(
+            "report_date",
+            {
+              ascending:
+                false,
+            }
+          ),
+      ]);
+
+
+    const seasonProjectionRows =
+      (
+        seasonProjectionResult.data ??
+        []
+      ) as ProjectionRow[];
+
+
+    const weeklyProjectionRows =
+      (
+        weeklyProjectionResult.data ??
+        []
+      ) as WeeklyProjectionRow[];
+
+
+    const weeklyProjectionMap =
+      new Map<
+        number,
+        WeeklyProjectionRow
+      >();
+
+
+    for (
+      const row
+      of weeklyProjectionRows
+    ) {
+      weeklyProjectionMap.set(
+        Number(
+          row.player_id
+        ),
+        row
+      );
+
+
+      if (
+        row.opponent_abbreviation
+      ) {
+        weeklyOpponentMap.set(
+          Number(
+            row.player_id
+          ),
+          row.opponent_abbreviation
+            .toUpperCase()
+        );
+      }
+    }
+
+
+    for (
+      const row
+      of (
+        recentFormResult.data ??
+        []
+      ) as RecentFormRow[]
+    ) {
+      recentFormMap.set(
+        Number(
+          row.player_id
+        ),
+        row
+      );
+    }
+
+
+    for (
+      const row
+      of (
+        matchupRatingResult.data ??
+        []
+      ) as MatchupRatingRow[]
+    ) {
+      const key =
+        `${String(
+          row.defense_team_abbreviation ??
+          ""
+        ).toUpperCase()}::${String(
+          row.fantasy_position ??
+          ""
+        ).toUpperCase()}`;
+
+
+      matchupRatingMap.set(
+        key,
+        numberValue(
+          row.matchup_score
+        )
+      );
+    }
+
+
+    for (
+      const row
+      of (
+        practiceResult.data ??
+        []
+      ) as PracticeReportRow[]
+    ) {
+      const playerId =
+        Number(
+          row.player_id
+        );
+
+
+      if (
+        !practiceMap.has(
+          playerId
+        )
+      ) {
+        practiceMap.set(
+          playerId,
+          row
+        );
+      }
+    }
+
+
+    const seasonProjectionMap =
+      new Map<
+        number,
+        number
+      >();
+
+
+    for (
+      const row
+      of seasonProjectionRows
+    ) {
+      seasonProjectionMap.set(
+        Number(
+          row.player_id
+        ),
+        numberValue(
+          row.projected_points
+        )
+      );
+    }
+
+
+    for (
+      const playerId
+      of playerIds
+    ) {
+      const player =
+        playerMap.get(
+          playerId
+        );
+
+
+      const weekly =
+        weeklyProjectionMap.get(
+          playerId
+        );
+
+
+      const providerWeekly =
+        numberValue(
+          weekly
+            ?.projected_fantasy_points_ppr
+        );
+
+
+      const seasonProjection =
+        seasonProjectionMap.get(
+          playerId
+        ) ??
+        0;
+
+
+      let projection =
+        providerWeekly >
+        0
+          ? providerWeekly
+          : seasonProjection >
+              0
+            ? seasonProjection /
+              17
+            : 0;
+
+
+      let source:
+        "weekly" |
+        "season_average" |
+        "none" =
+          providerWeekly >
+          0
+            ? "weekly"
+            : seasonProjection >
+                0
+              ? "season_average"
+              : "none";
+
+
+      /*
+       * Recent form: blend toward the player's last-three average while
+       * preventing one hot/cold stretch from completely replacing the base.
+       */
+      const form =
+        recentFormMap.get(
+          playerId
+        );
+
+
+      const lastThree =
+        numberValue(
+          form
+            ?.last_three_average
+        );
+
+
+      const seasonAverage =
+        numberValue(
+          form
+            ?.season_average
+        );
+
+
+      if (
+        projection >
+          0 &&
+        lastThree >
+          0
+      ) {
+        const formReference =
+          seasonAverage >
+          0
+            ? seasonAverage
+            : projection;
+
+
+        const formRatio =
+          Math.max(
+            0.75,
+            Math.min(
+              1.25,
+              lastThree /
+                Math.max(
+                  0.1,
+                  formReference
+                )
+            )
+          );
+
+
+        projection *=
+          0.8 +
+          (
+            formRatio *
+            0.2
+          );
+      }
+
+
+      /*
+       * Opponent rating is position specific. A score near 50 is neutral.
+       * The adjustment is deliberately bounded to ±12%.
+       */
+      const opponent =
+        weeklyOpponentMap.get(
+          playerId
+        ) ??
+        "";
+
+
+      const position =
+        String(
+          player
+            ?.primary_position ??
+          ""
+        ).toUpperCase();
+
+
+      const matchupScore =
+        matchupRatingMap.get(
+          `${opponent}::${position}`
+        );
+
+
+      if (
+        projection >
+          0 &&
+        matchupScore !==
+          undefined
+      ) {
+        const matchupAdjustment =
+          Math.max(
+            -0.12,
+            Math.min(
+              0.12,
+              (
+                matchupScore -
+                50
+              ) /
+                250
+            )
+          );
+
+
+        projection *=
+          1 +
+          matchupAdjustment;
+      }
+
+
+      /*
+       * Practice / injury availability.
+       */
+      const practice =
+        practiceMap.get(
+          playerId
+        );
+
+
+      const availabilityText =
+        [
+          practice
+            ?.injury_status,
+          practice
+            ?.practice_status,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toUpperCase();
+
+
+      let availabilityMultiplier =
+        1;
+
+
+      if (
+        /\b(OUT|IR|PUP|NFI|SUSPENDED|INACTIVE)\b/.test(
+          availabilityText
+        )
+      ) {
+        availabilityMultiplier =
+          0;
+      } else if (
+        /\bDOUBTFUL\b/.test(
+          availabilityText
+        )
+      ) {
+        availabilityMultiplier =
+          0.25;
+      } else if (
+        /\bQUESTIONABLE\b/.test(
+          availabilityText
+        )
+      ) {
+        availabilityMultiplier =
+          0.82;
+      } else if (
+        /\bLIMITED\b/.test(
+          availabilityText
+        )
+      ) {
+        availabilityMultiplier =
+          0.92;
+      }
+
+
+      projection *=
+        availabilityMultiplier;
+
+
+      projectionMap.set(
+        playerId,
+        Math.max(
+          0,
+          Math.round(
+            projection *
+            100
+          ) /
+            100
+        )
+      );
+
+
+      projectionSourceMap.set(
+        playerId,
+        projection >
+          0
+          ? source
+          : source ===
+              "none"
+            ? "none"
+            : source
+      );
+    }
+  }
+
+
+  /*
+   * =====================================================
    * FANTASY SCORES
    * =====================================================
    */
@@ -1258,6 +1946,119 @@ export async function getTraditionalMatchupDetailData(
 
   /*
    * =====================================================
+   * TEMPORARY PRESEASON LIVE UI TEST STATS
+   * =====================================================
+   */
+
+  const liveUiTestEnabled =
+    LIVE_UI_TEST.enabled &&
+    leagueId ===
+      LIVE_UI_TEST.leagueId &&
+    refreshed.season ===
+      2026 &&
+    refreshed.week ===
+      1 &&
+    lineups.some(
+      (
+        row
+      ) =>
+        row.fantasy_team_id ===
+          LIVE_UI_TEST.fantasyTeamId &&
+        row.player_id ===
+          LIVE_UI_TEST.nflPlayerId
+    );
+
+
+  if (
+    liveUiTestEnabled
+  ) {
+    const {
+      data:
+        testStatsData,
+
+      error:
+        testStatsError,
+    } =
+      await supabase
+        .from(
+          "nfl_player_game_stats"
+        )
+        .select(`
+          nfl_game_id,
+          nfl_player_id,
+          game_status,
+          passing_attempts,
+          passing_completions,
+          passing_yards,
+          passing_touchdowns,
+          passing_interceptions,
+          rushing_attempts,
+          rushing_yards,
+          rushing_touchdowns,
+          receiving_targets,
+          receptions,
+          receiving_yards,
+          receiving_touchdowns,
+          fumbles_lost,
+          field_goals_made,
+          field_goals_attempted,
+          extra_points_made,
+          extra_points_attempted,
+          dst_sacks,
+          dst_interceptions,
+          dst_fumble_recoveries,
+          dst_touchdowns,
+          dst_safeties,
+          dst_blocked_kicks,
+          dst_points_allowed,
+          dst_yards_allowed
+        `)
+        .eq(
+          "nfl_game_id",
+          LIVE_UI_TEST.nflGameId
+        )
+        .eq(
+          "nfl_player_id",
+          LIVE_UI_TEST.nflPlayerId
+        )
+        .eq(
+          "season",
+          LIVE_UI_TEST.season
+        )
+        .eq(
+          "season_type",
+          LIVE_UI_TEST.seasonType
+        )
+        .eq(
+          "week",
+          LIVE_UI_TEST.week
+        )
+        .maybeSingle();
+
+
+    if (
+      testStatsError
+    ) {
+      console.error(
+        "Could not load temporary live UI test stats:",
+        testStatsError
+      );
+    }
+
+
+    if (
+      testStatsData
+    ) {
+      statsMap.set(
+        LIVE_UI_TEST.nflPlayerId,
+        testStatsData as StatsRow
+      );
+    }
+  }
+
+
+  /*
+   * =====================================================
    * INJURIES
    * =====================================================
    */
@@ -1374,9 +2175,106 @@ export async function getTraditionalMatchupDetailData(
    * =====================================================
    * NFL GAMES
    * =====================================================
+   *
+   * Load the full regular-season schedule for this fantasy week. Previously
+   * game rows were only discovered through live/final player-stat rows. That
+   * meant OPP and kickoff information stayed blank before games began.
    */
 
-  const gameIds =
+  const {
+    data:
+      scheduledGameData,
+
+    error:
+      scheduledGameError,
+  } =
+    await supabase
+      .from(
+        "nfl_games"
+      )
+      .select(`
+        id,
+        season,
+        season_type,
+        week,
+        kickoff_at,
+        home_team_id,
+        away_team_id,
+        status_name,
+        status_detail,
+        status_completed
+      `)
+      .eq(
+        "season",
+        refreshed.season
+      )
+      .eq(
+        "season_type",
+        2
+      )
+      .eq(
+        "week",
+        refreshed.week
+      );
+
+
+  if (
+    scheduledGameError
+  ) {
+    throw new Error(
+      `Could not load NFL schedule: ${scheduledGameError.message}`
+    );
+  }
+
+
+  const scheduledGames =
+    (
+      scheduledGameData ??
+      []
+    ) as NflGameRow[];
+
+
+  const gameMap =
+    new Map<
+      number,
+      NflGameRow
+    >();
+
+
+  const gameByTeamId =
+    new Map<
+      number,
+      NflGameRow
+    >();
+
+
+  for (
+    const game
+    of scheduledGames
+  ) {
+    gameMap.set(
+      game.id,
+      game
+    );
+
+    gameByTeamId.set(
+      game.home_team_id,
+      game
+    );
+
+    gameByTeamId.set(
+      game.away_team_id,
+      game
+    );
+  }
+
+
+  /*
+   * Include any game referenced by score/stat rows even if the selected week
+   * schedule query did not return it (useful for historical/test data).
+   */
+
+  const referencedGameIds =
     Array.from(
       new Set(
         [
@@ -1409,23 +2307,24 @@ export async function getTraditionalMatchupDetailData(
     );
 
 
-  const gameMap =
-    new Map<
-      number,
-      NflGameRow
-    >();
+  const missingGameIds =
+    referencedGameIds.filter(
+      (
+        id
+      ) =>
+        !gameMap.has(
+          id
+        )
+    );
 
 
   if (
-    gameIds.length >
+    missingGameIds.length >
     0
   ) {
     const {
       data:
-        gameData,
-
-      error:
-        gameError,
+        missingGameData,
     } =
       await supabase
         .from(
@@ -1433,30 +2332,26 @@ export async function getTraditionalMatchupDetailData(
         )
         .select(`
           id,
+          season,
+          season_type,
+          week,
+          kickoff_at,
           home_team_id,
           away_team_id,
           status_name,
+          status_detail,
           status_completed
         `)
         .in(
           "id",
-          gameIds
+          missingGameIds
         );
-
-
-    if (
-      gameError
-    ) {
-      throw new Error(
-        `Could not load NFL games: ${gameError.message}`
-      );
-    }
 
 
     for (
       const game
       of (
-        gameData ??
+        missingGameData ??
         []
       ) as NflGameRow[]
     ) {
@@ -1464,8 +2359,24 @@ export async function getTraditionalMatchupDetailData(
         game.id,
         game
       );
+
+      gameByTeamId.set(
+        game.home_team_id,
+        game
+      );
+
+      gameByTeamId.set(
+        game.away_team_id,
+        game
+      );
     }
   }
+
+
+  const gameIds =
+    Array.from(
+      gameMap.keys()
+    );
 
 
   /*
@@ -1598,11 +2509,11 @@ export async function getTraditionalMatchupDetailData(
           []
         ).map(
           (
-            raw
+            raw:
+              ScoringPlayRow
           ) => {
             const play =
-              raw as
-                ScoringPlayRow;
+              raw;
 
 
             const possessionTeam =
@@ -1689,11 +2600,31 @@ export async function getTraditionalMatchupDetailData(
       );
 
 
+    const playerTeam =
+      player
+        ?.team_abbreviation
+        ? nflTeamByAbbreviation.get(
+            player
+              .team_abbreviation
+          )
+        : undefined;
+
+
+    const scheduledGame =
+      playerTeam
+        ? gameByTeamId.get(
+            playerTeam.id
+          )
+        : undefined;
+
+
     const nflGameId =
       score
         ?.nfl_game_id ??
       stats
         ?.nfl_game_id ??
+      scheduledGame
+        ?.id ??
       null;
 
 
@@ -1702,8 +2633,9 @@ export async function getTraditionalMatchupDetailData(
         null
         ? gameMap.get(
             nflGameId
-          )
-        : undefined;
+          ) ??
+          scheduledGame
+        : scheduledGame;
 
 
     const context =
@@ -1716,18 +2648,15 @@ export async function getTraditionalMatchupDetailData(
         : null;
 
 
-    const playerTeam =
-      player
-        ?.team_abbreviation
-        ? nflTeamByAbbreviation.get(
-            player
-              .team_abbreviation
-          )
-        : undefined;
-
-
     let opponent:
       string |
+      null =
+        null;
+
+
+    let opponentPrefix:
+      "vs" |
+      "@" |
       null =
         null;
 
@@ -1736,9 +2665,13 @@ export async function getTraditionalMatchupDetailData(
       game &&
       playerTeam
     ) {
-      const opponentTeamId =
+      const isHome =
         game.home_team_id ===
-          playerTeam.id
+          playerTeam.id;
+
+
+      const opponentTeamId =
+        isHome
           ? game.away_team_id
           : game.home_team_id;
 
@@ -1753,7 +2686,71 @@ export async function getTraditionalMatchupDetailData(
         )
           ?.abbreviation ??
         null;
+
+
+      opponentPrefix =
+        isHome
+          ? "vs"
+          : "@";
     }
+
+
+    const rawProjectedPoints =
+      projectionMap.get(
+        lineup.player_id
+      ) ??
+      0;
+
+
+    const injuryText =
+      [
+        injury
+          ?.status,
+        injury
+          ?.injury_type,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toUpperCase();
+
+
+    let injuryMultiplier =
+      1;
+
+
+    if (
+      /\b(OUT|IR|PUP|NFI|SUSPENDED|INACTIVE)\b/.test(
+        injuryText
+      )
+    ) {
+      injuryMultiplier =
+        0;
+    } else if (
+      /\bDOUBTFUL\b/.test(
+        injuryText
+      )
+    ) {
+      injuryMultiplier =
+        0.25;
+    } else if (
+      /\bQUESTIONABLE\b/.test(
+        injuryText
+      )
+    ) {
+      injuryMultiplier =
+        0.82;
+    }
+
+
+    const projectedPoints =
+      game
+        ? Math.round(
+            rawProjectedPoints *
+            injuryMultiplier *
+            100
+          ) /
+          100
+        : 0;
 
 
     const hasPossession =
@@ -1889,6 +2886,26 @@ export async function getTraditionalMatchupDetailData(
 
       nflOpponent:
         opponent,
+
+      opponentPrefix,
+
+      kickoffAt:
+        game
+          ?.kickoff_at ??
+        null,
+
+      projectedPoints,
+
+      projectionSource:
+        projectedPoints >
+          0
+          ? (
+              projectionSourceMap.get(
+                lineup.player_id
+              ) ??
+              "none"
+            )
+          : "none",
 
       injuryStatus:
         injury
@@ -2134,6 +3151,67 @@ export async function getTraditionalMatchupDetailData(
       );
 
 
+    const projectedPoints =
+      starters.reduce(
+        (
+          total,
+          player
+        ) =>
+          total +
+          player.projectedPoints,
+        0
+      );
+
+
+    const currentPoints =
+      numberValue(
+        points
+      );
+
+
+    const expectedRemaining =
+      starters.reduce(
+        (
+          total,
+          player
+        ) => {
+          if (
+            player.scoreIsFinal ||
+            player
+              .gameContext
+              ?.statusCompleted
+          ) {
+            return total;
+          }
+
+
+          if (
+            player.scoreIsLive ||
+            player
+              .gameContext
+              ?.isActuallyLive
+          ) {
+            return total +
+              Math.max(
+                0,
+                player.projectedPoints -
+                player.fantasyPoints
+              );
+          }
+
+
+          return total +
+            player.projectedPoints;
+        },
+        0
+      );
+
+
+    const expectedFinalPoints =
+      currentPoints +
+      expectedRemaining;
+
+
     return {
       fantasyTeamId,
 
@@ -2145,9 +3223,11 @@ export async function getTraditionalMatchupDetailData(
         "Unknown Team",
 
       points:
-        numberValue(
-          points
-        ),
+        currentPoints,
+
+      projectedPoints,
+
+      expectedFinalPoints,
 
       isMyTeam:
         myFantasyTeamId !==

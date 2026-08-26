@@ -5178,6 +5178,163 @@ export default function TraditionalDraftPage() {
       : 0;
 
 
+  /*
+   * Once every selection has been made, the live room is finished.
+   * Do not keep showing an "up next" ticker because there is no next team.
+   * The completed room becomes the permanent draft board.
+   */
+  if (
+    draft.status ===
+      "completed"
+  ) {
+    return (
+      <main
+        style={
+          styles.page
+        }
+      >
+        <div
+          style={{
+            ...styles.shell,
+            maxWidth:
+              "1800px",
+          }}
+        >
+          <header
+            style={
+              styles.topHeader
+            }
+          >
+            <div
+              style={
+                styles.brandBlock
+              }
+            >
+              <div
+                style={
+                  styles.brandBadge
+                }
+              >
+                G365
+              </div>
+
+              <div>
+                <div
+                  style={
+                    styles.brandTitle
+                  }
+                >
+                  DRAFT COMPLETE
+                </div>
+
+                <div
+                  style={
+                    styles.brandSub
+                  }
+                >
+                  {picks.length} selections • Complete Draft Board
+                </div>
+              </div>
+            </div>
+
+
+            <div
+              style={
+                styles.headerActions
+              }
+            >
+              <button
+                type="button"
+                onClick={
+                  completeDraftAndOpenMyTeam
+                }
+                style={
+                  styles.completeButton
+                }
+              >
+                GO TO MY TEAM
+              </button>
+            </div>
+          </header>
+
+
+          <section
+            style={{
+              ...styles.panel,
+              marginTop:
+                "14px",
+            }}
+          >
+            <div
+              style={
+                styles.panelHeader
+              }
+            >
+              COMPLETE DRAFT BOARD
+            </div>
+
+
+            <div
+              style={{
+                overflowX:
+                  "auto",
+                padding:
+                  "12px",
+              }}
+            >
+              <DraftBoardPanel
+                draft={
+                  draft
+                }
+                slots={
+                  slots
+                }
+                picks={
+                  picks
+                }
+                teamMap={
+                  teamMap
+                }
+                playerMap={
+                  playerMap
+                }
+                myTeamId={
+                  myTeamId
+                }
+              />
+            </div>
+          </section>
+
+
+          <div
+            style={{
+              marginTop:
+                "12px",
+              padding:
+                "12px 14px",
+              border:
+                "1px solid rgba(255,106,24,.22)",
+              borderRadius:
+                "12px",
+              background:
+                "rgba(255,106,24,.06)",
+              color:
+                "#d8dde5",
+              fontSize:
+                "13px",
+            }}
+          >
+            Draft grades are generated automatically after the final selection.
+            Human league members with an email address receive their own
+            Gridiron365 draft report when the grade-email worker processes the
+            completion queue.
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+
   return (
     <main
       style={
@@ -5294,10 +5451,7 @@ export default function TraditionalDraftPage() {
                 ...(draft.status ===
                 "live"
                   ? styles.statusLive
-                  : draft.status ===
-                      "completed"
-                    ? styles.statusComplete
-                    : styles.statusScheduled),
+                  : styles.statusScheduled),
               }}
             >
               {draft.is_paused
@@ -5377,21 +5531,6 @@ export default function TraditionalDraftPage() {
             ) : null}
 
 
-            {draft.status ===
-            "completed" ? (
-              <button
-                type="button"
-                onClick={
-                  completeDraftAndOpenMyTeam
-                }
-                style={
-                  styles.completeButton
-                }
-                title="Draft complete — open My Team"
-              >
-                ✓ DRAFT COMPLETE • GO TO MY TEAM
-              </button>
-            ) : null}
           </div>
         </header>
 
