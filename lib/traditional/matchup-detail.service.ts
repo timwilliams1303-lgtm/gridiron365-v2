@@ -601,6 +601,24 @@ type ProjectionRow = {
 };
 
 
+type StoredWeeklyProjectionRow = {
+  player_id: number;
+
+  projected_points:
+    number |
+    string |
+    null;
+
+  is_bye:
+    boolean |
+    null;
+
+  opponent_abbreviation:
+    string |
+    null;
+};
+
+
 type WeeklyProjectionRow = {
   player_id: number;
   opponent_abbreviation: string | null;
@@ -1178,19 +1196,21 @@ export async function getTraditionalMatchupDetailData(
    * WEEKLY PLAYER PROJECTIONS
    * =====================================================
    *
-   * Priority:
-   *   1. Provider weekly projection
-   *   2. Season projection / 17 fallback
+   * Week 1-18 projections are generated centrally by:
    *
-   * Then adjust every week for:
+   *   traditional_weekly_player_projections
+   *
+   * That projection engine already incorporates:
+   *   - season expectation
    *   - recent form
-   *   - position-specific opponent matchup
-   *   - current injury status
-   *   - weekly practice status
-   *   - bye/no-game state
+   *   - opponent strength by position
+   *   - home / away
+   *   - current injury status / return date
+   *   - bye week
    *
-   * This is intentionally calculated from weekly source tables so the
-   * matchup page automatically changes when those sources refresh.
+   * The matchup page therefore only needs to read the authoritative weekly
+   * projection. A season/17 fallback remains here so a matchup never renders
+   * blank while an initial projection refresh is being installed.
    */
 
   const projectionMap =
@@ -1209,46 +1229,46 @@ export async function getTraditionalMatchupDetailData(
     >();
 
 
-  const weeklyOpponentMap =
-    new Map<
-      number,
-      string
-    >();
-
-
-  const recentFormMap =
-    new Map<
-      number,
-      RecentFormRow
-    >();
-
-
-  const matchupRatingMap =
-    new Map<
-      string,
-      number
-    >();
-
-
-  const practiceMap =
-    new Map<
-      number,
-      PracticeReportRow
-    >();
-
-
   if (
     playerIds.length >
     0
   ) {
     const [
-      seasonProjectionResult,
       weeklyProjectionResult,
-      recentFormResult,
-      matchupRatingResult,
-      practiceResult,
+      seasonFallbackResult,
     ] =
       await Promise.all([
+        supabase
+          .from(
+            "traditional_weekly_player_projections"
+          )
+          .select(`
+            player_id,
+            projected_points,
+            is_bye,
+            opponent_abbreviation
+          `)
+          .eq(
+            "league_id",
+            leagueId
+          )
+          .eq(
+            "season",
+            refreshed.season
+          )
+          .eq(
+            "season_type",
+            2
+          )
+          .eq(
+            "week",
+            refreshed.week
+          )
+          .in(
+            "player_id",
+            playerIds
+          ),
+
         supabase
           .from(
             "traditional_default_draft_rankings"
@@ -1265,208 +1285,65 @@ export async function getTraditionalMatchupDetailData(
             "player_id",
             playerIds
           ),
-
-        supabase
-          .from(
-            "latest_player_weekly_projections"
-          )
-          .select(`
-            player_id,
-            opponent_abbreviation,
-            projected_fantasy_points_ppr
-          `)
-          .eq(
-            "season",
-            refreshed.season
-          )
-          .eq(
-            "season_type",
-            2
-          )
-          .eq(
-            "week",
-            refreshed.week
-          )
-          .in(
-            "player_id",
-            playerIds
-          ),
-
-        supabase
-          .from(
-            "player_recent_form"
-          )
-          .select(`
-            player_id,
-            last_three_average,
-            season_average
-          `)
-          .eq(
-            "season",
-            refreshed.season
-          )
-          .eq(
-            "season_type",
-            2
-          )
-          .in(
-            "player_id",
-            playerIds
-          ),
-
-        supabase
-          .from(
-            "player_matchup_ratings"
-          )
-          .select(`
-            defense_team_abbreviation,
-            fantasy_position,
-            matchup_score
-          `)
-          .eq(
-            "season",
-            refreshed.season
-          )
-          .eq(
-            "season_type",
-            2
-          )
-          .eq(
-            "week",
-            refreshed.week
-          ),
-
-        supabase
-          .from(
-            "player_practice_reports"
-          )
-          .select(`
-            player_id,
-            practice_status,
-            injury_status,
-            report_date
-          `)
-          .eq(
-            "season",
-            refreshed.season
-          )
-          .eq(
-            "season_type",
-            2
-          )
-          .eq(
-            "week",
-            refreshed.week
-          )
-          .in(
-            "player_id",
-            playerIds
-          )
-          .order(
-            "report_date",
-            {
-              ascending:
-                false,
-            }
-          ),
       ]);
 
 
-    const seasonProjectionRows =
-      (
-        seasonProjectionResult.data ??
-        []
-      ) as ProjectionRow[];
-
-
-    const weeklyProjectionRows =
+    const weeklyRows =
       (
         weeklyProjectionResult.data ??
         []
-      ) as WeeklyProjectionRow[];
+      ) as StoredWeeklyProjectionRow[];
 
 
-    const weeklyProjectionMap =
-      new Map<
-        number,
-        WeeklyProjectionRow
-      >();
+    const weeklyIds =
+      new Set<number>();
 
 
     for (
       const row
-      of weeklyProjectionRows
+      of weeklyRows
     ) {
-      weeklyProjectionMap.set(
+      const playerId =
         Number(
           row.player_id
-        ),
-        row
-      );
-
-
-      if (
-        row.opponent_abbreviation
-      ) {
-        weeklyOpponentMap.set(
-          Number(
-            row.player_id
-          ),
-          row.opponent_abbreviation
-            .toUpperCase()
         );
-      }
-    }
 
 
-    for (
-      const row
-      of (
-        recentFormResult.data ??
-        []
-      ) as RecentFormRow[]
-    ) {
-      recentFormMap.set(
-        Number(
-          row.player_id
-        ),
-        row
+      weeklyIds.add(
+        playerId
+      );
+
+
+      projectionMap.set(
+        playerId,
+        row.is_bye
+          ? 0
+          : Math.max(
+              0,
+              numberValue(
+                row.projected_points
+              )
+            )
+      );
+
+
+      projectionSourceMap.set(
+        playerId,
+        "weekly"
       );
     }
 
 
+    /*
+     * Defensive fallback only. Once the projection engine is seeded this
+     * should rarely be used.
+     */
     for (
       const row
       of (
-        matchupRatingResult.data ??
+        seasonFallbackResult.data ??
         []
-      ) as MatchupRatingRow[]
-    ) {
-      const key =
-        `${String(
-          row.defense_team_abbreviation ??
-          ""
-        ).toUpperCase()}::${String(
-          row.fantasy_position ??
-          ""
-        ).toUpperCase()}`;
-
-
-      matchupRatingMap.set(
-        key,
-        numberValue(
-          row.matchup_score
-        )
-      );
-    }
-
-
-    for (
-      const row
-      of (
-        practiceResult.data ??
-        []
-      ) as PracticeReportRow[]
+      ) as ProjectionRow[]
     ) {
       const playerId =
         Number(
@@ -1475,287 +1352,40 @@ export async function getTraditionalMatchupDetailData(
 
 
       if (
-        !practiceMap.has(
+        weeklyIds.has(
           playerId
         )
       ) {
-        practiceMap.set(
-          playerId,
-          row
-        );
+        continue;
       }
-    }
-
-
-    const seasonProjectionMap =
-      new Map<
-        number,
-        number
-      >();
-
-
-    for (
-      const row
-      of seasonProjectionRows
-    ) {
-      seasonProjectionMap.set(
-        Number(
-          row.player_id
-        ),
-        numberValue(
-          row.projected_points
-        )
-      );
-    }
-
-
-    for (
-      const playerId
-      of playerIds
-    ) {
-      const player =
-        playerMap.get(
-          playerId
-        );
-
-
-      const weekly =
-        weeklyProjectionMap.get(
-          playerId
-        );
-
-
-      const providerWeekly =
-        numberValue(
-          weekly
-            ?.projected_fantasy_points_ppr
-        );
 
 
       const seasonProjection =
-        seasonProjectionMap.get(
-          playerId
-        ) ??
-        0;
-
-
-      let projection =
-        providerWeekly >
-        0
-          ? providerWeekly
-          : seasonProjection >
-              0
-            ? seasonProjection /
-              17
-            : 0;
-
-
-      let source:
-        "weekly" |
-        "season_average" |
-        "none" =
-          providerWeekly >
-          0
-            ? "weekly"
-            : seasonProjection >
-                0
-              ? "season_average"
-              : "none";
-
-
-      /*
-       * Recent form: blend toward the player's last-three average while
-       * preventing one hot/cold stretch from completely replacing the base.
-       */
-      const form =
-        recentFormMap.get(
-          playerId
-        );
-
-
-      const lastThree =
         numberValue(
-          form
-            ?.last_three_average
+          row.projected_points
         );
 
 
-      const seasonAverage =
-        numberValue(
-          form
-            ?.season_average
-        );
-
-
-      if (
-        projection >
-          0 &&
-        lastThree >
+      const weeklyFallback =
+        seasonProjection >
           0
-      ) {
-        const formReference =
-          seasonAverage >
-          0
-            ? seasonAverage
-            : projection;
-
-
-        const formRatio =
-          Math.max(
-            0.75,
-            Math.min(
-              1.25,
-              lastThree /
-                Math.max(
-                  0.1,
-                  formReference
-                )
-            )
-          );
-
-
-        projection *=
-          0.8 +
-          (
-            formRatio *
-            0.2
-          );
-      }
-
-
-      /*
-       * Opponent rating is position specific. A score near 50 is neutral.
-       * The adjustment is deliberately bounded to ±12%.
-       */
-      const opponent =
-        weeklyOpponentMap.get(
-          playerId
-        ) ??
-        "";
-
-
-      const position =
-        String(
-          player
-            ?.primary_position ??
-          ""
-        ).toUpperCase();
-
-
-      const matchupScore =
-        matchupRatingMap.get(
-          `${opponent}::${position}`
-        );
-
-
-      if (
-        projection >
-          0 &&
-        matchupScore !==
-          undefined
-      ) {
-        const matchupAdjustment =
-          Math.max(
-            -0.12,
-            Math.min(
-              0.12,
-              (
-                matchupScore -
-                50
-              ) /
-                250
-            )
-          );
-
-
-        projection *=
-          1 +
-          matchupAdjustment;
-      }
-
-
-      /*
-       * Practice / injury availability.
-       */
-      const practice =
-        practiceMap.get(
-          playerId
-        );
-
-
-      const availabilityText =
-        [
-          practice
-            ?.injury_status,
-          practice
-            ?.practice_status,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toUpperCase();
-
-
-      let availabilityMultiplier =
-        1;
-
-
-      if (
-        /\b(OUT|IR|PUP|NFI|SUSPENDED|INACTIVE)\b/.test(
-          availabilityText
-        )
-      ) {
-        availabilityMultiplier =
-          0;
-      } else if (
-        /\bDOUBTFUL\b/.test(
-          availabilityText
-        )
-      ) {
-        availabilityMultiplier =
-          0.25;
-      } else if (
-        /\bQUESTIONABLE\b/.test(
-          availabilityText
-        )
-      ) {
-        availabilityMultiplier =
-          0.82;
-      } else if (
-        /\bLIMITED\b/.test(
-          availabilityText
-        )
-      ) {
-        availabilityMultiplier =
-          0.92;
-      }
-
-
-      projection *=
-        availabilityMultiplier;
+          ? seasonProjection /
+            17
+          : 0;
 
 
       projectionMap.set(
         playerId,
-        Math.max(
-          0,
-          Math.round(
-            projection *
-            100
-          ) /
-            100
-        )
+        weeklyFallback
       );
 
 
       projectionSourceMap.set(
         playerId,
-        projection >
+        weeklyFallback >
           0
-          ? source
-          : source ===
-              "none"
-            ? "none"
-            : source
+          ? "season_average"
+          : "none"
       );
     }
   }
