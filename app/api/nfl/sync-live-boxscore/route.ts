@@ -3529,6 +3529,225 @@ export async function POST(
     }
 
 
+
+    /* =====================================================
+       SEASON-LONG SALARY / NO-SALARY SCORING
+
+       Regular-season games only.
+
+       Flow:
+       1. Recalculate fantasy_player_game_scores for this NFL
+          game in every active Season-Long league.
+       2. Refresh Season-Long weekly entry totals.
+       3. Rebuild Season-Long standings through the existing
+          database controller.
+
+       This is intentionally non-fatal to the core ESPN sync.
+       The 5-minute Supabase cron remains the fallback if this
+       immediate refresh encounters an error.
+    ===================================================== */
+
+    const seasonLongScoring: {
+      attempted: boolean;
+      success: boolean;
+      leaguesFound: number;
+      leaguesScored: number;
+      scoringResult: any | null;
+      errors: string[];
+    } = {
+      attempted:
+        isRegularSeason,
+      success:
+        true,
+      leaguesFound:
+        0,
+      leaguesScored:
+        0,
+      scoringResult:
+        null,
+      errors:
+        [],
+    };
+
+
+    if (
+      isRegularSeason
+    ) {
+      try {
+        const {
+          data:
+            seasonLongLeagueData,
+
+          error:
+            seasonLongLeagueError,
+        } =
+          await supabase
+            .from(
+              "leagues"
+            )
+            .select(
+              "id"
+            )
+            .eq(
+              "league_type",
+              "season_long"
+            )
+            .eq(
+              "season",
+              nflGame.season
+            )
+            .in(
+              "status",
+              [
+                "setup",
+                "active",
+              ]
+            );
+
+
+        if (
+          seasonLongLeagueError
+        ) {
+          throw new Error(
+            `Unable to load active Season-Long leagues: ${seasonLongLeagueError.message}`
+          );
+        }
+
+
+        const seasonLongLeagues =
+          (
+            seasonLongLeagueData ??
+            []
+          ) as Array<{
+            id: string;
+          }>;
+
+
+        seasonLongScoring
+          .leaguesFound =
+          seasonLongLeagues
+            .length;
+
+
+        /*
+         * Refresh fantasy_player_game_scores for this specific
+         * NFL game in each Season-Long league.
+         *
+         * This uses the same league scoring engine already used
+         * by Traditional leagues, so Salary and No-Salary modes
+         * do not maintain a separate fantasy-points formula.
+         */
+        for (
+          const league
+          of seasonLongLeagues
+        ) {
+          const {
+            error:
+              seasonLongGameScoreError,
+          } =
+            await supabase.rpc(
+              "refresh_fantasy_game_scores",
+              {
+                p_league_id:
+                  league.id,
+
+                p_nfl_game_id:
+                  nflGame.id,
+              }
+            );
+
+
+          if (
+            seasonLongGameScoreError
+          ) {
+            seasonLongScoring
+              .errors
+              .push(
+                `League ${league.id}: ${seasonLongGameScoreError.message}`
+              );
+
+            continue;
+          }
+
+
+          seasonLongScoring
+            .leaguesScored +=
+            1;
+        }
+
+
+        /*
+         * Aggregate the refreshed player scores into each
+         * Season-Long team's weekly score and rebuild standings.
+         */
+        const {
+          data:
+            seasonLongWeeklyResult,
+
+          error:
+            seasonLongWeeklyError,
+        } =
+          await supabase.rpc(
+            "refresh_active_season_long_scoring",
+            {
+              p_season:
+                nflGame.season,
+
+              p_week:
+                nflGame.week,
+            }
+          );
+
+
+        if (
+          seasonLongWeeklyError
+        ) {
+          seasonLongScoring
+            .errors
+            .push(
+              seasonLongWeeklyError
+                .message
+            );
+        } else {
+          seasonLongScoring
+            .scoringResult =
+            seasonLongWeeklyResult;
+        }
+
+
+        seasonLongScoring
+          .success =
+          seasonLongScoring
+            .errors
+            .length ===
+          0;
+
+      } catch (
+        seasonLongError
+      ) {
+        seasonLongScoring
+          .success =
+          false;
+
+        seasonLongScoring
+          .errors
+          .push(
+            seasonLongError
+              instanceof Error
+              ? seasonLongError
+                  .message
+              : "Unknown Season-Long scoring refresh error."
+          );
+
+
+        console.error(
+          "Season-Long scoring refresh failed:",
+          seasonLongError
+        );
+      }
+    }
+
+
     /* =====================================================
        RESPONSE
     ===================================================== */
@@ -3617,6 +3836,9 @@ export async function POST(
       fantasy: {
         regularSeason:
           isRegularSeason,
+
+        seasonLong:
+          seasonLongScoring,
 
         qaOverrideContexts,
 
