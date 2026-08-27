@@ -448,11 +448,19 @@ export default async function TraditionalMatchupDetailPage({
     ]);
 
 
+  /*
+   * These two settings reads are display/layout helpers only.
+   *
+   * They must NEVER prevent the matchup itself from loading.
+   * If a settings row is missing, temporarily unavailable, or
+   * blocked by an RLS policy, fall back to safe defaults below.
+   */
   if (
     lineupSettingsResult.error
   ) {
-    throw new Error(
-      `Could not load lineup settings: ${lineupSettingsResult.error.message}`
+    console.warn(
+      "Matchup detail lineup settings fallback:",
+      lineupSettingsResult.error.message
     );
   }
 
@@ -460,20 +468,29 @@ export default async function TraditionalMatchupDetailPage({
   if (
     scoringDisplayResult.error
   ) {
-    throw new Error(
-      `Could not load scoring display settings: ${scoringDisplayResult.error.message}`
+    console.warn(
+      "Matchup detail scoring display fallback:",
+      scoringDisplayResult.error.message
     );
   }
 
 
   const lineupSettings =
-    lineupSettingsResult.data as
+    (
+      lineupSettingsResult.error
+        ? null
+        : lineupSettingsResult.data
+    ) as
       MatchupLineupSettings |
       null;
 
 
   const scoringDisplaySettings =
-    scoringDisplayResult.data as
+    (
+      scoringDisplayResult.error
+        ? null
+        : scoringDisplayResult.data
+    ) as
       ProjectionDisplaySettings |
       null;
 
@@ -484,11 +501,29 @@ export default async function TraditionalMatchupDetailPage({
     true;
 
 
+  const rawProjectionDecimalPlaces =
+    Number(
+      scoringDisplaySettings
+        ?.decimal_places ??
+      2
+    );
+
+
   const projectionDecimalPlaces =
     fractionalScoringEnabled
-      ? scoringDisplaySettings
-          ?.decimal_places ??
-        2
+      ? Number.isFinite(
+          rawProjectionDecimalPlaces
+        )
+        ? Math.min(
+            4,
+            Math.max(
+              0,
+              Math.trunc(
+                rawProjectionDecimalPlaces
+              )
+            )
+          )
+        : 2
       : 0;
 
   const starterRequirements:

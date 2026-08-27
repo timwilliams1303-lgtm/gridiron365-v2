@@ -292,6 +292,8 @@ function authorizeSync(
 ) {
   const configuredSecret =
     process.env
+      .GRIDIRON_SYNC_SECRET ??
+    process.env
       .NFL_SYNC_SECRET;
 
   if (!configuredSecret) {
@@ -306,7 +308,7 @@ function authorizeSync(
               false,
 
             error:
-              "NFL_SYNC_SECRET is not configured on the server.",
+              "GRIDIRON_SYNC_SECRET / NFL_SYNC_SECRET is not configured on the server.",
           },
           {
             status:
@@ -658,77 +660,55 @@ function normalizeInjuryStatus(
 }
 
 
-function inferInjuryLocation(
-  ...values:
-    Array<
-      string |
-      null |
-      undefined
-    >
+function findInjuryLocation(
+  value: string | null | undefined
 ) {
-  const text =
-    values
-      .filter(
-        Boolean
-      )
-      .join(
-        " "
-      )
-      .toLowerCase();
+  const text = (value ?? "").trim().toLowerCase();
+  if (!text) return null;
 
-  const locations = [
-    "achilles",
-    "ankle",
-    "back",
-    "calf",
-    "chest",
-    "concussion",
-    "elbow",
-    "finger",
-    "foot",
-    "groin",
-    "hamstring",
-    "hand",
-    "head",
-    "heel",
-    "hip",
-    "knee",
-    "leg",
-    "neck",
-    "quadriceps",
-    "quad",
-    "rib",
-    "shoulder",
-    "thigh",
-    "toe",
-    "wrist",
+  const locations: Array<{ pattern: RegExp; label: string }> = [
+    { pattern: /\bachilles\b/i, label: "Achilles" },
+    { pattern: /\bhamstring\b/i, label: "Hamstring" },
+    { pattern: /\bquadriceps\b|\bquad\b/i, label: "Quadriceps" },
+    { pattern: /\bconcussion\b/i, label: "Concussion" },
+    { pattern: /\bknee\b/i, label: "Knee" },
+    { pattern: /\bankle\b/i, label: "Ankle" },
+    { pattern: /\bshoulder\b/i, label: "Shoulder" },
+    { pattern: /\bfoot\b/i, label: "Foot" },
+    { pattern: /\btoe\b/i, label: "Toe" },
+    { pattern: /\bcalf\b/i, label: "Calf" },
+    { pattern: /\bgroin\b/i, label: "Groin" },
+    { pattern: /\bhip\b/i, label: "Hip" },
+    { pattern: /\bthigh\b/i, label: "Thigh" },
+    { pattern: /\bback\b/i, label: "Back" },
+    { pattern: /\bneck\b/i, label: "Neck" },
+    { pattern: /\bchest\b/i, label: "Chest" },
+    { pattern: /\brib(?:s)?\b/i, label: "Rib" },
+    { pattern: /\belbow\b/i, label: "Elbow" },
+    { pattern: /\bwrist\b/i, label: "Wrist" },
+    { pattern: /\bhand\b/i, label: "Hand" },
+    { pattern: /\bfinger\b/i, label: "Finger" },
+    { pattern: /\bheel\b/i, label: "Heel" },
+    { pattern: /\bleg\b/i, label: "Leg" },
+    { pattern: /\bhead\b/i, label: "Head" },
   ];
 
-  for (
-    const location
-    of locations
-  ) {
-    if (
-      text.includes(
-        location
-      )
-    ) {
-      return location ===
-        "quad"
-        ? "Quadriceps"
-        : location
-            .split(" ")
-            .map(
-              part =>
-                part
-                  .charAt(0)
-                  .toUpperCase() +
-                part.slice(1)
-            )
-            .join(" ");
-    }
+  for (const location of locations) {
+    if (location.pattern.test(text)) return location.label;
   }
+  return null;
+}
 
+function inferInjuryLocation(
+  ...values: Array<string | null | undefined>
+) {
+  // Search each source in priority order instead of concatenating all text.
+  // This makes ESPN's explicit injury description win over lower-priority
+  // prose such as "back at practice" in a news note.
+  for (const value of values) {
+    const location = findInjuryLocation(value);
+    if (location) return location;
+  }
   return null;
 }
 
@@ -2141,7 +2121,53 @@ export async function POST(
 
 
     /* =====================================================
-       9. SUCCESS
+       9. REFRESH WEEKLY PROJECTIONS
+    ===================================================== */
+
+    let projectionRefresh:
+      unknown =
+        null;
+
+    let projectionRefreshError:
+      string |
+      null =
+        null;
+
+
+    try {
+      const {
+        data:
+          refreshedProjectionData,
+
+        error:
+          refreshedProjectionError,
+      } =
+        await supabase.rpc(
+          "refresh_active_traditional_weekly_projections"
+        );
+
+
+      if (
+        refreshedProjectionError
+      ) {
+        projectionRefreshError =
+          refreshedProjectionError.message;
+      } else {
+        projectionRefresh =
+          refreshedProjectionData;
+      }
+    } catch (
+      projectionError
+    ) {
+      projectionRefreshError =
+        projectionError instanceof Error
+          ? projectionError.message
+          : "Projection refresh failed.";
+    }
+
+
+    /* =====================================================
+       10. SUCCESS
     ===================================================== */
 
     return NextResponse.json({
@@ -2205,6 +2231,10 @@ export async function POST(
       injuriesUnchanged,
 
       injuriesCleared,
+
+      projectionRefresh,
+
+      projectionRefreshError,
 
       completedAt:
         new Date()
