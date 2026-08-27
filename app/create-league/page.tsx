@@ -32,14 +32,16 @@ import {
 type LeagueFormat = {
   id:
     | "traditional"
-    | "weekly_salary"
-    | "weekly_no_salary"
+    | "season_long_salary"
+    | "season_long_no_salary"
     | "playoffs_salary"
     | "playoffs_no_salary";
 
-  title: string;
+  title:
+    string;
 
-  description: string;
+  description:
+    string;
 
   leagueType:
     LeagueType;
@@ -51,91 +53,91 @@ type LeagueFormat = {
 
 const leagueFormats:
   LeagueFormat[] = [
-  {
-    id:
-      "traditional",
+    {
+      id:
+        "traditional",
 
-    title:
-      "Traditional Draft",
+      title:
+        "Traditional Draft",
 
-    description:
-      "Season-long head-to-head fantasy football with a live draft, rosters, waivers, trades, matchups, standings, and playoffs.",
+      description:
+        "Season-long head-to-head fantasy football with a live draft, permanent rosters, waivers, trades, weekly matchups, standings, and playoffs.",
 
-    leagueType:
-      "traditional",
+      leagueType:
+        "traditional",
 
-    playerSelectionMode:
-      "draft",
-  },
+      playerSelectionMode:
+        "draft",
+    },
 
-  {
-    id:
-      "weekly_salary",
+    {
+      id:
+        "season_long_salary",
 
-    title:
-      "Weekly Salary Cap",
+      title:
+        "Season-Long Salary Cap",
 
-    description:
-      "Build a new lineup each NFL week while staying under the league salary cap.",
+      description:
+        "Build a new fantasy lineup every NFL week while staying under the league salary cap. Players can be used by multiple teams.",
 
-    leagueType:
-      "weekly",
+      leagueType:
+        "season_long",
 
-    playerSelectionMode:
-      "salary_cap",
-  },
+      playerSelectionMode:
+        "salary",
+    },
 
-  {
-    id:
-      "weekly_no_salary",
+    {
+      id:
+        "season_long_no_salary",
 
-    title:
-      "Weekly No Salary",
+      title:
+        "Season-Long No Salary Cap",
 
-    description:
-      "Build a new lineup every week without a salary cap.",
+      description:
+        "Build a new fantasy lineup every NFL week with no player salary restriction. Players can be used by multiple teams.",
 
-    leagueType:
-      "weekly",
+      leagueType:
+        "season_long",
 
-    playerSelectionMode:
-      "no_salary_cap",
-  },
+      playerSelectionMode:
+        "no_salary",
+    },
 
-  {
-    id:
-      "playoffs_salary",
+    {
+      id:
+        "playoffs_salary",
 
-    title:
-      "NFL Playoffs Salary Cap",
+      title:
+        "NFL Playoffs Salary Cap",
 
-    description:
-      "Fantasy contest covering the NFL postseason with salary-cap lineup building.",
+      description:
+        "Build fantasy lineups for the NFL postseason while staying under the league salary cap.",
 
-    leagueType:
-      "nfl_playoffs",
+      leagueType:
+        "nfl_playoffs",
 
-    playerSelectionMode:
-      "salary_cap",
-  },
+      playerSelectionMode:
+        "salary",
+    },
 
-  {
-    id:
-      "playoffs_no_salary",
+    {
+      id:
+        "playoffs_no_salary",
 
-    title:
-      "NFL Playoffs No Salary",
+      title:
+        "NFL Playoffs No Salary Cap",
 
-    description:
-      "NFL postseason fantasy contest with no salary restriction.",
+      description:
+        "Build fantasy lineups throughout the NFL postseason without a player salary restriction.",
 
-    leagueType:
-      "nfl_playoffs",
+      leagueType:
+        "nfl_playoffs",
 
-    playerSelectionMode:
-      "no_salary_cap",
-  },
-];
+      playerSelectionMode:
+        "no_salary",
+    },
+  ];
 
 
 export default function CreateLeaguePage() {
@@ -149,6 +151,7 @@ export default function CreateLeaguePage() {
       []
     );
 
+
   const [
     selectedFormatId,
     setSelectedFormatId,
@@ -159,17 +162,20 @@ export default function CreateLeaguePage() {
       "traditional"
     );
 
+
   const [
     leagueName,
     setLeagueName,
   ] =
     useState("");
 
+
   const [
     teamName,
     setTeamName,
   ] =
     useState("");
+
 
   const [
     season,
@@ -182,17 +188,20 @@ export default function CreateLeaguePage() {
       )
     );
 
+
   const [
     working,
     setWorking,
   ] =
     useState(false);
 
+
   const [
     message,
     setMessage,
   ] =
     useState("");
+
 
   const [
     isError,
@@ -217,6 +226,26 @@ export default function CreateLeaguePage() {
     "traditional";
 
 
+  const isSeasonLong =
+    selectedFormat.leagueType ===
+    "season_long";
+
+
+  const isPlayoffs =
+    selectedFormat.leagueType ===
+    "nfl_playoffs";
+
+
+  const requiresTeamName =
+    isTraditional ||
+    isSeasonLong;
+
+
+  const isSalary =
+    selectedFormat.playerSelectionMode ===
+    "salary";
+
+
   async function handleSubmit(
     event:
       FormEvent<HTMLFormElement>
@@ -227,15 +256,18 @@ export default function CreateLeaguePage() {
       return;
     }
 
+
     setWorking(true);
     setMessage("");
     setIsError(false);
+
 
     try {
       const parsedSeason =
         Number(
           season
         );
+
 
       const result =
         await createLeague(
@@ -256,15 +288,16 @@ export default function CreateLeaguePage() {
               parsedSeason,
 
             teamName:
-              isTraditional
+              requiresTeamName
                 ? teamName
                 : undefined,
 
             /*
-             * Traditional defaults to 14 for now.
+             * Traditional defaults to
+             * 14 regular-season weeks.
              *
-             * The commissioner will change this later
-             * from Traditional League Settings.
+             * Commissioners can change
+             * this later in league settings.
              */
             regularSeasonWeeks:
               isTraditional
@@ -272,6 +305,7 @@ export default function CreateLeaguePage() {
                 : undefined,
           }
         );
+
 
       if (
         !result.success
@@ -281,11 +315,21 @@ export default function CreateLeaguePage() {
         );
       }
 
+
+      /*
+       * For now, all newly-created formats
+       * return to My Leagues.
+       *
+       * Once the Season-Long league home
+       * page is built, we can send the
+       * commissioner directly there.
+       */
       router.replace(
         "/my-leagues"
       );
 
       router.refresh();
+
     } catch (error) {
       setIsError(true);
 
@@ -295,6 +339,7 @@ export default function CreateLeaguePage() {
           ? error.message
           : "The league could not be created."
       );
+
     } finally {
       setWorking(false);
     }
@@ -361,7 +406,7 @@ export default function CreateLeaguePage() {
               styles.subtitle
             }
           >
-            Choose the fantasy format you want to play.
+            Choose the fantasy football format you want to play.
           </p>
         </div>
 
@@ -379,6 +424,7 @@ export default function CreateLeaguePage() {
                 format.id ===
                 selectedFormatId;
 
+
               return (
                 <button
                   key={
@@ -386,10 +432,14 @@ export default function CreateLeaguePage() {
                   }
                   type="button"
                   onClick={
-                    () =>
+                    () => {
                       setSelectedFormatId(
                         format.id
-                      )
+                      );
+
+                      setMessage("");
+                      setIsError(false);
+                    }
                   }
                   style={{
                     ...styles.formatButton,
@@ -425,22 +475,23 @@ export default function CreateLeaguePage() {
                     {format.description}
                   </span>
 
-                  {format.leagueType !==
+
+                  {format.leagueType ===
                   "traditional" ? (
-                    <span
-                      style={
-                        styles.largeLeagueBadge
-                      }
-                    >
-                      LARGE PARTICIPATION
-                    </span>
-                  ) : (
                     <span
                       style={
                         styles.traditionalBadge
                       }
                     >
                       UP TO 12 TEAMS
+                    </span>
+                  ) : (
+                    <span
+                      style={
+                        styles.largeLeagueBadge
+                      }
+                    >
+                      LARGE PARTICIPATION
                     </span>
                   )}
                 </button>
@@ -461,6 +512,7 @@ export default function CreateLeaguePage() {
               styles.cardAccent
             }
           />
+
 
           <header
             style={
@@ -540,64 +592,127 @@ export default function CreateLeaguePage() {
             />
 
 
-            {isTraditional ? (
-              <>
-                <FormField
-                  label="My Team Name"
-                  value={
-                    teamName
-                  }
-                  onChange={(
+            {requiresTeamName ? (
+              <FormField
+                label={
+                  isTraditional
+                    ? "My Team Name"
+                    : "My Entry Name"
+                }
+                value={
+                  teamName
+                }
+                onChange={(
+                  event
+                ) =>
+                  setTeamName(
                     event
-                  ) =>
-                    setTeamName(
-                      event
-                        .target
-                        .value
-                    )
-                  }
-                  placeholder="Example: Gridiron Bisons"
-                  maxLength={100}
-                  disabled={
-                    working
-                  }
-                  required
-                />
+                      .target
+                      .value
+                  )
+                }
+                placeholder={
+                  isTraditional
+                    ? "Example: Gridiron Bisons"
+                    : "Example: Sunday Crushers"
+                }
+                maxLength={100}
+                disabled={
+                  working
+                }
+                required
+              />
+            ) : null}
 
-                <div
-                  style={
-                    styles.traditionalInfo
-                  }
-                >
-                  <strong>
-                    Traditional settings come next
-                  </strong>
 
-                  <span>
-                    After the league is created, the commissioner
-                    will configure regular-season weeks, roster
-                    settings, scoring, waivers, trades, playoffs,
-                    and draft settings from the league.
-                  </span>
-                </div>
-              </>
-            ) : (
+            {isTraditional ? (
+              <div
+                style={
+                  styles.traditionalInfo
+                }
+              >
+                <strong>
+                  Traditional league
+                </strong>
+
+                <span>
+                  Draft permanent rosters and compete in weekly
+                  head-to-head matchups. After creation, the
+                  commissioner can configure roster settings,
+                  scoring, waivers, trades, playoffs, invitations,
+                  and draft settings.
+                </span>
+              </div>
+            ) : null}
+
+
+            {isSeasonLong ? (
               <div
                 style={
                   styles.contestInfo
                 }
               >
                 <strong>
-                  Contest-style league
+                  {isSalary
+                    ? "Season-Long Salary Cap"
+                    : "Season-Long No Salary Cap"}
                 </strong>
 
                 <span>
-                  No Traditional 12-team limit will be applied.
-                  Participant entries will be added when we build
-                  the Weekly and NFL Playoffs systems.
+                  Build a completely new starting lineup each NFL
+                  week. There is no draft and players are not
+                  exclusive to one fantasy team.
+                </span>
+
+                {isSalary ? (
+                  <span>
+                    This league will begin with a $60,000 weekly
+                    salary cap. Weekly player salaries will be
+                    generated automatically from projections,
+                    position value, matchup context, and injury
+                    information.
+                  </span>
+                ) : (
+                  <span>
+                    There is no salary restriction. Owners can
+                    choose any eligible players when building
+                    their weekly lineup.
+                  </span>
+                )}
+
+                <span>
+                  Individual players lock when their NFL games
+                  begin. Players in later games remain editable
+                  until their own kickoff.
                 </span>
               </div>
-            )}
+            ) : null}
+
+
+            {isPlayoffs ? (
+              <div
+                style={
+                  styles.contestInfo
+                }
+              >
+                <strong>
+                  {isSalary
+                    ? "NFL Playoffs Salary Cap"
+                    : "NFL Playoffs No Salary Cap"}
+                </strong>
+
+                <span>
+                  This format will use the NFL postseason rather
+                  than the 18-week regular-season schedule.
+                </span>
+
+                <span>
+                  The league can be created now. We will build its
+                  postseason lineup and scoring system after the
+                  Season-Long format is completed.
+                </span>
+              </div>
+            ) : null}
 
 
             <MessageBox
@@ -723,7 +838,8 @@ const styles = {
   },
 
   eyebrow: {
-    margin: 0,
+    margin:
+      0,
 
     color:
       "#ff8c00",
@@ -776,7 +892,7 @@ const styles = {
       "relative" as const,
 
     minHeight:
-      "195px",
+      "215px",
 
     display:
       "flex",
@@ -919,11 +1035,14 @@ const styles = {
     position:
       "absolute" as const,
 
-    top: 0,
+    top:
+      0,
 
-    left: 0,
+    left:
+      0,
 
-    right: 0,
+    right:
+      0,
 
     height:
       "3px",
@@ -938,7 +1057,8 @@ const styles = {
   },
 
   formEyebrow: {
-    margin: 0,
+    margin:
+      0,
 
     color:
       "#ff8c00",
@@ -1009,7 +1129,7 @@ const styles = {
       "grid",
 
     gap:
-      "6px",
+      "8px",
 
     padding:
       "14px",

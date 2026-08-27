@@ -5,14 +5,14 @@ import type {
 
 export type LeagueType =
   | "traditional"
-  | "weekly"
+  | "season_long"
   | "nfl_playoffs";
 
 
 export type PlayerSelectionMode =
   | "draft"
-  | "salary_cap"
-  | "no_salary_cap";
+  | "salary"
+  | "no_salary";
 
 
 export type LeagueMemberRole =
@@ -219,18 +219,35 @@ function validateLeagueCombination(
     );
   }
 
+
   if (
     (
       leagueType ===
-        "weekly" ||
+        "season_long" ||
       leagueType ===
         "nfl_playoffs"
     ) &&
+    ![
+      "salary",
+      "no_salary",
+    ].includes(
+      playerSelectionMode
+    )
+  ) {
+    throw new Error(
+      "Season-Long and NFL Playoffs leagues must use Salary Cap or No Salary Cap."
+    );
+  }
+
+
+  if (
+    leagueType !==
+      "traditional" &&
     playerSelectionMode ===
       "draft"
   ) {
     throw new Error(
-      "Weekly and NFL Playoffs leagues must use Salary Cap or No Salary Cap."
+      "Only Traditional leagues can use a draft."
     );
   }
 }
@@ -254,10 +271,12 @@ export async function createLeague(
       input.season
     );
 
+
   validateLeagueCombination(
     input.leagueType,
     input.playerSelectionMode
   );
+
 
   let teamName:
     string | null =
@@ -268,9 +287,22 @@ export async function createLeague(
       null;
 
 
+  /*
+   * Traditional and Season-Long leagues
+   * both use fantasy_teams.
+   *
+   * Traditional:
+   *   permanent drafted roster
+   *
+   * Season-Long:
+   *   participant identity / weekly
+   *   lineup ownership
+   */
   if (
     input.leagueType ===
-    "traditional"
+      "traditional" ||
+    input.leagueType ===
+      "season_long"
   ) {
     teamName =
       cleanRequiredText(
@@ -278,10 +310,21 @@ export async function createLeague(
           "",
         "Team name"
       );
+  }
 
+
+  /*
+   * Only Traditional leagues use
+   * regular-season matchup weeks.
+   */
+  if (
+    input.leagueType ===
+    "traditional"
+  ) {
     regularSeasonWeeks =
       input.regularSeasonWeeks ??
       14;
+
 
     if (
       !Number.isInteger(
@@ -366,6 +409,97 @@ export async function createLeague(
   }
 
 
+  const returnedLeagueType =
+    result.leagueType;
+
+
+  const returnedSelectionMode =
+    result.playerSelectionMode;
+
+
+  if (
+    returnedLeagueType !==
+      "traditional" &&
+    returnedLeagueType !==
+      "season_long" &&
+    returnedLeagueType !==
+      "nfl_playoffs"
+  ) {
+    throw new Error(
+      "League creation returned an invalid league type."
+    );
+  }
+
+
+  if (
+    returnedSelectionMode !==
+      "draft" &&
+    returnedSelectionMode !==
+      "salary" &&
+    returnedSelectionMode !==
+      "no_salary"
+  ) {
+    throw new Error(
+      "League creation returned an invalid player selection mode."
+    );
+  }
+
+
+  const returnedRole =
+    result.role;
+
+
+  if (
+    returnedRole !==
+      "commissioner" &&
+    returnedRole !==
+      "co_commissioner" &&
+    returnedRole !==
+      "member"
+  ) {
+    throw new Error(
+      "League creation returned an invalid league role."
+    );
+  }
+
+
+  const rawFantasyTeamId =
+    result.fantasyTeamId;
+
+
+  let fantasyTeamId:
+    number | null =
+      null;
+
+
+  if (
+    typeof rawFantasyTeamId ===
+      "number"
+  ) {
+    fantasyTeamId =
+      rawFantasyTeamId;
+  } else if (
+    typeof rawFantasyTeamId ===
+      "string" &&
+    rawFantasyTeamId.trim() !==
+      ""
+  ) {
+    const parsed =
+      Number(
+        rawFantasyTeamId
+      );
+
+    if (
+      Number.isFinite(
+        parsed
+      )
+    ) {
+      fantasyTeamId =
+        parsed;
+    }
+  }
+
+
   return {
     success:
       result.success ===
@@ -374,12 +508,10 @@ export async function createLeague(
     leagueId,
 
     leagueType:
-      result.leagueType as
-        LeagueType,
+      returnedLeagueType,
 
     playerSelectionMode:
-      result.playerSelectionMode as
-        PlayerSelectionMode,
+      returnedSelectionMode,
 
     season:
       Number(
@@ -387,16 +519,9 @@ export async function createLeague(
       ),
 
     role:
-      result.role as
-        LeagueMemberRole,
+      returnedRole,
 
-    fantasyTeamId:
-      typeof result
-        .fantasyTeamId ===
-      "number"
-        ? result
-            .fantasyTeamId
-        : null,
+    fantasyTeamId,
   };
 }
 
@@ -472,7 +597,7 @@ export async function getMyLeagues(
   /*
    * STEP 2
    *
-   * Load the leagues in one query.
+   * Load all of the user's leagues.
    */
   const {
     data:
@@ -520,8 +645,17 @@ export async function getMyLeagues(
   /*
    * STEP 3
    *
-   * Load the user's Traditional
-   * fantasy teams in one query.
+   * Load fantasy teams.
+   *
+   * This now applies to:
+   *
+   *   Traditional
+   *   Season-Long Salary
+   *   Season-Long No-Salary
+   *
+   * NFL Playoffs can use its own
+   * participant/entry model when
+   * that format is built.
    */
   const {
     data:
@@ -568,7 +702,7 @@ export async function getMyLeagues(
 
 
   /*
-   * Build fast lookup maps.
+   * Fast lookup maps.
    */
   const membershipByLeague =
     new Map<
@@ -611,8 +745,7 @@ export async function getMyLeagues(
   /*
    * STEP 4
    *
-   * Build one clean response
-   * for the My Leagues page.
+   * Build the My Leagues response.
    */
   const result =
     leagues.map(

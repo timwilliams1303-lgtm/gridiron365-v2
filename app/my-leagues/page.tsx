@@ -28,41 +28,46 @@ function formatLeagueType(
     return "Traditional Draft";
   }
 
-  if (
-    leagueType ===
-      "weekly" &&
-    playerSelectionMode ===
-      "salary_cap"
-  ) {
-    return "Weekly Salary Cap";
-  }
 
   if (
     leagueType ===
-      "weekly" &&
+      "season_long" &&
     playerSelectionMode ===
-      "no_salary_cap"
+      "salary"
   ) {
-    return "Weekly No Salary";
+    return "Season-Long Salary Cap";
   }
+
+
+  if (
+    leagueType ===
+      "season_long" &&
+    playerSelectionMode ===
+      "no_salary"
+  ) {
+    return "Season-Long No Salary Cap";
+  }
+
 
   if (
     leagueType ===
       "nfl_playoffs" &&
     playerSelectionMode ===
-      "salary_cap"
+      "salary"
   ) {
     return "NFL Playoffs Salary Cap";
   }
 
+
   if (
     leagueType ===
       "nfl_playoffs" &&
     playerSelectionMode ===
-      "no_salary_cap"
+      "no_salary"
   ) {
-    return "NFL Playoffs No Salary";
+    return "NFL Playoffs No Salary Cap";
   }
+
 
   return "Fantasy League";
 }
@@ -78,8 +83,11 @@ function formatStatus(
     )
     .replace(
       /\b\w/g,
-      (character) =>
-        character.toUpperCase()
+      (
+        character
+      ) =>
+        character
+          .toUpperCase()
     );
 }
 
@@ -88,14 +96,17 @@ export default async function MyLeaguesPage() {
   const user =
     await requireUser();
 
+
   const supabase =
     await createSupabaseServerClient();
+
 
   const leagues =
     await getMyLeagues(
       supabase,
       user.id
     );
+
 
   return (
     <main
@@ -124,6 +135,7 @@ export default async function MyLeaguesPage() {
             }
           />
 
+
           <div
             style={
               styles.topActions
@@ -142,6 +154,7 @@ export default async function MyLeaguesPage() {
                 SIGNED IN
               </span>
 
+
               <span
                 style={
                   styles.userEmail
@@ -151,9 +164,11 @@ export default async function MyLeaguesPage() {
               </span>
             </div>
 
+
             <LogoutButton />
           </div>
         </header>
+
 
         <div
           style={
@@ -169,6 +184,7 @@ export default async function MyLeaguesPage() {
               GRIDIRON365
             </p>
 
+
             <h1
               style={
                 styles.title
@@ -176,6 +192,7 @@ export default async function MyLeaguesPage() {
             >
               My Leagues
             </h1>
+
 
             <p
               style={
@@ -186,6 +203,7 @@ export default async function MyLeaguesPage() {
             </p>
           </div>
 
+
           <Link
             href="/create-league"
             style={
@@ -195,6 +213,7 @@ export default async function MyLeaguesPage() {
             + Create League
           </Link>
         </div>
+
 
         {leagues.length ===
         0 ? (
@@ -211,6 +230,7 @@ export default async function MyLeaguesPage() {
               G365
             </div>
 
+
             <h2
               style={
                 styles.emptyTitle
@@ -219,6 +239,7 @@ export default async function MyLeaguesPage() {
               No leagues yet
             </h2>
 
+
             <p
               style={
                 styles.emptyText
@@ -226,6 +247,7 @@ export default async function MyLeaguesPage() {
             >
               Create your first Gridiron365 league to get started.
             </p>
+
 
             <Link
               href="/create-league"
@@ -269,6 +291,7 @@ export default async function MyLeaguesPage() {
                       }
                     />
 
+
                     <div
                       style={
                         styles.cardTop
@@ -286,6 +309,7 @@ export default async function MyLeaguesPage() {
                           )}
                         </span>
 
+
                         <h2
                           style={
                             styles.leagueName
@@ -295,6 +319,7 @@ export default async function MyLeaguesPage() {
                         </h2>
                       </div>
 
+
                       <span
                         style={
                           styles.season
@@ -303,6 +328,7 @@ export default async function MyLeaguesPage() {
                         {league.season}
                       </span>
                     </div>
+
 
                     <div
                       style={
@@ -320,8 +346,12 @@ export default async function MyLeaguesPage() {
                               styles.detailLabel
                             }
                           >
-                            My Team
+                            {league.leagueType ===
+                            "season_long"
+                              ? "My Entry"
+                              : "My Team"}
                           </span>
+
 
                           <span
                             style={
@@ -332,6 +362,7 @@ export default async function MyLeaguesPage() {
                           </span>
                         </div>
                       ) : null}
+
 
                       <div
                         style={
@@ -346,6 +377,7 @@ export default async function MyLeaguesPage() {
                           Status
                         </span>
 
+
                         <span
                           style={
                             styles.statusValue
@@ -356,6 +388,7 @@ export default async function MyLeaguesPage() {
                           )}
                         </span>
                       </div>
+
 
                       <div
                         style={
@@ -370,6 +403,7 @@ export default async function MyLeaguesPage() {
                           Role
                         </span>
 
+
                         <span
                           style={
                             styles.detailValue
@@ -378,10 +412,44 @@ export default async function MyLeaguesPage() {
                           {league.role ===
                           "commissioner"
                             ? "Commissioner"
-                            : "Member"}
+                            : league.role ===
+                                "co_commissioner"
+                              ? "Co-Commissioner"
+                              : "Member"}
                         </span>
                       </div>
+
+
+                      {league.leagueType ===
+                      "season_long" ? (
+                        <div
+                          style={
+                            styles.detailRow
+                          }
+                        >
+                          <span
+                            style={
+                              styles.detailLabel
+                            }
+                          >
+                            Format
+                          </span>
+
+
+                          <span
+                            style={
+                              styles.detailValue
+                            }
+                          >
+                            {league.playerSelectionMode ===
+                            "salary"
+                              ? "Weekly Salary"
+                              : "Weekly No Salary"}
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
+
 
                     <div
                       style={
@@ -391,6 +459,7 @@ export default async function MyLeaguesPage() {
                       <span>
                         Open League
                       </span>
+
 
                       <span
                         aria-hidden="true"
@@ -419,6 +488,7 @@ const styles = {
       "24px 18px 48px",
   },
 
+
   shell: {
     width:
       "min(1180px,100%)",
@@ -432,6 +502,7 @@ const styles = {
     gap:
       "30px",
   },
+
 
   topBar: {
     display:
@@ -456,6 +527,7 @@ const styles = {
       "1px solid rgba(255,255,255,.08)",
   },
 
+
   logo: {
     width:
       "min(300px,75vw)",
@@ -469,6 +541,7 @@ const styles = {
     filter:
       "drop-shadow(0 10px 28px rgba(255,69,0,.16))",
   },
+
 
   topActions: {
     display:
@@ -484,6 +557,7 @@ const styles = {
       "wrap" as const,
   },
 
+
   userBox: {
     display:
       "grid",
@@ -494,6 +568,7 @@ const styles = {
     textAlign:
       "right" as const,
   },
+
 
   userLabel: {
     color:
@@ -509,6 +584,7 @@ const styles = {
       ".12em",
   },
 
+
   userEmail: {
     color:
       "#c8ccd3",
@@ -519,6 +595,7 @@ const styles = {
     fontWeight:
       700,
   },
+
 
   headingRow: {
     display:
@@ -537,8 +614,10 @@ const styles = {
       "wrap" as const,
   },
 
+
   eyebrow: {
-    margin: 0,
+    margin:
+      0,
 
     color:
       "#ff8c00",
@@ -553,6 +632,7 @@ const styles = {
       ".15em",
   },
 
+
   title: {
     margin:
       "7px 0 0",
@@ -564,6 +644,7 @@ const styles = {
       "#ffffff",
   },
 
+
   subtitle: {
     margin:
       "8px 0 0",
@@ -574,6 +655,7 @@ const styles = {
     fontSize:
       "14px",
   },
+
 
   createButton: {
     display:
@@ -613,6 +695,7 @@ const styles = {
       "0 10px 28px rgba(255,69,0,.18)",
   },
 
+
   grid: {
     display:
       "grid",
@@ -624,6 +707,7 @@ const styles = {
       "18px",
   },
 
+
   leagueLink: {
     color:
       "inherit",
@@ -632,12 +716,13 @@ const styles = {
       "none",
   },
 
+
   leagueCard: {
     height:
       "100%",
 
     minHeight:
-      "285px",
+      "300px",
 
     padding:
       "23px",
@@ -649,15 +734,19 @@ const styles = {
       "column" as const,
   },
 
+
   cardAccent: {
     position:
       "absolute" as const,
 
-    top: 0,
+    top:
+      0,
 
-    left: 0,
+    left:
+      0,
 
-    right: 0,
+    right:
+      0,
 
     height:
       "3px",
@@ -665,6 +754,7 @@ const styles = {
     background:
       "linear-gradient(90deg,#ff1e1e,#ff4500,#ff8c00)",
   },
+
 
   cardTop: {
     display:
@@ -679,6 +769,7 @@ const styles = {
     gap:
       "15px",
   },
+
 
   typeBadge: {
     display:
@@ -712,6 +803,7 @@ const styles = {
       "uppercase" as const,
   },
 
+
   leagueName: {
     margin:
       "13px 0 0",
@@ -726,6 +818,7 @@ const styles = {
       1.25,
   },
 
+
   season: {
     color:
       "#6e737c",
@@ -737,6 +830,7 @@ const styles = {
       800,
   },
 
+
   cardDetails: {
     display:
       "grid",
@@ -747,6 +841,7 @@ const styles = {
     marginTop:
       "25px",
   },
+
 
   detailRow: {
     display:
@@ -761,6 +856,7 @@ const styles = {
     gap:
       "18px",
   },
+
 
   detailLabel: {
     color:
@@ -779,6 +875,7 @@ const styles = {
       ".06em",
   },
 
+
   detailValue: {
     color:
       "#d6d9df",
@@ -793,6 +890,7 @@ const styles = {
       "right" as const,
   },
 
+
   statusValue: {
     color:
       "#ff8c00",
@@ -803,6 +901,7 @@ const styles = {
     fontWeight:
       900,
   },
+
 
   openRow: {
     marginTop:
@@ -830,6 +929,7 @@ const styles = {
       900,
   },
 
+
   emptyCard: {
     padding:
       "55px 25px",
@@ -843,6 +943,7 @@ const styles = {
     textAlign:
       "center" as const,
   },
+
 
   emptyIcon: {
     width:
@@ -876,6 +977,7 @@ const styles = {
       "0 12px 30px rgba(255,69,0,.18)",
   },
 
+
   emptyTitle: {
     margin:
       "20px 0 0",
@@ -887,6 +989,7 @@ const styles = {
       "23px",
   },
 
+
   emptyText: {
     margin:
       "9px 0 0",
@@ -897,6 +1000,7 @@ const styles = {
     fontSize:
       "14px",
   },
+
 
   emptyButton: {
     marginTop:

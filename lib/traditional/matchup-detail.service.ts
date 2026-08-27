@@ -813,32 +813,6 @@ function isLiveGameStatus(
 }
 
 
-/*
- * =========================================================
- * TEMPORARY LIVE MATCHUP UI TEST
- * =========================================================
- *
- * REMOVE after preseason live-matchup testing is complete.
- *
- * This does NOT change the matchup's official scoring.
- * It only allows Joe Milton III to use stored preseason
- * game/stats/context data so the Matchup Detail UI can be
- * validated before the regular season begins.
- */
-
-const LIVE_UI_TEST = {
-  enabled: false,
-  leagueId:
-    "984564ec-abcf-41e5-bab2-ac383da512b5",
-  fantasyTeamId: 1,
-  nflPlayerId: 263,
-  nflGameId: 318,
-  season: 2026,
-  seasonType: 1,
-  week: 2,
-} as const;
-
-
 export async function getTraditionalMatchupDetailData(
   supabase:
     SupabaseClient,
@@ -987,6 +961,119 @@ export async function getTraditionalMatchupDetailData(
   const refreshed =
     refreshedData as
       MatchupRow;
+
+
+  /*
+   * =====================================================
+   * NFL SCORING CONTEXT
+   * =====================================================
+   *
+   * Normal Traditional leagues use regular-season NFL data:
+   *   season_type = 2
+   *   NFL week = fantasy week
+   *
+   * A league-level QA override can temporarily point the
+   * fantasy matchup at another NFL context (for example,
+   * 2026 preseason Week 3) without changing other leagues.
+   */
+
+  const {
+    data:
+      nflContextData,
+
+    error:
+      nflContextError,
+  } =
+    await supabase.rpc(
+      "get_league_nfl_context",
+      {
+        p_league_id:
+          leagueId,
+
+        p_fantasy_season:
+          refreshed.season,
+
+        p_fantasy_week:
+          refreshed.week,
+      }
+    );
+
+
+  if (
+    nflContextError
+  ) {
+    throw new Error(
+      `Could not resolve NFL scoring context: ${nflContextError.message}`
+    );
+  }
+
+
+  const rawNflContext =
+    Array.isArray(
+      nflContextData
+    )
+      ? nflContextData[0]
+      : nflContextData;
+
+
+  if (
+    !rawNflContext ||
+    typeof rawNflContext !==
+      "object"
+  ) {
+    throw new Error(
+      "NFL scoring context was not returned."
+    );
+  }
+
+
+  const nflContext =
+    rawNflContext as {
+      nfl_season?: unknown;
+      nfl_season_type?: unknown;
+      nfl_week?: unknown;
+      qa_override_enabled?: unknown;
+    };
+
+
+  const nflSeason =
+    Number(
+      nflContext.nfl_season
+    );
+
+
+  const nflSeasonType =
+    Number(
+      nflContext.nfl_season_type
+    );
+
+
+  const nflWeek =
+    Number(
+      nflContext.nfl_week
+    );
+
+
+  const qaOverrideEnabled =
+    nflContext.qa_override_enabled ===
+    true;
+
+
+  if (
+    !Number.isInteger(
+      nflSeason
+    ) ||
+    !Number.isInteger(
+      nflSeasonType
+    ) ||
+    !Number.isInteger(
+      nflWeek
+    )
+  ) {
+    throw new Error(
+      "The NFL scoring context is invalid."
+    );
+  }
 
 
   const fantasyTeamIds = [
@@ -1254,11 +1341,15 @@ export async function getTraditionalMatchupDetailData(
           )
           .eq(
             "season",
-            refreshed.season
+            qaOverrideEnabled
+              ? refreshed.season
+              : nflSeason
           )
           .eq(
             "season_type",
-            2
+            qaOverrideEnabled
+              ? 2
+              : nflSeasonType
           )
           .eq(
             "week",
@@ -1434,15 +1525,15 @@ export async function getTraditionalMatchupDetailData(
         )
         .eq(
           "season",
-          refreshed.season
+          nflSeason
         )
         .eq(
           "season_type",
-          2
+          nflSeasonType
         )
         .eq(
           "week",
-          refreshed.week
+          nflWeek
         )
         .in(
           "nfl_player_id",
@@ -1534,15 +1625,15 @@ export async function getTraditionalMatchupDetailData(
         `)
         .eq(
           "season",
-          refreshed.season
+          nflSeason
         )
         .eq(
           "season_type",
-          2
+          nflSeasonType
         )
         .eq(
           "week",
-          refreshed.week
+          nflWeek
         )
         .in(
           "nfl_player_id",
@@ -1569,119 +1660,6 @@ export async function getTraditionalMatchupDetailData(
       statsMap.set(
         stat.nfl_player_id,
         stat
-      );
-    }
-  }
-
-
-  /*
-   * =====================================================
-   * TEMPORARY PRESEASON LIVE UI TEST STATS
-   * =====================================================
-   */
-
-  const liveUiTestEnabled =
-    LIVE_UI_TEST.enabled &&
-    leagueId ===
-      LIVE_UI_TEST.leagueId &&
-    refreshed.season ===
-      2026 &&
-    refreshed.week ===
-      1 &&
-    lineups.some(
-      (
-        row
-      ) =>
-        row.fantasy_team_id ===
-          LIVE_UI_TEST.fantasyTeamId &&
-        row.player_id ===
-          LIVE_UI_TEST.nflPlayerId
-    );
-
-
-  if (
-    liveUiTestEnabled
-  ) {
-    const {
-      data:
-        testStatsData,
-
-      error:
-        testStatsError,
-    } =
-      await supabase
-        .from(
-          "nfl_player_game_stats"
-        )
-        .select(`
-          nfl_game_id,
-          nfl_player_id,
-          game_status,
-          passing_attempts,
-          passing_completions,
-          passing_yards,
-          passing_touchdowns,
-          passing_interceptions,
-          rushing_attempts,
-          rushing_yards,
-          rushing_touchdowns,
-          receiving_targets,
-          receptions,
-          receiving_yards,
-          receiving_touchdowns,
-          fumbles_lost,
-          field_goals_made,
-          field_goals_attempted,
-          extra_points_made,
-          extra_points_attempted,
-          dst_sacks,
-          dst_interceptions,
-          dst_fumble_recoveries,
-          dst_touchdowns,
-          dst_safeties,
-          dst_blocked_kicks,
-          dst_points_allowed,
-          dst_yards_allowed
-        `)
-        .eq(
-          "nfl_game_id",
-          LIVE_UI_TEST.nflGameId
-        )
-        .eq(
-          "nfl_player_id",
-          LIVE_UI_TEST.nflPlayerId
-        )
-        .eq(
-          "season",
-          LIVE_UI_TEST.season
-        )
-        .eq(
-          "season_type",
-          LIVE_UI_TEST.seasonType
-        )
-        .eq(
-          "week",
-          LIVE_UI_TEST.week
-        )
-        .maybeSingle();
-
-
-    if (
-      testStatsError
-    ) {
-      console.error(
-        "Could not load temporary live UI test stats:",
-        testStatsError
-      );
-    }
-
-
-    if (
-      testStatsData
-    ) {
-      statsMap.set(
-        LIVE_UI_TEST.nflPlayerId,
-        testStatsData as StatsRow
       );
     }
   }
@@ -1836,15 +1814,15 @@ export async function getTraditionalMatchupDetailData(
       `)
       .eq(
         "season",
-        refreshed.season
+        nflSeason
       )
       .eq(
         "season_type",
-        2
+        nflSeasonType
       )
       .eq(
         "week",
-        refreshed.week
+        nflWeek
       );
 
 
