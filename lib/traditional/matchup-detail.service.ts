@@ -236,14 +236,6 @@ export type MatchupDetailPlayer = {
 
     extraPointsAttempted: number;
 
-    defensiveSoloTackles: number;
-
-    defensiveAssistedTackles: number;
-
-    defensiveTotalTackles: number;
-
-    defensiveTacklesForLoss: number;
-
     dstSacks: number;
 
     dstInterceptions: number;
@@ -338,6 +330,10 @@ export type TraditionalMatchupDetailData = {
       null;
 
     possessionTeamAbbreviation:
+      string |
+      null;
+
+    defenseTeamAbbreviation:
       string |
       null;
 
@@ -534,22 +530,6 @@ type StatsRow = {
     number |
     null;
 
-  defensive_solo_tackles:
-    number |
-    null;
-
-  defensive_assisted_tackles:
-    number |
-    null;
-
-  defensive_total_tackles:
-    number |
-    null;
-
-  defensive_tackles_for_loss:
-    number |
-    null;
-
   dst_sacks:
     number |
     string |
@@ -634,6 +614,8 @@ type InjuryRow = {
 
 type ScoringPlayRow = {
   nfl_game_id: number;
+
+  scoring_play: boolean;
 
   espn_play_id: string;
 
@@ -1387,10 +1369,6 @@ export async function getTraditionalMatchupDetailData(
           field_goals_attempted,
           extra_points_made,
           extra_points_attempted,
-          defensive_solo_tackles,
-          defensive_assisted_tackles,
-          defensive_total_tackles,
-          defensive_tackles_for_loss,
           dst_sacks,
           dst_interceptions,
           dst_fumble_recoveries,
@@ -1502,10 +1480,6 @@ export async function getTraditionalMatchupDetailData(
           field_goals_attempted,
           extra_points_made,
           extra_points_attempted,
-          defensive_solo_tackles,
-          defensive_assisted_tackles,
-          defensive_total_tackles,
-          defensive_tackles_for_loss,
           dst_sacks,
           dst_interceptions,
           dst_fumble_recoveries,
@@ -1854,20 +1828,18 @@ export async function getTraditionalMatchupDetailData(
 
   /*
    * =====================================================
-   * RECENT SCORING PLAYS
+   * RECENT FANTASY SCORING PLAYS
    * =====================================================
    *
-   * IMPORTANT:
+   * Offensive/kicking plays are included only when a STARTING
+   * fantasy player in this matchup is an ESPN participant.
    *
-   * Only show scoring plays involving a STARTING fantasy
-   * player in THIS matchup.
+   * Team-defense plays are also included for a STARTING DST when
+   * the play belongs to that defense and contains a fantasy-defense
+   * event such as a sack, interception, fumble recovery, safety,
+   * blocked kick, or defensive touchdown.
    *
-   * We intentionally do not show every scoring play from an
-   * NFL game merely because one matchup player is playing in
-   * that NFL game.
-   *
-   * Bench-player scoring plays are also excluded because bench
-   * points do not count toward the fantasy matchup.
+   * Bench players remain excluded.
    */
 
   let recentScoringPlays:
@@ -1877,22 +1849,21 @@ export async function getTraditionalMatchupDetailData(
       [];
 
 
+  const starterLineups =
+    lineups.filter(
+      (lineup) =>
+        isStarterSlot(
+          lineup.lineup_slot
+        )
+    );
+
+
   const matchupStarterEspnPlayerIds =
     Array.from(
       new Set(
-        lineups
-          .filter(
-            (
-              lineup
-            ) =>
-              isStarterSlot(
-                lineup.lineup_slot
-              )
-          )
+        starterLineups
           .map(
-            (
-              lineup
-            ) =>
+            (lineup) =>
               playerMap.get(
                 lineup.player_id
               )
@@ -1900,9 +1871,7 @@ export async function getTraditionalMatchupDetailData(
               null
           )
           .filter(
-            (
-              espnPlayerId
-            ):
+            (espnPlayerId):
               espnPlayerId is string =>
                 Boolean(
                   espnPlayerId
@@ -1912,18 +1881,79 @@ export async function getTraditionalMatchupDetailData(
     );
 
 
+  const matchupDstTeamAbbreviations =
+    new Set(
+      starterLineups
+        .map(
+          (lineup) =>
+            playerMap.get(
+              lineup.player_id
+            )
+        )
+        .filter(
+          (player) =>
+            Boolean(
+              player &&
+              normalizePosition(
+                player.primary_position
+              ) === "DST" &&
+              player.team_abbreviation
+            )
+        )
+        .map(
+          (player) =>
+            player
+              ?.team_abbreviation as string
+        )
+    );
+
+
+  const starterEspnIdSet =
+    new Set(
+      matchupStarterEspnPlayerIds
+    );
+
+
+  function isFantasyDefensePlayText(
+    text: string | null
+  ) {
+    const normalized =
+      (text ?? "")
+        .toUpperCase();
+
+    return (
+      normalized.includes(
+        "SACK"
+      ) ||
+      normalized.includes(
+        "INTERCEPT"
+      ) ||
+      normalized.includes(
+        "FUMBLE"
+      ) ||
+      normalized.includes(
+        "RECOVER"
+      ) ||
+      normalized.includes(
+        "SAFETY"
+      ) ||
+      normalized.includes(
+        "BLOCKED"
+      )
+    );
+  }
+
+
   if (
-    gameIds.length >
-      0 &&
-    matchupStarterEspnPlayerIds.length >
-      0
+    gameIds.length > 0 &&
+    (
+      matchupStarterEspnPlayerIds.length > 0 ||
+      matchupDstTeamAbbreviations.size > 0
+    )
   ) {
     const {
-      data:
-        scoringData,
-
-      error:
-        scoringError,
+      data: playData,
+      error: playError,
     } =
       await supabase
         .from(
@@ -1932,6 +1962,8 @@ export async function getTraditionalMatchupDetailData(
         .select(`
           nfl_game_id,
           espn_play_id,
+          sequence_number,
+          scoring_play,
           period,
           clock_display,
           possession_team_espn_id,
@@ -1943,87 +1975,146 @@ export async function getTraditionalMatchupDetailData(
           "nfl_game_id",
           gameIds
         )
-        .eq(
-          "scoring_play",
-          true
-        )
-        .overlaps(
-          "participant_espn_player_ids",
-          matchupStarterEspnPlayerIds
-        )
         .order(
           "sequence_number",
           {
-            ascending:
-              false,
+            ascending: false,
           }
         )
         .limit(
-          12
+          200
         );
 
 
-    if (
-      !scoringError
-    ) {
+    if (!playError) {
       recentScoringPlays =
         (
-          scoringData ??
+          playData ??
           []
-        ).map(
-          (
-            raw
-          ) => {
-            const play =
-              raw as
-                ScoringPlayRow;
+        )
+          .map(
+            (raw) => {
+              const play =
+                raw as unknown as
+                  ScoringPlayRow;
 
-
-            const possessionTeam =
-              nflTeams.find(
-                (
-                  team
-                ) =>
-                  team.espn_team_id ===
-                  play
-                    .possession_team_espn_id
-              );
-
-
-            return {
-              nflGameId:
-                play.nfl_game_id,
-
-              espnPlayId:
-                play.espn_play_id,
-
-              period:
-                play.period,
-
-              clock:
-                play
-                  .clock_display,
-
-              possessionTeamAbbreviation:
-                possessionTeam
-                  ?.abbreviation ??
-                null,
-
-              scoreValue:
-                play
-                  .score_value,
-
-              text:
-                play
-                  .play_text,
-
-              participantEspnPlayerIds:
+              const participantIds =
                 play
                   .participant_espn_player_ids ??
-                [],
-            };
-          }
-        );
+                [];
+
+              const starterParticipated =
+                participantIds.some(
+                  (espnPlayerId) =>
+                    starterEspnIdSet.has(
+                      espnPlayerId
+                    )
+                );
+
+              const possessionTeam =
+                nflTeams.find(
+                  (team) =>
+                    team.espn_team_id ===
+                    play
+                      .possession_team_espn_id
+                );
+
+              const game =
+                gameMap.get(
+                  play.nfl_game_id
+                );
+
+              let defenseTeam:
+                NflTeamRow |
+                undefined;
+
+              if (
+                game &&
+                possessionTeam
+              ) {
+                const defenseTeamId =
+                  game.home_team_id ===
+                  possessionTeam.id
+                    ? game.away_team_id
+                    : game.home_team_id;
+
+                defenseTeam =
+                  nflTeams.find(
+                    (team) =>
+                      team.id ===
+                      defenseTeamId
+                  );
+              }
+
+              const dstFantasyPlay =
+                Boolean(
+                  defenseTeam &&
+                  matchupDstTeamAbbreviations.has(
+                    defenseTeam.abbreviation
+                  ) &&
+                  isFantasyDefensePlayText(
+                    play.play_text
+                  )
+                );
+
+              const offensiveOrKickingFantasyPlay =
+                Boolean(
+                  play.scoring_play &&
+                  starterParticipated
+                );
+
+              if (
+                !offensiveOrKickingFantasyPlay &&
+                !dstFantasyPlay
+              ) {
+                return null;
+              }
+
+              return {
+                nflGameId:
+                  play.nfl_game_id,
+
+                espnPlayId:
+                  play.espn_play_id,
+
+                period:
+                  play.period,
+
+                clock:
+                  play.clock_display,
+
+                possessionTeamAbbreviation:
+                  possessionTeam
+                    ?.abbreviation ??
+                  null,
+
+                defenseTeamAbbreviation:
+                  defenseTeam
+                    ?.abbreviation ??
+                  null,
+
+                scoreValue:
+                  play.score_value,
+
+                text:
+                  play.play_text,
+
+                participantEspnPlayerIds:
+                  participantIds,
+              };
+            }
+          )
+          .filter(
+            (play):
+              play is NonNullable<
+                typeof play
+              > =>
+                play !== null
+          )
+          .slice(
+            0,
+            12
+          );
     }
   }
 
@@ -2416,26 +2507,6 @@ export async function getTraditionalMatchupDetailData(
         extraPointsAttempted:
           stats
             ?.extra_points_attempted ??
-          0,
-
-        defensiveSoloTackles:
-          stats
-            ?.defensive_solo_tackles ??
-          0,
-
-        defensiveAssistedTackles:
-          stats
-            ?.defensive_assisted_tackles ??
-          0,
-
-        defensiveTotalTackles:
-          stats
-            ?.defensive_total_tackles ??
-          0,
-
-        defensiveTacklesForLoss:
-          stats
-            ?.defensive_tackles_for_loss ??
           0,
 
         dstSacks:

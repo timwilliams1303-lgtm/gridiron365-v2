@@ -223,36 +223,61 @@ function playerStatus(
   const context =
     player.gameContext;
 
-
-  if (
-    context
-      ?.isActuallyLive
-  ) {
-    return [
-      quarter(
-        context.period
-      ),
-
-      context.clock,
-    ]
-      .filter(Boolean)
-      .join(" ");
-  }
+  const normalizedGameStatus =
+    (
+      player.gameStatus ??
+      context?.statusName ??
+      ""
+    ).toUpperCase();
 
 
+  /*
+   * Never show the internal lineup-lock state as the player's
+   * matchup status. "Locked" is a roster-management rule, not
+   * an NFL game status.
+   *
+   * Final takes precedence so a player whose lineup slot remains
+   * locked after kickoff still displays FINAL once the NFL game
+   * is complete.
+   */
   if (
     player.scoreIsFinal ||
-    context
-      ?.statusCompleted
+    context?.statusCompleted ||
+    normalizedGameStatus.includes(
+      "FINAL"
+    )
   ) {
     return "FINAL";
   }
 
 
   if (
-    player.isLocked
+    context?.isActuallyLive ||
+    player.scoreIsLive ||
+    normalizedGameStatus.includes(
+      "IN_PROGRESS"
+    ) ||
+    normalizedGameStatus.includes(
+      "HALFTIME"
+    )
   ) {
-    return "LOCKED";
+    const liveClock =
+      [
+        quarter(
+          context?.period ??
+            null
+        ),
+
+        context?.clock ??
+          null,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+    return (
+      liveClock ||
+      "LIVE"
+    );
   }
 
 
@@ -266,6 +291,137 @@ function playerStatus(
 
 
   return "BYE";
+}
+
+
+function scoringPlayLabel(
+  text:
+    string |
+    null,
+  scoreValue:
+    number |
+    null
+) {
+  const normalized =
+    (
+      text ??
+      ""
+    ).toUpperCase();
+
+
+  /*
+   * Defensive fantasy events come first so an interception-return
+   * touchdown can read INT TD instead of the generic TD badge.
+   */
+  const isTouchdown =
+    normalized.includes(
+      "TOUCHDOWN"
+    );
+
+
+  if (
+    normalized.includes(
+      "INTERCEPT"
+    )
+  ) {
+    return isTouchdown
+      ? "INT TD"
+      : "INT";
+  }
+
+
+  if (
+    normalized.includes(
+      "FUMBLE"
+    ) ||
+    normalized.includes(
+      "RECOVER"
+    )
+  ) {
+    return isTouchdown
+      ? "FUM TD"
+      : "FUM";
+  }
+
+
+  if (
+    normalized.includes(
+      "SACK"
+    )
+  ) {
+    return "SACK";
+  }
+
+
+  if (
+    normalized.includes(
+      "BLOCKED"
+    )
+  ) {
+    return "BLK";
+  }
+
+
+  if (
+    normalized.includes(
+      "SAFETY"
+    )
+  ) {
+    return "SFTY";
+  }
+
+
+  if (
+    normalized.includes(
+      "FIELD GOAL"
+    )
+  ) {
+    return "FG";
+  }
+
+
+  if (
+    normalized.includes(
+      "EXTRA POINT"
+    )
+  ) {
+    return "XP";
+  }
+
+
+  if (
+    normalized.includes(
+      "TWO-POINT"
+    ) ||
+    normalized.includes(
+      "TWO POINT"
+    )
+  ) {
+    return "2PT";
+  }
+
+
+  if (isTouchdown) {
+    return "TD";
+  }
+
+
+  switch (scoreValue) {
+    case 6:
+      return "TD";
+
+    case 3:
+      return "FG";
+
+    case 2:
+      return "2PT";
+
+    case 1:
+      return "XP";
+
+    default:
+      return "SCORE";
+  }
 }
 
 
@@ -670,9 +826,168 @@ export default async function TraditionalMatchupDetailPage({
     );
 
 
+  /*
+   * ============================================================
+   * MATCHUP-ONLY FANTASY SCORING PLAYS
+   * ============================================================
+   *
+   * ESPN scoring plays are game-wide. The matchup screen should
+   * only surface a scoring play when at least one STARTING fantasy
+   * player in this matchup participated in it.
+   *
+   * The service already gives us participant ESPN player IDs, so
+   * this is much safer than trying to match names from play text.
+   */
+  const matchupFantasyPlayersByEspnId =
+    new Map<
+      string,
+      {
+        player:
+          MatchupDetailPlayer;
+
+        isMyTeam:
+          boolean;
+      }
+    >();
+
+
+  for (
+    const team
+    of [
+      data.away,
+      data.home,
+    ]
+  ) {
+    for (
+      const player
+      of team.starters
+    ) {
+      if (
+        player.espnPlayerId
+      ) {
+        matchupFantasyPlayersByEspnId.set(
+          player.espnPlayerId,
+          {
+            player,
+            isMyTeam:
+              team.isMyTeam,
+          }
+        );
+      }
+    }
+  }
+
+
+  const matchupScoringPlays =
+    data.recentScoringPlays
+      .map(
+        (
+          play
+        ) => {
+          const fantasyPlayers =
+            Array.from(
+              new Map(
+                play
+                  .participantEspnPlayerIds
+                  .map(
+                    (
+                      espnPlayerId
+                    ) =>
+                      matchupFantasyPlayersByEspnId.get(
+                        espnPlayerId
+                      ) ??
+                      null
+                  )
+                  .filter(
+                    (
+                      entry
+                    ): entry is {
+                      player:
+                        MatchupDetailPlayer;
+
+                      isMyTeam:
+                        boolean;
+                    } =>
+                      entry !==
+                      null
+                  )
+                  .map(
+                    (
+                      entry
+                    ) => [
+                      entry
+                        .player
+                        .playerId,
+                      entry,
+                    ] as const
+                  )
+              ).values()
+            );
+
+
+          /*
+           * DST scoring events usually name individual defenders, not
+           * the fantasy DST pseudo-player. If the service identifies the
+           * defense on the play, attach the matchup's starting DST so its
+           * fantasy-team color/name can be shown just like offensive players.
+           */
+          if (
+            play.defenseTeamAbbreviation
+          ) {
+            for (
+              const team
+              of [
+                data.away,
+                data.home,
+              ]
+            ) {
+              const dstPlayer =
+                team.starters.find(
+                  (player) =>
+                    player.position
+                      .toUpperCase() ===
+                      "DST" &&
+                    player.teamAbbreviation ===
+                      play.defenseTeamAbbreviation
+                );
+
+              if (
+                dstPlayer &&
+                !fantasyPlayers.some(
+                  (entry) =>
+                    entry.player.playerId ===
+                    dstPlayer.playerId
+                )
+              ) {
+                fantasyPlayers.push({
+                  player: dstPlayer,
+                  isMyTeam:
+                    team.isMyTeam,
+                });
+              }
+            }
+          }
+
+
+          return {
+            ...play,
+            fantasyPlayers,
+          };
+        }
+      )
+      .filter(
+        (
+          play
+        ) =>
+          play
+            .fantasyPlayers
+            .length >
+          0
+      );
+
+
   const latestScoringPlay =
-    data
-      .recentScoringPlays[0] ??
+    matchupScoringPlays[0] ??
     null;
 
 
@@ -1243,12 +1558,14 @@ export default async function TraditionalMatchupDetailPage({
             <Panel
               title="RECENT SCORING PLAYS"
             >
-              {data
-                .recentScoringPlays
+              {matchupScoringPlays
                 .length >
               0 ? (
-                data
-                  .recentScoringPlays
+                matchupScoringPlays
+                  .slice(
+                    0,
+                    5
+                  )
                   .map(
                     (
                       play
@@ -1266,7 +1583,10 @@ export default async function TraditionalMatchupDetailPage({
                             styles.scoringDot
                           }
                         >
-                          TD
+                          {scoringPlayLabel(
+                            play.text,
+                            play.scoreValue
+                          )}
                         </span>
 
 
@@ -1275,11 +1595,43 @@ export default async function TraditionalMatchupDetailPage({
                             styles.scoringRowText
                           }
                         >
-                          <strong>
+                          <div
+                            style={
+                              styles.scoringPlayerNames
+                            }
+                          >
                             {play
-                              .possessionTeamAbbreviation ??
-                              "NFL"}
-                          </strong>
+                              .fantasyPlayers
+                              .map(
+                                (
+                                  entry,
+                                  index
+                                ) => (
+                                  <span
+                                    key={
+                                      entry
+                                        .player
+                                        .playerId
+                                    }
+                                    style={
+                                      entry
+                                        .isMyTeam
+                                        ? styles.myScoringPlayer
+                                        : styles.opponentScoringPlayer
+                                    }
+                                  >
+                                    {index >
+                                    0
+                                      ? " • "
+                                      : ""}
+
+                                    {entry
+                                      .player
+                                      .fullName}
+                                  </span>
+                                )
+                              )}
+                          </div>
 
                           <span>
                             {play.text}
@@ -3371,6 +3723,39 @@ const styles = {
       "#f0f0f1",
 
     fontSize: "12px",
+  },
+
+
+  scoringPlayerNames: {
+    display:
+      "flex",
+
+    flexWrap:
+      "wrap" as const,
+
+    alignItems:
+      "center",
+
+    gap:
+      "0",
+
+    fontSize:
+      "12px",
+
+    fontWeight:
+      950,
+  },
+
+
+  myScoringPlayer: {
+    color:
+      "#38d996",
+  },
+
+
+  opponentScoringPlayer: {
+    color:
+      "#ff5b55",
   },
 
 
