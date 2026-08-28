@@ -25,26 +25,15 @@ type Props = {
  * TRADITIONAL LIVE REFRESH
  * ============================================================
  *
- * IMPORTANT ARCHITECTURE:
+ * IMPORTANT:
  *
- * ESPN synchronization is NOT performed here.
+ * This component NEVER synchronizes ESPN.
  *
- * Central NFL Worker
- *      ↓
- * ESPN boxscore + play-by-play
- *      ↓
- * Supabase
- *      ↓
- * Traditional scoring
- *      ↓
- * Supabase Realtime
- *      ↓
- * This component
- *      ↓
- * router.refresh()
+ * ESPN synchronization and fantasy scoring are handled by the
+ * centralized NFL worker.
  *
- * The browser therefore reads authoritative data instead of
- * independently synchronizing ESPN.
+ * This component only listens for league-specific fantasy
+ * database changes and refreshes the server-rendered page.
  */
 export default function TraditionalLiveRefresh({
   leagueId,
@@ -56,25 +45,24 @@ export default function TraditionalLiveRefresh({
     useRouter();
 
 
-  /*
-   * Multiple database rows can change almost simultaneously
-   * after one NFL play.
-   *
-   * Example:
-   *
-   * nfl_game_plays
-   * weekly_lineups
-   * traditional_matchups
-   *
-   * We do not want three immediate router.refresh() calls.
-   * Instead, changes are grouped into one refresh.
-   */
-  const refreshTimerRef =
+  const debounceTimerRef =
     useRef<
       ReturnType<
         typeof setTimeout
       > | null
     >(null);
+
+
+  const cooldownTimerRef =
+    useRef<
+      ReturnType<
+        typeof setTimeout
+      > | null
+    >(null);
+
+
+  const refreshBlockedRef =
+    useRef(false);
 
 
   const isMatchupsPage =
@@ -130,12 +118,46 @@ export default function TraditionalLiveRefresh({
 
       /*
        * ======================================================
-       * REFRESH DEBOUNCE
+       * SAFE REFRESH
        * ======================================================
        *
-       * A single NFL play can cause several database writes.
-       * Wait briefly and combine them into one server refresh.
+       * Multiple fantasy rows may update from one scoring play.
+       *
+       * We debounce the changes and then impose a short
+       * cooldown so router.refresh() cannot run continuously.
        */
+      function performRefresh() {
+        if (
+          cancelled ||
+          refreshBlockedRef.current ||
+          document.visibilityState ===
+            "hidden"
+        ) {
+          return;
+        }
+
+
+        refreshBlockedRef.current =
+          true;
+
+
+        router.refresh();
+
+
+        cooldownTimerRef.current =
+          setTimeout(
+            () => {
+              refreshBlockedRef.current =
+                false;
+
+              cooldownTimerRef.current =
+                null;
+            },
+            1500
+          );
+      }
+
+
       function scheduleRefresh() {
         if (
           cancelled ||
@@ -147,40 +169,45 @@ export default function TraditionalLiveRefresh({
 
 
         if (
-          refreshTimerRef.current
+          debounceTimerRef.current
         ) {
           clearTimeout(
-            refreshTimerRef.current
+            debounceTimerRef.current
           );
         }
 
 
-        refreshTimerRef.current =
+        debounceTimerRef.current =
           setTimeout(
             () => {
-              if (
-                cancelled
-              ) {
-                return;
-              }
-
-
-              router.refresh();
-
-
-              refreshTimerRef.current =
+              debounceTimerRef.current =
                 null;
+
+              performRefresh();
             },
-            300
+            400
           );
       }
 
 
       /*
        * ======================================================
-       * REALTIME CHANNEL
+       * LEAGUE-SCOPED REALTIME
        * ======================================================
+       *
+       * IMPORTANT:
+       *
+       * We intentionally DO NOT subscribe globally to
+       * nfl_game_plays here.
+       *
+       * That table contains every NFL game on the platform.
+       * A global subscription can generate a refresh storm.
+       *
+       * We will add NFL play updates back later, scoped only
+       * to the NFL games relevant to this matchup.
        */
+
+
       const channel =
         supabase
           .channel(
@@ -189,12 +216,7 @@ export default function TraditionalLiveRefresh({
 
 
           /*
-           * --------------------------------------------------
-           * MATCHUP SCORE CHANGES
-           * --------------------------------------------------
-           *
-           * This is league-scoped so a change in another
-           * Traditional league does not refresh this browser.
+           * MATCHUP TOTALS
            */
           .on(
             "postgres_changes",
@@ -218,12 +240,7 @@ export default function TraditionalLiveRefresh({
 
 
           /*
-           * --------------------------------------------------
-           * PLAYER / LINEUP SCORE CHANGES
-           * --------------------------------------------------
-           *
-           * Fantasy points and player score state are stored
-           * in weekly_lineups.
+           * PLAYER FANTASY POINTS / LINEUP STATE
            */
           .on(
             "postgres_changes",
@@ -246,53 +263,13 @@ export default function TraditionalLiveRefresh({
           )
 
 
-          /*
-           * --------------------------------------------------
-           * NFL PLAY-BY-PLAY CHANGES
-           * --------------------------------------------------
-           *
-           * nfl_game_plays is global NFL data and does not
-           * contain league_id.
-           *
-           * A new play can change:
-           *
-           * - possession
-           * - quarter
-           * - clock
-           * - down/distance
-           * - red zone
-           * - ON FIELD / OFF FIELD
-           * - last scoring play
-           * - recent scoring plays
-           *
-           * The server matchup page decides which NFL games
-           * are actually relevant to this matchup.
-           */
-          .on(
-            "postgres_changes",
-            {
-              event:
-                "*",
-
-              schema:
-                "public",
-
-              table:
-                "nfl_game_plays",
-            },
-            () => {
-              scheduleRefresh();
-            }
-          )
-
-
           .subscribe(
             (
               status
             ) => {
               if (
                 status ===
-                "SUBSCRIBED"
+                  "SUBSCRIBED"
               ) {
                 console.log(
                   "Traditional live Realtime connected:",
@@ -303,7 +280,7 @@ export default function TraditionalLiveRefresh({
 
               if (
                 status ===
-                "CHANNEL_ERROR"
+                  "CHANNEL_ERROR"
               ) {
                 console.error(
                   "Traditional live Realtime channel error:",
@@ -314,10 +291,21 @@ export default function TraditionalLiveRefresh({
 
               if (
                 status ===
-                "TIMED_OUT"
+                  "TIMED_OUT"
               ) {
                 console.error(
                   "Traditional live Realtime connection timed out:",
+                  leagueId
+                );
+              }
+
+
+              if (
+                status ===
+                  "CLOSED"
+              ) {
+                console.warn(
+                  "Traditional live Realtime channel closed:",
                   leagueId
                 );
               }
@@ -327,15 +315,14 @@ export default function TraditionalLiveRefresh({
 
       /*
        * ======================================================
-       * TAB / WINDOW CATCH-UP
+       * CATCH-UP EVENTS
        * ======================================================
        *
-       * We intentionally do not refresh hidden tabs for every
-       * NFL event.
-       *
-       * When the user comes back, immediately read the latest
-       * authoritative state.
+       * When the user returns to the browser/tab, refresh once
+       * to catch anything that occurred while it was inactive.
        */
+
+
       function handleVisibilityChange() {
         if (
           document.visibilityState ===
@@ -373,28 +360,41 @@ export default function TraditionalLiveRefresh({
 
 
       /*
-       * One initial refresh makes sure the page catches any
-       * database change that occurred between the original
-       * server render and Realtime subscription establishment.
+       * ======================================================
+       * CLEANUP
+       * ======================================================
        */
-      scheduleRefresh();
-
-
       return () => {
         cancelled =
           true;
 
 
         if (
-          refreshTimerRef.current
+          debounceTimerRef.current
         ) {
           clearTimeout(
-            refreshTimerRef.current
+            debounceTimerRef.current
           );
 
-          refreshTimerRef.current =
+          debounceTimerRef.current =
             null;
         }
+
+
+        if (
+          cooldownTimerRef.current
+        ) {
+          clearTimeout(
+            cooldownTimerRef.current
+          );
+
+          cooldownTimerRef.current =
+            null;
+        }
+
+
+        refreshBlockedRef.current =
+          false;
 
 
         document.removeEventListener(
