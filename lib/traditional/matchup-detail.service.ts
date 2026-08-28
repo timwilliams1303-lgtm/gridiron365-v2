@@ -584,6 +584,34 @@ type NflGameRow = {
 };
 
 
+type ProjectionRow = {
+  player_id: number;
+
+  projected_points:
+    number |
+    string |
+    null;
+};
+
+
+type StoredWeeklyProjectionRow = {
+  player_id: number;
+
+  projected_points:
+    number |
+    string |
+    null;
+
+  is_bye:
+    boolean |
+    null;
+
+  opponent_abbreviation:
+    string |
+    null;
+};
+
+
 type NflTeamRow = {
   id: number;
 
@@ -1232,6 +1260,191 @@ export async function getTraditionalMatchupDetailData(
       playerMap.set(
         player.id,
         player
+      );
+    }
+  }
+
+
+  /*
+   * =====================================================
+   * WEEKLY PLAYER PROJECTIONS
+   * =====================================================
+   *
+   * Use the existing Gridiron365 weekly projection engine first.
+   * If a weekly projection has not been generated yet, fall back
+   * to the season projection divided by 17 so the matchup page
+   * still displays a useful projected value.
+   */
+
+  const projectionMap =
+    new Map<
+      number,
+      number
+    >();
+
+
+  const projectionSourceMap =
+    new Map<
+      number,
+      "weekly" |
+      "season_average" |
+      "none"
+    >();
+
+
+  if (
+    playerIds.length >
+    0
+  ) {
+    const [
+      weeklyProjectionResult,
+      seasonFallbackResult,
+    ] =
+      await Promise.all([
+        supabase
+          .from(
+            "traditional_weekly_player_projections"
+          )
+          .select(`
+            player_id,
+            projected_points,
+            is_bye,
+            opponent_abbreviation
+          `)
+          .eq(
+            "league_id",
+            leagueId
+          )
+          .eq(
+            "season",
+            refreshed.season
+          )
+          .eq(
+            "season_type",
+            2
+          )
+          .eq(
+            "week",
+            refreshed.week
+          )
+          .in(
+            "player_id",
+            playerIds
+          ),
+
+        supabase
+          .from(
+            "traditional_default_draft_rankings"
+          )
+          .select(`
+            player_id,
+            projected_points
+          `)
+          .eq(
+            "season",
+            refreshed.season
+          )
+          .in(
+            "player_id",
+            playerIds
+          ),
+      ]);
+
+
+    const weeklyRows =
+      (
+        weeklyProjectionResult.data ??
+        []
+      ) as StoredWeeklyProjectionRow[];
+
+
+    const weeklyIds =
+      new Set<number>();
+
+
+    for (
+      const row
+      of weeklyRows
+    ) {
+      const playerId =
+        Number(
+          row.player_id
+        );
+
+
+      weeklyIds.add(
+        playerId
+      );
+
+
+      projectionMap.set(
+        playerId,
+        row.is_bye
+          ? 0
+          : Math.max(
+              0,
+              numberValue(
+                row.projected_points
+              )
+            )
+      );
+
+
+      projectionSourceMap.set(
+        playerId,
+        "weekly"
+      );
+    }
+
+
+    for (
+      const row
+      of (
+        seasonFallbackResult.data ??
+        []
+      ) as ProjectionRow[]
+    ) {
+      const playerId =
+        Number(
+          row.player_id
+        );
+
+
+      if (
+        weeklyIds.has(
+          playerId
+        )
+      ) {
+        continue;
+      }
+
+
+      const seasonProjection =
+        numberValue(
+          row.projected_points
+        );
+
+
+      const weeklyFallback =
+        seasonProjection >
+          0
+          ? seasonProjection /
+            17
+          : 0;
+
+
+      projectionMap.set(
+        playerId,
+        weeklyFallback
+      );
+
+
+      projectionSourceMap.set(
+        playerId,
+        weeklyFallback >
+          0
+          ? "season_average"
+          : "none"
       );
     }
   }
@@ -2244,18 +2457,28 @@ export async function getTraditionalMatchupDetailData(
       null;
 
     /*
-     * Projection values are intentionally safe fallbacks until
-     * the projection source is wired back into this service.
-     * This restores the current matchup-page contract without
-     * inventing projection data.
+     * Weekly matchup projection. The central weekly projection
+     * table is authoritative; season-average is only a fallback.
      */
-    const projectedPoints = 0;
+    const projectedPoints =
+      projectionMap.get(
+        lineup.player_id
+      ) ??
+      0;
 
     const projectionSource:
       MatchupDetailPlayer[
         "projectionSource"
       ] =
-        "none";
+        projectedPoints >
+          0
+          ? (
+              projectionSourceMap.get(
+                lineup.player_id
+              ) ??
+              "none"
+            )
+          : "none";
 
     const hasPossession =
       Boolean(
