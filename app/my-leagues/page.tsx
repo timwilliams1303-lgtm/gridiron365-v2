@@ -92,6 +92,50 @@ function formatStatus(
 }
 
 
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string
+): Promise<T> {
+  let timeoutId:
+    | ReturnType<typeof setTimeout>
+    | undefined;
+
+  const timeoutPromise =
+    new Promise<never>(
+      (
+        _resolve,
+        reject
+      ) => {
+        timeoutId =
+          setTimeout(
+            () => {
+              reject(
+                new Error(
+                  message
+                )
+              );
+            },
+            timeoutMs
+          );
+      }
+    );
+
+  try {
+    return await Promise.race([
+      promise,
+      timeoutPromise,
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(
+        timeoutId
+      );
+    }
+  }
+}
+
+
 export default async function MyLeaguesPage() {
   const user =
     await requireUser();
@@ -101,11 +145,40 @@ export default async function MyLeaguesPage() {
     await createSupabaseServerClient();
 
 
-  const leagues =
-    await getMyLeagues(
-      supabase,
-      user.id
+  let leagues:
+    Awaited<
+      ReturnType<
+        typeof getMyLeagues
+      >
+    > = [];
+
+  let leagueLoadError =
+    "";
+
+
+  try {
+    leagues =
+      await withTimeout(
+        getMyLeagues(
+          supabase,
+          user.id
+        ),
+        8000,
+        "Your leagues took too long to load."
+      );
+  } catch (
+    error
+  ) {
+    console.error(
+      "Failed to load My Leagues:",
+      error
     );
+
+    leagueLoadError =
+      error instanceof Error
+        ? error.message
+        : "Your leagues could not be loaded.";
+  }
 
 
   return (
@@ -215,7 +288,49 @@ export default async function MyLeaguesPage() {
         </div>
 
 
-        {leagues.length ===
+        {leagueLoadError ? (
+          <Card
+            style={
+              styles.errorCard
+            }
+          >
+            <div
+              style={
+                styles.errorIcon
+              }
+            >
+              !
+            </div>
+
+
+            <h2
+              style={
+                styles.emptyTitle
+              }
+            >
+              We couldn&apos;t load your leagues
+            </h2>
+
+
+            <p
+              style={
+                styles.emptyText
+              }
+            >
+              {leagueLoadError}
+            </p>
+
+
+            <Link
+              href="/my-leagues"
+              style={
+                styles.emptyButton
+              }
+            >
+              Try Again
+            </Link>
+          </Card>
+        ) : leagues.length ===
         0 ? (
           <Card
             style={
@@ -927,6 +1042,57 @@ const styles = {
 
     fontWeight:
       900,
+  },
+
+
+  errorCard: {
+    padding:
+      "55px 25px",
+
+    display:
+      "grid",
+
+    justifyItems:
+      "center",
+
+    textAlign:
+      "center" as const,
+
+    border:
+      "1px solid rgba(255,69,0,.30)",
+  },
+
+
+  errorIcon: {
+    width:
+      "68px",
+
+    height:
+      "68px",
+
+    display:
+      "grid",
+
+    placeItems:
+      "center",
+
+    borderRadius:
+      "18px",
+
+    background:
+      "linear-gradient(135deg,#b91c1c,#ff4500)",
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "26px",
+
+    fontWeight:
+      900,
+
+    boxShadow:
+      "0 12px 30px rgba(255,69,0,.18)",
   },
 
 
