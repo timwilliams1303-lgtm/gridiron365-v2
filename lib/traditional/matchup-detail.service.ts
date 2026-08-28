@@ -172,8 +172,7 @@ export type MatchupDetailPlayer = {
     string |
     null;
 
-  projectedPoints:
-    number;
+  projectedPoints: number;
 
   projectionSource:
     "weekly" |
@@ -565,16 +564,6 @@ type StatsRow = {
 type NflGameRow = {
   id: number;
 
-  season: number;
-
-  season_type: number;
-
-  week: number;
-
-  kickoff_at:
-    string |
-    null;
-
   home_team_id: number;
 
   away_team_id: number;
@@ -583,68 +572,11 @@ type NflGameRow = {
     string |
     null;
 
-  status_detail:
-    string |
-    null;
-
   status_completed: boolean;
-};
 
-
-type ProjectionRow = {
-  player_id: number;
-
-  projected_points:
-    number |
+  kickoff_at:
     string |
     null;
-};
-
-
-type StoredWeeklyProjectionRow = {
-  player_id: number;
-
-  projected_points:
-    number |
-    string |
-    null;
-
-  is_bye:
-    boolean |
-    null;
-
-  opponent_abbreviation:
-    string |
-    null;
-};
-
-
-type WeeklyProjectionRow = {
-  player_id: number;
-  opponent_abbreviation: string | null;
-  projected_fantasy_points_ppr: number | string | null;
-};
-
-
-type RecentFormRow = {
-  player_id: number;
-  last_three_average: number | string | null;
-  season_average: number | string | null;
-};
-
-
-type MatchupRatingRow = {
-  defense_team_abbreviation: string;
-  fantasy_position: string;
-  matchup_score: number | string | null;
-};
-
-
-type PracticeReportRow = {
-  player_id: number;
-  practice_status: string | null;
-  injury_status: string | null;
-  report_date: string | null;
 };
 
 
@@ -813,6 +745,32 @@ function isLiveGameStatus(
 }
 
 
+/*
+ * =========================================================
+ * TEMPORARY LIVE MATCHUP UI TEST
+ * =========================================================
+ *
+ * REMOVE after preseason live-matchup testing is complete.
+ *
+ * This does NOT change the matchup's official scoring.
+ * It only allows Joe Milton III to use stored preseason
+ * game/stats/context data so the Matchup Detail UI can be
+ * validated before the regular season begins.
+ */
+
+const LIVE_UI_TEST = {
+  enabled: true,
+  leagueId:
+    "984564ec-abcf-41e5-bab2-ac383da512b5",
+  fantasyTeamId: 1,
+  nflPlayerId: 263,
+  nflGameId: 318,
+  season: 2026,
+  seasonType: 1,
+  week: 2,
+} as const;
+
+
 export async function getTraditionalMatchupDetailData(
   supabase:
     SupabaseClient,
@@ -961,119 +919,6 @@ export async function getTraditionalMatchupDetailData(
   const refreshed =
     refreshedData as
       MatchupRow;
-
-
-  /*
-   * =====================================================
-   * NFL SCORING CONTEXT
-   * =====================================================
-   *
-   * Normal Traditional leagues use regular-season NFL data:
-   *   season_type = 2
-   *   NFL week = fantasy week
-   *
-   * A league-level QA override can temporarily point the
-   * fantasy matchup at another NFL context (for example,
-   * 2026 preseason Week 3) without changing other leagues.
-   */
-
-  const {
-    data:
-      nflContextData,
-
-    error:
-      nflContextError,
-  } =
-    await supabase.rpc(
-      "get_league_nfl_context",
-      {
-        p_league_id:
-          leagueId,
-
-        p_fantasy_season:
-          refreshed.season,
-
-        p_fantasy_week:
-          refreshed.week,
-      }
-    );
-
-
-  if (
-    nflContextError
-  ) {
-    throw new Error(
-      `Could not resolve NFL scoring context: ${nflContextError.message}`
-    );
-  }
-
-
-  const rawNflContext =
-    Array.isArray(
-      nflContextData
-    )
-      ? nflContextData[0]
-      : nflContextData;
-
-
-  if (
-    !rawNflContext ||
-    typeof rawNflContext !==
-      "object"
-  ) {
-    throw new Error(
-      "NFL scoring context was not returned."
-    );
-  }
-
-
-  const nflContext =
-    rawNflContext as {
-      nfl_season?: unknown;
-      nfl_season_type?: unknown;
-      nfl_week?: unknown;
-      qa_override_enabled?: unknown;
-    };
-
-
-  const nflSeason =
-    Number(
-      nflContext.nfl_season
-    );
-
-
-  const nflSeasonType =
-    Number(
-      nflContext.nfl_season_type
-    );
-
-
-  const nflWeek =
-    Number(
-      nflContext.nfl_week
-    );
-
-
-  const qaOverrideEnabled =
-    nflContext.qa_override_enabled ===
-    true;
-
-
-  if (
-    !Number.isInteger(
-      nflSeason
-    ) ||
-    !Number.isInteger(
-      nflSeasonType
-    ) ||
-    !Number.isInteger(
-      nflWeek
-    )
-  ) {
-    throw new Error(
-      "The NFL scoring context is invalid."
-    );
-  }
 
 
   const fantasyTeamIds = [
@@ -1280,210 +1125,6 @@ export async function getTraditionalMatchupDetailData(
 
   /*
    * =====================================================
-   * WEEKLY PLAYER PROJECTIONS
-   * =====================================================
-   *
-   * Week 1-18 projections are generated centrally by:
-   *
-   *   traditional_weekly_player_projections
-   *
-   * That projection engine already incorporates:
-   *   - season expectation
-   *   - recent form
-   *   - opponent strength by position
-   *   - home / away
-   *   - current injury status / return date
-   *   - bye week
-   *
-   * The matchup page therefore only needs to read the authoritative weekly
-   * projection. A season/17 fallback remains here so a matchup never renders
-   * blank while an initial projection refresh is being installed.
-   */
-
-  const projectionMap =
-    new Map<
-      number,
-      number
-    >();
-
-
-  const projectionSourceMap =
-    new Map<
-      number,
-      "weekly" |
-      "season_average" |
-      "none"
-    >();
-
-
-  if (
-    playerIds.length >
-    0
-  ) {
-    const [
-      weeklyProjectionResult,
-      seasonFallbackResult,
-    ] =
-      await Promise.all([
-        supabase
-          .from(
-            "traditional_weekly_player_projections"
-          )
-          .select(`
-            player_id,
-            projected_points,
-            is_bye,
-            opponent_abbreviation
-          `)
-          .eq(
-            "league_id",
-            leagueId
-          )
-          .eq(
-            "season",
-            qaOverrideEnabled
-              ? refreshed.season
-              : nflSeason
-          )
-          .eq(
-            "season_type",
-            qaOverrideEnabled
-              ? 2
-              : nflSeasonType
-          )
-          .eq(
-            "week",
-            refreshed.week
-          )
-          .in(
-            "player_id",
-            playerIds
-          ),
-
-        supabase
-          .from(
-            "traditional_default_draft_rankings"
-          )
-          .select(`
-            player_id,
-            projected_points
-          `)
-          .eq(
-            "season",
-            refreshed.season
-          )
-          .in(
-            "player_id",
-            playerIds
-          ),
-      ]);
-
-
-    const weeklyRows =
-      (
-        weeklyProjectionResult.data ??
-        []
-      ) as StoredWeeklyProjectionRow[];
-
-
-    const weeklyIds =
-      new Set<number>();
-
-
-    for (
-      const row
-      of weeklyRows
-    ) {
-      const playerId =
-        Number(
-          row.player_id
-        );
-
-
-      weeklyIds.add(
-        playerId
-      );
-
-
-      projectionMap.set(
-        playerId,
-        row.is_bye
-          ? 0
-          : Math.max(
-              0,
-              numberValue(
-                row.projected_points
-              )
-            )
-      );
-
-
-      projectionSourceMap.set(
-        playerId,
-        "weekly"
-      );
-    }
-
-
-    /*
-     * Defensive fallback only. Once the projection engine is seeded this
-     * should rarely be used.
-     */
-    for (
-      const row
-      of (
-        seasonFallbackResult.data ??
-        []
-      ) as ProjectionRow[]
-    ) {
-      const playerId =
-        Number(
-          row.player_id
-        );
-
-
-      if (
-        weeklyIds.has(
-          playerId
-        )
-      ) {
-        continue;
-      }
-
-
-      const seasonProjection =
-        numberValue(
-          row.projected_points
-        );
-
-
-      const weeklyFallback =
-        seasonProjection >
-          0
-          ? seasonProjection /
-            17
-          : 0;
-
-
-      projectionMap.set(
-        playerId,
-        weeklyFallback
-      );
-
-
-      projectionSourceMap.set(
-        playerId,
-        weeklyFallback >
-          0
-          ? "season_average"
-          : "none"
-      );
-    }
-  }
-
-
-  /*
-   * =====================================================
    * FANTASY SCORES
    * =====================================================
    */
@@ -1525,15 +1166,15 @@ export async function getTraditionalMatchupDetailData(
         )
         .eq(
           "season",
-          nflSeason
+          refreshed.season
         )
         .eq(
           "season_type",
-          nflSeasonType
+          2
         )
         .eq(
           "week",
-          nflWeek
+          refreshed.week
         )
         .in(
           "nfl_player_id",
@@ -1625,15 +1266,15 @@ export async function getTraditionalMatchupDetailData(
         `)
         .eq(
           "season",
-          nflSeason
+          refreshed.season
         )
         .eq(
           "season_type",
-          nflSeasonType
+          2
         )
         .eq(
           "week",
-          nflWeek
+          refreshed.week
         )
         .in(
           "nfl_player_id",
@@ -1660,6 +1301,119 @@ export async function getTraditionalMatchupDetailData(
       statsMap.set(
         stat.nfl_player_id,
         stat
+      );
+    }
+  }
+
+
+  /*
+   * =====================================================
+   * TEMPORARY PRESEASON LIVE UI TEST STATS
+   * =====================================================
+   */
+
+  const liveUiTestEnabled =
+    LIVE_UI_TEST.enabled &&
+    leagueId ===
+      LIVE_UI_TEST.leagueId &&
+    refreshed.season ===
+      2026 &&
+    refreshed.week ===
+      1 &&
+    lineups.some(
+      (
+        row
+      ) =>
+        row.fantasy_team_id ===
+          LIVE_UI_TEST.fantasyTeamId &&
+        row.player_id ===
+          LIVE_UI_TEST.nflPlayerId
+    );
+
+
+  if (
+    liveUiTestEnabled
+  ) {
+    const {
+      data:
+        testStatsData,
+
+      error:
+        testStatsError,
+    } =
+      await supabase
+        .from(
+          "nfl_player_game_stats"
+        )
+        .select(`
+          nfl_game_id,
+          nfl_player_id,
+          game_status,
+          passing_attempts,
+          passing_completions,
+          passing_yards,
+          passing_touchdowns,
+          passing_interceptions,
+          rushing_attempts,
+          rushing_yards,
+          rushing_touchdowns,
+          receiving_targets,
+          receptions,
+          receiving_yards,
+          receiving_touchdowns,
+          fumbles_lost,
+          field_goals_made,
+          field_goals_attempted,
+          extra_points_made,
+          extra_points_attempted,
+          dst_sacks,
+          dst_interceptions,
+          dst_fumble_recoveries,
+          dst_touchdowns,
+          dst_safeties,
+          dst_blocked_kicks,
+          dst_points_allowed,
+          dst_yards_allowed
+        `)
+        .eq(
+          "nfl_game_id",
+          LIVE_UI_TEST.nflGameId
+        )
+        .eq(
+          "nfl_player_id",
+          LIVE_UI_TEST.nflPlayerId
+        )
+        .eq(
+          "season",
+          LIVE_UI_TEST.season
+        )
+        .eq(
+          "season_type",
+          LIVE_UI_TEST.seasonType
+        )
+        .eq(
+          "week",
+          LIVE_UI_TEST.week
+        )
+        .maybeSingle();
+
+
+    if (
+      testStatsError
+    ) {
+      console.error(
+        "Could not load temporary live UI test stats:",
+        testStatsError
+      );
+    }
+
+
+    if (
+      testStatsData
+    ) {
+      statsMap.set(
+        LIVE_UI_TEST.nflPlayerId,
+        testStatsData as StatsRow
       );
     }
   }
@@ -1783,106 +1537,9 @@ export async function getTraditionalMatchupDetailData(
    * =====================================================
    * NFL GAMES
    * =====================================================
-   *
-   * Load the full regular-season schedule for this fantasy week. Previously
-   * game rows were only discovered through live/final player-stat rows. That
-   * meant OPP and kickoff information stayed blank before games began.
    */
 
-  const {
-    data:
-      scheduledGameData,
-
-    error:
-      scheduledGameError,
-  } =
-    await supabase
-      .from(
-        "nfl_games"
-      )
-      .select(`
-        id,
-        season,
-        season_type,
-        week,
-        kickoff_at,
-        home_team_id,
-        away_team_id,
-        status_name,
-        status_detail,
-        status_completed
-      `)
-      .eq(
-        "season",
-        nflSeason
-      )
-      .eq(
-        "season_type",
-        nflSeasonType
-      )
-      .eq(
-        "week",
-        nflWeek
-      );
-
-
-  if (
-    scheduledGameError
-  ) {
-    throw new Error(
-      `Could not load NFL schedule: ${scheduledGameError.message}`
-    );
-  }
-
-
-  const scheduledGames =
-    (
-      scheduledGameData ??
-      []
-    ) as NflGameRow[];
-
-
-  const gameMap =
-    new Map<
-      number,
-      NflGameRow
-    >();
-
-
-  const gameByTeamId =
-    new Map<
-      number,
-      NflGameRow
-    >();
-
-
-  for (
-    const game
-    of scheduledGames
-  ) {
-    gameMap.set(
-      game.id,
-      game
-    );
-
-    gameByTeamId.set(
-      game.home_team_id,
-      game
-    );
-
-    gameByTeamId.set(
-      game.away_team_id,
-      game
-    );
-  }
-
-
-  /*
-   * Include any game referenced by score/stat rows even if the selected week
-   * schedule query did not return it (useful for historical/test data).
-   */
-
-  const referencedGameIds =
+  const gameIds =
     Array.from(
       new Set(
         [
@@ -1915,24 +1572,40 @@ export async function getTraditionalMatchupDetailData(
     );
 
 
-  const missingGameIds =
-    referencedGameIds.filter(
-      (
-        id
-      ) =>
-        !gameMap.has(
-          id
-        )
+  /*
+   * Keep game 318 available to the temporary UI test even
+   * if no production fantasy score row exists for it.
+   */
+
+  if (
+    liveUiTestEnabled &&
+    !gameIds.includes(
+      LIVE_UI_TEST.nflGameId
+    )
+  ) {
+    gameIds.push(
+      LIVE_UI_TEST.nflGameId
     );
+  }
+
+
+  const gameMap =
+    new Map<
+      number,
+      NflGameRow
+    >();
 
 
   if (
-    missingGameIds.length >
+    gameIds.length >
     0
   ) {
     const {
       data:
-        missingGameData,
+        gameData,
+
+      error:
+        gameError,
     } =
       await supabase
         .from(
@@ -1940,26 +1613,31 @@ export async function getTraditionalMatchupDetailData(
         )
         .select(`
           id,
-          season,
-          season_type,
-          week,
-          kickoff_at,
           home_team_id,
           away_team_id,
           status_name,
-          status_detail,
-          status_completed
+          status_completed,
+          kickoff_at
         `)
         .in(
           "id",
-          missingGameIds
+          gameIds
         );
+
+
+    if (
+      gameError
+    ) {
+      throw new Error(
+        `Could not load NFL games: ${gameError.message}`
+      );
+    }
 
 
     for (
       const game
       of (
-        missingGameData ??
+        gameData ??
         []
       ) as NflGameRow[]
     ) {
@@ -1967,68 +1645,8 @@ export async function getTraditionalMatchupDetailData(
         game.id,
         game
       );
-
-      gameByTeamId.set(
-        game.home_team_id,
-        game
-      );
-
-      gameByTeamId.set(
-        game.away_team_id,
-        game
-      );
     }
   }
-
-
-  /*
-   * Only NFL games represented by STARTERS in this matchup belong in the
-   * matchup header/live-game center. Bench players do not create matchup
-   * activity.
-   */
-  const matchupStarterPlayerEspnIds =
-    new Set<string>();
-
-  const matchupStarterGameIds =
-    new Set<number>();
-
-  for (const lineup of lineups) {
-    if (!isStarterSlot(lineup.lineup_slot)) {
-      continue;
-    }
-
-    const matchupPlayer =
-      playerMap.get(lineup.player_id);
-
-    if (matchupPlayer?.espn_player_id) {
-      matchupStarterPlayerEspnIds.add(
-        matchupPlayer.espn_player_id
-      );
-    }
-
-    const matchupPlayerTeam =
-      matchupPlayer?.team_abbreviation
-        ? nflTeamByAbbreviation.get(
-            matchupPlayer.team_abbreviation
-          )
-        : undefined;
-
-    const matchupGame =
-      matchupPlayerTeam
-        ? gameByTeamId.get(matchupPlayerTeam.id)
-        : undefined;
-
-    if (matchupGame) {
-      matchupStarterGameIds.add(
-        matchupGame.id
-      );
-    }
-  }
-
-  const gameIds =
-    Array.from(
-      matchupStarterGameIds
-    );
 
 
   /*
@@ -2098,6 +1716,18 @@ export async function getTraditionalMatchupDetailData(
    * =====================================================
    * RECENT SCORING PLAYS
    * =====================================================
+   *
+   * IMPORTANT:
+   *
+   * Only show scoring plays involving a STARTING fantasy
+   * player in THIS matchup.
+   *
+   * We intentionally do not show every scoring play from an
+   * NFL game merely because one matchup player is playing in
+   * that NFL game.
+   *
+   * Bench-player scoring plays are also excluded because bench
+   * points do not count toward the fantasy matchup.
    */
 
   let recentScoringPlays:
@@ -2107,9 +1737,46 @@ export async function getTraditionalMatchupDetailData(
       [];
 
 
+  const matchupStarterEspnPlayerIds =
+    Array.from(
+      new Set(
+        lineups
+          .filter(
+            (
+              lineup
+            ) =>
+              isStarterSlot(
+                lineup.lineup_slot
+              )
+          )
+          .map(
+            (
+              lineup
+            ) =>
+              playerMap.get(
+                lineup.player_id
+              )
+                ?.espn_player_id ??
+              null
+          )
+          .filter(
+            (
+              espnPlayerId
+            ):
+              espnPlayerId is string =>
+                Boolean(
+                  espnPlayerId
+                )
+          )
+      )
+    );
+
+
   if (
     gameIds.length >
-    0
+      0 &&
+    matchupStarterEspnPlayerIds.length >
+      0
   ) {
     const {
       data:
@@ -2140,12 +1807,19 @@ export async function getTraditionalMatchupDetailData(
           "scoring_play",
           true
         )
+        .overlaps(
+          "participant_espn_player_ids",
+          matchupStarterEspnPlayerIds
+        )
         .order(
           "sequence_number",
           {
             ascending:
               false,
           }
+        )
+        .limit(
+          12
         );
 
 
@@ -2156,26 +1830,13 @@ export async function getTraditionalMatchupDetailData(
         (
           scoringData ??
           []
-        )
-        .filter(
-          (raw: ScoringPlayRow) =>
-            (
-              raw.participant_espn_player_ids ??
-              []
-            ).some(
-              (espnPlayerId) =>
-                matchupStarterPlayerEspnIds.has(
-                  espnPlayerId
-                )
-            )
-        )
-        .map(
+        ).map(
           (
-            raw:
-              ScoringPlayRow
+            raw
           ) => {
             const play =
-              raw;
+              raw as
+                ScoringPlayRow;
 
 
             const possessionTeam =
@@ -2262,31 +1923,11 @@ export async function getTraditionalMatchupDetailData(
       );
 
 
-    const playerTeam =
-      player
-        ?.team_abbreviation
-        ? nflTeamByAbbreviation.get(
-            player
-              .team_abbreviation
-          )
-        : undefined;
-
-
-    const scheduledGame =
-      playerTeam
-        ? gameByTeamId.get(
-            playerTeam.id
-          )
-        : undefined;
-
-
     const nflGameId =
       score
         ?.nfl_game_id ??
       stats
         ?.nfl_game_id ??
-      scheduledGame
-        ?.id ??
       null;
 
 
@@ -2295,9 +1936,8 @@ export async function getTraditionalMatchupDetailData(
         null
         ? gameMap.get(
             nflGameId
-          ) ??
-          scheduledGame
-        : scheduledGame;
+          )
+        : undefined;
 
 
     const context =
@@ -2310,15 +1950,18 @@ export async function getTraditionalMatchupDetailData(
         : null;
 
 
+    const playerTeam =
+      player
+        ?.team_abbreviation
+        ? nflTeamByAbbreviation.get(
+            player
+              .team_abbreviation
+          )
+        : undefined;
+
+
     let opponent:
       string |
-      null =
-        null;
-
-
-    let opponentPrefix:
-      "vs" |
-      "@" |
       null =
         null;
 
@@ -2327,13 +1970,9 @@ export async function getTraditionalMatchupDetailData(
       game &&
       playerTeam
     ) {
-      const isHome =
-        game.home_team_id ===
-          playerTeam.id;
-
-
       const opponentTeamId =
-        isHome
+        game.home_team_id ===
+          playerTeam.id
           ? game.away_team_id
           : game.home_team_id;
 
@@ -2348,68 +1987,65 @@ export async function getTraditionalMatchupDetailData(
         )
           ?.abbreviation ??
         null;
+    }
 
 
+    let opponentPrefix:
+      "vs" |
+      "@" |
+      null =
+        null;
+
+    if (
+      game &&
+      playerTeam
+    ) {
       opponentPrefix =
-        isHome
+        game.home_team_id ===
+          playerTeam.id
           ? "vs"
           : "@";
     }
 
-
-    /*
-     * The weekly projection table is authoritative.
-     *
-     * Do NOT apply the current injury designation again here. The projection
-     * engine already applies injury status with week-aware return-date logic.
-     * Applying it a second time would incorrectly zero future weeks.
-     */
-    const projectedPoints =
-      projectionMap.get(
-        lineup.player_id
-      ) ??
-      0;
-
-
-    const normalizedPlayerPosition =
-      normalizePosition(
-        player?.primary_position ??
-        "—"
-      );
-
-
-    const possessionAbbreviation =
-      context
-        ?.possessionTeam
-        ?.abbreviation ??
+    const kickoffAt =
+      game
+        ?.kickoff_at ??
       null;
 
+    /*
+     * Projection values are intentionally safe fallbacks until
+     * the projection source is wired back into this service.
+     * This restores the current matchup-page contract without
+     * inventing projection data.
+     */
+    const projectedPoints = 0;
+
+    const projectionSource:
+      MatchupDetailPlayer[
+        "projectionSource"
+      ] =
+        "none";
 
     const hasPossession =
       Boolean(
-        context?.isActuallyLive &&
-        possessionAbbreviation &&
-        player?.team_abbreviation &&
-        (
-          normalizedPlayerPosition ===
-            "DST"
-            ? possessionAbbreviation !==
-              player.team_abbreviation
-            : normalizedPlayerPosition ===
-                "K"
-              ? false
-              : possessionAbbreviation ===
-                player.team_abbreviation
-        )
+        context
+          ?.isActuallyLive &&
+        context
+          ?.possessionTeam
+          ?.abbreviation &&
+        context
+          .possessionTeam
+          .abbreviation ===
+          player
+            ?.team_abbreviation
       );
 
 
     const isRedZone =
       Boolean(
         hasPossession &&
-        normalizedPlayerPosition !==
-          "DST" &&
-        context?.redZone
+        context
+          ?.redZone
       );
 
 
@@ -2454,7 +2090,11 @@ export async function getTraditionalMatchupDetailData(
         "Unknown Player",
 
       position:
-        normalizedPlayerPosition,
+        normalizePosition(
+          player
+            ?.primary_position ??
+          "—"
+        ),
 
       teamAbbreviation:
         player
@@ -2522,23 +2162,11 @@ export async function getTraditionalMatchupDetailData(
 
       opponentPrefix,
 
-      kickoffAt:
-        game
-          ?.kickoff_at ??
-        null,
+      kickoffAt,
 
       projectedPoints,
 
-      projectionSource:
-        projectedPoints >
-          0
-          ? (
-              projectionSourceMap.get(
-                lineup.player_id
-              ) ??
-              "none"
-            )
-          : "none",
+      projectionSource,
 
       injuryStatus:
         injury
@@ -2783,7 +2411,6 @@ export async function getTraditionalMatchupDetailData(
           playersFinal
       );
 
-
     const projectedPoints =
       starters.reduce(
         (
@@ -2795,54 +2422,23 @@ export async function getTraditionalMatchupDetailData(
         0
       );
 
-
-    const currentPoints =
-      numberValue(
-        points
-      );
-
-
-    const expectedRemaining =
+    const expectedFinalPoints =
       starters.reduce(
         (
           total,
           player
-        ) => {
-          if (
+        ) =>
+          total +
+          (
             player.scoreIsFinal ||
-            player
-              .gameContext
+            player.gameContext
               ?.statusCompleted
-          ) {
-            return total;
-          }
-
-
-          if (
-            player.scoreIsLive ||
-            player
-              .gameContext
-              ?.isActuallyLive
-          ) {
-            return total +
-              Math.max(
-                0,
-                player.projectedPoints -
-                player.fantasyPoints
-              );
-          }
-
-
-          return total +
-            player.projectedPoints;
-        },
+              ? player.fantasyPoints
+              : player.fantasyPoints +
+                player.projectedPoints
+          ),
         0
       );
-
-
-    const expectedFinalPoints =
-      currentPoints +
-      expectedRemaining;
 
 
     return {
@@ -2856,7 +2452,9 @@ export async function getTraditionalMatchupDetailData(
         "Unknown Team",
 
       points:
-        currentPoints,
+        numberValue(
+          points
+        ),
 
       projectedPoints,
 

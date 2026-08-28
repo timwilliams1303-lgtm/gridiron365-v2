@@ -204,6 +204,54 @@ function createAdminClient() {
 }
 
 
+function isAuthorized(
+  request: Request
+) {
+  const syncSecret =
+    process.env
+      .NFL_SYNC_SECRET;
+
+
+  if (!syncSecret) {
+    console.error(
+      "NFL_SYNC_SECRET is missing."
+    );
+
+    return false;
+  }
+
+
+  const authorization =
+    request.headers.get(
+      "authorization"
+    );
+
+
+  const bearerToken =
+    authorization?.startsWith(
+      "Bearer "
+    )
+      ? authorization.slice(
+          7
+        )
+      : null;
+
+
+  const headerSecret =
+    request.headers.get(
+      "x-gridiron-sync-secret"
+    );
+
+
+  return (
+    bearerToken ===
+      syncSecret ||
+    headerSecret ===
+      syncSecret
+  );
+}
+
+
 function errorResponse(
   message: string,
   status: number
@@ -224,6 +272,32 @@ export async function POST(
   request: Request
 ) {
   try {
+    /*
+     * ==========================================================
+     * INTERNAL WORKER AUTHORIZATION
+     * ==========================================================
+     *
+     * This route uses the Supabase service-role key and must not
+     * be callable as an unrestricted public ESPN sync endpoint.
+     *
+     * The centralized NFL worker forwards NFL_SYNC_SECRET using
+     * x-gridiron-sync-secret.
+     *
+     * Bearer authentication is also accepted for internal/manual
+     * server-side testing.
+     */
+    if (
+      !isAuthorized(
+        request
+      )
+    ) {
+      return errorResponse(
+        "Unauthorized.",
+        401
+      );
+    }
+
+
     const url =
       new URL(
         request.url
