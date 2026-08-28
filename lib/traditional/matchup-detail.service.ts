@@ -921,6 +921,114 @@ export async function getTraditionalMatchupDetailData(
       MatchupRow;
 
 
+  /*
+   * =====================================================
+   * NFL SCORING CONTEXT
+   * =====================================================
+   *
+   * Normal Traditional matchups resolve to regular-season
+   * NFL data (season_type = 2). A league-level QA override
+   * can instead map the fantasy matchup to preseason or
+   * another NFL context without hardcoding that context here.
+   *
+   * This keeps preseason QA isolated to the configured league
+   * while preserving normal regular-season behavior elsewhere.
+   */
+
+  const {
+    data:
+      nflContextData,
+
+    error:
+      nflContextError,
+  } =
+    await supabase.rpc(
+      "get_league_nfl_context",
+      {
+        p_league_id:
+          leagueId,
+
+        p_fantasy_season:
+          refreshed.season,
+
+        p_fantasy_week:
+          refreshed.week,
+      }
+    );
+
+
+  if (
+    nflContextError
+  ) {
+    throw new Error(
+      `Could not resolve NFL scoring context: ${nflContextError.message}`
+    );
+  }
+
+
+  const rawNflContext =
+    Array.isArray(
+      nflContextData
+    )
+      ? nflContextData[0]
+      : nflContextData;
+
+
+  if (
+    !rawNflContext ||
+    typeof rawNflContext !==
+      "object"
+  ) {
+    throw new Error(
+      "NFL scoring context was not returned."
+    );
+  }
+
+
+  const nflContext =
+    rawNflContext as {
+      nfl_season?: unknown;
+      nfl_season_type?: unknown;
+      nfl_week?: unknown;
+      qa_override_enabled?: unknown;
+    };
+
+
+  const nflSeason =
+    Number(
+      nflContext.nfl_season
+    );
+
+
+  const nflSeasonType =
+    Number(
+      nflContext.nfl_season_type
+    );
+
+
+  const nflWeek =
+    Number(
+      nflContext.nfl_week
+    );
+
+
+  if (
+    !Number.isInteger(
+      nflSeason
+    ) ||
+    !Number.isInteger(
+      nflSeasonType
+    ) ||
+    !Number.isInteger(
+      nflWeek
+    )
+  ) {
+    throw new Error(
+      "The NFL scoring context is invalid."
+    );
+  }
+
+
   const fantasyTeamIds = [
     refreshed
       .home_fantasy_team_id,
@@ -1166,15 +1274,15 @@ export async function getTraditionalMatchupDetailData(
         )
         .eq(
           "season",
-          refreshed.season
+          nflSeason
         )
         .eq(
           "season_type",
-          2
+          nflSeasonType
         )
         .eq(
           "week",
-          refreshed.week
+          nflWeek
         )
         .in(
           "nfl_player_id",
@@ -1266,15 +1374,15 @@ export async function getTraditionalMatchupDetailData(
         `)
         .eq(
           "season",
-          refreshed.season
+          nflSeason
         )
         .eq(
           "season_type",
-          2
+          nflSeasonType
         )
         .eq(
           "week",
-          refreshed.week
+          nflWeek
         )
         .in(
           "nfl_player_id",
