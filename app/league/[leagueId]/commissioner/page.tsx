@@ -54,44 +54,32 @@ type RosterSettings = {
 
 type Scoring = {
   league_id: string;
-
-  passing_yard_points: number | string;
+  passing_yards_per_point: number | string;
   passing_td_points: number | string;
   passing_interception_points: number | string;
   passing_two_point_points: number | string;
   passing_completion_points: number | string;
   passing_incompletion_points: number | string;
-
-  rushing_yard_points: number | string;
+  rushing_yards_per_point: number | string;
   rushing_td_points: number | string;
   rushing_two_point_points: number | string;
   rushing_attempt_points: number | string;
-
-  receiving_yard_points: number | string;
+  receiving_yards_per_point: number | string;
   receiving_td_points: number | string;
   receiving_two_point_points: number | string;
   reception_points: number | string;
   receiving_target_points: number | string;
-
   passing_first_down_points: number | string;
   rushing_first_down_points: number | string;
   receiving_first_down_points: number | string;
-
   fumble_points: number | string;
   fumble_lost_points: number | string;
-
   extra_point_made_points: number | string;
   extra_point_missed_points: number | string;
   field_goal_missed_points: number | string;
-
-  field_goal_0_19_points: number | string;
-  field_goal_20_29_points: number | string;
-  field_goal_30_39_points: number | string;
-  field_goal_40_49_points: number | string;
-  field_goal_50_59_points: number | string;
-  field_goal_60_plus_points: number | string;
-
   dst_sack_points: number | string;
+  dst_total_tackle_points: number | string;
+  dst_tackle_for_loss_points: number | string;
   dst_interception_points: number | string;
   dst_fumble_recovery_points: number | string;
   dst_touchdown_points: number | string;
@@ -99,29 +87,11 @@ type Scoring = {
   dst_blocked_kick_points: number | string;
   dst_return_touchdown_points: number | string;
   dst_extra_point_return_points: number | string;
-
-  dst_points_allowed_0_points: number | string;
-  dst_points_allowed_1_6_points: number | string;
-  dst_points_allowed_7_13_points: number | string;
-  dst_points_allowed_14_20_points: number | string;
-  dst_points_allowed_21_27_points: number | string;
-  dst_points_allowed_28_34_points: number | string;
-  dst_points_allowed_35_plus_points: number | string;
-
-  dst_yards_allowed_0_99_points: number | string;
-  dst_yards_allowed_100_199_points: number | string;
-  dst_yards_allowed_200_299_points: number | string;
-  dst_yards_allowed_300_399_points: number | string;
-  dst_yards_allowed_400_449_points: number | string;
-  dst_yards_allowed_450_499_points: number | string;
-  dst_yards_allowed_500_plus_points: number | string;
-
   kick_return_yards_per_point: number | string | null;
   punt_return_yards_per_point: number | string | null;
   kick_return_td_points: number | string;
   punt_return_td_points: number | string;
   offensive_fumble_recovery_td_points: number | string;
-
   fractional_scoring_enabled: boolean;
   decimal_places: number;
 };
@@ -273,7 +243,7 @@ const scoringGroups: Record<
   passing: {
     label: "Passing",
     baseFields: [
-      ["passing_yard_points", "Points Per Passing Yard"],
+      ["passing_yards_per_point", "Passing Yards Per Point"],
       ["passing_td_points", "Passing TD"],
       ["passing_interception_points", "Passing Interception"],
       ["passing_two_point_points", "Passing 2PT"],
@@ -293,11 +263,10 @@ const scoringGroups: Record<
       ["passing_two_point_conversions", "Passing 2PT Conversions"],
     ],
   },
-
   rushing: {
     label: "Rushing",
     baseFields: [
-      ["rushing_yard_points", "Points Per Rushing Yard"],
+      ["rushing_yards_per_point", "Rushing Yards Per Point"],
       ["rushing_td_points", "Rushing TD"],
       ["rushing_two_point_points", "Rushing 2PT"],
       ["rushing_attempt_points", "Rushing Attempt"],
@@ -313,11 +282,10 @@ const scoringGroups: Record<
       ["rushing_two_point_conversions", "Rushing 2PT Conversions"],
     ],
   },
-
   receiving: {
     label: "Receiving",
     baseFields: [
-      ["receiving_yard_points", "Points Per Receiving Yard"],
+      ["receiving_yards_per_point", "Receiving Yards Per Point"],
       ["receiving_td_points", "Receiving TD"],
       ["receiving_two_point_points", "Receiving 2PT"],
       ["reception_points", "Reception"],
@@ -335,33 +303,33 @@ const scoringGroups: Record<
       ["receiving_two_point_conversions", "Receiving 2PT Conversions"],
     ],
   },
-
   kicking: {
     label: "Kicking",
     baseFields: [
       ["extra_point_made_points", "Extra Point Made"],
       ["extra_point_missed_points", "Extra Point Missed"],
       ["field_goal_missed_points", "Field Goal Missed"],
-      ["field_goal_0_19_points", "Field Goal Made — 0–19 Yards"],
-      ["field_goal_20_29_points", "Field Goal Made — 20–29 Yards"],
-      ["field_goal_30_39_points", "Field Goal Made — 30–39 Yards"],
-      ["field_goal_40_49_points", "Field Goal Made — 40–49 Yards"],
-      ["field_goal_50_59_points", "Field Goal Made — 50–59 Yards"],
-      ["field_goal_60_plus_points", "Field Goal Made — 60+ Yards"],
     ],
     bonusStats: [
-      ["field_goals_made", "Field Goals Made — total bonus"],
+      ["field_goals_made", "Field Goals Made — total"],
+      ["field_goals_made_0_19", "0–19 Yard Field Goals Made"],
+      ["field_goals_made_20_29", "20–29 Yard Field Goals Made"],
+      ["field_goals_made_30_39", "30–39 Yard Field Goals Made"],
+      ["field_goals_made_40_49", "40–49 Yard Field Goals Made"],
+      ["field_goals_made_50_59", "50–59 Yard Field Goals Made"],
+      ["field_goals_made_60_plus", "60+ Yard Field Goals Made"],
       ["longest_field_goal_yards", "Longest Field Goal — yards"],
       ["field_goals_missed", "Field Goals Missed"],
       ["extra_points_made", "Extra Points Made"],
       ["extra_points_missed", "Extra Points Missed"],
     ],
   },
-
   dst: {
     label: "Defense / DST",
     baseFields: [
       ["dst_sack_points", "DST Sack"],
+      ["dst_total_tackle_points", "Total Tackle"],
+      ["dst_tackle_for_loss_points", "Tackle for Loss"],
       ["dst_interception_points", "DST Interception"],
       ["dst_fumble_recovery_points", "DST Fumble Recovery"],
       ["dst_touchdown_points", "DST Touchdown"],
@@ -369,24 +337,10 @@ const scoringGroups: Record<
       ["dst_blocked_kick_points", "DST Blocked Kick"],
       ["dst_return_touchdown_points", "DST Return TD"],
       ["dst_extra_point_return_points", "DST Extra Point Return"],
-
-      ["dst_points_allowed_0_points", "Points Allowed — 0"],
-      ["dst_points_allowed_1_6_points", "Points Allowed — 1–6"],
-      ["dst_points_allowed_7_13_points", "Points Allowed — 7–13"],
-      ["dst_points_allowed_14_20_points", "Points Allowed — 14–20"],
-      ["dst_points_allowed_21_27_points", "Points Allowed — 21–27"],
-      ["dst_points_allowed_28_34_points", "Points Allowed — 28–34"],
-      ["dst_points_allowed_35_plus_points", "Points Allowed — 35+"],
-
-      ["dst_yards_allowed_0_99_points", "Yards Allowed — 0–99"],
-      ["dst_yards_allowed_100_199_points", "Yards Allowed — 100–199"],
-      ["dst_yards_allowed_200_299_points", "Yards Allowed — 200–299"],
-      ["dst_yards_allowed_300_399_points", "Yards Allowed — 300–399"],
-      ["dst_yards_allowed_400_449_points", "Yards Allowed — 400–449"],
-      ["dst_yards_allowed_450_499_points", "Yards Allowed — 450–499"],
-      ["dst_yards_allowed_500_plus_points", "Yards Allowed — 500+"],
     ],
     bonusStats: [
+      ["dst_points_allowed", "DST Points Allowed — threshold/range"],
+      ["dst_yards_allowed", "DST Yards Allowed — threshold/range"],
       ["dst_sacks", "DST Sacks — multi-sack bonus"],
       ["dst_interceptions", "DST Interceptions — multi-INT bonus"],
       ["dst_fumble_recoveries", "DST Fumble Recoveries"],
@@ -398,7 +352,6 @@ const scoringGroups: Record<
       ["dst_extra_point_returns", "DST Extra Point Returns"],
     ],
   },
-
   fumbles: {
     label: "Fumbles",
     baseFields: [
@@ -412,7 +365,6 @@ const scoringGroups: Record<
       ["offensive_fumble_recovery_touchdowns", "Offensive Fumble Recovery TDs"],
     ],
   },
-
   returns: {
     label: "Returns",
     baseFields: [
@@ -1348,7 +1300,7 @@ export default function TraditionalCommissionerPage() {
         {tab === "scoring" && scoring ? (
           <Section
             title="Scoring"
-            subtitle="Base scoring includes per-yard scoring, field-goal distance scoring, and DST points/yards allowed. Optional category bonuses remain separate and use highest-only non-stacking logic."
+            subtitle="Base scoring and category-specific bonuses include yardage milestones, multiple-TD bonuses, long-play/long-TD bonuses, kicking distance bonuses, and DST thresholds. Tiered bonuses use highest-only non-stacking logic."
           >
             <div style={styles.scoringCategoryTabs}>
               {(Object.keys(scoringGroups) as ScoringCategoryKey[]).map((key) => (
@@ -1394,7 +1346,7 @@ export default function TraditionalCommissionerPage() {
                     {scoringGroups[scoringCategory].label.toUpperCase()} BONUS RULES
                   </div>
                   <p style={styles.sectionSub}>
-                    Add optional milestone, multiple-touchdown, long-play, or other category bonuses. Field-goal distance scoring and DST points/yards allowed are configured above as normal base scoring. Use Minimum for the threshold and Maximum when you want a range. If multiple enabled thresholds in the same stat family are reached, only the highest qualifying bonus is awarded.
+                    Add yardage, multiple-touchdown, long-play/long-TD, kicking-distance, or defense threshold bonuses. Use Minimum for the threshold and Maximum when you want a range. If multiple enabled thresholds in the same stat family are reached, only the highest qualifying bonus is awarded.
                   </p>
                 </div>
                 <Button onClick={addBonusRule}>+ ADD BONUS RULE</Button>
@@ -1535,13 +1487,39 @@ export default function TraditionalCommissionerPage() {
               <Button
                 disabled={saving}
                 onClick={() => {
-                  const { league_id: _ignore, ...payload } = scoring;
+                  const {
+                    league_id: _ignore,
+                    dst_total_tackle_points,
+                    dst_tackle_for_loss_points,
+                    ...payload
+                  } = scoring;
+
                   void action(
-                    () =>
-                      supabase.rpc("save_traditional_base_scoring", {
-                        p_league_id: leagueId,
-                        p_settings: payload,
-                      }),
+                    async () => {
+                      const baseResult =
+                        await supabase.rpc(
+                          "save_traditional_base_scoring",
+                          {
+                            p_league_id: leagueId,
+                            p_settings: payload,
+                          }
+                        );
+
+                      if (baseResult.error) {
+                        return baseResult;
+                      }
+
+                      return supabase.rpc(
+                        "save_traditional_dst_tackle_scoring",
+                        {
+                          p_league_id: leagueId,
+                          p_total_tackle_points:
+                            Number(dst_total_tackle_points),
+                          p_tackle_for_loss_points:
+                            Number(dst_tackle_for_loss_points),
+                        }
+                      );
+                    },
                     "Base scoring settings saved."
                   );
                 }}

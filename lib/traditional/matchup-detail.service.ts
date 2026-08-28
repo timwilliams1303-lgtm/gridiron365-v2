@@ -236,6 +236,14 @@ export type MatchupDetailPlayer = {
 
     extraPointsAttempted: number;
 
+    defensiveSoloTackles: number;
+
+    defensiveAssistedTackles: number;
+
+    defensiveTotalTackles: number;
+
+    defensiveTacklesForLoss: number;
+
     dstSacks: number;
 
     dstInterceptions: number;
@@ -523,6 +531,22 @@ type StatsRow = {
     null;
 
   extra_points_attempted:
+    number |
+    null;
+
+  defensive_solo_tackles:
+    number |
+    null;
+
+  defensive_assisted_tackles:
+    number |
+    null;
+
+  defensive_total_tackles:
+    number |
+    null;
+
+  defensive_tackles_for_loss:
     number |
     null;
 
@@ -1363,6 +1387,10 @@ export async function getTraditionalMatchupDetailData(
           field_goals_attempted,
           extra_points_made,
           extra_points_attempted,
+          defensive_solo_tackles,
+          defensive_assisted_tackles,
+          defensive_total_tackles,
+          defensive_tackles_for_loss,
           dst_sacks,
           dst_interceptions,
           dst_fumble_recoveries,
@@ -1474,6 +1502,10 @@ export async function getTraditionalMatchupDetailData(
           field_goals_attempted,
           extra_points_made,
           extra_points_attempted,
+          defensive_solo_tackles,
+          defensive_assisted_tackles,
+          defensive_total_tackles,
+          defensive_tackles_for_loss,
           dst_sacks,
           dst_interceptions,
           dst_fumble_recoveries,
@@ -2384,6 +2416,26 @@ export async function getTraditionalMatchupDetailData(
         extraPointsAttempted:
           stats
             ?.extra_points_attempted ??
+          0,
+
+        defensiveSoloTackles:
+          stats
+            ?.defensive_solo_tackles ??
+          0,
+
+        defensiveAssistedTackles:
+          stats
+            ?.defensive_assisted_tackles ??
+          0,
+
+        defensiveTotalTackles:
+          stats
+            ?.defensive_total_tackles ??
+          0,
+
+        defensiveTacklesForLoss:
+          stats
+            ?.defensive_tackles_for_loss ??
           0,
 
         dstSacks:

@@ -57,6 +57,11 @@ type NormalizedPlayer = {
   punt_return_yards: number;
   punt_return_touchdowns: number;
 
+  defensive_solo_tackles: number;
+  defensive_assisted_tackles: number;
+  defensive_total_tackles: number;
+  defensive_tackles_for_loss: number;
+
   field_goals_made_0_19: number;
   field_goals_made_20_29: number;
   field_goals_made_30_39: number;
@@ -77,6 +82,9 @@ type DstAccumulator = {
   sacks: number;
   interceptions: number;
   fumbleRecoveries: number;
+
+  totalTackles: number;
+  tacklesForLoss: number;
 
   touchdowns: number;
 
@@ -269,6 +277,11 @@ function blankPlayer(
 
     punt_return_yards: 0,
     punt_return_touchdowns: 0,
+
+    defensive_solo_tackles: 0,
+    defensive_assisted_tackles: 0,
+    defensive_total_tackles: 0,
+    defensive_tackles_for_loss: 0,
 
     field_goals_made_0_19: 0,
     field_goals_made_20_29: 0,
@@ -1071,6 +1084,83 @@ export async function POST(
 
 
     /* =====================================================
+       TEMP ESPN BOXSCORE DEBUG
+
+       This tells us exactly which player-stat categories,
+       labels, and athletes ESPN is returning for this game.
+       Remove this block after defensive/tackle ingestion is
+       verified.
+    ===================================================== */
+
+    const espnBoxscoreDebug =
+      boxscorePlayerTeams.map(
+        (teamGroup: any) => ({
+          team:
+            teamGroup
+              ?.team
+              ?.abbreviation ??
+            null,
+
+          categories:
+            (
+              teamGroup
+                ?.statistics ??
+              []
+            ).map(
+              (category: any) => ({
+                name:
+                  category?.name ??
+                  null,
+
+                displayName:
+                  category?.displayName ??
+                  null,
+
+                labels:
+                  category?.labels ??
+                  [],
+
+                athleteCount:
+                  (
+                    category?.athletes ??
+                    []
+                  ).length,
+
+                athletes:
+                  (
+                    category?.athletes ??
+                    []
+                  )
+                    .slice(0, 5)
+                    .map(
+                      (row: any) => ({
+                        id:
+                          row
+                            ?.athlete
+                            ?.id ??
+                          null,
+
+                        name:
+                          row
+                            ?.athlete
+                            ?.displayName ??
+                          row
+                            ?.athlete
+                            ?.fullName ??
+                          null,
+
+                        stats:
+                          row?.stats ??
+                          [],
+                      })
+                    ),
+              })
+            ),
+        })
+      );
+
+
+    /* =====================================================
        NORMALIZE BOX SCORE
     ===================================================== */
 
@@ -1097,6 +1187,9 @@ export async function POST(
             interceptions: 0,
 
             fumbleRecoveries: 0,
+
+            totalTackles: 0,
+            tacklesForLoss: 0,
 
             touchdowns: 0,
 
@@ -1511,30 +1604,96 @@ export async function POST(
 
 
           /* ===============================================
-             DST SACKS
+             DEFENSIVE PLAYER STATS + DST SACKS
           =============================================== */
 
           else if (
             categoryName ===
-              "defensive" &&
-            teamAbbreviation
+              "defensive"
           ) {
 
-            const dst =
-              dstByTeam.get(
-                teamAbbreviation
+            player
+              .defensive_solo_tackles =
+              toNumber(
+                getStat(
+                  labels,
+                  stats,
+                  "SOLO"
+                )
               );
 
 
-            if (dst) {
-              dst.sacks +=
-                toNumber(
-                  getStat(
-                    labels,
-                    stats,
-                    "SACKS"
+            player
+              .defensive_assisted_tackles =
+              toNumber(
+                getStat(
+                  labels,
+                  stats,
+                  "AST"
+                )
+              );
+
+
+            const espnTotalTackles =
+              getStat(
+                labels,
+                stats,
+                "TOT"
+              );
+
+
+            player
+              .defensive_total_tackles =
+              espnTotalTackles !==
+                null
+                ? toNumber(
+                    espnTotalTackles
                   )
+                : player
+                    .defensive_solo_tackles +
+                  player
+                    .defensive_assisted_tackles;
+
+
+            player
+              .defensive_tackles_for_loss =
+              toNumber(
+                getStat(
+                  labels,
+                  stats,
+                  "TFL"
+                )
+              );
+
+
+            if (
+              teamAbbreviation
+            ) {
+              const dst =
+                dstByTeam.get(
+                  teamAbbreviation
                 );
+
+
+              if (dst) {
+                // ESPN TOT is already the complete tackle total for this
+                // defender. Sum each defensive athlete once to create the
+                // team/DST tackle totals used by fantasy scoring.
+                dst.totalTackles +=
+                  player.defensive_total_tackles;
+
+                dst.tacklesForLoss +=
+                  player.defensive_tackles_for_loss;
+
+                dst.sacks +=
+                  toNumber(
+                    getStat(
+                      labels,
+                      stats,
+                      "SACKS"
+                    )
+                  );
+              }
             }
           }
 
@@ -2411,6 +2570,25 @@ export async function POST(
             .punt_return_touchdowns,
 
 
+        /* DEFENSIVE PLAYER STATS */
+
+        defensive_solo_tackles:
+          normalized
+            .defensive_solo_tackles,
+
+        defensive_assisted_tackles:
+          normalized
+            .defensive_assisted_tackles,
+
+        defensive_total_tackles:
+          normalized
+            .defensive_total_tackles,
+
+        defensive_tackles_for_loss:
+          normalized
+            .defensive_tackles_for_loss,
+
+
         /* FG DISTANCE BUCKETS */
 
         field_goals_made_0_19:
@@ -2642,6 +2820,12 @@ export async function POST(
                 completed,
 
 
+              defensive_total_tackles:
+                dst.totalTackles,
+
+              defensive_tackles_for_loss:
+                dst.tacklesForLoss,
+
               dst_sacks:
                 dst.sacks,
 
@@ -2767,21 +2951,21 @@ export async function POST(
 
 
     /* =====================================================
-       TRADITIONAL LIVE SCORING
+       FIND AFFECTED TRADITIONAL LINEUPS
 
-       The database controller is now authoritative for:
-       - scoring this NFL game for a Traditional league
-       - resolving the fantasy week through league NFL context
-       - syncing each player's persisted kickoff lock
-       - refreshing the affected Traditional matchups
+       Normal Traditional scoring maps fantasy Week N to
+       NFL regular-season Week N.
 
-       The route only:
-       1. discovers Traditional league/week contexts affected by
-          this NFL game,
-       2. calls refresh_traditional_live_game() once per league,
-       3. preserves the existing QA no-auto-advance rule, and
-       4. calls auto_advance_traditional_week() only for normal
-          regular-season contexts.
+       QA-enabled leagues can map the active fantasy week to
+       a different NFL context, such as preseason Week 3.
+
+       IMPORTANT:
+       - We resolve each league/week through
+         get_league_nfl_context().
+       - We do NOT globally score every preseason game.
+       - We only score a league when its resolved NFL context
+         exactly matches this NFL game.
+       - QA overrides never auto-advance the fantasy week.
     ===================================================== */
 
     const uniquePlayerIds =
@@ -2835,6 +3019,7 @@ export async function POST(
 
     type CandidateLineupRow = {
       league_id: string;
+      player_id: number;
       season: number;
       week: number;
     };
@@ -2874,11 +3059,10 @@ export async function POST(
     ) {
 
       /* ===================================================
-         FIND CANDIDATE LINEUP WEEKS
+         CANDIDATE LINEUPS
 
-         We intentionally do not filter by NFL week here.
-         A QA mapping may point Fantasy Week 1 at NFL
-         Preseason Week 3.
+         Do not filter by fantasy week here. QA may map
+         Fantasy Week 1 -> NFL Preseason Week 3.
       =================================================== */
 
       const {
@@ -2895,6 +3079,7 @@ export async function POST(
           .select(
             `
               league_id,
+              player_id,
               season,
               week
             `
@@ -2913,7 +3098,7 @@ export async function POST(
         candidateLineupError
       ) {
         throw new Error(
-          `Unable to find affected Traditional lineup weeks: ${candidateLineupError.message}`
+          `Unable to find affected lineups: ${candidateLineupError.message}`
         );
       }
 
@@ -2999,10 +3184,11 @@ export async function POST(
 
 
       /* ===================================================
-         ACTIVE FANTASY WEEK PER LEAGUE
+         ACTIVE FANTASY WEEK
 
-         Live scoring only drives the active Traditional week.
-         Historical/future weeks are not route-driven.
+         This prevents a QA override from accidentally
+         mapping multiple future fantasy lineup weeks to the
+         same preseason NFL week.
       =================================================== */
 
       const activeWeekByLeague =
@@ -3073,10 +3259,7 @@ export async function POST(
 
 
       /* ===================================================
-         RESOLVE THE ACTIVE FANTASY CONTEXT
-
-         This is discovery only. The database controller repeats
-         the authoritative mapping before changing scoring state.
+         RESOLVE EACH UNIQUE LEAGUE / FANTASY WEEK
       =================================================== */
 
       const contextCache =
@@ -3232,100 +3415,187 @@ export async function POST(
           );
         }
       }
+
+
+      /* ===================================================
+         REFRESH FANTASY PLAYER SCORES
+      =================================================== */
+
+      const refreshedPairs =
+        new Set<string>();
+
+
+      for (
+        const lineup
+        of candidateLineups
+      ) {
+        const activeWeek =
+          activeWeekByLeague.get(
+            lineup.league_id
+          );
+
+
+        if (
+          Number.isInteger(
+            activeWeek
+          ) &&
+          lineup.week !==
+            activeWeek
+        ) {
+          continue;
+        }
+
+
+        const contextKey =
+          `${lineup.league_id}:${lineup.season}:${lineup.week}`;
+
+
+        const resolvedContext =
+          affectedFantasyContexts.get(
+            contextKey
+          );
+
+
+        if (
+          !resolvedContext
+        ) {
+          continue;
+        }
+
+
+        affectedLeagueIds.add(
+          lineup.league_id
+        );
+
+
+        const pairKey =
+          `${lineup.league_id}:${lineup.player_id}`;
+
+
+        if (
+          refreshedPairs.has(
+            pairKey
+          )
+        ) {
+          continue;
+        }
+
+
+        refreshedPairs.add(
+          pairKey
+        );
+
+
+        const {
+          data:
+            statRow,
+
+          error:
+            statLookupError,
+        } =
+          await supabase
+            .from(
+              "nfl_player_game_stats"
+            )
+            .select(
+              "id"
+            )
+            .eq(
+              "nfl_game_id",
+              nflGame.id
+            )
+            .eq(
+              "nfl_player_id",
+              lineup.player_id
+            )
+            .maybeSingle();
+
+
+        if (
+          statLookupError
+        ) {
+          throw new Error(
+            `Unable to load player stat row: ${statLookupError.message}`
+          );
+        }
+
+
+        if (!statRow) {
+          continue;
+        }
+
+
+        const {
+          error:
+            scoringError,
+        } =
+          await supabase.rpc(
+            "refresh_fantasy_player_game_score",
+            {
+              p_league_id:
+                lineup.league_id,
+
+              p_player_game_stat_id:
+                statRow.id,
+            }
+          );
+
+
+        if (
+          scoringError
+        ) {
+          throw new Error(
+            `Unable to refresh fantasy score: ${scoringError.message}`
+          );
+        }
+
+
+        fantasyScoresRefreshed +=
+          1;
+      }
     }
 
 
     /* =====================================================
-       CALL THE CENTRAL TRADITIONAL CONTROLLER
-
-       One call per affected Traditional league.
+       REFRESH AFFECTED MATCHUPS + AUTO ADVANCE
     ===================================================== */
-
-    const controllerResultByLeague =
-      new Map<string, any>();
-
 
     for (
       const context
       of affectedFantasyContexts.values()
     ) {
-      if (
-        controllerResultByLeague.has(
-          context.leagueId
-        )
-      ) {
-        continue;
-      }
-
-
       const {
-        data:
-          controllerResult,
-
         error:
-          controllerError,
+          matchupError,
       } =
         await supabase.rpc(
-          "refresh_traditional_live_game",
+          "refresh_traditional_week_matchups",
           {
             p_league_id:
               context.leagueId,
 
-            p_nfl_game_id:
-              nflGame.id,
+            p_season:
+              context.fantasySeason,
+
+            p_week:
+              context.fantasyWeek,
           }
         );
 
 
       if (
-        controllerError
+        matchupError
       ) {
         throw new Error(
-          `Unable to refresh Traditional live scoring for league ${context.leagueId}: ${controllerError.message}`
+          `Unable to refresh league matchups: ${matchupError.message}`
         );
       }
 
 
-      controllerResultByLeague.set(
-        context.leagueId,
-        controllerResult
-      );
-
-
-      affectedLeagueIds.add(
-        context.leagueId
-      );
-
-
-      fantasyScoresRefreshed +=
-        Number(
-          controllerResult
-            ?.playerScoresRefreshed ??
-          0
-        );
-
-
       matchupWeeksRefreshed +=
-        Number(
-          controllerResult
-            ?.fantasyWeeksRefreshed ??
-          0
-        );
-    }
+        1;
 
 
-    /* =====================================================
-       AUTO ADVANCE
-
-       QA override contexts never auto-advance.
-       Normal regular-season contexts may advance only through
-       the serialized database function.
-    ===================================================== */
-
-    for (
-      const context
-      of affectedFantasyContexts.values()
-    ) {
       if (
         context.qaOverrideEnabled
       ) {
@@ -3358,6 +3628,10 @@ export async function POST(
         continue;
       }
 
+
+      /* ===================================================
+         NORMAL REGULAR-SEASON AUTO ADVANCE ONLY
+      =================================================== */
 
       if (
         !isRegularSeason
@@ -3435,224 +3709,6 @@ export async function POST(
       ) {
         weeksAdvanced +=
           1;
-      }
-    }
-
-
-    /* =====================================================
-       SEASON-LONG SALARY / NO-SALARY SCORING
-
-       Regular-season games only.
-
-       Flow:
-       1. Recalculate fantasy_player_game_scores for this NFL
-          game in every active Season-Long league.
-       2. Refresh Season-Long weekly entry totals.
-       3. Rebuild Season-Long standings through the existing
-          database controller.
-
-       This is intentionally non-fatal to the core ESPN sync.
-       The 5-minute Supabase cron remains the fallback if this
-       immediate refresh encounters an error.
-    ===================================================== */
-
-    const seasonLongScoring: {
-      attempted: boolean;
-      success: boolean;
-      leaguesFound: number;
-      leaguesScored: number;
-      scoringResult: any | null;
-      errors: string[];
-    } = {
-      attempted:
-        isRegularSeason,
-      success:
-        true,
-      leaguesFound:
-        0,
-      leaguesScored:
-        0,
-      scoringResult:
-        null,
-      errors:
-        [],
-    };
-
-
-    if (
-      isRegularSeason
-    ) {
-      try {
-        const {
-          data:
-            seasonLongLeagueData,
-
-          error:
-            seasonLongLeagueError,
-        } =
-          await supabase
-            .from(
-              "leagues"
-            )
-            .select(
-              "id"
-            )
-            .eq(
-              "league_type",
-              "season_long"
-            )
-            .eq(
-              "season",
-              nflGame.season
-            )
-            .in(
-              "status",
-              [
-                "setup",
-                "active",
-              ]
-            );
-
-
-        if (
-          seasonLongLeagueError
-        ) {
-          throw new Error(
-            `Unable to load active Season-Long leagues: ${seasonLongLeagueError.message}`
-          );
-        }
-
-
-        const seasonLongLeagues =
-          (
-            seasonLongLeagueData ??
-            []
-          ) as Array<{
-            id: string;
-          }>;
-
-
-        seasonLongScoring
-          .leaguesFound =
-          seasonLongLeagues
-            .length;
-
-
-        /*
-         * Refresh fantasy_player_game_scores for this specific
-         * NFL game in each Season-Long league.
-         *
-         * This uses the same league scoring engine already used
-         * by Traditional leagues, so Salary and No-Salary modes
-         * do not maintain a separate fantasy-points formula.
-         */
-        for (
-          const league
-          of seasonLongLeagues
-        ) {
-          const {
-            error:
-              seasonLongGameScoreError,
-          } =
-            await supabase.rpc(
-              "refresh_fantasy_game_scores",
-              {
-                p_league_id:
-                  league.id,
-
-                p_nfl_game_id:
-                  nflGame.id,
-              }
-            );
-
-
-          if (
-            seasonLongGameScoreError
-          ) {
-            seasonLongScoring
-              .errors
-              .push(
-                `League ${league.id}: ${seasonLongGameScoreError.message}`
-              );
-
-            continue;
-          }
-
-
-          seasonLongScoring
-            .leaguesScored +=
-            1;
-        }
-
-
-        /*
-         * Aggregate the refreshed player scores into each
-         * Season-Long team's weekly score and rebuild standings.
-         */
-        const {
-          data:
-            seasonLongWeeklyResult,
-
-          error:
-            seasonLongWeeklyError,
-        } =
-          await supabase.rpc(
-            "refresh_active_season_long_scoring",
-            {
-              p_season:
-                nflGame.season,
-
-              p_week:
-                nflGame.week,
-            }
-          );
-
-
-        if (
-          seasonLongWeeklyError
-        ) {
-          seasonLongScoring
-            .errors
-            .push(
-              seasonLongWeeklyError
-                .message
-            );
-        } else {
-          seasonLongScoring
-            .scoringResult =
-            seasonLongWeeklyResult;
-        }
-
-
-        seasonLongScoring
-          .success =
-          seasonLongScoring
-            .errors
-            .length ===
-          0;
-
-      } catch (
-        seasonLongError
-      ) {
-        seasonLongScoring
-          .success =
-          false;
-
-        seasonLongScoring
-          .errors
-          .push(
-            seasonLongError
-              instanceof Error
-              ? seasonLongError
-                  .message
-              : "Unknown Season-Long scoring refresh error."
-          );
-
-
-        console.error(
-          "Season-Long scoring refresh failed:",
-          seasonLongError
-        );
       }
     }
 
@@ -3746,9 +3802,6 @@ export async function POST(
         regularSeason:
           isRegularSeason,
 
-        seasonLong:
-          seasonLongScoring,
-
         qaOverrideContexts,
 
         fantasyScoresRefreshed,
@@ -3776,6 +3829,12 @@ export async function POST(
           0,
           50
         ),
+
+
+      debug: {
+        espnBoxscore:
+          espnBoxscoreDebug,
+      },
     });
 
   } catch (
