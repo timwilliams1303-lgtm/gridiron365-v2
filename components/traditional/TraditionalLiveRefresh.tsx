@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  useCallback,
   useEffect,
   useRef,
 } from "react";
@@ -21,55 +20,66 @@ type Props = {
 
 export default function TraditionalLiveRefresh({
   leagueId,
-  intervalMs = 15000,
+
+  /*
+   * Live NFL data is checked every 5 seconds.
+   *
+   * This keeps:
+   * - box scores
+   * - fantasy scores
+   * - play-by-play
+   * - possession
+   * - quarter / clock
+   * - red zone
+   * - recent scoring plays
+   *
+   * moving automatically without requiring the
+   * user to manually refresh the browser.
+   */
+  intervalMs = 5000,
 }: Props) {
   const pathname =
     usePathname();
 
-
   const router =
     useRouter();
 
-
-  const requestRunningRef =
-    useRef(
-      false
-    );
-
-
-  const mountedRef =
-    useRef(
-      true
-    );
+  /*
+   * Prevent overlapping refresh requests.
+   *
+   * If one ESPN/database synchronization takes
+   * longer than 5 seconds, we do not start another
+   * copy while the first one is still running.
+   */
+  const runningRef =
+    useRef(false);
 
 
-  const matchupsRoot =
-    `/league/${leagueId}/matchups`;
-
-
-  const shouldRun =
+  const isMatchupsPage =
     pathname ===
-      matchupsRoot ||
+      `/league/${leagueId}/matchups` ||
     pathname.startsWith(
-      `${matchupsRoot}/`
+      `/league/${leagueId}/matchups/`
     );
 
 
-  const runRefresh =
-    useCallback(
-      async () => {
-        if (
-          !shouldRun ||
-          requestRunningRef.current ||
-          !mountedRef.current
-        ) {
-          return;
-        }
+  useEffect(
+    () => {
+      if (
+        !isMatchupsPage
+      ) {
+        return;
+      }
 
 
+      let cancelled =
+        false;
+
+
+      async function refreshLiveData() {
         if (
-          typeof document !==
-            "undefined" &&
+          cancelled ||
+          runningRef.current ||
           document.visibilityState ===
             "hidden"
         ) {
@@ -77,11 +87,20 @@ export default function TraditionalLiveRefresh({
         }
 
 
-        requestRunningRef.current =
+        runningRef.current =
           true;
 
 
         try {
+          /*
+           * This server route is responsible for:
+           *
+           * 1. Finding current NFL games.
+           * 2. Synchronizing ESPN boxscores.
+           * 3. Synchronizing ESPN play-by-play.
+           * 4. Refreshing fantasy scoring.
+           * 5. Refreshing Traditional matchup totals.
+           */
           const response =
             await fetch(
               `/api/league/${leagueId}/matchups/live-refresh`,
@@ -89,148 +108,123 @@ export default function TraditionalLiveRefresh({
                 method:
                   "POST",
 
-                credentials:
-                  "same-origin",
-
                 cache:
                   "no-store",
 
                 headers: {
-                  Accept:
+                  "Content-Type":
                     "application/json",
                 },
               }
             );
 
 
-          const contentType =
-            response.headers.get(
-              "content-type"
-            ) ??
-            "";
-
-
-          let result:
-            unknown =
-              null;
-
-
           if (
-            contentType.includes(
-              "application/json"
-            )
+            cancelled
           ) {
-            result =
-              await response.json();
-          } else {
-            result =
-              await response.text();
+            return;
           }
 
 
           if (
             !response.ok
           ) {
-            console.error(
-              "Live matchup refresh request failed:",
-              {
-                status:
-                  response.status,
+            const text =
+              await response.text();
 
-                result,
-              }
+            console.error(
+              "Traditional live matchup refresh failed:",
+              response.status,
+              text
             );
 
             return;
           }
 
 
-          if (
-            mountedRef.current
-          ) {
-            /*
-             * Re-render the current server page with the newly
-             * synchronized score/game data.
-             *
-             * This keeps the user on the exact same matchup URL.
-             */
-            router.refresh();
-          }
+          /*
+           * The server has now written the newest ESPN
+           * state into Supabase.
+           *
+           * router.refresh() re-renders the server
+           * matchup page using the newest database rows.
+           *
+           * This is NOT a full browser reload.
+           */
+          router.refresh();
         } catch (
           error
         ) {
-          console.error(
-            "Live matchup refresh failed:",
-            error
-          );
+          if (
+            !cancelled
+          ) {
+            console.error(
+              "Traditional live matchup refresh failed:",
+              error
+            );
+          }
         } finally {
-          requestRunningRef.current =
+          runningRef.current =
             false;
         }
-      },
-      [
-        leagueId,
-        router,
-        shouldRun,
-      ]
-    );
-
-
-  useEffect(
-    () => {
-      mountedRef.current =
-        true;
-
-
-      return () => {
-        mountedRef.current =
-          false;
-      };
-    },
-    []
-  );
-
-
-  useEffect(
-    () => {
-      if (
-        !shouldRun
-      ) {
-        return;
       }
 
 
       /*
-       * Don't hit the API immediately while the route is still
-       * mounting. Start after a short delay.
+       * =====================================================
+       * IMMEDIATE FIRST REFRESH
+       * =====================================================
+       *
+       * Do not wait 15 seconds or require the user to
+       * press Refresh.
        */
-      const initialTimer =
-        window.setTimeout(
-          () => {
-            void runRefresh();
-          },
-          3000
-        );
+      void refreshLiveData();
 
 
+      /*
+       * =====================================================
+       * AUTOMATIC LIVE LOOP
+       * =====================================================
+       */
       const interval =
         window.setInterval(
           () => {
-            void runRefresh();
+            void refreshLiveData();
           },
           intervalMs
         );
 
 
-      const handleVisibilityChange =
-        () => {
-          if (
-            document.visibilityState ===
+      /*
+       * Immediately catch up whenever the user returns
+       * to the tab.
+       */
+      function handleVisibilityChange() {
+        if (
+          document.visibilityState ===
             "visible"
-          ) {
-            void runRefresh();
-          }
-        };
+        ) {
+          void refreshLiveData();
+        }
+      }
+
+
+      /*
+       * Also catch up immediately when the browser window
+       * receives focus.
+       */
+      function handleFocus() {
+        void refreshLiveData();
+      }
+
+
+      /*
+       * If internet connectivity temporarily drops,
+       * immediately synchronize when connectivity returns.
+       */
+      function handleOnline() {
+        void refreshLiveData();
+      }
 
 
       document.addEventListener(
@@ -238,11 +232,20 @@ export default function TraditionalLiveRefresh({
         handleVisibilityChange
       );
 
+      window.addEventListener(
+        "focus",
+        handleFocus
+      );
+
+      window.addEventListener(
+        "online",
+        handleOnline
+      );
+
 
       return () => {
-        window.clearTimeout(
-          initialTimer
-        );
+        cancelled =
+          true;
 
 
         window.clearInterval(
@@ -254,12 +257,23 @@ export default function TraditionalLiveRefresh({
           "visibilitychange",
           handleVisibilityChange
         );
+
+        window.removeEventListener(
+          "focus",
+          handleFocus
+        );
+
+        window.removeEventListener(
+          "online",
+          handleOnline
+        );
       };
     },
     [
       intervalMs,
-      runRefresh,
-      shouldRun,
+      isMatchupsPage,
+      leagueId,
+      router,
     ]
   );
 

@@ -267,6 +267,38 @@ function playerStatus(
 }
 
 
+function playerFieldState(
+  player:
+    MatchupDetailPlayer
+) {
+  const context =
+    player.gameContext;
+
+  if (!context?.isActuallyLive) {
+    return null;
+  }
+
+  if (player.isRedZone) {
+    return {
+      label: "RED ZONE",
+      tone: "redZone" as const,
+    };
+  }
+
+  if (player.hasPossession) {
+    return {
+      label: "ON FIELD",
+      tone: "onField" as const,
+    };
+  }
+
+  return {
+    label: "OFF FIELD",
+    tone: "offField" as const,
+  };
+}
+
+
 function calculateSimpleWinProbability(
   away:
     MatchupDetailTeam,
@@ -1162,10 +1194,6 @@ export default async function TraditionalMatchupDetailPage({
               0 ? (
                 data
                   .recentScoringPlays
-                  .slice(
-                    0,
-                    5
-                  )
                   .map(
                     (
                       play
@@ -2045,6 +2073,14 @@ function CompactPlayerRow({
     player.isRedZone;
 
 
+  const fieldState =
+    !bench
+      ? playerFieldState(
+          player
+        )
+      : null;
+
+
   const displayedOpponent =
     player.nflOpponent;
 
@@ -2124,23 +2160,6 @@ function CompactPlayerRow({
             </strong>
 
 
-            {redZone ? (
-              <span
-                style={
-                  styles.redZoneTag
-                }
-              >
-                RZ
-              </span>
-            ) : possession ? (
-              <span
-                style={
-                  styles.possessionTag
-                }
-              >
-                BALL
-              </span>
-            ) : null}
           </div>
 
 
@@ -2188,6 +2207,25 @@ function CompactPlayerRow({
         {playerStatus(
           player
         )}
+
+        {fieldState ? (
+          <>
+            {" • "}
+            <strong
+              style={
+                fieldState.tone ===
+                  "redZone"
+                  ? styles.redZoneStatus
+                  : fieldState.tone ===
+                      "onField"
+                    ? styles.onFieldStatus
+                    : styles.offFieldStatus
+              }
+            >
+              {fieldState.label}
+            </strong>
+          </>
+        ) : null}
       </span>
 
 
@@ -3556,16 +3594,16 @@ const styles = {
 
   possessionRow: {
     boxShadow:
-      "inset 4px 0 0 #ff7c22, inset 0 0 22px rgba(255,100,15,.08)",
+      "inset 4px 0 0 #42d982, inset 0 0 22px rgba(66,217,130,.10)",
 
     background:
-      "linear-gradient(90deg,rgba(255,95,15,.15),rgba(255,95,15,.035) 52%,transparent)",
+      "linear-gradient(90deg,rgba(66,217,130,.16),rgba(66,217,130,.035) 52%,transparent)",
 
     borderTop:
-      "1px solid rgba(255,125,35,.18)",
+      "1px solid rgba(66,217,130,.20)",
 
     borderBottom:
-      "1px solid rgba(255,125,35,.18)",
+      "1px solid rgba(66,217,130,.20)",
   },
 
 
@@ -3773,9 +3811,39 @@ const styles = {
 
   liveStatus: {
     color:
-      "#42d982",
+      "#d9dde2",
 
     fontSize: "12px",
+  },
+
+
+  onFieldStatus: {
+    color:
+      "#42d982",
+
+    fontWeight:
+      950,
+  },
+
+
+  offFieldStatus: {
+    color:
+      "#ff5a50",
+
+    fontWeight:
+      950,
+  },
+
+
+  redZoneStatus: {
+    color:
+      "#ff4137",
+
+    fontWeight:
+      950,
+
+    textShadow:
+      "0 0 8px rgba(255,65,55,.35)",
   },
 
 

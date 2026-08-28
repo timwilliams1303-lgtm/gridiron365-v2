@@ -6,21 +6,16 @@ import {
   createSupabaseServerClient,
 } from "@/lib/supabase/server";
 
+import {
+  requireTraditionalLeague,
+} from "@/lib/traditional/requireTraditionalLeague";
+
 
 type RouteContext = {
   params:
     Promise<{
       leagueId: string;
     }>;
-};
-
-
-type LeagueRow = {
-  id: string;
-
-  season: number;
-
-  league_type: string;
 };
 
 
@@ -49,49 +44,33 @@ type NflGameRow = {
   status_completed:
     boolean |
     null;
+
+  updated_at:
+    string |
+    null;
 };
 
 
-function jsonError(
-  error: string,
-  status: number
-) {
-  return NextResponse.json(
-    {
-      success:
-        false,
-
-      error,
-    },
-    {
-      status,
-    }
-  );
-}
-
-
 function isLiveStatus(
-  statusName:
+  value:
     string |
     null
 ) {
-  const value =
+  const normalized =
     (
-      statusName ??
+      value ??
       ""
-    )
-      .trim()
-      .toUpperCase();
+    ).toUpperCase();
 
 
   return (
-    value.includes(
+    normalized.includes(
       "IN_PROGRESS"
     ) ||
-    value.includes(
+    normalized.includes(
       "HALFTIME"
     ) ||
-    value.includes(
+    normalized.includes(
       "END_PERIOD"
     )
   );
@@ -103,8 +82,7 @@ function isRefreshCandidate(
     NflGameRow
 ) {
   if (
-    game.status_completed ===
-    true
+    game.status_completed
   ) {
     return false;
   }
@@ -126,14 +104,10 @@ function isRefreshCandidate(
   }
 
 
-  const kickoff =
+  const kickoffMs =
     new Date(
       game.kickoff_at
-    );
-
-
-  const kickoffMs =
-    kickoff.getTime();
+    ).getTime();
 
 
   if (
@@ -150,20 +124,20 @@ function isRefreshCandidate(
 
 
   /*
-   * Begin checking slightly before kickoff so scheduled games
-   * can transition to live automatically.
+   * Begin checking shortly before kickoff so a game can
+   * transition from scheduled -> live without a manual refresh.
+   *
+   * Keep checking for six hours after kickoff as a safety window
+   * for regulation, delays and overtime.
    */
-  const startsCheckingAt =
+  const earliestMs =
     kickoffMs -
     20 *
       60 *
       1000;
 
 
-  /*
-   * Six-hour window handles normal games, delays and overtime.
-   */
-  const stopsCheckingAt =
+  const latestMs =
     kickoffMs +
     6 *
       60 *
@@ -173,16 +147,19 @@ function isRefreshCandidate(
 
   return (
     nowMs >=
-      startsCheckingAt &&
+      earliestMs &&
     nowMs <=
-      stopsCheckingAt
+      latestMs
   );
 }
 
 
-async function callInternalSyncRoute(
+async function callInternalRoute(
   url: string,
-  request: Request
+  request: Request,
+  method:
+    "GET" |
+    "POST"
 ) {
   const headers =
     new Headers();
@@ -220,77 +197,51 @@ async function callInternalSyncRoute(
   }
 
 
-  headers.set(
-    "Accept",
-    "application/json"
-  );
-
-
-  try {
-    const response =
-      await fetch(
-        url,
-        {
-          method:
-            "POST",
-
-          headers,
-
-          cache:
-            "no-store",
-        }
-      );
-
-
-    const text =
-      await response.text();
-
-
-    let body:
-      unknown =
-        null;
-
-
-    if (
-      text
-    ) {
-      try {
-        body =
-          JSON.parse(
-            text
-          );
-      } catch {
-        body =
-          text;
+  const response =
+    await fetch(
+      url,
+      {
+        method,
+        headers,
+        cache:
+          "no-store",
       }
-    }
+    );
 
 
-    return {
-      success:
-        response.ok,
+  const text =
+    await response.text();
 
-      status:
-        response.status,
 
-      body,
-    };
-  } catch (
-    error
+  let body:
+    unknown =
+      null;
+
+
+  if (
+    text
   ) {
-    return {
-      success:
-        false,
-
-      status:
-        500,
-
-      body:
-        error instanceof Error
-          ? error.message
-          : "Internal sync request failed.",
-    };
+    try {
+      body =
+        JSON.parse(
+          text
+        );
+    } catch {
+      body =
+        text;
+    }
   }
+
+
+  return {
+    ok:
+      response.ok,
+
+    status:
+      response.status,
+
+    body,
+  };
 }
 
 
@@ -305,14 +256,14 @@ export async function POST(
       await context.params;
 
 
-    if (
-      !leagueId
-    ) {
-      return jsonError(
-        "A valid league ID is required.",
-        400
+    const access =
+      await requireTraditionalLeague(
+        leagueId
       );
-    }
+
+
+    const season =
+      access.league.season;
 
 
     const supabase =
@@ -321,112 +272,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * AUTH
-     * =====================================================
-     */
-
-    const {
-      data:
-        authData,
-
-      error:
-        authError,
-    } =
-      await supabase
-        .auth
-        .getUser();
-
-
-    const user =
-      authData.user;
-
-
-    if (
-      authError ||
-      !user
-    ) {
-      return jsonError(
-        "You must be signed in.",
-        401
-      );
-    }
-
-
-    /*
-     * =====================================================
-     * LEAGUE
-     *
-     * The authenticated Supabase client + RLS determines
-     * whether the user is permitted to read this league.
-     * =====================================================
-     */
-
-    const {
-      data:
-        leagueData,
-
-      error:
-        leagueError,
-    } =
-      await supabase
-        .from(
-          "leagues"
-        )
-        .select(`
-          id,
-          season,
-          league_type
-        `)
-        .eq(
-          "id",
-          leagueId
-        )
-        .maybeSingle();
-
-
-    if (
-      leagueError
-    ) {
-      return jsonError(
-        `Could not load league: ${leagueError.message}`,
-        500
-      );
-    }
-
-
-    if (
-      !leagueData
-    ) {
-      return jsonError(
-        "League was not found or you do not have access.",
-        404
-      );
-    }
-
-
-    const league =
-      leagueData as
-        LeagueRow;
-
-
-    if (
-      league.league_type !==
-      "traditional"
-    ) {
-      return jsonError(
-        "Live Traditional matchup refresh is not available for this league type.",
-        400
-      );
-    }
-
-
-    const season =
-      league.season;
-
-
-    /*
-     * =====================================================
-     * ACTIVE FANTASY WEEK
+     * ACTIVE TRADITIONAL WEEK
      * =====================================================
      */
 
@@ -458,9 +304,18 @@ export async function POST(
     if (
       seasonStateError
     ) {
-      return jsonError(
-        `Could not load active Traditional week: ${seasonStateError.message}`,
-        500
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          error:
+            `Could not load active Traditional week: ${seasonStateError.message}`,
+        },
+        {
+          status:
+            500,
+        }
       );
     }
 
@@ -479,9 +334,115 @@ export async function POST(
 
     /*
      * =====================================================
-     * CURRENT NFL WEEK GAMES
+     * NFL CONTEXT FOR ACTIVE FANTASY WEEK
+     * =====================================================
      *
-     * season_type 2 = NFL regular season.
+     * This is critical for QA mappings. A fantasy week may
+     * temporarily point at a preseason NFL week. Production
+     * weeks continue to resolve to NFL regular season.
+     */
+
+    const {
+      data: nflContextData,
+      error: nflContextError,
+    } =
+      await supabase.rpc(
+        "get_league_nfl_context",
+        {
+          p_league_id:
+            leagueId,
+
+          p_fantasy_season:
+            season,
+
+          p_fantasy_week:
+            activeWeek,
+        }
+      );
+
+
+    if (nflContextError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            `Could not resolve NFL context: ${nflContextError.message}`,
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+
+    const rawNflContext =
+      Array.isArray(
+        nflContextData
+      )
+        ? nflContextData[0]
+        : nflContextData;
+
+
+    const nflContext =
+      rawNflContext as {
+        nfl_season?: unknown;
+        nfl_season_type?: unknown;
+        nfl_week?: unknown;
+        qa_override_enabled?: unknown;
+      } | null;
+
+
+    const nflSeason =
+      Number(
+        nflContext?.nfl_season
+      );
+
+
+    const nflSeasonType =
+      Number(
+        nflContext?.nfl_season_type
+      );
+
+
+    const nflWeek =
+      Number(
+        nflContext?.nfl_week
+      );
+
+
+    const qaOverrideEnabled =
+      nflContext
+        ?.qa_override_enabled ===
+      true;
+
+
+    if (
+      !Number.isInteger(
+        nflSeason
+      ) ||
+      !Number.isInteger(
+        nflSeasonType
+      ) ||
+      !Number.isInteger(
+        nflWeek
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The resolved NFL context is invalid.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+
+    /*
+     * =====================================================
+     * NFL GAMES FOR THE RESOLVED CONTEXT
      * =====================================================
      */
 
@@ -501,28 +462,38 @@ export async function POST(
           espn_event_id,
           kickoff_at,
           status_name,
-          status_completed
+          status_completed,
+          updated_at
         `)
         .eq(
           "season",
-          season
+          nflSeason
         )
         .eq(
           "season_type",
-          2
+          nflSeasonType
         )
         .eq(
           "week",
-          activeWeek
+          nflWeek
         );
 
 
     if (
       gameError
     ) {
-      return jsonError(
-        `Could not load NFL games: ${gameError.message}`,
-        500
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          error:
+            `Could not load NFL games: ${gameError.message}`,
+        },
+        {
+          status:
+            500,
+        }
       );
     }
 
@@ -531,11 +502,10 @@ export async function POST(
       (
         gameData ??
         []
-      ) as
-        NflGameRow[];
+      ) as NflGameRow[];
 
 
-    const candidateGames =
+    const candidates =
       games.filter(
         isRefreshCandidate
       );
@@ -543,7 +513,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * ESPN LIVE SYNC
+     * LIVE NFL DATA
      * =====================================================
      */
 
@@ -572,14 +542,10 @@ export async function POST(
 
     for (
       const game
-      of candidateGames
+      of candidates
     ) {
-      const rawEventId =
-        game.espn_event_id;
-
-
       if (
-        !rawEventId
+        !game.espn_event_id
       ) {
         continue;
       }
@@ -587,7 +553,7 @@ export async function POST(
 
       const eventId =
         encodeURIComponent(
-          rawEventId
+          game.espn_event_id
         );
 
 
@@ -596,14 +562,16 @@ export async function POST(
         playByPlay,
       ] =
         await Promise.all([
-          callInternalSyncRoute(
+          callInternalRoute(
             `${origin}/api/nfl/sync-live-boxscore?eventId=${eventId}`,
-            request
+            request,
+            "POST"
           ),
 
-          callInternalSyncRoute(
+          callInternalRoute(
             `${origin}/api/nfl/sync-live-playbyplay?eventId=${eventId}`,
-            request
+            request,
+            "POST"
           ),
         ]);
 
@@ -613,7 +581,7 @@ export async function POST(
           game.id,
 
         eventId:
-          rawEventId,
+          game.espn_event_id,
 
         boxscore,
 
@@ -624,13 +592,16 @@ export async function POST(
 
     /*
      * =====================================================
-     * FANTASY SCORE RECALCULATION
+     * RECALCULATE FANTASY SCORES
+     *
+     * The boxscore sync stores fresh NFL player stats.
+     * Recalculate the league fantasy score rows next.
      * =====================================================
      */
 
     const {
       error:
-        fantasyScoreError,
+        recalculateError,
     } =
       await supabase.rpc(
         "recalculate_league_fantasy_scores",
@@ -643,7 +614,7 @@ export async function POST(
 
     /*
      * =====================================================
-     * MATCHUP TOTAL REFRESH
+     * REFRESH MATCHUP TOTALS
      * =====================================================
      */
 
@@ -652,7 +623,7 @@ export async function POST(
         refreshedMatchups,
 
       error:
-        matchupError,
+        matchupRefreshError,
     } =
       await supabase.rpc(
         "refresh_traditional_week_matchups",
@@ -670,7 +641,7 @@ export async function POST(
 
 
     if (
-      matchupError
+      matchupRefreshError
     ) {
       return NextResponse.json(
         {
@@ -678,9 +649,7 @@ export async function POST(
             false,
 
           error:
-            `Could not refresh matchup totals: ${matchupError.message}`,
-
-          leagueId,
+            `Could not refresh Traditional matchups: ${matchupRefreshError.message}`,
 
           season,
 
@@ -691,18 +660,7 @@ export async function POST(
             games.length,
 
           candidateGames:
-            candidateGames.length,
-
-          gamesSynced:
-            syncResults.length,
-
-          fantasyScoresRecalculated:
-            !fantasyScoreError,
-
-          fantasyScoreError:
-            fantasyScoreError
-              ?.message ??
-            null,
+            candidates.length,
 
           syncResults,
         },
@@ -713,12 +671,6 @@ export async function POST(
       );
     }
 
-
-    /*
-     * =====================================================
-     * SUCCESS
-     * =====================================================
-     */
 
     return NextResponse.json({
       success:
@@ -731,20 +683,30 @@ export async function POST(
       week:
         activeWeek,
 
+      nflContext: {
+        season:
+          nflSeason,
+        seasonType:
+          nflSeasonType,
+        week:
+          nflWeek,
+        qaOverrideEnabled,
+      },
+
       gamesChecked:
         games.length,
 
       candidateGames:
-        candidateGames.length,
+        candidates.length,
 
       gamesSynced:
         syncResults.length,
 
       fantasyScoresRecalculated:
-        !fantasyScoreError,
+        !recalculateError,
 
       fantasyScoreError:
-        fantasyScoreError
+        recalculateError
           ?.message ??
         null,
 

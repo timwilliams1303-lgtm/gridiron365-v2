@@ -1981,53 +1981,9 @@ export async function getTraditionalMatchupDetailData(
   }
 
 
-  /*
-   * Only NFL games represented by STARTERS in this matchup belong in the
-   * matchup header/live-game center. Bench players do not create matchup
-   * activity.
-   */
-  const matchupStarterPlayerEspnIds =
-    new Set<string>();
-
-  const matchupStarterGameIds =
-    new Set<number>();
-
-  for (const lineup of lineups) {
-    if (!isStarterSlot(lineup.lineup_slot)) {
-      continue;
-    }
-
-    const matchupPlayer =
-      playerMap.get(lineup.player_id);
-
-    if (matchupPlayer?.espn_player_id) {
-      matchupStarterPlayerEspnIds.add(
-        matchupPlayer.espn_player_id
-      );
-    }
-
-    const matchupPlayerTeam =
-      matchupPlayer?.team_abbreviation
-        ? nflTeamByAbbreviation.get(
-            matchupPlayer.team_abbreviation
-          )
-        : undefined;
-
-    const matchupGame =
-      matchupPlayerTeam
-        ? gameByTeamId.get(matchupPlayerTeam.id)
-        : undefined;
-
-    if (matchupGame) {
-      matchupStarterGameIds.add(
-        matchupGame.id
-      );
-    }
-  }
-
   const gameIds =
     Array.from(
-      matchupStarterGameIds
+      gameMap.keys()
     );
 
 
@@ -2146,6 +2102,9 @@ export async function getTraditionalMatchupDetailData(
             ascending:
               false,
           }
+        )
+        .limit(
+          12
         );
 
 
@@ -2156,20 +2115,7 @@ export async function getTraditionalMatchupDetailData(
         (
           scoringData ??
           []
-        )
-        .filter(
-          (raw: ScoringPlayRow) =>
-            (
-              raw.participant_espn_player_ids ??
-              []
-            ).some(
-              (espnPlayerId) =>
-                matchupStarterPlayerEspnIds.has(
-                  espnPlayerId
-                )
-            )
-        )
-        .map(
+        ).map(
           (
             raw:
               ScoringPlayRow
@@ -2371,45 +2317,26 @@ export async function getTraditionalMatchupDetailData(
       0;
 
 
-    const normalizedPlayerPosition =
-      normalizePosition(
-        player?.primary_position ??
-        "—"
-      );
-
-
-    const possessionAbbreviation =
-      context
-        ?.possessionTeam
-        ?.abbreviation ??
-      null;
-
-
     const hasPossession =
       Boolean(
-        context?.isActuallyLive &&
-        possessionAbbreviation &&
-        player?.team_abbreviation &&
-        (
-          normalizedPlayerPosition ===
-            "DST"
-            ? possessionAbbreviation !==
-              player.team_abbreviation
-            : normalizedPlayerPosition ===
-                "K"
-              ? false
-              : possessionAbbreviation ===
-                player.team_abbreviation
-        )
+        context
+          ?.isActuallyLive &&
+        context
+          ?.possessionTeam
+          ?.abbreviation &&
+        context
+          .possessionTeam
+          .abbreviation ===
+          player
+            ?.team_abbreviation
       );
 
 
     const isRedZone =
       Boolean(
         hasPossession &&
-        normalizedPlayerPosition !==
-          "DST" &&
-        context?.redZone
+        context
+          ?.redZone
       );
 
 
@@ -2454,7 +2381,11 @@ export async function getTraditionalMatchupDetailData(
         "Unknown Player",
 
       position:
-        normalizedPlayerPosition,
+        normalizePosition(
+          player
+            ?.primary_position ??
+          "—"
+        ),
 
       teamAbbreviation:
         player
