@@ -2767,21 +2767,21 @@ export async function POST(
 
 
     /* =====================================================
-       FIND AFFECTED TRADITIONAL LINEUPS
+       TRADITIONAL LIVE SCORING
 
-       Normal Traditional scoring maps fantasy Week N to
-       NFL regular-season Week N.
+       The database controller is now authoritative for:
+       - scoring this NFL game for a Traditional league
+       - resolving the fantasy week through league NFL context
+       - syncing each player's persisted kickoff lock
+       - refreshing the affected Traditional matchups
 
-       QA-enabled leagues can map the active fantasy week to
-       a different NFL context, such as preseason Week 3.
-
-       IMPORTANT:
-       - We resolve each league/week through
-         get_league_nfl_context().
-       - We do NOT globally score every preseason game.
-       - We only score a league when its resolved NFL context
-         exactly matches this NFL game.
-       - QA overrides never auto-advance the fantasy week.
+       The route only:
+       1. discovers Traditional league/week contexts affected by
+          this NFL game,
+       2. calls refresh_traditional_live_game() once per league,
+       3. preserves the existing QA no-auto-advance rule, and
+       4. calls auto_advance_traditional_week() only for normal
+          regular-season contexts.
     ===================================================== */
 
     const uniquePlayerIds =
@@ -2835,7 +2835,6 @@ export async function POST(
 
     type CandidateLineupRow = {
       league_id: string;
-      player_id: number;
       season: number;
       week: number;
     };
@@ -2875,10 +2874,11 @@ export async function POST(
     ) {
 
       /* ===================================================
-         CANDIDATE LINEUPS
+         FIND CANDIDATE LINEUP WEEKS
 
-         Do not filter by fantasy week here. QA may map
-         Fantasy Week 1 -> NFL Preseason Week 3.
+         We intentionally do not filter by NFL week here.
+         A QA mapping may point Fantasy Week 1 at NFL
+         Preseason Week 3.
       =================================================== */
 
       const {
@@ -2895,7 +2895,6 @@ export async function POST(
           .select(
             `
               league_id,
-              player_id,
               season,
               week
             `
@@ -2914,7 +2913,7 @@ export async function POST(
         candidateLineupError
       ) {
         throw new Error(
-          `Unable to find affected lineups: ${candidateLineupError.message}`
+          `Unable to find affected Traditional lineup weeks: ${candidateLineupError.message}`
         );
       }
 
@@ -3000,11 +2999,10 @@ export async function POST(
 
 
       /* ===================================================
-         ACTIVE FANTASY WEEK
+         ACTIVE FANTASY WEEK PER LEAGUE
 
-         This prevents a QA override from accidentally
-         mapping multiple future fantasy lineup weeks to the
-         same preseason NFL week.
+         Live scoring only drives the active Traditional week.
+         Historical/future weeks are not route-driven.
       =================================================== */
 
       const activeWeekByLeague =
@@ -3075,7 +3073,10 @@ export async function POST(
 
 
       /* ===================================================
-         RESOLVE EACH UNIQUE LEAGUE / FANTASY WEEK
+         RESOLVE THE ACTIVE FANTASY CONTEXT
+
+         This is discovery only. The database controller repeats
+         the authoritative mapping before changing scoring state.
       =================================================== */
 
       const contextCache =
@@ -3231,187 +3232,100 @@ export async function POST(
           );
         }
       }
-
-
-      /* ===================================================
-         REFRESH FANTASY PLAYER SCORES
-      =================================================== */
-
-      const refreshedPairs =
-        new Set<string>();
-
-
-      for (
-        const lineup
-        of candidateLineups
-      ) {
-        const activeWeek =
-          activeWeekByLeague.get(
-            lineup.league_id
-          );
-
-
-        if (
-          Number.isInteger(
-            activeWeek
-          ) &&
-          lineup.week !==
-            activeWeek
-        ) {
-          continue;
-        }
-
-
-        const contextKey =
-          `${lineup.league_id}:${lineup.season}:${lineup.week}`;
-
-
-        const resolvedContext =
-          affectedFantasyContexts.get(
-            contextKey
-          );
-
-
-        if (
-          !resolvedContext
-        ) {
-          continue;
-        }
-
-
-        affectedLeagueIds.add(
-          lineup.league_id
-        );
-
-
-        const pairKey =
-          `${lineup.league_id}:${lineup.player_id}`;
-
-
-        if (
-          refreshedPairs.has(
-            pairKey
-          )
-        ) {
-          continue;
-        }
-
-
-        refreshedPairs.add(
-          pairKey
-        );
-
-
-        const {
-          data:
-            statRow,
-
-          error:
-            statLookupError,
-        } =
-          await supabase
-            .from(
-              "nfl_player_game_stats"
-            )
-            .select(
-              "id"
-            )
-            .eq(
-              "nfl_game_id",
-              nflGame.id
-            )
-            .eq(
-              "nfl_player_id",
-              lineup.player_id
-            )
-            .maybeSingle();
-
-
-        if (
-          statLookupError
-        ) {
-          throw new Error(
-            `Unable to load player stat row: ${statLookupError.message}`
-          );
-        }
-
-
-        if (!statRow) {
-          continue;
-        }
-
-
-        const {
-          error:
-            scoringError,
-        } =
-          await supabase.rpc(
-            "refresh_fantasy_player_game_score",
-            {
-              p_league_id:
-                lineup.league_id,
-
-              p_player_game_stat_id:
-                statRow.id,
-            }
-          );
-
-
-        if (
-          scoringError
-        ) {
-          throw new Error(
-            `Unable to refresh fantasy score: ${scoringError.message}`
-          );
-        }
-
-
-        fantasyScoresRefreshed +=
-          1;
-      }
     }
 
 
     /* =====================================================
-       REFRESH AFFECTED MATCHUPS + AUTO ADVANCE
+       CALL THE CENTRAL TRADITIONAL CONTROLLER
+
+       One call per affected Traditional league.
+    ===================================================== */
+
+    const controllerResultByLeague =
+      new Map<string, any>();
+
+
+    for (
+      const context
+      of affectedFantasyContexts.values()
+    ) {
+      if (
+        controllerResultByLeague.has(
+          context.leagueId
+        )
+      ) {
+        continue;
+      }
+
+
+      const {
+        data:
+          controllerResult,
+
+        error:
+          controllerError,
+      } =
+        await supabase.rpc(
+          "refresh_traditional_live_game",
+          {
+            p_league_id:
+              context.leagueId,
+
+            p_nfl_game_id:
+              nflGame.id,
+          }
+        );
+
+
+      if (
+        controllerError
+      ) {
+        throw new Error(
+          `Unable to refresh Traditional live scoring for league ${context.leagueId}: ${controllerError.message}`
+        );
+      }
+
+
+      controllerResultByLeague.set(
+        context.leagueId,
+        controllerResult
+      );
+
+
+      affectedLeagueIds.add(
+        context.leagueId
+      );
+
+
+      fantasyScoresRefreshed +=
+        Number(
+          controllerResult
+            ?.playerScoresRefreshed ??
+          0
+        );
+
+
+      matchupWeeksRefreshed +=
+        Number(
+          controllerResult
+            ?.fantasyWeeksRefreshed ??
+          0
+        );
+    }
+
+
+    /* =====================================================
+       AUTO ADVANCE
+
+       QA override contexts never auto-advance.
+       Normal regular-season contexts may advance only through
+       the serialized database function.
     ===================================================== */
 
     for (
       const context
       of affectedFantasyContexts.values()
     ) {
-      const {
-        error:
-          matchupError,
-      } =
-        await supabase.rpc(
-          "refresh_traditional_week_matchups",
-          {
-            p_league_id:
-              context.leagueId,
-
-            p_season:
-              context.fantasySeason,
-
-            p_week:
-              context.fantasyWeek,
-          }
-        );
-
-
-      if (
-        matchupError
-      ) {
-        throw new Error(
-          `Unable to refresh league matchups: ${matchupError.message}`
-        );
-      }
-
-
-      matchupWeeksRefreshed +=
-        1;
-
-
       if (
         context.qaOverrideEnabled
       ) {
@@ -3444,10 +3358,6 @@ export async function POST(
         continue;
       }
 
-
-      /* ===================================================
-         NORMAL REGULAR-SEASON AUTO ADVANCE ONLY
-      =================================================== */
 
       if (
         !isRegularSeason
@@ -3527,7 +3437,6 @@ export async function POST(
           1;
       }
     }
-
 
 
     /* =====================================================
