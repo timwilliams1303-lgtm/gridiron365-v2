@@ -10,33 +10,44 @@ import {
   useRouter,
 } from "next/navigation";
 
+import {
+  createBrowserClient,
+} from "@supabase/ssr";
+
 
 type Props = {
   leagueId: string;
-
-  intervalMs?: number;
 };
 
 
+/*
+ * ============================================================
+ * TRADITIONAL LIVE REFRESH
+ * ============================================================
+ *
+ * IMPORTANT ARCHITECTURE:
+ *
+ * ESPN synchronization is NOT performed here.
+ *
+ * Central NFL Worker
+ *      ↓
+ * ESPN boxscore + play-by-play
+ *      ↓
+ * Supabase
+ *      ↓
+ * Traditional scoring
+ *      ↓
+ * Supabase Realtime
+ *      ↓
+ * This component
+ *      ↓
+ * router.refresh()
+ *
+ * The browser therefore reads authoritative data instead of
+ * independently synchronizing ESPN.
+ */
 export default function TraditionalLiveRefresh({
   leagueId,
-
-  /*
-   * Live NFL data is checked every 5 seconds.
-   *
-   * This keeps:
-   * - box scores
-   * - fantasy scores
-   * - play-by-play
-   * - possession
-   * - quarter / clock
-   * - red zone
-   * - recent scoring plays
-   *
-   * moving automatically without requiring the
-   * user to manually refresh the browser.
-   */
-  intervalMs = 5000,
 }: Props) {
   const pathname =
     usePathname();
@@ -44,15 +55,26 @@ export default function TraditionalLiveRefresh({
   const router =
     useRouter();
 
+
   /*
-   * Prevent overlapping refresh requests.
+   * Multiple database rows can change almost simultaneously
+   * after one NFL play.
    *
-   * If one ESPN/database synchronization takes
-   * longer than 5 seconds, we do not start another
-   * copy while the first one is still running.
+   * Example:
+   *
+   * nfl_game_plays
+   * weekly_lineups
+   * traditional_matchups
+   *
+   * We do not want three immediate router.refresh() calls.
+   * Instead, changes are grouped into one refresh.
    */
-  const runningRef =
-    useRef(false);
+  const refreshTimerRef =
+    useRef<
+      ReturnType<
+        typeof setTimeout
+      > | null
+    >(null);
 
 
   const isMatchupsPage =
@@ -72,14 +94,51 @@ export default function TraditionalLiveRefresh({
       }
 
 
+      const supabaseUrl =
+        process.env
+          .NEXT_PUBLIC_SUPABASE_URL;
+
+      const supabaseKey =
+        process.env
+          .NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+        process.env
+          .NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+
+      if (
+        !supabaseUrl ||
+        !supabaseKey
+      ) {
+        console.error(
+          "Traditional Realtime could not start because Supabase environment variables are missing."
+        );
+
+        return;
+      }
+
+
       let cancelled =
         false;
 
 
-      async function refreshLiveData() {
+      const supabase =
+        createBrowserClient(
+          supabaseUrl,
+          supabaseKey
+        );
+
+
+      /*
+       * ======================================================
+       * REFRESH DEBOUNCE
+       * ======================================================
+       *
+       * A single NFL play can cause several database writes.
+       * Wait briefly and combine them into one server refresh.
+       */
+      function scheduleRefresh() {
         if (
           cancelled ||
-          runningRef.current ||
           document.visibilityState ===
             "hidden"
         ) {
@@ -87,143 +146,213 @@ export default function TraditionalLiveRefresh({
         }
 
 
-        runningRef.current =
-          true;
-
-
-        try {
-          /*
-           * This server route is responsible for:
-           *
-           * 1. Finding current NFL games.
-           * 2. Synchronizing ESPN boxscores.
-           * 3. Synchronizing ESPN play-by-play.
-           * 4. Refreshing fantasy scoring.
-           * 5. Refreshing Traditional matchup totals.
-           */
-          const response =
-            await fetch(
-              `/api/league/${leagueId}/matchups/live-refresh`,
-              {
-                method:
-                  "POST",
-
-                cache:
-                  "no-store",
-
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-              }
-            );
-
-
-          if (
-            cancelled
-          ) {
-            return;
-          }
-
-
-          if (
-            !response.ok
-          ) {
-            const text =
-              await response.text();
-
-            console.error(
-              "Traditional live matchup refresh failed:",
-              response.status,
-              text
-            );
-
-            return;
-          }
-
-
-          /*
-           * The server has now written the newest ESPN
-           * state into Supabase.
-           *
-           * router.refresh() re-renders the server
-           * matchup page using the newest database rows.
-           *
-           * This is NOT a full browser reload.
-           */
-          router.refresh();
-        } catch (
-          error
+        if (
+          refreshTimerRef.current
         ) {
-          if (
-            !cancelled
-          ) {
-            console.error(
-              "Traditional live matchup refresh failed:",
-              error
-            );
-          }
-        } finally {
-          runningRef.current =
-            false;
+          clearTimeout(
+            refreshTimerRef.current
+          );
         }
+
+
+        refreshTimerRef.current =
+          setTimeout(
+            () => {
+              if (
+                cancelled
+              ) {
+                return;
+              }
+
+
+              router.refresh();
+
+
+              refreshTimerRef.current =
+                null;
+            },
+            300
+          );
       }
 
 
       /*
-       * =====================================================
-       * IMMEDIATE FIRST REFRESH
-       * =====================================================
+       * ======================================================
+       * REALTIME CHANNEL
+       * ======================================================
+       */
+      const channel =
+        supabase
+          .channel(
+            `traditional-live-${leagueId}`
+          )
+
+
+          /*
+           * --------------------------------------------------
+           * MATCHUP SCORE CHANGES
+           * --------------------------------------------------
+           *
+           * This is league-scoped so a change in another
+           * Traditional league does not refresh this browser.
+           */
+          .on(
+            "postgres_changes",
+            {
+              event:
+                "*",
+
+              schema:
+                "public",
+
+              table:
+                "traditional_matchups",
+
+              filter:
+                `league_id=eq.${leagueId}`,
+            },
+            () => {
+              scheduleRefresh();
+            }
+          )
+
+
+          /*
+           * --------------------------------------------------
+           * PLAYER / LINEUP SCORE CHANGES
+           * --------------------------------------------------
+           *
+           * Fantasy points and player score state are stored
+           * in weekly_lineups.
+           */
+          .on(
+            "postgres_changes",
+            {
+              event:
+                "*",
+
+              schema:
+                "public",
+
+              table:
+                "weekly_lineups",
+
+              filter:
+                `league_id=eq.${leagueId}`,
+            },
+            () => {
+              scheduleRefresh();
+            }
+          )
+
+
+          /*
+           * --------------------------------------------------
+           * NFL PLAY-BY-PLAY CHANGES
+           * --------------------------------------------------
+           *
+           * nfl_game_plays is global NFL data and does not
+           * contain league_id.
+           *
+           * A new play can change:
+           *
+           * - possession
+           * - quarter
+           * - clock
+           * - down/distance
+           * - red zone
+           * - ON FIELD / OFF FIELD
+           * - last scoring play
+           * - recent scoring plays
+           *
+           * The server matchup page decides which NFL games
+           * are actually relevant to this matchup.
+           */
+          .on(
+            "postgres_changes",
+            {
+              event:
+                "*",
+
+              schema:
+                "public",
+
+              table:
+                "nfl_game_plays",
+            },
+            () => {
+              scheduleRefresh();
+            }
+          )
+
+
+          .subscribe(
+            (
+              status
+            ) => {
+              if (
+                status ===
+                "SUBSCRIBED"
+              ) {
+                console.log(
+                  "Traditional live Realtime connected:",
+                  leagueId
+                );
+              }
+
+
+              if (
+                status ===
+                "CHANNEL_ERROR"
+              ) {
+                console.error(
+                  "Traditional live Realtime channel error:",
+                  leagueId
+                );
+              }
+
+
+              if (
+                status ===
+                "TIMED_OUT"
+              ) {
+                console.error(
+                  "Traditional live Realtime connection timed out:",
+                  leagueId
+                );
+              }
+            }
+          );
+
+
+      /*
+       * ======================================================
+       * TAB / WINDOW CATCH-UP
+       * ======================================================
        *
-       * Do not wait 15 seconds or require the user to
-       * press Refresh.
-       */
-      void refreshLiveData();
-
-
-      /*
-       * =====================================================
-       * AUTOMATIC LIVE LOOP
-       * =====================================================
-       */
-      const interval =
-        window.setInterval(
-          () => {
-            void refreshLiveData();
-          },
-          intervalMs
-        );
-
-
-      /*
-       * Immediately catch up whenever the user returns
-       * to the tab.
+       * We intentionally do not refresh hidden tabs for every
+       * NFL event.
+       *
+       * When the user comes back, immediately read the latest
+       * authoritative state.
        */
       function handleVisibilityChange() {
         if (
           document.visibilityState ===
             "visible"
         ) {
-          void refreshLiveData();
+          scheduleRefresh();
         }
       }
 
 
-      /*
-       * Also catch up immediately when the browser window
-       * receives focus.
-       */
       function handleFocus() {
-        void refreshLiveData();
+        scheduleRefresh();
       }
 
 
-      /*
-       * If internet connectivity temporarily drops,
-       * immediately synchronize when connectivity returns.
-       */
       function handleOnline() {
-        void refreshLiveData();
+        scheduleRefresh();
       }
 
 
@@ -243,14 +372,29 @@ export default function TraditionalLiveRefresh({
       );
 
 
+      /*
+       * One initial refresh makes sure the page catches any
+       * database change that occurred between the original
+       * server render and Realtime subscription establishment.
+       */
+      scheduleRefresh();
+
+
       return () => {
         cancelled =
           true;
 
 
-        window.clearInterval(
-          interval
-        );
+        if (
+          refreshTimerRef.current
+        ) {
+          clearTimeout(
+            refreshTimerRef.current
+          );
+
+          refreshTimerRef.current =
+            null;
+        }
 
 
         document.removeEventListener(
@@ -267,10 +411,14 @@ export default function TraditionalLiveRefresh({
           "online",
           handleOnline
         );
+
+
+        void supabase.removeChannel(
+          channel
+        );
       };
     },
     [
-      intervalMs,
       isMatchupsPage,
       leagueId,
       router,
