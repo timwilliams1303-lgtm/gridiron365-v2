@@ -60,7 +60,6 @@ export default async function TraditionalLeagueLayout({
    *
    * from ever being sent to Supabase as league UUIDs.
    */
-
   if (
     !leagueId ||
     !isUuid(
@@ -106,7 +105,7 @@ export default async function TraditionalLeagueLayout({
       className="g365-league-shell"
     >
       {/* ==================================================
-          MATCHUPS LIVE REFRESH
+          MATCHUPS LEAGUE-SCOPED REALTIME
           Invisible and only activates on matchup routes.
       =================================================== */}
 
@@ -114,6 +113,7 @@ export default async function TraditionalLeagueLayout({
         leagueId={
           leagueId
         }
+        mode="league"
       />
 
 

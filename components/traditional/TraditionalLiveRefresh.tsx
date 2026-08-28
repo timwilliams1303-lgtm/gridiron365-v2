@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useMemo,
   useRef,
 } from "react";
 
@@ -17,6 +18,10 @@ import {
 
 type Props = {
   leagueId: string;
+
+  mode?: "league" | "games";
+
+  nflGameIds?: number[];
 };
 
 
@@ -25,18 +30,27 @@ type Props = {
  * TRADITIONAL LIVE REFRESH
  * ============================================================
  *
- * IMPORTANT:
- *
- * This component NEVER synchronizes ESPN.
- *
  * ESPN synchronization and fantasy scoring are handled by the
  * centralized NFL worker.
  *
- * This component only listens for league-specific fantasy
- * database changes and refreshes the server-rendered page.
+ * This component NEVER calls ESPN and NEVER calculates scores.
+ *
+ * MODE: league
+ * ------------------------------------------------------------
+ * Listens for league-specific fantasy changes:
+ *
+ *   traditional_matchups
+ *   weekly_lineups
+ *
+ * MODE: games
+ * ------------------------------------------------------------
+ * Listens only for nfl_game_plays belonging to NFL games
+ * displayed in the current fantasy matchup.
  */
 export default function TraditionalLiveRefresh({
   leagueId,
+  mode = "league",
+  nflGameIds = [],
 }: Props) {
   const pathname =
     usePathname();
@@ -65,6 +79,109 @@ export default function TraditionalLiveRefresh({
     useRef(false);
 
 
+  const pendingRefreshRef =
+    useRef(false);
+
+
+  /*
+   * ============================================================
+   * NORMALIZE NFL GAME IDS
+   * ============================================================
+   */
+  const nflGameIdsKey =
+    useMemo(
+      () => {
+        return Array.from(
+          new Set(
+            nflGameIds
+              .map(
+                (
+                  value
+                ) =>
+                  Number(
+                    value
+                  )
+              )
+              .filter(
+                (
+                  value
+                ) =>
+                  Number.isInteger(
+                    value
+                  ) &&
+                  value >
+                    0
+              )
+          )
+        )
+          .sort(
+            (
+              a,
+              b
+            ) =>
+              a -
+              b
+          )
+          .join(
+            ","
+          );
+      },
+      [
+        nflGameIds,
+      ]
+    );
+
+
+  /*
+   * Rebuild the numeric list from the stable key.
+   *
+   * This prevents a newly-created array instance from causing
+   * unnecessary Realtime reconnections.
+   */
+  const normalizedNflGameIds =
+    useMemo(
+      () => {
+        if (
+          !nflGameIdsKey
+        ) {
+          return [];
+        }
+
+
+        return nflGameIdsKey
+          .split(
+            ","
+          )
+          .map(
+            (
+              value
+            ) =>
+              Number(
+                value
+              )
+          )
+          .filter(
+            (
+              value
+            ) =>
+              Number.isInteger(
+                value
+              ) &&
+              value >
+                0
+          );
+      },
+      [
+        nflGameIdsKey,
+      ]
+    );
+
+
+  /*
+   * ============================================================
+   * ROUTE CHECK
+   * ============================================================
+   */
   const isMatchupsPage =
     pathname ===
       `/league/${leagueId}/matchups` ||
@@ -75,8 +192,26 @@ export default function TraditionalLiveRefresh({
 
   useEffect(
     () => {
+      /*
+       * League mode is intentionally inactive everywhere except
+       * the matchup area.
+       *
+       * Game mode is mounted directly by a matchup-detail page.
+       */
       if (
+        mode ===
+          "league" &&
         !isMatchupsPage
+      ) {
+        return;
+      }
+
+
+      if (
+        mode ===
+          "games" &&
+        normalizedNflGameIds.length ===
+          0
       ) {
         return;
       }
@@ -117,19 +252,13 @@ export default function TraditionalLiveRefresh({
 
 
       /*
-       * ======================================================
+       * ========================================================
        * SAFE REFRESH
-       * ======================================================
-       *
-       * Multiple fantasy rows may update from one scoring play.
-       *
-       * We debounce the changes and then impose a short
-       * cooldown so router.refresh() cannot run continuously.
+       * ========================================================
        */
       function performRefresh() {
         if (
           cancelled ||
-          refreshBlockedRef.current ||
           document.visibilityState ===
             "hidden"
         ) {
@@ -137,8 +266,21 @@ export default function TraditionalLiveRefresh({
         }
 
 
+        if (
+          refreshBlockedRef.current
+        ) {
+          pendingRefreshRef.current =
+            true;
+
+          return;
+        }
+
+
         refreshBlockedRef.current =
           true;
+
+        pendingRefreshRef.current =
+          false;
 
 
         router.refresh();
@@ -147,11 +289,28 @@ export default function TraditionalLiveRefresh({
         cooldownTimerRef.current =
           setTimeout(
             () => {
+              if (
+                cancelled
+              ) {
+                return;
+              }
+
+
               refreshBlockedRef.current =
                 false;
 
               cooldownTimerRef.current =
                 null;
+
+
+              if (
+                pendingRefreshRef.current
+              ) {
+                pendingRefreshRef.current =
+                  false;
+
+                performRefresh();
+              }
             },
             1500
           );
@@ -164,6 +323,16 @@ export default function TraditionalLiveRefresh({
           document.visibilityState ===
             "hidden"
         ) {
+          return;
+        }
+
+
+        if (
+          refreshBlockedRef.current
+        ) {
+          pendingRefreshRef.current =
+            true;
+
           return;
         }
 
@@ -191,138 +360,229 @@ export default function TraditionalLiveRefresh({
 
 
       /*
-       * ======================================================
-       * LEAGUE-SCOPED REALTIME
-       * ======================================================
-       *
-       * IMPORTANT:
-       *
-       * We intentionally DO NOT subscribe globally to
-       * nfl_game_plays here.
-       *
-       * That table contains every NFL game on the platform.
-       * A global subscription can generate a refresh storm.
-       *
-       * We will add NFL play updates back later, scoped only
-       * to the NFL games relevant to this matchup.
+       * ========================================================
+       * LEAGUE MODE
+       * ========================================================
        */
+      const channels:
+        ReturnType<
+          typeof supabase.channel
+        >[] =
+          [];
 
 
-      const channel =
-        supabase
-          .channel(
-            `traditional-live-${leagueId}`
-          )
+      if (
+        mode ===
+          "league"
+      ) {
+        const leagueChannel =
+          supabase
+            .channel(
+              `traditional-fantasy-${leagueId}`
+            )
 
+            .on(
+              "postgres_changes",
+              {
+                event:
+                  "*",
 
-          /*
-           * MATCHUP TOTALS
-           */
-          .on(
-            "postgres_changes",
-            {
-              event:
-                "*",
+                schema:
+                  "public",
 
-              schema:
-                "public",
+                table:
+                  "traditional_matchups",
 
-              table:
-                "traditional_matchups",
-
-              filter:
-                `league_id=eq.${leagueId}`,
-            },
-            () => {
-              scheduleRefresh();
-            }
-          )
-
-
-          /*
-           * PLAYER FANTASY POINTS / LINEUP STATE
-           */
-          .on(
-            "postgres_changes",
-            {
-              event:
-                "*",
-
-              schema:
-                "public",
-
-              table:
-                "weekly_lineups",
-
-              filter:
-                `league_id=eq.${leagueId}`,
-            },
-            () => {
-              scheduleRefresh();
-            }
-          )
-
-
-          .subscribe(
-            (
-              status
-            ) => {
-              if (
-                status ===
-                  "SUBSCRIBED"
-              ) {
-                console.log(
-                  "Traditional live Realtime connected:",
-                  leagueId
-                );
+                filter:
+                  `league_id=eq.${leagueId}`,
+              },
+              () => {
+                scheduleRefresh();
               }
+            )
 
+            .on(
+              "postgres_changes",
+              {
+                event:
+                  "*",
 
-              if (
-                status ===
-                  "CHANNEL_ERROR"
-              ) {
-                console.error(
-                  "Traditional live Realtime channel error:",
-                  leagueId
-                );
+                schema:
+                  "public",
+
+                table:
+                  "weekly_lineups",
+
+                filter:
+                  `league_id=eq.${leagueId}`,
+              },
+              () => {
+                scheduleRefresh();
               }
+            )
+
+            .subscribe(
+              (
+                status
+              ) => {
+                if (
+                  status ===
+                    "SUBSCRIBED"
+                ) {
+                  console.log(
+                    "Traditional fantasy Realtime connected:",
+                    leagueId
+                  );
+                }
 
 
-              if (
-                status ===
-                  "TIMED_OUT"
-              ) {
-                console.error(
-                  "Traditional live Realtime connection timed out:",
-                  leagueId
-                );
+                if (
+                  status ===
+                    "CHANNEL_ERROR"
+                ) {
+                  console.error(
+                    "Traditional fantasy Realtime channel error:",
+                    leagueId
+                  );
+                }
+
+
+                if (
+                  status ===
+                    "TIMED_OUT"
+                ) {
+                  console.error(
+                    "Traditional fantasy Realtime connection timed out:",
+                    leagueId
+                  );
+                }
+
+
+                if (
+                  status ===
+                    "CLOSED"
+                ) {
+                  console.warn(
+                    "Traditional fantasy Realtime channel closed:",
+                    leagueId
+                  );
+                }
               }
+            );
 
 
-              if (
-                status ===
-                  "CLOSED"
-              ) {
-                console.warn(
-                  "Traditional live Realtime channel closed:",
-                  leagueId
-                );
-              }
-            }
-          );
+        channels.push(
+          leagueChannel
+        );
+      }
 
 
       /*
-       * ======================================================
-       * CATCH-UP EVENTS
-       * ======================================================
+       * ========================================================
+       * GAME MODE
+       * ========================================================
        *
-       * When the user returns to the browser/tab, refresh once
-       * to catch anything that occurred while it was inactive.
+       * One filtered listener per relevant NFL game.
+       *
+       * DO NOT replace this with an unfiltered nfl_game_plays
+       * subscription.
        */
+      if (
+        mode ===
+          "games"
+      ) {
+        for (
+          const nflGameId
+          of normalizedNflGameIds
+        ) {
+          const gameChannel =
+            supabase
+              .channel(
+                `traditional-game-${leagueId}-${nflGameId}`
+              )
+
+              .on(
+                "postgres_changes",
+                {
+                  event:
+                    "*",
+
+                  schema:
+                    "public",
+
+                  table:
+                    "nfl_game_plays",
+
+                  filter:
+                    `nfl_game_id=eq.${nflGameId}`,
+                },
+                () => {
+                  scheduleRefresh();
+                }
+              )
+
+              .subscribe(
+                (
+                  status
+                ) => {
+                  if (
+                    status ===
+                      "SUBSCRIBED"
+                  ) {
+                    console.log(
+                      "Traditional NFL play Realtime connected:",
+                      nflGameId
+                    );
+                  }
 
 
+                  if (
+                    status ===
+                      "CHANNEL_ERROR"
+                  ) {
+                    console.error(
+                      "Traditional NFL play Realtime channel error:",
+                      nflGameId
+                    );
+                  }
+
+
+                  if (
+                    status ===
+                      "TIMED_OUT"
+                  ) {
+                    console.error(
+                      "Traditional NFL play Realtime connection timed out:",
+                      nflGameId
+                    );
+                  }
+
+
+                  if (
+                    status ===
+                      "CLOSED"
+                  ) {
+                    console.warn(
+                      "Traditional NFL play Realtime channel closed:",
+                      nflGameId
+                    );
+                  }
+                }
+              );
+
+
+          channels.push(
+            gameChannel
+          );
+        }
+      }
+
+
+      /*
+       * ========================================================
+       * CATCH-UP
+       * ========================================================
+       */
       function handleVisibilityChange() {
         if (
           document.visibilityState ===
@@ -360,9 +620,9 @@ export default function TraditionalLiveRefresh({
 
 
       /*
-       * ======================================================
+       * ========================================================
        * CLEANUP
-       * ======================================================
+       * ========================================================
        */
       return () => {
         cancelled =
@@ -396,6 +656,9 @@ export default function TraditionalLiveRefresh({
         refreshBlockedRef.current =
           false;
 
+        pendingRefreshRef.current =
+          false;
+
 
         document.removeEventListener(
           "visibilitychange",
@@ -413,14 +676,22 @@ export default function TraditionalLiveRefresh({
         );
 
 
-        void supabase.removeChannel(
-          channel
-        );
+        for (
+          const channel
+          of channels
+        ) {
+          void supabase.removeChannel(
+            channel
+          );
+        }
       };
     },
     [
       isMatchupsPage,
       leagueId,
+      mode,
+      nflGameIdsKey,
+      normalizedNflGameIds,
       router,
     ]
   );

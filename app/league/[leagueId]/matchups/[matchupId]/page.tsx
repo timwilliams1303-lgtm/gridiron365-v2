@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import TraditionalLiveRefresh from "@/components/traditional/TraditionalLiveRefresh";
+
 import {
   notFound,
 } from "next/navigation";
@@ -730,12 +732,65 @@ export default async function TraditionalMatchupDetailPage({
     data.liveGames.length;
 
 
+  /*
+   * ============================================================
+   * MATCHUP-SCOPED NFL GAME IDS
+   * ============================================================
+   *
+   * Subscribe to play-by-play changes only for NFL games that
+   * belong to players in this fantasy matchup.
+   *
+   * Using all starters and bench players means the subscription
+   * can already exist before an NFL game changes to live status.
+   */
+  const matchupNflGameIds =
+    Array.from(
+      new Set(
+        [
+          ...data.away.starters,
+          ...data.away.bench,
+          ...data.home.starters,
+          ...data.home.bench,
+        ]
+          .map(
+            (
+              player
+            ) =>
+              player.nflGameId
+          )
+          .filter(
+            (
+              nflGameId
+            ): nflGameId is number =>
+              typeof nflGameId ===
+                "number" &&
+              Number.isInteger(
+                nflGameId
+              ) &&
+              nflGameId >
+                0
+          )
+      )
+    );
+
+
   return (
     <main
       style={
         styles.page
       }
     >
+      <TraditionalLiveRefresh
+        leagueId={
+          leagueId
+        }
+        mode="games"
+        nflGameIds={
+          matchupNflGameIds
+        }
+      />
+
+
       <div
         style={
           styles.shell
