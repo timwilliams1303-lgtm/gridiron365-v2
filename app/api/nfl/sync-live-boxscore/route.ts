@@ -3035,6 +3035,7 @@ export async function POST(
       league_id: string;
       season: number;
       active_week: number;
+      phase: string;
     };
 
 
@@ -3043,6 +3044,7 @@ export async function POST(
       fantasySeason: number;
       fantasyWeek: number;
       qaOverrideEnabled: boolean;
+      phase: string;
     };
 
 
@@ -3198,6 +3200,13 @@ export async function POST(
         >();
 
 
+      const phaseByLeague =
+        new Map<
+          string,
+          string
+        >();
+
+
       if (
         traditionalLeagueIds.size >
         0
@@ -3217,7 +3226,8 @@ export async function POST(
               `
                 league_id,
                 season,
-                active_week
+                active_week,
+                phase
               `
             )
             .eq(
@@ -3253,6 +3263,13 @@ export async function POST(
             Number(
               row.active_week
             )
+          );
+
+
+          phaseByLeague.set(
+            row.league_id,
+            row.phase ??
+              "regular_season"
           );
         }
       }
@@ -3389,6 +3406,12 @@ export async function POST(
                   rawContext
                     .qa_override_enabled ===
                   true,
+
+                phase:
+                  phaseByLeague.get(
+                    lineup.league_id
+                  ) ??
+                  "regular_season",
               }
             );
           } else {
@@ -3558,36 +3581,74 @@ export async function POST(
 
     /* =====================================================
        REFRESH AFFECTED MATCHUPS + AUTO ADVANCE
+
+       REGULAR SEASON:
+       - Refresh traditional_matchups.
+       - Auto-advance the fantasy week.
+       - When the final regular-season week completes,
+         automatically start the playoff bracket.
+
+       PLAYOFFS:
+       - Refresh traditional_playoff_matchups.
+       - Auto-advance the playoff round.
+       - Reseeding, next-week lineup preparation, and
+         championship completion are handled by the DB RPCs.
+
+       QA:
+       - Scoring/matchup refresh still runs.
+       - Automatic advancement remains disabled.
     ===================================================== */
 
     for (
       const context
       of affectedFantasyContexts.values()
     ) {
+
+      const isPlayoffPhase =
+        context.phase ===
+        "playoffs";
+
+
       const {
         error:
           matchupError,
       } =
-        await supabase.rpc(
-          "refresh_traditional_week_matchups",
-          {
-            p_league_id:
-              context.leagueId,
+        isPlayoffPhase
+          ? await supabase.rpc(
+              "refresh_traditional_playoff_week",
+              {
+                p_league_id:
+                  context.leagueId,
 
-            p_season:
-              context.fantasySeason,
+                p_season:
+                  context.fantasySeason,
 
-            p_week:
-              context.fantasyWeek,
-          }
-        );
+                p_playoff_week:
+                  context.fantasyWeek,
+              }
+            )
+          : await supabase.rpc(
+              "refresh_traditional_week_matchups",
+              {
+                p_league_id:
+                  context.leagueId,
+
+                p_season:
+                  context.fantasySeason,
+
+                p_week:
+                  context.fantasyWeek,
+              }
+            );
 
 
       if (
         matchupError
       ) {
         throw new Error(
-          `Unable to refresh league matchups: ${matchupError.message}`
+          isPlayoffPhase
+            ? `Unable to refresh Traditional playoff matchups: ${matchupError.message}`
+            : `Unable to refresh league matchups: ${matchupError.message}`
         );
       }
 
@@ -3630,7 +3691,10 @@ export async function POST(
 
 
       /* ===================================================
-         NORMAL REGULAR-SEASON AUTO ADVANCE ONLY
+         REAL NFL REGULAR-SEASON GAMES ONLY
+
+         Traditional fantasy regular-season and playoff weeks
+         both map to NFL regular-season games.
       =================================================== */
 
       if (
@@ -3660,6 +3724,79 @@ export async function POST(
       }
 
 
+      /* ===================================================
+         PLAYOFF AUTO ADVANCE
+      =================================================== */
+
+      if (
+        isPlayoffPhase
+      ) {
+        const {
+          data:
+            playoffAdvanceResult,
+
+          error:
+            playoffAdvanceError,
+        } =
+          await supabase.rpc(
+            "auto_advance_traditional_playoffs",
+            {
+              p_league_id:
+                context.leagueId,
+            }
+          );
+
+
+        if (
+          playoffAdvanceError
+        ) {
+          throw new Error(
+            `Unable to auto-advance Traditional playoffs: ${playoffAdvanceError.message}`
+          );
+        }
+
+
+        advancementResults.push({
+          leagueId:
+            context.leagueId,
+
+          fantasySeason:
+            context.fantasySeason,
+
+          fantasyWeek:
+            context.fantasyWeek,
+
+          qaOverrideEnabled:
+            false,
+
+          result: {
+            phase:
+              "playoffs",
+
+            advanced:
+              playoffAdvanceResult ===
+              true,
+          },
+        });
+
+
+        if (
+          playoffAdvanceResult ===
+          true
+        ) {
+          weeksAdvanced +=
+            1;
+        }
+
+
+        continue;
+      }
+
+
+      /* ===================================================
+         REGULAR-SEASON AUTO ADVANCE
+      =================================================== */
+
       const {
         data:
           advanceResult,
@@ -3685,6 +3822,60 @@ export async function POST(
       }
 
 
+      let playoffStartResult:
+        any =
+        null;
+
+
+      /*
+       * auto_advance_traditional_week() marks the season as
+       * regular_season_complete and changes phase to playoffs
+       * after the final regular-season week.
+       *
+       * start_traditional_playoffs() is still required to
+       * prepare the first playoff-week lineups and build the
+       * seeded bracket.
+       */
+      if (
+        advanceResult?.advanced ===
+          true &&
+        advanceResult
+          ?.regularSeasonComplete ===
+          true
+      ) {
+        const {
+          data:
+            startResult,
+
+          error:
+            startError,
+        } =
+          await supabase.rpc(
+            "start_traditional_playoffs",
+            {
+              p_league_id:
+                context.leagueId,
+
+              p_season:
+                context.fantasySeason,
+            }
+          );
+
+
+        if (
+          startError
+        ) {
+          throw new Error(
+            `Unable to start Traditional playoffs: ${startError.message}`
+          );
+        }
+
+
+        playoffStartResult =
+          startResult;
+      }
+
+
       advancementResults.push({
         leagueId:
           context.leagueId,
@@ -3698,8 +3889,13 @@ export async function POST(
         qaOverrideEnabled:
           false,
 
-        result:
-          advanceResult,
+        result: {
+          regularSeason:
+            advanceResult,
+
+          playoffStart:
+            playoffStartResult,
+        },
       });
 
 
