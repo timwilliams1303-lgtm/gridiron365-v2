@@ -17,15 +17,22 @@ export async function proxy(
 export const config = {
   matcher: [
     /*
-     * My Leagues authenticates itself through
-     * requireUser(), so do not perform a second
-     * Supabase Auth network validation in the proxy.
+     * Do NOT run Supabase session middleware for:
      *
-     * Also skip API routes. Individual API endpoints
-     * already handle their own authentication/secrets
-     * and should not be delayed by browser-session
-     * validation.
+     * - /api
+     *   API routes authenticate themselves.
+     *
+     * - /auth
+     *   Login/signup/callback/reset pages must always
+     *   be able to render without waiting for a session
+     *   validation request.
+     *
+     * - /my-leagues
+     *   This page already authenticates through
+     *   requireUser().
+     *
+     * - Next.js assets and public images.
      */
-    "/((?!api|my-leagues|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api|auth|my-leagues|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
