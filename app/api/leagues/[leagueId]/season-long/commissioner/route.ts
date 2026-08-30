@@ -954,6 +954,187 @@ export async function POST(
 
   if (
     action ===
+    "remove-owner"
+  ) {
+    const fantasyTeamId =
+      integer(
+        body.fantasyTeamId,
+        0,
+        1,
+        Number.MAX_SAFE_INTEGER
+      );
+
+
+    if (!fantasyTeamId) {
+      return jsonError(
+        "A valid team is required.",
+        400
+      );
+    }
+
+
+    const teamResult =
+      await admin
+        .from(
+          "fantasy_teams"
+        )
+        .select(
+          "id, owner_id, team_name, active"
+        )
+        .eq(
+          "id",
+          fantasyTeamId
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .maybeSingle();
+
+
+    if (teamResult.error) {
+      return jsonError(
+        teamResult.error.message,
+        500
+      );
+    }
+
+
+    if (!teamResult.data) {
+      return jsonError(
+        "Team not found in this league.",
+        404
+      );
+    }
+
+
+    const ownerUserId =
+      teamResult.data.owner_id as
+        | string
+        | null;
+
+
+    if (!ownerUserId) {
+      return jsonError(
+        "This team is already vacant.",
+        409
+      );
+    }
+
+
+    if (
+      league.commissioner_user_id &&
+      ownerUserId ===
+        league.commissioner_user_id
+    ) {
+      return jsonError(
+        "The primary commissioner cannot be removed from their own league. Transfer commissioner ownership first.",
+        400
+      );
+    }
+
+
+    /*
+     * Preserve the fantasy-team row and every record tied to it.
+     * Only detach the current owner so a replacement invitation can
+     * claim this exact team/entry later.
+     */
+    const clearOwnerResult =
+      await admin
+        .from(
+          "fantasy_teams"
+        )
+        .update({
+          owner_id: null,
+          updated_at:
+            new Date()
+              .toISOString(),
+        })
+        .eq(
+          "id",
+          fantasyTeamId
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "owner_id",
+          ownerUserId
+        );
+
+
+    if (clearOwnerResult.error) {
+      return jsonError(
+        clearOwnerResult.error.message,
+        500
+      );
+    }
+
+
+    const membershipResult =
+      await admin
+        .from(
+          "league_members"
+        )
+        .delete()
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "user_id",
+          ownerUserId
+        );
+
+
+    if (membershipResult.error) {
+      /*
+       * Best-effort rollback so ownership and membership do not
+       * become split if the membership delete fails.
+       */
+      await admin
+        .from(
+          "fantasy_teams"
+        )
+        .update({
+          owner_id:
+            ownerUserId,
+          updated_at:
+            new Date()
+              .toISOString(),
+        })
+        .eq(
+          "id",
+          fantasyTeamId
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .is(
+          "owner_id",
+          null
+        );
+
+      return jsonError(
+        membershipResult.error.message,
+        500
+      );
+    }
+
+
+    return NextResponse.json({
+      success: true,
+      fantasyTeamId,
+      removedUserId:
+        ownerUserId,
+    });
+  }
+
+
+  if (
+    action ===
     "rebuild-standings"
   ) {
     const result =

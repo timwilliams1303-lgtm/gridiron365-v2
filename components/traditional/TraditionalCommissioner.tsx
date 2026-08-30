@@ -552,6 +552,7 @@ export default function TraditionalCommissioner({
   const [invitingTeamId, setInvitingTeamId] = useState<number | null>(null);
   const [invitations, setInvitations] = useState<LeagueInvitation[]>([]);
   const [cpuBusy, setCpuBusy] = useState(false);
+  const [removingOwnerTeamId, setRemovingOwnerTeamId] = useState<number | null>(null);
   const [deletingLeague, setDeletingLeague] = useState(false);
 
   const [rosterTeamId, setRosterTeamId] = useState<number | null>(null);
@@ -1367,6 +1368,67 @@ export default function TraditionalCommissioner({
     }
   }
 
+  async function removeTeamOwner(team: Team) {
+    if (
+      !team.owner_id ||
+      removingOwnerTeamId !== null
+    ) {
+      return;
+    }
+
+    if (team.owner_id === league?.commissioner_user_id) {
+      setError(
+        "The primary commissioner cannot be removed from their own league."
+      );
+      return;
+    }
+
+    const ownerName = profileName(team.owner_id) || "this owner";
+
+    if (
+      !window.confirm(
+        `Remove ${ownerName} from ${team.team_name}? The team, roster, draft slot, standings and league history will stay intact, and this spot will become available for a replacement owner.`
+      )
+    ) {
+      return;
+    }
+
+    setRemovingOwnerTeamId(team.id);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const { error: removeError } = await supabase.rpc(
+        "commissioner_remove_traditional_owner",
+        {
+          p_league_id: leagueId,
+          p_fantasy_team_id: team.id,
+        }
+      );
+
+      if (removeError) {
+        throw new Error(removeError.message);
+      }
+
+      await load({
+        showLoading: false,
+        clearMessages: false,
+      });
+
+      setSuccess(
+        `${ownerName} was removed from ${team.team_name}. The team is now vacant and ready for a replacement invitation.`
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "The owner could not be removed from this team."
+      );
+    } finally {
+      setRemovingOwnerTeamId(null);
+    }
+  }
+
   async function deleteLeague() {
     if (!league || deletingLeague) return;
 
@@ -1976,6 +2038,7 @@ export default function TraditionalCommissioner({
                                 <span style={styles.fieldLabel}>Owner</span>
                                 <select
                                   value={team.owner_id ?? ""}
+                                  disabled={hasOwner}
                                   onChange={(e) => {
                                     const nextOwnerId = e.target.value;
                                     setTeams((current) =>
@@ -2114,6 +2177,33 @@ export default function TraditionalCommissioner({
                                 >
                                   SAVE
                                 </Button>
+                              ) : null}
+
+                              {team &&
+                              !isCpu &&
+                              hasOwner &&
+                              team.owner_id !== league?.commissioner_user_id ? (
+                                <Button
+                                  danger
+                                  disabled={
+                                    saving ||
+                                    removingOwnerTeamId !== null
+                                  }
+                                  onClick={() => void removeTeamOwner(team)}
+                                >
+                                  {removingOwnerTeamId === team.id
+                                    ? "REMOVING…"
+                                    : "REMOVE OWNER"}
+                                </Button>
+                              ) : null}
+
+                              {team &&
+                              !isCpu &&
+                              hasOwner &&
+                              team.owner_id === league?.commissioner_user_id ? (
+                                <span style={styles.smallMuted}>
+                                  PRIMARY COMMISSIONER
+                                </span>
                               ) : null}
 
                               {team && isCpu ? (

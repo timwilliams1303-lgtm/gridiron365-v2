@@ -29,6 +29,7 @@ type League = {
   player_selection_mode: string;
   season: number;
   status: string;
+  commissioner_user_id?: string | null;
 };
 
 
@@ -186,6 +187,9 @@ export default function SeasonLongCommissioner({
   const [teamInviteEmails, setTeamInviteEmails] =
     useState<Record<number, string>>({});
   const [invitingTeamId, setInvitingTeamId] =
+    useState<number | null>(null);
+
+  const [removingOwnerTeamId, setRemovingOwnerTeamId] =
     useState<number | null>(null);
 
   const [addingInviteSlots, setAddingInviteSlots] =
@@ -369,7 +373,7 @@ export default function SeasonLongCommissioner({
           "commissioner_add_open_team_slot",
           {
             p_league_id: leagueId,
-            p_team_name: `Open Entry ${(data?.teams.length ?? 0) + index + 1}`,
+            p_team_name: `Open Entry ${(data?.teams?.length ?? 0) + index + 1}`,
           }
         );
 
@@ -486,6 +490,98 @@ export default function SeasonLongCommissioner({
       );
     } finally {
       setInvitingTeamId(null);
+    }
+  }
+
+
+  async function removeSeasonLongOwner(team: Team) {
+    if (
+      removingOwnerTeamId !== null ||
+      !team.owner_id
+    ) {
+      return;
+    }
+
+
+    if (
+      data?.league.commissioner_user_id &&
+      team.owner_id ===
+        data.league.commissioner_user_id
+    ) {
+      setError(
+        "The primary commissioner cannot be removed from their own league."
+      );
+      return;
+    }
+
+
+    if (
+      !window.confirm(
+        `Remove the current owner from ${team.team_name}? The team, lineup history, scores and standings history will stay in the league, and this spot will become available for a replacement invitation.`
+      )
+    ) {
+      return;
+    }
+
+
+    setRemovingOwnerTeamId(
+      team.id
+    );
+    setError(null);
+    setSuccess(null);
+
+
+    try {
+      const response =
+        await fetch(
+          `/api/leagues/${leagueId}/season-long/commissioner`,
+          {
+            method: "POST",
+            headers: {
+              "content-type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                action:
+                  "remove-owner",
+                fantasyTeamId:
+                  team.id,
+              }),
+          }
+        );
+
+
+      const payload =
+        await response.json();
+
+
+      if (
+        !response.ok ||
+        !payload.success
+      ) {
+        throw new Error(
+          payload.error ??
+            "The owner could not be removed."
+        );
+      }
+
+
+      setSuccess(
+        `Owner removed from ${team.team_name}. This team is now vacant and ready for a replacement invitation.`
+      );
+
+      await load();
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "The owner could not be removed."
+      );
+    } finally {
+      setRemovingOwnerTeamId(
+        null
+      );
     }
   }
 
@@ -1258,6 +1354,32 @@ export default function SeasonLongCommissioner({
                               team.id
                                 ? "SENDING…"
                                 : "✉ INVITE"}
+                            </button>
+                          ) : null}
+
+                          {hasOwner &&
+                          team.owner_id !==
+                            data.league.commissioner_user_id ? (
+                            <button
+                              type="button"
+                              disabled={
+                                saving ||
+                                removingOwnerTeamId !==
+                                  null
+                              }
+                              onClick={() =>
+                                void removeSeasonLongOwner(
+                                  team
+                                )
+                              }
+                              style={
+                                styles.linkButton
+                              }
+                            >
+                              {removingOwnerTeamId ===
+                              team.id
+                                ? "REMOVING…"
+                                : "REMOVE OWNER"}
                             </button>
                           ) : null}
 

@@ -1,2850 +1,803 @@
 import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { requireLeagueMember } from "@/lib/leagues/requireLeagueMember";
+import SeasonLongLiveRefresh from "@/components/season-long/SeasonLongLiveRefresh";
 import {
-  notFound,
-  redirect,
-} from "next/navigation";
+  getSeasonLongTeamLiveLineupData,
+  type SeasonLongLiveLineupPlayer,
+} from "@/lib/season-long/team-live-lineup.service";
 
-import {
-  createSupabaseServerClient,
-} from "@/lib/supabase/server";
-
-import {
-  requireLeagueMember,
-} from "@/lib/leagues/requireLeagueMember";
-
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type PageProps = {
-  params:
-    Promise<{
-      leagueId: string;
-      fantasyTeamId: string;
-    }>;
-
-  searchParams:
-    Promise<{
-      week?: string;
-    }>;
+  params: Promise<{
+    leagueId: string;
+    teamId: string;
+  }>;
+  searchParams: Promise<{
+    week?: string;
+  }>;
 };
 
-
-type FantasyTeamRow = {
-  id: number;
-  team_name: string;
-  active: boolean;
-};
-
-
-type WeeklyEntryRow = {
-  fantasy_team_id: number;
-  season: number;
-  week: number;
-  status: string | null;
-  salary_used: number | string | null;
-  projected_points: number | string | null;
-  submitted_at: string | null;
-};
-
-
-type WeeklyLineupRow = {
-  id: number;
-  fantasy_team_id: number;
-  season: number;
-  week: number;
-  player_id: number;
-  lineup_slot: string;
-  slot_index: number;
-  salary_at_selection:
-    number |
-    string |
-    null;
-  projected_points_at_selection:
-    number |
-    string |
-    null;
-  is_locked: boolean;
-  locked_at: string | null;
-  nfl_game_id: number | null;
-  game_start_at: string | null;
-  opponent_abbreviation: string | null;
-  home_or_away: string | null;
-};
-
-
-type NflPlayerRow = {
-  id: number;
-  full_name: string;
-  first_name: string | null;
-  last_name: string | null;
-  primary_position: string | null;
-  team_abbreviation: string | null;
-  jersey_number: string | null;
-  status: string | null;
-  is_active: boolean | null;
-  headshot_url: string | null;
-};
-
-
-type PlayerScoreRow = {
-  nfl_game_id: number;
-  nfl_player_id: number;
-  fantasy_points:
-    number |
-    string |
-    null;
-  is_live: boolean | null;
-  is_final: boolean | null;
-};
-
-
-type WeeklyScoreRow = {
-  fantasy_team_id: number;
-  fantasy_points:
-    number |
-    string |
-    null;
-  salary_used:
-    number |
-    string |
-    null;
-  lineup_player_count:
-    number |
-    null;
-  is_final:
-    boolean |
-    null;
-};
-
-
-type PlayerDisplayRow = {
-  lineupId: number;
-  slot: string;
-  slotIndex: number;
-
-  isHidden: boolean;
-
-  playerId: number | null;
-  playerName: string;
-  position: string;
-  nflTeam: string;
-  jerseyNumber: string | null;
-
-  opponent: string;
-
-  projectedPoints: number | null;
-  fantasyPoints: number | null;
-  salary: number | null;
-
-  isLocked: boolean;
-  isLive: boolean;
-  isFinal: boolean;
-};
-
-
-function toNumber(
-  value:
-    | number
-    | string
-    | null
-    | undefined
-) {
-  const parsed =
-    Number(
-      value ?? 0
-    );
-
-  return Number.isFinite(
-    parsed
-  )
-    ? parsed
-    : 0;
+function clampWeek(value: number) {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(18, Math.max(1, Math.trunc(value)));
 }
 
-
-function formatPoints(
-  value:
-    | number
-    | string
-    | null
-    | undefined
-) {
-  return toNumber(
-    value
-  ).toFixed(
-    2
-  );
+function points(value: number) {
+  return value.toFixed(2);
 }
 
-
-function formatMoney(
-  value:
-    | number
-    | string
-    | null
-    | undefined
-) {
-  return new Intl.NumberFormat(
-    "en-US",
-    {
-      style:
-        "currency",
-
-      currency:
-        "USD",
-
-      maximumFractionDigits:
-        0,
-    }
-  ).format(
-    toNumber(
-      value
-    )
-  );
+function money(value: number | null) {
+  if (value === null) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
-
-function formatStatus(
-  value:
-    string |
-    null |
-    undefined
-) {
-  if (
-    !value
-  ) {
-    return "Not Started";
-  }
-
+function prettyStatus(value: string) {
   return value
-    .replaceAll(
-      "_",
-      " "
-    )
-    .replace(
-      /\b\w/g,
-      (
-        character
-      ) =>
-        character.toUpperCase()
-    );
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-
-function clampWeek(
-  value:
-    number
-) {
-  if (
-    !Number.isFinite(
-      value
-    )
-  ) {
-    return 1;
+function quarter(period: number | null) {
+  switch (period) {
+    case 1:
+      return "Q1";
+    case 2:
+      return "Q2";
+    case 3:
+      return "Q3";
+    case 4:
+      return "Q4";
+    case 5:
+      return "OT";
+    default:
+      return "";
   }
-
-  return Math.min(
-    18,
-    Math.max(
-      1,
-      Math.trunc(
-        value
-      )
-    )
-  );
 }
 
+function gameLabel(player: SeasonLongLiveLineupPlayer) {
+  const context = player.gameContext;
 
-function getOpponentLabel(
-  opponent:
-    string |
-    null,
-  homeOrAway:
-    string |
-    null
-) {
-  if (
-    !opponent
-  ) {
-    return "TBD";
-  }
-
-  if (
-    homeOrAway ===
-    "away"
-  ) {
-    return `@ ${opponent}`;
-  }
-
-  return `vs ${opponent}`;
-}
-
-
-function getSlotOrder(
-  slot:
-    string
-) {
-  const order:
-    Record<
-      string,
-      number
-    > = {
-      QB: 1,
-      RB: 2,
-      WR: 3,
-      TE: 4,
-      FLEX: 5,
-      SUPERFLEX: 6,
-      K: 7,
-      DST: 8,
-    };
-
-  return (
-    order[
-      slot.toUpperCase()
-    ] ??
-    99
-  );
-}
-
-
-function getGameStatus(
-  player:
-    PlayerDisplayRow
-) {
-  if (
-    player.isHidden
-  ) {
-    return "HIDDEN";
-  }
-
-  if (
-    player.isFinal
-  ) {
+  if (player.scoreIsFinal || context?.statusCompleted) {
     return "FINAL";
   }
 
-  if (
-    player.isLive
-  ) {
-    return "LIVE";
+  if (player.scoreIsLive || context?.isActuallyLive) {
+    const details = [quarter(context?.period ?? null), context?.clock]
+      .filter(Boolean)
+      .join(" ");
+
+    return details ? `LIVE ${details}` : "LIVE";
   }
 
-  if (
-    player.isLocked
-  ) {
-    return "LOCKED";
+  if (!player.nflGameId && !player.opponentAbbreviation) {
+    return "BYE";
   }
 
   return "UPCOMING";
 }
 
-
-function getGameStatusStyle(
-  player:
-    PlayerDisplayRow
-) {
-  if (
-    player.isHidden
-  ) {
-    return styles.statusHidden;
+function formatPlayerStatLine(player: SeasonLongLiveLineupPlayer): string {
+  if (!player.isRevealed) {
+    return "Selection becomes visible when this player's NFL game begins.";
   }
 
-  if (
-    player.isFinal
-  ) {
-    return styles.statusFinal;
+  const stats = player.stats;
+  const parts: string[] = [];
+  const position = player.position.trim().toUpperCase();
+
+  if (position === "QB") {
+    if (
+      stats.passingAttempts > 0 ||
+      stats.passingCompletions > 0 ||
+      stats.passingYards !== 0 ||
+      stats.passingTouchdowns > 0 ||
+      stats.passingInterceptions > 0
+    ) {
+      parts.push(
+        `${stats.passingCompletions}/${stats.passingAttempts} CMP`,
+        `${stats.passingYards} PASS YDS`
+      );
+      if (stats.passingTouchdowns > 0) {
+        parts.push(`${stats.passingTouchdowns} PASS TD`);
+      }
+      if (stats.passingInterceptions > 0) {
+        parts.push(`${stats.passingInterceptions} INT`);
+      }
+    }
+
+    if (
+      stats.rushingAttempts > 0 ||
+      stats.rushingYards !== 0 ||
+      stats.rushingTouchdowns > 0
+    ) {
+      parts.push(`${stats.rushingAttempts} CAR`, `${stats.rushingYards} RUSH YDS`);
+      if (stats.rushingTouchdowns > 0) {
+        parts.push(`${stats.rushingTouchdowns} RUSH TD`);
+      }
+    }
+  } else if (position === "RB") {
+    if (
+      stats.rushingAttempts > 0 ||
+      stats.rushingYards !== 0 ||
+      stats.rushingTouchdowns > 0
+    ) {
+      parts.push(`${stats.rushingAttempts} CAR`, `${stats.rushingYards} RUSH YDS`);
+      if (stats.rushingTouchdowns > 0) {
+        parts.push(`${stats.rushingTouchdowns} RUSH TD`);
+      }
+    }
+
+    if (
+      stats.receivingTargets > 0 ||
+      stats.receptions > 0 ||
+      stats.receivingYards !== 0 ||
+      stats.receivingTouchdowns > 0
+    ) {
+      parts.push(
+        `${stats.receptions}/${stats.receivingTargets} REC/TGT`,
+        `${stats.receivingYards} REC YDS`
+      );
+      if (stats.receivingTouchdowns > 0) {
+        parts.push(`${stats.receivingTouchdowns} REC TD`);
+      }
+    }
+  } else if (position === "WR" || position === "TE") {
+    if (
+      stats.receivingTargets > 0 ||
+      stats.receptions > 0 ||
+      stats.receivingYards !== 0 ||
+      stats.receivingTouchdowns > 0
+    ) {
+      parts.push(
+        `${stats.receptions}/${stats.receivingTargets} REC/TGT`,
+        `${stats.receivingYards} REC YDS`
+      );
+      if (stats.receivingTouchdowns > 0) {
+        parts.push(`${stats.receivingTouchdowns} REC TD`);
+      }
+    }
+
+    if (
+      stats.rushingAttempts > 0 ||
+      stats.rushingYards !== 0 ||
+      stats.rushingTouchdowns > 0
+    ) {
+      parts.push(`${stats.rushingAttempts} CAR`, `${stats.rushingYards} RUSH YDS`);
+      if (stats.rushingTouchdowns > 0) {
+        parts.push(`${stats.rushingTouchdowns} RUSH TD`);
+      }
+    }
+  } else if (position === "K" || position === "PK") {
+    if (stats.fieldGoalsAttempted > 0 || stats.fieldGoalsMade > 0) {
+      parts.push(`${stats.fieldGoalsMade}/${stats.fieldGoalsAttempted} FG`);
+    }
+    if (stats.extraPointsAttempted > 0 || stats.extraPointsMade > 0) {
+      parts.push(`${stats.extraPointsMade}/${stats.extraPointsAttempted} XP`);
+    }
+  } else if (position === "DST" || position === "DEF") {
+    parts.push(
+      `${stats.dstPointsAllowed} PA`,
+      `${stats.dstYardsAllowed} YA`,
+      `${stats.defensiveTotalTackles} TKL`,
+      `${stats.defensiveTacklesForLoss} TFL`,
+      `${stats.dstSacks} SACK`
+    );
+
+    if (stats.dstInterceptions > 0) parts.push(`${stats.dstInterceptions} INT`);
+    if (stats.dstFumbleRecoveries > 0) parts.push(`${stats.dstFumbleRecoveries} FR`);
+    if (stats.dstTouchdowns > 0) parts.push(`${stats.dstTouchdowns} TD`);
+    if (stats.dstSafeties > 0) parts.push(`${stats.dstSafeties} SAFETY`);
+    if (stats.dstBlockedKicks > 0) parts.push(`${stats.dstBlockedKicks} BLK`);
   }
 
-  if (
-    player.isLive
-  ) {
-    return styles.statusLive;
+  if (stats.fumblesLost > 0) {
+    parts.push(`${stats.fumblesLost} FUM LOST`);
   }
 
-  if (
-    player.isLocked
-  ) {
-    return styles.statusLocked;
+  if (parts.length > 0) {
+    return parts.join(" • ");
   }
 
-  return {};
+  const status = gameLabel(player);
+  if (status === "UPCOMING") return "Stats will update when the NFL game begins.";
+  if (status === "BYE") return "BYE WEEK";
+  if (status === "FINAL") return "NO RECORDED STATS";
+  return "LIVE • Waiting for first recorded stat";
 }
 
+function playerNameMeta(player: SeasonLongLiveLineupPlayer) {
+  if (!player.isRevealed) return "";
 
-export default async function SeasonLongTeamDetailsPage({
+  const position = player.position || "—";
+  const jersey = player.jerseyNumber ? ` #${player.jerseyNumber}` : "";
+  return `${position}${jersey}`;
+}
+
+export default async function SeasonLongTeamPage({
   params,
   searchParams,
 }: PageProps) {
-  const {
+  const { leagueId, teamId: rawTeamId } = await params;
+  const query = await searchParams;
+
+  const teamId = Number(rawTeamId);
+  if (!Number.isInteger(teamId) || teamId <= 0) notFound();
+
+  const access = await requireLeagueMember(leagueId);
+  if (access.league.leagueType !== "season_long") {
+    redirect(`/league/${leagueId}`);
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const season = access.league.season;
+
+  const activeWeekResult = await supabase.rpc("get_active_season_long_week", {
+    p_season: season,
+  });
+
+  if (activeWeekResult.error) {
+    throw new Error(activeWeekResult.error.message);
+  }
+
+  const activeWeek = clampWeek(Number(activeWeekResult.data ?? 1));
+  const requestedWeek = Number(query.week);
+  const selectedWeek = query.week ? clampWeek(requestedWeek) : activeWeek;
+
+  const selectionMode =
+    access.league.playerSelectionMode === "salary" ? "salary" : "no_salary";
+
+  const data = await getSeasonLongTeamLiveLineupData(supabase, {
     leagueId,
-    fantasyTeamId,
-  } =
-    await params;
-
-
-  const query =
-    await searchParams;
-
-
-  const access =
-    await requireLeagueMember(
-      leagueId
-    );
-
-
-  if (
-    access.league.leagueType !==
-    "season_long"
-  ) {
-    redirect(
-      `/league/${leagueId}`
-    );
-  }
-
-
-  const parsedTeamId =
-    Number(
-      fantasyTeamId
-    );
-
-
-  if (
-    !Number.isSafeInteger(
-      parsedTeamId
-    ) ||
-    parsedTeamId <= 0
-  ) {
-    notFound();
-  }
-
-
-  const supabase =
-    await createSupabaseServerClient();
-
-
-  const season =
-    access.league.season;
-
-
-  const isSalaryLeague =
-    access.league.playerSelectionMode ===
-    "salary";
-
-
-  const isMyTeam =
-    access
-      .fantasyTeam
-      ?.id ===
-    parsedTeamId;
-
-
-  /*
-   * ============================================================
-   * ACTIVE WEEK
-   * ============================================================
-   */
-
-  const activeWeekResult =
-    await supabase.rpc(
-      "get_active_season_long_week",
-      {
-        p_season:
-          season,
-      }
-    );
-
-
-  if (
-    activeWeekResult.error
-  ) {
-    throw new Error(
-      activeWeekResult
-        .error
-        .message
-    );
-  }
-
-
-  const activeWeek =
-    clampWeek(
-      Number(
-        activeWeekResult.data ??
-        1
-      )
-    );
-
-
-  const requestedWeek =
-    Number(
-      query.week
-    );
-
-
-  const selectedWeek =
-    query.week
-      ? clampWeek(
-          requestedWeek
-        )
-      : activeWeek;
-
-
-  const isPastWeek =
-    selectedWeek <
-    activeWeek;
-
-
-  /*
-   * ============================================================
-   * VERIFY TEAM
-   * ============================================================
-   */
-
-  const teamResult =
-    await supabase
-      .from(
-        "fantasy_teams"
-      )
-      .select(`
-        id,
-        team_name,
-        active
-      `)
-      .eq(
-        "id",
-        parsedTeamId
-      )
-      .eq(
-        "league_id",
-        leagueId
-      )
-      .maybeSingle();
-
-
-  if (
-    teamResult.error
-  ) {
-    throw new Error(
-      teamResult
-        .error
-        .message
-    );
-  }
-
-
-  if (
-    !teamResult.data
-  ) {
-    notFound();
-  }
-
-
-  const team =
-    teamResult
-      .data as FantasyTeamRow;
-
-
-  /*
-   * ============================================================
-   * KEEP LOCKS CURRENT
-   * ============================================================
-   */
-
-  if (
-    selectedWeek ===
-    activeWeek
-  ) {
-    const lockResult =
-      await supabase.rpc(
-        "sync_season_long_lineup_locks",
-        {
-          p_league_id:
-            leagueId,
-
-          p_season:
-            season,
-
-          p_week:
-            selectedWeek,
-        }
-      );
-
-
-    if (
-      lockResult.error
-    ) {
-      throw new Error(
-        lockResult
-          .error
-          .message
-      );
-    }
-  }
-
-
-  /*
-   * ============================================================
-   * LOAD TEAM WEEK
-   * ============================================================
-   */
-
-  const [
-    entryResult,
-    lineupResult,
-    weeklyScoreResult,
-    allWeeklyScoresResult,
-  ] =
-    await Promise.all([
-      supabase
-        .from(
-          "season_long_weekly_entries"
-        )
-        .select(`
-          fantasy_team_id,
-          season,
-          week,
-          status,
-          salary_used,
-          projected_points,
-          submitted_at
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "fantasy_team_id",
-          parsedTeamId
-        )
-        .eq(
-          "season",
-          season
-        )
-        .eq(
-          "week",
-          selectedWeek
-        )
-        .maybeSingle(),
-
-      supabase
-        .from(
-          "season_long_weekly_lineups"
-        )
-        .select(`
-          id,
-          fantasy_team_id,
-          season,
-          week,
-          player_id,
-          lineup_slot,
-          slot_index,
-          salary_at_selection,
-          projected_points_at_selection,
-          is_locked,
-          locked_at,
-          nfl_game_id,
-          game_start_at,
-          opponent_abbreviation,
-          home_or_away
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "fantasy_team_id",
-          parsedTeamId
-        )
-        .eq(
-          "season",
-          season
-        )
-        .eq(
-          "week",
-          selectedWeek
-        ),
-
-      supabase
-        .from(
-          "season_long_weekly_scores"
-        )
-        .select(`
-          fantasy_team_id,
-          fantasy_points,
-          salary_used,
-          lineup_player_count,
-          is_final
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "fantasy_team_id",
-          parsedTeamId
-        )
-        .eq(
-          "season",
-          season
-        )
-        .eq(
-          "week",
-          selectedWeek
-        )
-        .maybeSingle(),
-
-      supabase
-        .from(
-          "season_long_weekly_scores"
-        )
-        .select(`
-          fantasy_team_id,
-          fantasy_points,
-          salary_used,
-          lineup_player_count,
-          is_final
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "season",
-          season
-        )
-        .eq(
-          "week",
-          selectedWeek
-        ),
-    ]);
-
-
-  if (
-    entryResult.error
-  ) {
-    throw new Error(
-      entryResult.error.message
-    );
-  }
-
-
-  if (
-    lineupResult.error
-  ) {
-    throw new Error(
-      lineupResult.error.message
-    );
-  }
-
-
-  if (
-    weeklyScoreResult.error
-  ) {
-    throw new Error(
-      weeklyScoreResult.error.message
-    );
-  }
-
-
-  if (
-    allWeeklyScoresResult.error
-  ) {
-    throw new Error(
-      allWeeklyScoresResult.error.message
-    );
-  }
-
-
-  const entry =
-    entryResult.data as
-      | WeeklyEntryRow
-      | null;
-
-
-  const lineup =
-    (
-      lineupResult.data ??
-      []
-    ) as WeeklyLineupRow[];
-
-
-  const weeklyScore =
-    weeklyScoreResult.data as
-      | WeeklyScoreRow
-      | null;
-
-
-  const allWeeklyScores =
-    (
-      allWeeklyScoresResult.data ??
-      []
-    ) as WeeklyScoreRow[];
-
-
-  const entireWeekFinal =
-    Boolean(
-      weeklyScore?.is_final
-    );
-
-
-  /*
-   * ============================================================
-   * VISIBILITY
-   * ============================================================
-   *
-   * Own team:
-   *   always visible.
-   *
-   * Other team:
-   *   player is visible only after that player's lineup row locks,
-   *   or after the week has completed.
-   *
-   * IMPORTANT:
-   * Hidden player IDs are not included in the nfl_players query.
-   */
-
-  function canRevealLineupRow(
-    row:
-      WeeklyLineupRow
-  ) {
-    return (
-      isMyTeam ||
-      isPastWeek ||
-      entireWeekFinal ||
-      Boolean(
-        row.is_locked
-      )
-    );
-  }
-
-
-  const revealedLineupRows =
-    lineup.filter(
-      canRevealLineupRow
-    );
-
-
-  const revealedPlayerIds =
-    Array.from(
-      new Set(
-        revealedLineupRows.map(
-          (
-            row
-          ) =>
-            row.player_id
-        )
-      )
-    );
-
-
-  /*
-   * ============================================================
-   * LOAD ONLY REVEALED PLAYER DETAILS
-   * ============================================================
-   */
-
-  let players:
-    NflPlayerRow[] = [];
-
-
-  if (
-    revealedPlayerIds.length >
-    0
-  ) {
-    const playersResult =
-      await supabase
-        .from(
-          "nfl_players"
-        )
-        .select(`
-          id,
-          full_name,
-          first_name,
-          last_name,
-          primary_position,
-          team_abbreviation,
-          jersey_number,
-          status,
-          is_active,
-          headshot_url
-        `)
-        .in(
-          "id",
-          revealedPlayerIds
-        );
-
-
-    if (
-      playersResult.error
-    ) {
-      throw new Error(
-        playersResult
-          .error
-          .message
-      );
-    }
-
-
-    players =
-      (
-        playersResult.data ??
-        []
-      ) as NflPlayerRow[];
-  }
-
-
-  /*
-   * ============================================================
-   * LOAD ONLY REVEALED PLAYER SCORES
-   * ============================================================
-   */
-
-  let playerScores:
-    PlayerScoreRow[] = [];
-
-
-  if (
-    revealedPlayerIds.length >
-    0
-  ) {
-    const scoreResult =
-      await supabase
-        .from(
-          "fantasy_player_game_scores"
-        )
-        .select(`
-          nfl_game_id,
-          nfl_player_id,
-          fantasy_points,
-          is_live,
-          is_final
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "season",
-          season
-        )
-        .eq(
-          "season_type",
-          2
-        )
-        .eq(
-          "week",
-          selectedWeek
-        )
-        .in(
-          "nfl_player_id",
-          revealedPlayerIds
-        );
-
-
-    if (
-      scoreResult.error
-    ) {
-      throw new Error(
-        scoreResult
-          .error
-          .message
-      );
-    }
-
-
-    playerScores =
-      (
-        scoreResult.data ??
-        []
-      ) as PlayerScoreRow[];
-  }
-
-
-  const playerMap =
-    new Map<
-      number,
-      NflPlayerRow
-    >();
-
-
-  for (
-    const player
-    of players
-  ) {
-    playerMap.set(
-      player.id,
-      player
-    );
-  }
-
-
-  const scoreMap =
-    new Map<
-      string,
-      PlayerScoreRow
-    >();
-
-
-  for (
-    const score
-    of playerScores
-  ) {
-    scoreMap.set(
-      `${score.nfl_player_id}:${score.nfl_game_id}`,
-      score
-    );
-  }
-
-
-  /*
-   * ============================================================
-   * DISPLAY LINEUP
-   * ============================================================
-   */
-
-  const displayPlayers:
-    PlayerDisplayRow[] =
-      lineup.map(
-        (
-          row
-        ) => {
-          const canReveal =
-            canRevealLineupRow(
-              row
-            );
-
-
-          if (
-            !canReveal
-          ) {
-            return {
-              lineupId:
-                row.id,
-
-              slot:
-                row.lineup_slot,
-
-              slotIndex:
-                row.slot_index,
-
-              isHidden:
-                true,
-
-              playerId:
-                null,
-
-              playerName:
-                "Hidden until kickoff",
-
-              position:
-                "—",
-
-              nflTeam:
-                "—",
-
-              jerseyNumber:
-                null,
-
-              opponent:
-                "—",
-
-              projectedPoints:
-                null,
-
-              fantasyPoints:
-                null,
-
-              salary:
-                null,
-
-              isLocked:
-                false,
-
-              isLive:
-                false,
-
-              isFinal:
-                false,
-            };
-          }
-
-
-          const player =
-            playerMap.get(
-              row.player_id
-            );
-
-
-          const score =
-            row.nfl_game_id
-              ? scoreMap.get(
-                  `${row.player_id}:${row.nfl_game_id}`
-                )
-              : undefined;
-
-
-          return {
-            lineupId:
-              row.id,
-
-            slot:
-              row.lineup_slot,
-
-            slotIndex:
-              row.slot_index,
-
-            isHidden:
-              false,
-
-            playerId:
-              row.player_id,
-
-            playerName:
-              player
-                ?.full_name ??
-              "Unknown Player",
-
-            position:
-              player
-                ?.primary_position ??
-              "—",
-
-            nflTeam:
-              player
-                ?.team_abbreviation ??
-              "FA",
-
-            jerseyNumber:
-              player
-                ?.jersey_number ??
-              null,
-
-            opponent:
-              getOpponentLabel(
-                row.opponent_abbreviation,
-                row.home_or_away
-              ),
-
-            projectedPoints:
-              toNumber(
-                row.projected_points_at_selection
-              ),
-
-            fantasyPoints:
-              toNumber(
-                score?.fantasy_points
-              ),
-
-            salary:
-              isSalaryLeague &&
-              row.salary_at_selection !=
-                null
-                ? toNumber(
-                    row.salary_at_selection
-                  )
-                : null,
-
-            isLocked:
-              Boolean(
-                row.is_locked
-              ),
-
-            isLive:
-              Boolean(
-                score?.is_live
-              ),
-
-            isFinal:
-              Boolean(
-                score?.is_final
-              ),
-          };
-        }
-      );
-
-
-  displayPlayers.sort(
-    (
-      a,
-      b
-    ) => {
-      const slotDifference =
-        getSlotOrder(
-          a.slot
-        ) -
-        getSlotOrder(
-          b.slot
-        );
-
-
-      if (
-        slotDifference !==
-        0
-      ) {
-        return slotDifference;
-      }
-
-
-      return (
-        a.slotIndex -
-        b.slotIndex
-      );
-    }
-  );
-
-
-  /*
-   * ============================================================
-   * WEEKLY RANK
-   * ============================================================
-   */
-
-  const targetPoints =
-    toNumber(
-      weeklyScore
-        ?.fantasy_points
-    );
-
-
-  const weeklyRank =
-    allWeeklyScores.length >
-    0
-      ? allWeeklyScores.filter(
-          (
-            row
-          ) =>
-            toNumber(
-              row.fantasy_points
-            ) >
-            targetPoints
-        ).length +
-        1
-      : 0;
-
-
-  /*
-   * Aggregate projection/salary information stays hidden for
-   * another team until the full lineup has been revealed.
-   */
-
-  const hasHiddenPlayers =
-    displayPlayers.some(
-      (
-        player
-      ) =>
-        player.isHidden
-    );
-
-
-  const canShowFullTotals =
-    isMyTeam ||
-    !hasHiddenPlayers;
-
-
-  const visibleActualPoints =
-    displayPlayers.reduce(
-      (
-        total,
-        player
-      ) =>
-        total +
-        (
-          player.fantasyPoints ??
-          0
-        ),
-      0
-    );
-
-
-  const fullProjection =
-    canShowFullTotals
-      ? displayPlayers.reduce(
-          (
-            total,
-            player
-          ) =>
-            total +
-            (
-              player.projectedPoints ??
-              0
-            ),
-          0
-        )
-      : null;
-
-
-  const salaryUsed =
-    isSalaryLeague &&
-    canShowFullTotals
-      ? displayPlayers.reduce(
-          (
-            total,
-            player
-          ) =>
-            total +
-            (
-              player.salary ??
-              0
-            ),
-          0
-        )
-      : null;
-
-
-  const weekNumbers =
-    Array.from(
-      {
-        length:
-          18,
-      },
-      (
-        _,
-        index
-      ) =>
-        index + 1
-    );
-
+    fantasyTeamId: teamId,
+    viewerFantasyTeamId: access.fantasyTeam?.id ?? null,
+    season,
+    week: selectedWeek,
+    selectionMode,
+    activeWeek,
+  });
+
+  const lineupGridTemplate =
+    selectionMode === "salary"
+      ? "120px minmax(330px,2.25fr) 115px 115px 95px 95px 130px 150px"
+      : "120px minmax(330px,2.25fr) 115px 115px 95px 95px 150px";
 
   return (
-    <main
-      style={
-        styles.page
-      }
-    >
-      <div
-        style={
-          styles.backRow
-        }
-      >
-        <Link
-          href={
-            `/league/${leagueId}/teams?week=${selectedWeek}`
-          }
-          style={
-            styles.backLink
-          }
-        >
-          ← League Teams
-        </Link>
-      </div>
+    <main style={styles.page}>
+      <SeasonLongLiveRefresh
+        enabled={data.shouldAutoRefresh}
+        live={data.hasLiveGames}
+      />
 
-
-      <section
-        style={
-          styles.hero
-        }
-      >
-        <div>
-          <div
-            style={
-              styles.eyebrow
-            }
-          >
-            WEEK {selectedWeek} ENTRY
-          </div>
-
-          <div
-            style={
-              styles.teamTitleRow
-            }
-          >
-            <h1
-              style={
-                styles.title
-              }
-            >
-              {
-                team.team_name
-              }
-            </h1>
-
-            {isMyTeam && (
-              <span
-                style={
-                  styles.youBadge
-                }
-              >
-                YOUR TEAM
-              </span>
-            )}
-          </div>
-
-          <p
-            style={
-              styles.subtitle
-            }
-          >
-            {isMyTeam
-              ? "Your complete weekly lineup."
-              : "Opponent selections are revealed individually as each player's NFL game begins."}
-          </p>
-        </div>
-
-
-        <div
-          style={
-            styles.heroStats
-          }
-        >
-          <div
-            style={
-              styles.heroStat
-            }
-          >
-            <span
-              style={
-                styles.heroStatLabel
-              }
-            >
-              WEEK RANK
-            </span>
-
-            <strong
-              style={
-                styles.heroStatValue
-              }
-            >
-              {weeklyRank >
-              0
-                ? `#${weeklyRank}`
-                : "—"}
-            </strong>
-          </div>
-
-          <div
-            style={
-              styles.heroStat
-            }
-          >
-            <span
-              style={
-                styles.heroStatLabel
-              }
-            >
-              WEEK PTS
-            </span>
-
-            <strong
-              style={
-                styles.heroStatValue
-              }
-            >
-              {formatPoints(
-                weeklyScore
-                  ?.fantasy_points
-              )}
-            </strong>
-          </div>
-
-          <div
-            style={
-              styles.heroStat
-            }
-          >
-            <span
-              style={
-                styles.heroStatLabel
-              }
-            >
-              PROJECTED
-            </span>
-
-            <strong
-              style={
-                styles.heroStatValue
-              }
-            >
-              {canShowFullTotals &&
-              fullProjection !==
-                null
-                ? formatPoints(
-                    entry
-                      ?.projected_points ??
-                    fullProjection
-                  )
-                : "—"}
-            </strong>
-          </div>
-        </div>
-      </section>
-
-
-      {!isMyTeam &&
-        hasHiddenPlayers && (
-          <section
-            style={
-              styles.lockNotice
-            }
-          >
-            <div
-              style={
-                styles.lockIcon
-              }
-            >
-              🔒
-            </div>
-
-            <div>
-              <div
-                style={
-                  styles.lockTitle
-                }
-              >
-                Lineup protection active
-              </div>
-
-              <div
-                style={
-                  styles.lockText
-                }
-              >
-                Players remain hidden
-                until their individual
-                NFL games kick off.
-              </div>
-            </div>
-          </section>
-        )}
-
-
-      <section
-        style={
-          styles.weekCard
-        }
-      >
-        <div
-          style={
-            styles.weekHeader
-          }
-        >
+      <section style={styles.shell}>
+        <header style={styles.hero}>
           <div>
-            <div
-              style={
-                styles.weekTitle
-              }
+            <Link
+              href={`/league/${leagueId}/teams?week=${selectedWeek}`}
+              style={styles.backLink}
             >
-              Select Week
+              ← Back to Teams
+            </Link>
+
+            <div style={styles.eyebrow}>
+              SEASON-LONG • {selectionMode === "salary" ? "SALARY" : "NO SALARY"}
             </div>
 
-            <div
-              style={
-                styles.weekText
-              }
-            >
-              View this team&apos;s
-              lineup from any week.
+            <h1 style={styles.title}>{data.team.teamName}</h1>
+
+            <div style={styles.subtitle}>
+              Week {selectedWeek} Lineup
+              {data.team.isMyTeam ? " • Your Entry" : ""}
             </div>
           </div>
 
-          {selectedWeek !==
-            activeWeek && (
-            <Link
-              href={
-                `/league/${leagueId}/teams/${parsedTeamId}?week=${activeWeek}`
-              }
-              style={
-                styles.currentWeekButton
-              }
-            >
-              Current Week
-            </Link>
-          )}
-        </div>
-
-
-        <div
-          style={
-            styles.weekScroller
-          }
-        >
-          {weekNumbers.map(
-            (
-              week
-            ) => (
+          <div style={styles.weekNav}>
+            {selectedWeek > 1 ? (
               <Link
-                key={
-                  week
-                }
-                href={
-                  `/league/${leagueId}/teams/${parsedTeamId}?week=${week}`
-                }
-                style={{
-                  ...styles.weekButton,
+                href={`/league/${leagueId}/teams/${teamId}?week=${selectedWeek - 1}`}
+                style={styles.weekButton}
+              >
+                ← W{selectedWeek - 1}
+              </Link>
+            ) : null}
 
-                  ...(week ===
-                  selectedWeek
-                    ? styles.weekButtonActive
-                    : {}),
+            <Link
+              href={`/league/${leagueId}/teams/${teamId}?week=${activeWeek}`}
+              style={styles.weekButtonActive}
+            >
+              W{activeWeek}
+            </Link>
+
+            {selectedWeek < 18 ? (
+              <Link
+                href={`/league/${leagueId}/teams/${teamId}?week=${selectedWeek + 1}`}
+                style={styles.weekButton}
+              >
+                W{selectedWeek + 1} →
+              </Link>
+            ) : null}
+          </div>
+        </header>
+
+        <section style={styles.summaryGrid}>
+          <SummaryCard label="STATUS" value={data.isFinal ? "Final" : prettyStatus(data.entryStatus)} />
+          <SummaryCard label="LINEUP" value={String(data.lineupPlayerCount)} />
+          <SummaryCard label="WEEK PTS" value={points(data.weekPoints)} highlight />
+          <SummaryCard label="PROJECTED" value={points(data.projectedPoints)} />
+          {selectionMode === "salary" ? (
+            <SummaryCard label="SALARY" value={money(data.salaryUsed)} moneyValue />
+          ) : null}
+        </section>
+
+        <section style={styles.lineupCard}>
+          <div style={styles.lineupHeader}>
+            <div>
+              <h2 style={styles.sectionTitle}>Week {selectedWeek} Lineup</h2>
+              <div style={styles.sectionSubtitle}>{data.team.teamName}</div>
+            </div>
+
+            <span style={styles.modeBadge}>
+              {selectionMode === "salary" ? "SALARY" : "NO SALARY"}
+            </span>
+          </div>
+
+          {data.players.length === 0 ? (
+            <div style={styles.emptyState}>No lineup has been submitted for this week.</div>
+          ) : (
+            <div style={styles.tableWrap}>
+              <div
+                style={{
+                  ...styles.tableHeaderRow,
+                  gridTemplateColumns: lineupGridTemplate,
                 }}
               >
-                W{week}
-              </Link>
-            )
-          )}
-        </div>
-      </section>
+                <span>SLOT</span>
+                <span>PLAYER</span>
+                <span>TEAM</span>
+                <span>OPP</span>
+                <span>PROJ</span>
+                <span>PTS</span>
+                {selectionMode === "salary" ? <span>SALARY</span> : null}
+                <span>GAME</span>
+              </div>
 
+              {data.players.map((player) => {
+                const status = gameLabel(player);
+                const live = status.startsWith("LIVE");
+                const final = status === "FINAL";
+                const statLine = formatPlayerStatLine(player);
 
-      <section
-        style={
-          styles.summaryGrid
-        }
-      >
-        <div
-          style={
-            styles.summaryCard
-          }
-        >
-          <span
-            style={
-              styles.summaryLabel
-            }
-          >
-            ENTRY STATUS
-          </span>
+                return (
+                  <div
+                    key={`${player.lineupSlot}:${player.slotIndex}:${player.playerId}`}
+                    style={{
+                      ...styles.playerRow,
+                      gridTemplateColumns: lineupGridTemplate,
+                      ...(live ? styles.playerRowLive : {}),
+                    }}
+                  >
+                    <div style={styles.slotCell}>
+                      <span style={styles.slotBadge}>{player.lineupSlot}</span>
+                    </div>
 
-          <strong
-            style={
-              styles.summaryValue
-            }
-          >
-            {weeklyScore
-              ?.is_final
-              ? "Final"
-              : formatStatus(
-                  entry
-                    ?.status
-                )}
-          </strong>
-        </div>
+                    <div style={styles.playerCell}>
+                      <div style={styles.playerNameLine}>
+                        <strong style={styles.playerName}>{player.fullName}</strong>
+                        {playerNameMeta(player) ? (
+                          <span style={styles.playerMetaInline}>
+                            · {playerNameMeta(player)}
+                          </span>
+                        ) : null}
+                      </div>
 
+                      <div
+                        style={{
+                          ...styles.statLine,
+                          ...(live ? styles.statLineLive : {}),
+                        }}
+                      >
+                        {statLine}
+                      </div>
+                    </div>
 
-        <div
-          style={
-            styles.summaryCard
-          }
-        >
-          <span
-            style={
-              styles.summaryLabel
-            }
-          >
-            PLAYERS
-          </span>
+                    <strong style={styles.teamCell}>
+                      {player.isRevealed ? player.teamAbbreviation ?? "FA" : "—"}
+                    </strong>
 
-          <strong
-            style={
-              styles.summaryValue
-            }
-          >
-            {
-              displayPlayers.length
-            }
-          </strong>
-        </div>
+                    <strong style={styles.opponentCell}>
+                      {player.opponentAbbreviation
+                        ? `${player.opponentPrefix ?? "vs"} ${player.opponentAbbreviation}`
+                        : "BYE"}
+                    </strong>
 
+                    <strong style={styles.numericCell}>{points(player.projectedPoints)}</strong>
 
-        <div
-          style={
-            styles.summaryCard
-          }
-        >
-          <span
-            style={
-              styles.summaryLabel
-            }
-          >
-            ACTUAL POINTS
-          </span>
+                    <strong
+                      style={{
+                        ...styles.pointsCell,
+                        ...(live ? styles.pointsCellLive : {}),
+                      }}
+                    >
+                      {points(player.fantasyPoints)}
+                    </strong>
 
-          <strong
-            style={
-              styles.summaryValue
-            }
-          >
-            {formatPoints(
-              weeklyScore
-                ?.fantasy_points ??
-              visibleActualPoints
-            )}
-          </strong>
-        </div>
+                    {selectionMode === "salary" ? (
+                      <strong style={styles.salaryCell}>{money(player.salary)}</strong>
+                    ) : null}
 
+                    <div style={styles.gameCell}>
+                      <span
+                        style={{
+                          ...styles.gameBadge,
+                          ...(live ? styles.gameBadgeLive : {}),
+                          ...(final ? styles.gameBadgeFinal : {}),
+                        }}
+                      >
+                        {status}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
 
-        <div
-          style={
-            styles.summaryCard
-          }
-        >
-          <span
-            style={
-              styles.summaryLabel
-            }
-          >
-            PROJECTED
-          </span>
-
-          <strong
-            style={
-              styles.summaryValue
-            }
-          >
-            {canShowFullTotals &&
-            fullProjection !==
-              null
-              ? formatPoints(
-                  fullProjection
-                )
-              : "—"}
-          </strong>
-        </div>
-
-
-        {isSalaryLeague && (
-          <div
-            style={
-              styles.summaryCard
-            }
-          >
-            <span
-              style={
-                styles.summaryLabel
-              }
-            >
-              SALARY USED
-            </span>
-
-            <strong
-              style={
-                styles.summaryValueOrange
-              }
-            >
-              {salaryUsed ===
-              null
-                ? "—"
-                : formatMoney(
-                    salaryUsed
-                  )}
-            </strong>
-          </div>
-        )}
-      </section>
-
-
-      <section
-        style={
-          styles.lineupCard
-        }
-      >
-        <div
-          style={
-            styles.lineupHeader
-          }
-        >
-          <div>
-            <h2
-              style={
-                styles.sectionTitle
-              }
-            >
-              Week {selectedWeek} Lineup
-            </h2>
-
-            <div
-              style={
-                styles.sectionSubtitle
-              }
-            >
-              {
-                team.team_name
-              }
+              <div
+                style={{
+                  ...styles.totalRow,
+                  gridTemplateColumns: lineupGridTemplate,
+                }}
+              >
+                <strong>TEAM TOTAL</strong>
+                <span />
+                <span />
+                <span />
+                <strong style={styles.numericCell}>{points(data.projectedPoints)}</strong>
+                <strong style={styles.totalPoints}>{points(data.weekPoints)}</strong>
+                {selectionMode === "salary" ? (
+                  <strong style={styles.salaryCell}>{money(data.salaryUsed)}</strong>
+                ) : null}
+                <strong style={styles.totalStatus}>{data.isFinal ? "FINAL" : "LIVE"}</strong>
+              </div>
             </div>
+          )}
+        </section>
+
+        {data.shouldAutoRefresh ? (
+          <div style={styles.refreshNote}>
+            {data.hasLiveGames
+              ? "Live stats and fantasy points refresh automatically while games are in progress."
+              : "This page will begin showing live stats automatically when the selected players' games start."}
           </div>
-
-          <div
-            style={
-              styles.modeBadge
-            }
-          >
-            {isSalaryLeague
-              ? "SALARY"
-              : "NO SALARY"}
-          </div>
-        </div>
-
-
-        {displayPlayers.length ===
-        0 ? (
-          <div
-            style={
-              styles.emptyState
-            }
-          >
-            This team does not
-            have a lineup saved
-            for Week{" "}
-            {selectedWeek}.
-          </div>
-        ) : (
-          <div
-            style={
-              styles.tableWrap
-            }
-          >
-            <table
-              style={
-                styles.table
-              }
-            >
-              <thead>
-                <tr>
-                  <th
-                    style={{
-                      ...styles.th,
-                      textAlign:
-                        "left",
-                    }}
-                  >
-                    SLOT
-                  </th>
-
-                  <th
-                    style={{
-                      ...styles.th,
-                      textAlign:
-                        "left",
-                    }}
-                  >
-                    PLAYER
-                  </th>
-
-                  <th
-                    style={
-                      styles.th
-                    }
-                  >
-                    TEAM
-                  </th>
-
-                  <th
-                    style={
-                      styles.th
-                    }
-                  >
-                    OPP
-                  </th>
-
-                  <th
-                    style={
-                      styles.th
-                    }
-                  >
-                    PROJ
-                  </th>
-
-                  <th
-                    style={
-                      styles.th
-                    }
-                  >
-                    PTS
-                  </th>
-
-                  {isSalaryLeague && (
-                    <th
-                      style={
-                        styles.th
-                      }
-                    >
-                      SALARY
-                    </th>
-                  )}
-
-                  <th
-                    style={
-                      styles.th
-                    }
-                  >
-                    GAME
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {displayPlayers.map(
-                  (
-                    player
-                  ) => (
-                    <tr
-                      key={
-                        player.lineupId
-                      }
-                      style={
-                        player.isHidden
-                          ? styles.hiddenRow
-                          : undefined
-                      }
-                    >
-                      <td
-                        style={{
-                          ...styles.td,
-                          textAlign:
-                            "left",
-                        }}
-                      >
-                        <span
-                          style={
-                            styles.slotBadge
-                          }
-                        >
-                          {
-                            player.slot
-                          }
-                        </span>
-                      </td>
-
-                      <td
-                        style={{
-                          ...styles.td,
-                          textAlign:
-                            "left",
-                        }}
-                      >
-                        <div
-                          style={
-                            player.isHidden
-                              ? styles.hiddenPlayerName
-                              : styles.playerName
-                          }
-                        >
-                          {
-                            player.playerName
-                          }
-                        </div>
-
-                        {!player.isHidden && (
-                          <div
-                            style={
-                              styles.playerMeta
-                            }
-                          >
-                            {
-                              player.position
-                            }
-
-                            {player.jerseyNumber
-                              ? ` • #${player.jerseyNumber}`
-                              : ""}
-                          </div>
-                        )}
-                      </td>
-
-                      <td
-                        style={
-                          styles.td
-                        }
-                      >
-                        {
-                          player.isHidden
-                            ? "—"
-                            : player.nflTeam
-                        }
-                      </td>
-
-                      <td
-                        style={
-                          styles.td
-                        }
-                      >
-                        {
-                          player.opponent
-                        }
-                      </td>
-
-                      <td
-                        style={
-                          styles.td
-                        }
-                      >
-                        {player.projectedPoints ===
-                        null
-                          ? "—"
-                          : formatPoints(
-                              player.projectedPoints
-                            )}
-                      </td>
-
-                      <td
-                        style={{
-                          ...styles.td,
-                          ...styles.pointsCell,
-                        }}
-                      >
-                        {player.fantasyPoints ===
-                        null
-                          ? "—"
-                          : formatPoints(
-                              player.fantasyPoints
-                            )}
-                      </td>
-
-                      {isSalaryLeague && (
-                        <td
-                          style={
-                            styles.td
-                          }
-                        >
-                          {player.salary ===
-                          null
-                            ? "—"
-                            : formatMoney(
-                                player.salary
-                              )}
-                        </td>
-                      )}
-
-                      <td
-                        style={
-                          styles.td
-                        }
-                      >
-                        <span
-                          style={{
-                            ...styles.gameStatus,
-
-                            ...getGameStatusStyle(
-                              player
-                            ),
-                          }}
-                        >
-                          {getGameStatus(
-                            player
-                          )}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+        ) : null}
       </section>
     </main>
   );
 }
 
+function SummaryCard({
+  label,
+  value,
+  highlight = false,
+  moneyValue = false,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  moneyValue?: boolean;
+}) {
+  return (
+    <div style={styles.summaryCard}>
+      <span style={styles.summaryLabel}>{label}</span>
+      <strong
+        style={{
+          ...styles.summaryValue,
+          ...(highlight ? styles.summaryValueHighlight : {}),
+          ...(moneyValue ? styles.summaryValueMoney : {}),
+        }}
+      >
+        {value}
+      </strong>
+    </div>
+  );
+}
 
-const styles = {
+const styles: Record<string, React.CSSProperties> = {
   page: {
-    width:
-      "min(1420px,100%)",
-
-    margin:
-      "0 auto",
-
-    padding:
-      "24px 18px 64px",
+    minHeight: "100vh",
+    background: "#090a0c",
+    color: "#fff",
+    padding: "24px 16px 60px",
   },
-
-  backRow: {
-    marginBottom:
-      "18px",
+  shell: {
+    width: "min(1420px,100%)",
+    margin: "0 auto",
+    display: "grid",
+    gap: "14px",
   },
-
-  backLink: {
-    color:
-      "#9097a3",
-
-    fontSize:
-      "11px",
-
-    fontWeight:
-      900,
-
-    textDecoration:
-      "none",
-  },
-
   hero: {
-    display:
-      "flex",
-
-    justifyContent:
-      "space-between",
-
-    alignItems:
-      "flex-end",
-
-    gap:
-      "24px",
-
-    flexWrap:
-      "wrap" as const,
-
-    marginBottom:
-      "20px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: "20px",
+    flexWrap: "wrap",
   },
-
+  backLink: {
+    display: "inline-block",
+    marginBottom: "12px",
+    color: "#ff7a1a",
+    textDecoration: "none",
+    fontWeight: 900,
+    fontSize: "13px",
+  },
   eyebrow: {
-    marginBottom:
-      "7px",
-
-    color:
-      "#ff7200",
-
-    fontSize:
-      "10px",
-
-    fontWeight:
-      1000,
-
-    letterSpacing:
-      ".14em",
+    color: "#ff6a00",
+    fontSize: "11px",
+    fontWeight: 950,
+    letterSpacing: ".1em",
   },
-
-  teamTitleRow: {
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    gap:
-      "10px",
-
-    flexWrap:
-      "wrap" as const,
-  },
-
   title: {
-    margin:
-      0,
-
-    color:
-      "#ffffff",
-
-    fontSize:
-      "clamp(28px,4vw,46px)",
-
-    fontWeight:
-      1000,
-
-    letterSpacing:
-      "-.045em",
+    margin: "6px 0 3px",
+    fontSize: "30px",
+    lineHeight: 1.05,
   },
-
-  youBadge: {
-    padding:
-      "5px 8px",
-
-    borderRadius:
-      "7px",
-
-    background:
-      "rgba(255,114,0,.12)",
-
-    color:
-      "#ff8a24",
-
-    fontSize:
-      "8px",
-
-    fontWeight:
-      1000,
-  },
-
   subtitle: {
-    maxWidth:
-      "650px",
-
-    margin:
-      "8px 0 0",
-
-    color:
-      "#858c98",
-
-    fontSize:
-      "13px",
-
-    lineHeight:
-      1.5,
+    color: "#8e96a3",
+    fontSize: "13px",
+    fontWeight: 800,
   },
-
-  heroStats: {
-    display:
-      "flex",
-
-    gap:
-      "8px",
-
-    flexWrap:
-      "wrap" as const,
+  weekNav: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
   },
-
-  heroStat: {
-    minWidth:
-      "105px",
-
-    padding:
-      "12px 14px",
-
-    border:
-      "1px solid rgba(255,255,255,.08)",
-
-    borderRadius:
-      "12px",
-
-    background:
-      "rgba(255,255,255,.025)",
-
-    textAlign:
-      "center" as const,
-  },
-
-  heroStatLabel: {
-    display:
-      "block",
-
-    marginBottom:
-      "5px",
-
-    color:
-      "#737a86",
-
-    fontSize:
-      "8px",
-
-    fontWeight:
-      1000,
-
-    letterSpacing:
-      ".1em",
-  },
-
-  heroStatValue: {
-    color:
-      "#ffffff",
-
-    fontSize:
-      "18px",
-
-    fontWeight:
-      1000,
-  },
-
-  lockNotice: {
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    gap:
-      "12px",
-
-    marginBottom:
-      "14px",
-
-    padding:
-      "14px 16px",
-
-    border:
-      "1px solid rgba(255,114,0,.22)",
-
-    borderRadius:
-      "12px",
-
-    background:
-      "linear-gradient(90deg,rgba(255,72,0,.07),rgba(255,114,0,.025))",
-  },
-
-  lockIcon: {
-    fontSize:
-      "18px",
-  },
-
-  lockTitle: {
-    color:
-      "#ffffff",
-
-    fontSize:
-      "11px",
-
-    fontWeight:
-      1000,
-  },
-
-  lockText: {
-    marginTop:
-      "3px",
-
-    color:
-      "#888f9a",
-
-    fontSize:
-      "10px",
-
-    fontWeight:
-      700,
-  },
-
-  weekCard: {
-    marginBottom:
-      "14px",
-
-    padding:
-      "15px",
-
-    border:
-      "1px solid rgba(255,255,255,.08)",
-
-    borderRadius:
-      "14px",
-
-    background:
-      "linear-gradient(180deg,rgba(17,17,20,.96),rgba(10,10,12,.96))",
-  },
-
-  weekHeader: {
-    display:
-      "flex",
-
-    justifyContent:
-      "space-between",
-
-    alignItems:
-      "center",
-
-    gap:
-      "14px",
-
-    marginBottom:
-      "13px",
-  },
-
-  weekTitle: {
-    color:
-      "#ffffff",
-
-    fontSize:
-      "13px",
-
-    fontWeight:
-      1000,
-  },
-
-  weekText: {
-    marginTop:
-      "3px",
-
-    color:
-      "#747b87",
-
-    fontSize:
-      "10px",
-
-    fontWeight:
-      700,
-  },
-
-  currentWeekButton: {
-    minHeight:
-      "32px",
-
-    display:
-      "inline-flex",
-
-    alignItems:
-      "center",
-
-    padding:
-      "0 11px",
-
-    border:
-      "1px solid rgba(255,114,0,.3)",
-
-    borderRadius:
-      "8px",
-
-    background:
-      "rgba(255,114,0,.07)",
-
-    color:
-      "#ff8a24",
-
-    fontSize:
-      "9px",
-
-    fontWeight:
-      1000,
-
-    textDecoration:
-      "none",
-  },
-
-  weekScroller: {
-    display:
-      "flex",
-
-    gap:
-      "6px",
-
-    overflowX:
-      "auto" as const,
-  },
-
   weekButton: {
-    flex:
-      "0 0 auto",
-
-    minWidth:
-      "46px",
-
-    minHeight:
-      "35px",
-
-    display:
-      "inline-flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "center",
-
-    border:
-      "1px solid rgba(255,255,255,.08)",
-
-    borderRadius:
-      "8px",
-
-    background:
-      "rgba(255,255,255,.025)",
-
-    color:
-      "#858c98",
-
-    fontSize:
-      "10px",
-
-    fontWeight:
-      1000,
-
-    textDecoration:
-      "none",
+    padding: "9px 12px",
+    border: "1px solid rgba(255,255,255,.10)",
+    borderRadius: "8px",
+    color: "#c9ced6",
+    background: "#111318",
+    textDecoration: "none",
+    fontWeight: 900,
+    fontSize: "12px",
   },
-
   weekButtonActive: {
-    border:
-      "1px solid rgba(255,86,0,.6)",
-
-    background:
-      "linear-gradient(135deg,#e93500,#ff7900)",
-
-    color:
-      "#ffffff",
+    padding: "9px 12px",
+    border: "1px solid rgba(255,93,20,.45)",
+    borderRadius: "8px",
+    color: "#ff8a2a",
+    background: "rgba(255,82,10,.08)",
+    textDecoration: "none",
+    fontWeight: 950,
+    fontSize: "12px",
   },
-
   summaryGrid: {
-    display:
-      "grid",
-
-    gridTemplateColumns:
-      "repeat(auto-fit,minmax(150px,1fr))",
-
-    gap:
-      "10px",
-
-    marginBottom:
-      "14px",
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))",
+    gap: "10px",
   },
-
   summaryCard: {
-    padding:
-      "14px",
-
-    border:
-      "1px solid rgba(255,255,255,.07)",
-
-    borderRadius:
-      "12px",
-
-    background:
-      "rgba(255,255,255,.022)",
+    minHeight: "70px",
+    padding: "12px 14px",
+    border: "1px solid rgba(255,255,255,.08)",
+    borderRadius: "10px",
+    background: "linear-gradient(180deg,#111318,#0d0f12)",
+    display: "grid",
+    alignContent: "center",
+    gap: "5px",
   },
-
   summaryLabel: {
-    display:
-      "block",
-
-    marginBottom:
-      "6px",
-
-    color:
-      "#737a86",
-
-    fontSize:
-      "8px",
-
-    fontWeight:
-      1000,
-
-    letterSpacing:
-      ".1em",
+    color: "#717b89",
+    fontSize: "10px",
+    fontWeight: 950,
+    letterSpacing: ".08em",
   },
-
   summaryValue: {
-    color:
-      "#ffffff",
-
-    fontSize:
-      "16px",
-
-    fontWeight:
-      1000,
+    color: "#f5f7fa",
+    fontSize: "19px",
+    fontVariantNumeric: "tabular-nums",
   },
-
-  summaryValueOrange: {
-    color:
-      "#ff8a24",
-
-    fontSize:
-      "16px",
-
-    fontWeight:
-      1000,
+  summaryValueHighlight: {
+    color: "#ff7a1a",
   },
-
+  summaryValueMoney: {
+    color: "#ff9900",
+  },
   lineupCard: {
-    overflow:
-      "hidden",
-
-    border:
-      "1px solid rgba(255,255,255,.08)",
-
-    borderRadius:
-      "16px",
-
-    background:
-      "linear-gradient(180deg,#111114,#09090b)",
+    overflow: "hidden",
+    border: "1px solid rgba(255,255,255,.085)",
+    borderRadius: "10px",
+    background: "#0d0f12",
   },
-
   lineupHeader: {
-    display:
-      "flex",
-
-    justifyContent:
-      "space-between",
-
-    alignItems:
-      "center",
-
-    gap:
-      "14px",
-
-    padding:
-      "18px 20px",
-
-    borderBottom:
-      "1px solid rgba(255,255,255,.07)",
+    minHeight: "74px",
+    padding: "16px 20px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "16px",
+    borderBottom: "1px solid rgba(255,255,255,.07)",
   },
-
   sectionTitle: {
-    margin:
-      0,
-
-    color:
-      "#ffffff",
-
-    fontSize:
-      "17px",
-
-    fontWeight:
-      1000,
+    margin: 0,
+    fontSize: "18px",
   },
-
   sectionSubtitle: {
-    marginTop:
-      "4px",
-
-    color:
-      "#747b87",
-
-    fontSize:
-      "10px",
-
-    fontWeight:
-      800,
+    marginTop: "5px",
+    color: "#76808d",
+    fontSize: "11px",
+    fontWeight: 800,
   },
-
   modeBadge: {
-    padding:
-      "6px 9px",
-
-    border:
-      "1px solid rgba(255,114,0,.28)",
-
-    borderRadius:
-      "999px",
-
-    background:
-      "rgba(255,114,0,.07)",
-
-    color:
-      "#ff8a24",
-
-    fontSize:
-      "8px",
-
-    fontWeight:
-      1000,
+    padding: "6px 10px",
+    border: "1px solid rgba(255,105,0,.45)",
+    borderRadius: "999px",
+    color: "#ff8a1d",
+    background: "rgba(255,95,0,.07)",
+    fontSize: "10px",
+    fontWeight: 950,
   },
-
   tableWrap: {
-    overflowX:
-      "auto" as const,
+    overflowX: "auto",
   },
-
-  table: {
-    width:
-      "100%",
-
-    minWidth:
-      "860px",
-
-    borderCollapse:
-      "collapse" as const,
+  tableHeaderRow: {
+    minWidth: "1050px",
+    minHeight: "38px",
+    padding: "0 16px",
+    display: "grid",
+    gridTemplateColumns: "120px minmax(330px,2.25fr) 115px 115px 95px 95px 130px 150px",
+    alignItems: "center",
+    gap: "12px",
+    color: "#657188",
+    fontSize: "9px",
+    fontWeight: 950,
+    letterSpacing: ".1em",
   },
-
-  th: {
-    padding:
-      "12px 14px",
-
-    borderBottom:
-      "1px solid rgba(255,255,255,.06)",
-
-    color:
-      "#686f7b",
-
-    fontSize:
-      "8px",
-
-    fontWeight:
-      1000,
-
-    letterSpacing:
-      ".09em",
-
-    textAlign:
-      "center" as const,
-
-    whiteSpace:
-      "nowrap" as const,
+  playerRow: {
+    minWidth: "1050px",
+    minHeight: "76px",
+    padding: "10px 16px",
+    display: "grid",
+    gridTemplateColumns: "120px minmax(330px,2.25fr) 115px 115px 95px 95px 130px 150px",
+    alignItems: "center",
+    gap: "12px",
+    borderTop: "1px solid rgba(255,255,255,.055)",
+    transition: "background .2s ease",
   },
-
-  td: {
-    padding:
-      "14px",
-
-    borderBottom:
-      "1px solid rgba(255,255,255,.05)",
-
-    color:
-      "#bec2c9",
-
-    fontSize:
-      "11px",
-
-    fontWeight:
-      800,
-
-    textAlign:
-      "center" as const,
-
-    whiteSpace:
-      "nowrap" as const,
+  playerRowLive: {
+    background: "linear-gradient(90deg,rgba(255,88,15,.04),rgba(255,255,255,0))",
   },
-
-  hiddenRow: {
-    background:
-      "rgba(255,255,255,.012)",
+  slotCell: {
+    display: "flex",
+    alignItems: "center",
   },
-
   slotBadge: {
-    display:
-      "inline-flex",
-
-    minWidth:
-      "48px",
-
-    minHeight:
-      "28px",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "center",
-
-    border:
-      "1px solid rgba(255,114,0,.25)",
-
-    borderRadius:
-      "7px",
-
-    background:
-      "rgba(255,114,0,.07)",
-
-    color:
-      "#ff8a24",
-
-    fontSize:
-      "9px",
-
-    fontWeight:
-      1000,
+    minWidth: "48px",
+    padding: "7px 9px",
+    textAlign: "center",
+    border: "1px solid rgba(255,87,0,.52)",
+    borderRadius: "7px",
+    color: "#ff8518",
+    background: "rgba(255,78,0,.07)",
+    fontSize: "11px",
+    fontWeight: 950,
   },
-
+  playerCell: {
+    minWidth: 0,
+    display: "grid",
+    gap: "5px",
+  },
+  playerNameLine: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "baseline",
+    gap: "5px",
+    flexWrap: "wrap",
+  },
   playerName: {
-    color:
-      "#ffffff",
-
-    fontSize:
-      "12px",
-
-    fontWeight:
-      1000,
+    color: "#fff",
+    fontSize: "14px",
   },
-
-  hiddenPlayerName: {
-    color:
-      "#747b87",
-
-    fontSize:
-      "11px",
-
-    fontWeight:
-      900,
-
-    fontStyle:
-      "italic",
+  playerMetaInline: {
+    color: "#8d96a5",
+    fontSize: "11px",
+    fontWeight: 900,
   },
-
-  playerMeta: {
-    marginTop:
-      "3px",
-
-    color:
-      "#6f7682",
-
-    fontSize:
-      "9px",
-
-    fontWeight:
-      800,
+  statLine: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "#687385",
+    fontSize: "10px",
+    fontWeight: 800,
   },
-
+  statLineLive: {
+    color: "#b3bbc7",
+  },
+  teamCell: {
+    color: "#e9edf2",
+    fontSize: "12px",
+  },
+  opponentCell: {
+    color: "#dce2ea",
+    fontSize: "12px",
+  },
+  numericCell: {
+    color: "#c7e1ff",
+    fontSize: "12px",
+    fontVariantNumeric: "tabular-nums",
+  },
   pointsCell: {
-    color:
-      "#ffffff",
-
-    fontSize:
-      "13px",
-
-    fontWeight:
-      1000,
+    color: "#fff",
+    fontSize: "14px",
+    fontVariantNumeric: "tabular-nums",
   },
-
-  gameStatus: {
-    display:
-      "inline-flex",
-
-    minWidth:
-      "64px",
-
-    justifyContent:
-      "center",
-
-    padding:
-      "5px 7px",
-
-    border:
-      "1px solid rgba(255,255,255,.08)",
-
-    borderRadius:
-      "999px",
-
-    background:
-      "rgba(255,255,255,.03)",
-
-    color:
-      "#858c98",
-
-    fontSize:
-      "8px",
-
-    fontWeight:
-      1000,
+  pointsCellLive: {
+    color: "#ff8b2b",
   },
-
-  statusHidden: {
-    border:
-      "1px solid rgba(255,255,255,.09)",
-
-    background:
-      "rgba(255,255,255,.025)",
-
-    color:
-      "#69707a",
+  salaryCell: {
+    color: "#cce4ff",
+    fontSize: "12px",
+    fontVariantNumeric: "tabular-nums",
   },
-
-  statusLive: {
-    border:
-      "1px solid rgba(255,86,0,.35)",
-
-    background:
-      "rgba(255,70,0,.10)",
-
-    color:
-      "#ff7b32",
+  gameCell: {
+    display: "flex",
+    justifyContent: "flex-start",
   },
-
-  statusFinal: {
-    border:
-      "1px solid rgba(51,210,119,.25)",
-
-    background:
-      "rgba(51,210,119,.08)",
-
-    color:
-      "#56dc8c",
+  gameBadge: {
+    padding: "6px 9px",
+    border: "1px solid rgba(255,255,255,.09)",
+    borderRadius: "999px",
+    color: "#718098",
+    background: "rgba(255,255,255,.02)",
+    fontSize: "9px",
+    fontWeight: 950,
+    whiteSpace: "nowrap",
   },
-
-  statusLocked: {
-    border:
-      "1px solid rgba(255,190,80,.22)",
-
-    background:
-      "rgba(255,190,80,.06)",
-
-    color:
-      "#e7b55e",
+  gameBadgeLive: {
+    color: "#49dc85",
+    border: "1px solid rgba(73,220,133,.35)",
+    background: "rgba(73,220,133,.06)",
   },
-
+  gameBadgeFinal: {
+    color: "#b9c0ca",
+    border: "1px solid rgba(255,255,255,.12)",
+  },
+  totalRow: {
+    minWidth: "1050px",
+    minHeight: "54px",
+    padding: "0 16px",
+    display: "grid",
+    gridTemplateColumns: "120px minmax(330px,2.25fr) 115px 115px 95px 95px 130px 150px",
+    alignItems: "center",
+    gap: "12px",
+    borderTop: "1px solid rgba(255,112,25,.20)",
+    background: "rgba(255,255,255,.015)",
+  },
+  totalPoints: {
+    color: "#ff8a2a",
+    fontSize: "16px",
+    fontVariantNumeric: "tabular-nums",
+  },
+  totalStatus: {
+    color: "#8d96a5",
+    fontSize: "10px",
+  },
   emptyState: {
-    padding:
-      "55px 20px",
-
-    color:
-      "#747b87",
-
-    fontSize:
-      "12px",
-
-    fontWeight:
-      800,
-
-    textAlign:
-      "center" as const,
+    padding: "38px 20px",
+    textAlign: "center",
+    color: "#747d8a",
+  },
+  refreshNote: {
+    color: "#747d8a",
+    fontSize: "11px",
+    textAlign: "right",
   },
 };
