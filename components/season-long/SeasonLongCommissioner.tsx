@@ -12,6 +12,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { useRouter } from "next/navigation";
 
 import SeasonLongScoring from "@/components/season-long/SeasonLongScoring";
+import SeasonLongRenewButton from "@/components/season-long/SeasonLongRenewButton";
 
 
 type Tab =
@@ -373,7 +374,7 @@ export default function SeasonLongCommissioner({
           "commissioner_add_open_team_slot",
           {
             p_league_id: leagueId,
-            p_team_name: `Open Entry ${(data?.teams?.length ?? 0) + index + 1}`,
+            p_team_name: `Open Entry ${(data?.teams ?? []).length + index + 1}`,
           }
         );
 
@@ -1568,11 +1569,63 @@ export default function SeasonLongCommissioner({
               </div>
 
               <div
-                style={
-                  styles.warning
-                }
+                style={{
+                  marginTop: 18,
+                  padding: 16,
+                  border: "1px solid #3a241b",
+                  borderRadius: 14,
+                  background:
+                    "linear-gradient(180deg,rgba(239,95,31,0.08),rgba(255,255,255,0.015))",
+                }}
               >
-                Week preparation, scoring refresh and finalization continue through the existing Season-Long lifecycle. We are not adding a manual force-finalize button here because it could bypass NFL-week completeness safeguards.
+                <div
+                  style={{
+                    marginBottom: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      color: "#ff6422",
+                      fontSize: 10,
+                      fontWeight: 950,
+                      letterSpacing: 0.8,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    NEXT SEASON
+                  </div>
+
+                  <h3
+                    style={{
+                      margin: "5px 0 6px",
+                      color: "#fff",
+                      fontSize: 18,
+                      fontWeight: 950,
+                    }}
+                  >
+                    Renew League for {data.league.season + 1}
+                  </h3>
+
+                  <p
+                    style={{
+                      margin: 0,
+                      maxWidth: 760,
+                      color: "#aaa",
+                      fontSize: 12,
+                      lineHeight: 1.55,
+                    }}
+                  >
+                    Creates the next-season league with this league&apos;s settings,
+                    scoring, members and team names. Weekly lineups, scores,
+                    standings, salaries and trophies start fresh. Renewal is
+                    accepted only after the current Season-Long season is complete.
+                  </p>
+                </div>
+
+                <SeasonLongRenewButton
+                  leagueId={leagueId}
+                  nextSeason={data.league.season + 1}
+                />
               </div>
             </Section>
 

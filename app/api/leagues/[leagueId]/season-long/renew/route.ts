@@ -271,6 +271,131 @@ export async function POST(
 
   /*
    * ----------------------------------------------------------
+   * SEASON COMPLETION SAFEGUARD
+   * ----------------------------------------------------------
+   * The renewal control is visible in Commissioner > Season
+   * Controls, but the server will not create the next league
+   * until every active team has a final Week 18 score.
+   */
+  const [
+    activeTeamsResult,
+    finalWeekResult,
+  ] =
+    await Promise.all([
+      admin
+        .from(
+          "fantasy_teams"
+        )
+        .select(
+          "id"
+        )
+        .eq(
+          "league_id",
+          league.id
+        )
+        .eq(
+          "active",
+          true
+        ),
+
+      admin
+        .from(
+          "season_long_weekly_scores"
+        )
+        .select(
+          "fantasy_team_id,is_final"
+        )
+        .eq(
+          "league_id",
+          league.id
+        )
+        .eq(
+          "season",
+          league.season
+        )
+        .eq(
+          "week",
+          18
+        )
+        .eq(
+          "is_final",
+          true
+        ),
+    ]);
+
+  if (
+    activeTeamsResult.error
+  ) {
+    return jsonError(
+      activeTeamsResult.error.message,
+      500
+    );
+  }
+
+  if (
+    finalWeekResult.error
+  ) {
+    return jsonError(
+      finalWeekResult.error.message,
+      500
+    );
+  }
+
+  const activeTeamIds =
+    new Set(
+      (
+        activeTeamsResult.data ??
+        []
+      ).map(
+        (
+          row
+        ) =>
+          Number(
+            row.id
+          )
+      )
+    );
+
+  const finalTeamIds =
+    new Set(
+      (
+        finalWeekResult.data ??
+        []
+      ).map(
+        (
+          row
+        ) =>
+          Number(
+            row.fantasy_team_id
+          )
+      )
+    );
+
+  const seasonComplete =
+    activeTeamIds.size >
+      0 &&
+    Array.from(
+      activeTeamIds
+    ).every(
+      (
+        teamId
+      ) =>
+        finalTeamIds.has(
+          teamId
+        )
+    );
+
+  if (
+    !seasonComplete
+  ) {
+    return jsonError(
+      "This league can be renewed after the current Season-Long season is complete and every active team has a final Week 18 score.",
+      409
+    );
+  }
+
+  /*
+   * ----------------------------------------------------------
    * IDEMPOTENCY
    * ----------------------------------------------------------
    * If this league was already renewed into the same season,

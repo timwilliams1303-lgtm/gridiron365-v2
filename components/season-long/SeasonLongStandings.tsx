@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import {
   createSupabaseServerClient,
 } from "@/lib/supabase/server";
@@ -900,10 +898,7 @@ export default async function SeasonLongStandings({
                           styles.teamText
                         }
                       >
-                        <Link
-                          href={
-                            `/league/${leagueId}/teams/${row.fantasyTeamId}`
-                          }
+                        <strong
                           style={
                             styles.teamName
                           }
@@ -911,7 +906,7 @@ export default async function SeasonLongStandings({
                           {
                             row.teamName
                           }
-                        </Link>
+                        </strong>
 
                         <span
                           style={
@@ -994,12 +989,9 @@ export default async function SeasonLongStandings({
                         null &&
                       row.latestFinalWeekPoints !==
                         null ? (
-                        <Link
-                          href={
-                            `/league/${leagueId}/teams/${row.fantasyTeamId}?week=${row.latestFinalWeek}`
-                          }
+                        <span
                           style={
-                            styles.lastWeekLink
+                            styles.lastWeekValue
                           }
                         >
                           W
@@ -1010,7 +1002,7 @@ export default async function SeasonLongStandings({
                           {formatPoints(
                             row.latestFinalWeekPoints
                           )}
-                        </Link>
+                        </span>
                       ) : (
                         "—"
                       )}
@@ -1147,12 +1139,11 @@ export default async function SeasonLongStandings({
                   styles.sideFootnote
                 }
               >
-                Click a team name to
-                view that team&apos;s
-                weekly lineup. Current
-                selections remain hidden
-                until each player&apos;s
-                NFL game begins.
+                Weekly lineups are
+                available from League
+                Teams. Standings remain
+                focused on finalized
+                season scoring and rank.
               </p>
             </section>
           </aside>
@@ -1735,15 +1726,12 @@ const styles = {
       "tabular-nums",
   },
 
-  lastWeekLink: {
+  lastWeekValue: {
     color:
       "#ff922d",
 
     fontWeight:
       900,
-
-    textDecoration:
-      "none",
   },
 
   sidebar: {

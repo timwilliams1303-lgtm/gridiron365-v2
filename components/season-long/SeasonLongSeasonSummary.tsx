@@ -3,7 +3,6 @@ import type {
   CSSProperties,
 } from "react";
 
-import SeasonLongRenewButton from "@/components/season-long/SeasonLongRenewButton";
 
 import {
   createSupabaseServerClient,
@@ -1721,64 +1720,6 @@ export default async function SeasonLongSeasonSummary({
         </div>
       </section>
 
-      {access.isCommissioner ? (
-        <section
-          style={
-            styles.wrapCard
-          }
-        >
-          <p
-            style={
-              styles.sectionEyebrow
-            }
-          >
-            COMMISSIONER
-          </p>
-
-          <h2
-            style={
-              styles.wrapTitle
-            }
-          >
-            Renew League
-          </h2>
-
-          <p
-            style={
-              styles.wrapText
-            }
-          >
-            Carry forward league settings, scoring, members and team names. Weekly lineups, scores, standings, salaries and trophies start fresh.
-          </p>
-
-          <div
-            style={
-              styles.renewBox
-            }
-          >
-            {existingRenewal ? (
-              <Link
-                href={`/league/${existingRenewal.target_league_id}`}
-                style={
-                  styles.renewLink
-                }
-              >
-                OPEN {existingRenewal.target_season} LEAGUE
-              </Link>
-            ) : (
-              <SeasonLongRenewButton
-                leagueId={
-                  leagueId
-                }
-                nextSeason={
-                  season +
-                  1
-                }
-              />
-            )}
-          </div>
-        </section>
-      ) : null}
     </section>
   );
 }
