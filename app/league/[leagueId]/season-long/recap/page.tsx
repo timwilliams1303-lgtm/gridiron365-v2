@@ -10,8 +10,11 @@ type PageProps = {
   }>;
 };
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const dynamic =
+  "force-dynamic";
+
+export const revalidate =
+  0;
 
 export default async function SeasonLongRecapPage({
   params,
@@ -19,11 +22,13 @@ export default async function SeasonLongRecapPage({
 }: PageProps) {
   const {
     leagueId,
-  } = await params;
+  } =
+    await params;
 
   const {
     week,
-  } = await searchParams;
+  } =
+    await searchParams;
 
   return (
     <SeasonLongRecap

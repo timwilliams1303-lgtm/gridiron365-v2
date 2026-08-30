@@ -3,7 +3,7 @@ import type {
   CSSProperties,
 } from "react";
 
-import SeasonLongRenewButton from "./SeasonLongRenewButton";
+import SeasonLongRenewButton from "@/components/season-long/SeasonLongRenewButton";
 
 import {
   createSupabaseServerClient,
