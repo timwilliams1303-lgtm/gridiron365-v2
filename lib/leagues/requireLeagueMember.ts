@@ -16,13 +16,15 @@ import {
 export type LeagueType =
   | "traditional"
   | "season_long"
-  | "nfl_playoffs";
+  | "nfl_playoffs"
+  | "pickem";
 
 
 export type PlayerSelectionMode =
   | "draft"
   | "salary"
-  | "no_salary";
+  | "no_salary"
+  | "pickem";
 
 
 export type LeagueMemberRole =
@@ -109,7 +111,9 @@ function isLeagueType(
     value ===
       "season_long" ||
     value ===
-      "nfl_playoffs"
+      "nfl_playoffs" ||
+    value ===
+      "pickem"
   );
 }
 
@@ -123,7 +127,9 @@ function isPlayerSelectionMode(
     value ===
       "salary" ||
     value ===
-      "no_salary"
+      "no_salary" ||
+    value ===
+      "pickem"
   );
 }
 
@@ -384,10 +390,10 @@ export async function requireLeagueMember(
 
   /*
    * =========================================
-   * 3. LOAD USER'S FANTASY TEAM
+   * 3. LOAD USER'S FANTASY TEAM / ENTRY
    * =========================================
    *
-   * fantasy_teams is currently used by:
+   * fantasy_teams is used by:
    *
    * - Traditional leagues
    *   Permanent drafted roster ownership.
@@ -395,6 +401,9 @@ export async function requireLeagueMember(
    * - Season-Long leagues
    *   Participant identity and weekly
    *   lineup ownership.
+   *
+   * - G365 Football Pick'em
+   *   Participant / entry identity.
    *
    * NFL Playoffs can use its own entry
    * model when that league type is wired.
@@ -409,7 +418,9 @@ export async function requireLeagueMember(
     league.league_type ===
       "traditional" ||
     league.league_type ===
-      "season_long"
+      "season_long" ||
+    league.league_type ===
+      "pickem"
   ) {
     const {
       data:

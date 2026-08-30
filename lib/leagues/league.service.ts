@@ -6,13 +6,15 @@ import type {
 export type LeagueType =
   | "traditional"
   | "season_long"
-  | "nfl_playoffs";
+  | "nfl_playoffs"
+  | "pickem";
 
 
 export type PlayerSelectionMode =
   | "draft"
   | "salary"
-  | "no_salary";
+  | "no_salary"
+  | "pickem";
 
 
 export type LeagueMemberRole =
@@ -241,13 +243,31 @@ function validateLeagueCombination(
 
 
   if (
-    leagueType !==
-      "traditional" &&
-    playerSelectionMode ===
-      "draft"
+    leagueType === "pickem" &&
+    playerSelectionMode !== "pickem"
+  ) {
+    throw new Error(
+      "G365 Football Pick'em leagues must use Pick'em mode."
+    );
+  }
+
+
+  if (
+    leagueType !== "traditional" &&
+    playerSelectionMode === "draft"
   ) {
     throw new Error(
       "Only Traditional leagues can use a draft."
+    );
+  }
+
+
+  if (
+    leagueType !== "pickem" &&
+    playerSelectionMode === "pickem"
+  ) {
+    throw new Error(
+      "Pick'em mode can only be used by G365 Football Pick'em leagues."
     );
   }
 }
@@ -302,7 +322,9 @@ export async function createLeague(
     input.leagueType ===
       "traditional" ||
     input.leagueType ===
-      "season_long"
+      "season_long" ||
+    input.leagueType ===
+      "pickem"
   ) {
     teamName =
       cleanRequiredText(
@@ -346,28 +368,26 @@ export async function createLeague(
     data,
     error,
   } =
-    await supabase.rpc(
-      "create_league_transaction",
-      {
-        p_name:
-          name,
-
-        p_league_type:
-          input.leagueType,
-
-        p_player_selection_mode:
-          input.playerSelectionMode,
-
-        p_season:
-          season,
-
-        p_team_name:
-          teamName,
-
-        p_regular_season_weeks:
-          regularSeasonWeeks,
-      }
-    );
+    input.leagueType === "pickem"
+      ? await supabase.rpc(
+          "create_pickem_league_transaction",
+          {
+            p_name: name,
+            p_season: season,
+            p_entry_name: teamName,
+          }
+        )
+      : await supabase.rpc(
+          "create_league_transaction",
+          {
+            p_name: name,
+            p_league_type: input.leagueType,
+            p_player_selection_mode: input.playerSelectionMode,
+            p_season: season,
+            p_team_name: teamName,
+            p_regular_season_weeks: regularSeasonWeeks,
+          }
+        );
 
 
   if (error) {
@@ -423,7 +443,9 @@ export async function createLeague(
     returnedLeagueType !==
       "season_long" &&
     returnedLeagueType !==
-      "nfl_playoffs"
+      "nfl_playoffs" &&
+    returnedLeagueType !==
+      "pickem"
   ) {
     throw new Error(
       "League creation returned an invalid league type."
@@ -437,7 +459,9 @@ export async function createLeague(
     returnedSelectionMode !==
       "salary" &&
     returnedSelectionMode !==
-      "no_salary"
+      "no_salary" &&
+    returnedSelectionMode !==
+      "pickem"
   ) {
     throw new Error(
       "League creation returned an invalid player selection mode."

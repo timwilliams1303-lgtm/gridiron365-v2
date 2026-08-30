@@ -2,26 +2,26 @@ import {
   redirect,
 } from "next/navigation";
 
-import TraditionalLeagueHome from "@/components/traditional/TraditionalLeagueHome";
+import PickemLeagueHome from "@/components/pickem/PickemLeagueHome";
 import SeasonLongLeagueHome from "@/components/season-long/SeasonLongLeagueHome";
+import TraditionalLeagueHome from "@/components/traditional/TraditionalLeagueHome";
 
 import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
 
+
 type PageProps = {
-  params:
-    Promise<{
-      leagueId: string;
-    }>;
+  params: Promise<{
+    leagueId: string;
+  }>;
 };
+
 
 export default async function LeagueHomePage({
   params,
 }: PageProps) {
-  const {
-    leagueId,
-  } =
+  const { leagueId } =
     await params;
 
   const access =
@@ -35,26 +35,25 @@ export default async function LeagueHomePage({
     case "traditional":
       return (
         <TraditionalLeagueHome
-          leagueId={
-            leagueId
-          }
+          leagueId={leagueId}
         />
       );
 
     case "season_long":
       return (
         <SeasonLongLeagueHome
-          leagueId={
-            leagueId
-          }
+          leagueId={leagueId}
+        />
+      );
+
+    case "pickem":
+      return (
+        <PickemLeagueHome
+          leagueId={leagueId}
         />
       );
 
     case "nfl_playoffs":
-      redirect(
-        "/my-leagues"
-      );
-
     default:
       redirect(
         "/my-leagues"

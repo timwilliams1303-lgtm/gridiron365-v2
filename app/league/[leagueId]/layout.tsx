@@ -7,6 +7,7 @@ import {
 } from "next/navigation";
 
 import SeasonLongLeagueNav from "@/components/season-long/SeasonLongLeagueNav";
+import PickemLeagueNav from "@/components/pickem/PickemLeagueNav";
 
 import TraditionalLeagueNav from "@/components/traditional/TraditionalLeagueNav";
 import TraditionalLiveRefresh from "@/components/traditional/TraditionalLiveRefresh";
@@ -66,6 +67,14 @@ function getLeagueTypeLabel(
     "nfl_playoffs"
   ) {
     return "NFL PLAYOFFS";
+  }
+
+
+  if (
+    leagueType ===
+    "pickem"
+  ) {
+    return "G365 FOOTBALL PICK'EM";
   }
 
 
@@ -182,6 +191,11 @@ export default async function LeagueLayout({
     "nfl_playoffs";
 
 
+  const isPickem =
+    league.leagueType ===
+    "pickem";
+
+
   const leagueTypeLabel =
     getLeagueTypeLabel(
       league.leagueType,
@@ -201,7 +215,9 @@ export default async function LeagueLayout({
       ? "My Team"
       : isSeasonLong
         ? "My Entry"
-        : "League Home";
+        : isPickem
+          ? "My Picks"
+          : "League Home";
 
 
   const primaryActionHref =
@@ -209,7 +225,9 @@ export default async function LeagueLayout({
       ? `/league/${leagueId}/team`
       : isSeasonLong
         ? `/league/${leagueId}/entry`
-        : `/league/${leagueId}`;
+        : isPickem
+          ? `/league/${leagueId}/pickem/my-picks`
+          : `/league/${leagueId}`;
 
 
   return (
@@ -379,6 +397,13 @@ export default async function LeagueLayout({
           leagueId={
             leagueId
           }
+        />
+      ) : null}
+
+
+      {isPickem ? (
+        <PickemLeagueNav
+          leagueId={leagueId}
           isCommissioner={
             isCommissioner
           }
