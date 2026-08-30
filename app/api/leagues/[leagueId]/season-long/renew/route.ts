@@ -28,6 +28,7 @@ type LeagueRow = {
   season: number;
   status: string;
   commissioner_user_id: string | null;
+  season_long_history_id: string | null;
 };
 
 type MembershipRow = {
@@ -36,9 +37,11 @@ type MembershipRow = {
 };
 
 type TeamRow = {
+  id: number;
   owner_id: string | null;
   team_name: string;
   active: boolean;
+  season_long_franchise_id: string | null;
 };
 
 function jsonError(
@@ -135,7 +138,8 @@ async function requireCommissioner(
         player_selection_mode,
         season,
         status,
-        commissioner_user_id
+        commissioner_user_id,
+        season_long_history_id
       `)
       .eq(
         "id",
@@ -268,6 +272,47 @@ export async function POST(
   const targetSeason =
     league.season +
     1;
+
+  /*
+   * ----------------------------------------------------------
+   * CONTINUOUS HISTORY IDENTITY
+   * ----------------------------------------------------------
+   * The migration creates a permanent history id for the league
+   * and a permanent franchise id for every Season-Long team.
+   */
+  const historyIdentityResult =
+    await admin.rpc(
+      "ensure_season_long_history_identity",
+      {
+        p_league_id:
+          league.id,
+      }
+    );
+
+  if (
+    historyIdentityResult.error
+  ) {
+    return jsonError(
+      historyIdentityResult.error.message,
+      500
+    );
+  }
+
+  const historyId =
+    String(
+      historyIdentityResult.data ??
+      league.season_long_history_id ??
+      ""
+    );
+
+  if (
+    !historyId
+  ) {
+    return jsonError(
+      "Could not initialize the continuous Season-Long league history.",
+      500
+    );
+  }
 
   /*
    * ----------------------------------------------------------
@@ -513,7 +558,7 @@ export async function POST(
           "fantasy_teams"
         )
         .select(
-          "owner_id,team_name,active"
+          "id,owner_id,team_name,active,season_long_franchise_id"
         )
         .eq(
           "league_id",
@@ -574,6 +619,8 @@ export async function POST(
           userId,
         status:
           "setup",
+        season_long_history_id:
+          historyId,
       })
       .select(
         "id,name,season"
@@ -701,6 +748,8 @@ export async function POST(
                 team.team_name,
               active:
                 true,
+              season_long_franchise_id:
+                team.season_long_franchise_id,
             })
           )
         );
@@ -875,8 +924,13 @@ export async function POST(
   }
 
   /*
-   * Fresh weekly entries, lineups, weekly scores, standings,
-   * salaries and trophy rows are intentionally NOT copied.
+   * Fresh weekly entries, lineups, weekly scores, standings and
+   * salaries are intentionally NOT copied.
+   *
+   * Badge/honor rows also remain in their original season. The new
+   * league sees them through season_long_history_id plus each team's
+   * persistent season_long_franchise_id, so there are no duplicate
+   * trophy rows in the renewed season.
    */
   return NextResponse.json({
     success:

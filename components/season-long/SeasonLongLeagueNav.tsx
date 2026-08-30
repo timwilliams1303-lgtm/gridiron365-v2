@@ -60,6 +60,12 @@ export default function SeasonLongLeagueNav({
       },
       {
         label:
+          "Trophy Case",
+        href:
+          `/league/${leagueId}/season-long/trophy-case`,
+      },
+      {
+        label:
           "Settings",
         href:
           `/league/${leagueId}/season-long/settings`,
