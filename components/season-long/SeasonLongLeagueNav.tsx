@@ -6,31 +6,23 @@ import {
   usePathname,
 } from "next/navigation";
 
-
 type SeasonLongLeagueNavProps = {
-  leagueId:
-    string;
+  leagueId: string;
+  isCommissioner?: boolean;
 };
-
 
 type NavItem = {
-  label:
-    string;
-
-  href:
-    string;
-
-  exact?:
-    boolean;
+  label: string;
+  href: string;
+  exact?: boolean;
 };
-
 
 export default function SeasonLongLeagueNav({
   leagueId,
+  isCommissioner = false,
 }: SeasonLongLeagueNavProps) {
   const pathname =
     usePathname();
-
 
   const items:
     NavItem[] = [
@@ -71,13 +63,32 @@ export default function SeasonLongLeagueNav({
 
       {
         label:
-          "Commissioner",
+          "Weekly Recap",
 
         href:
-          `/league/${leagueId}/commissioner`,
+          `/league/${leagueId}/season-long/recap`,
       },
-    ];
 
+      {
+        label:
+          "Settings",
+
+        href:
+          `/league/${leagueId}/season-long/settings`,
+      },
+
+      ...(isCommissioner
+        ? [
+            {
+              label:
+                "Commissioner",
+
+              href:
+                `/league/${leagueId}/commissioner`,
+            },
+          ]
+        : []),
+    ];
 
   return (
     <nav
@@ -105,7 +116,6 @@ export default function SeasonLongLeagueNav({
                     `${item.href}/`
                   );
 
-
             return (
               <Link
                 key={
@@ -131,7 +141,6 @@ export default function SeasonLongLeagueNav({
     </nav>
   );
 }
-
 
 const styles = {
   nav: {
@@ -219,4 +228,4 @@ const styles = {
     color:
       "#ffffff",
   },
-} as const;
+};
