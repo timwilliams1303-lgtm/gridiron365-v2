@@ -1,17 +1,15 @@
 import Link from "next/link";
-import type {
-  CSSProperties,
-} from "react";
+import type { CSSProperties } from "react";
 
-import SeasonLongRenewButton from "./SeasonLongRenewButton";
+import SeasonLongSeasonSummary from "@/components/season-long/SeasonLongSeasonSummary";
 
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { requireLeagueMember } from "@/lib/leagues/requireLeagueMember";
 import {
-  createSupabaseServerClient,
-} from "@/lib/supabase/server";
-
-import {
-  requireLeagueMember,
-} from "@/lib/leagues/requireLeagueMember";
+  getSeasonLongTeamLiveLineupData,
+  type SeasonLongTeamLiveLineupData,
+  type SeasonLongLiveLineupPlayer,
+} from "@/lib/season-long/team-live-lineup.service";
 
 type TeamRow = {
   id: number;
@@ -19,78 +17,34 @@ type TeamRow = {
   active: boolean | null;
 };
 
-type StandingRow = {
-  fantasy_team_id: number;
-  total_points:
-    number |
-    string |
-    null;
-  weeks_scored:
-    number |
-    null;
-  highest_week_score:
-    number |
-    string |
-    null;
-  lowest_week_score:
-    number |
-    string |
-    null;
-  average_week_score:
-    number |
-    string |
-    null;
-  current_rank:
-    number |
-    null;
-};
-
 type WeeklyScoreRow = {
   fantasy_team_id: number;
   week: number;
-  fantasy_points:
-    number |
-    string |
-    null;
-  salary_used:
-    number |
-    string |
-    null;
-  is_final:
-    boolean |
-    null;
-};
-
-
-type LineupRow = {
-  fantasy_team_id: number;
-  player_id: number;
-  week: number;
-  nfl_game_id: number | null;
-  salary_at_selection: number | string | null;
-};
-
-type PlayerScoreRow = {
-  nfl_player_id: number;
-  nfl_game_id: number | null;
-  week: number;
   fantasy_points: number | string | null;
+  salary_used: number | string | null;
+  lineup_player_count: number | null;
   is_final: boolean | null;
 };
 
-type NflPlayerRow = {
-  id: number;
-  full_name: string;
-  primary_position: string | null;
+type StandingRow = {
+  fantasy_team_id: number;
+  total_points: number | string | null;
+  weeks_scored: number | null;
+  current_rank: number | null;
 };
 
-type PlayerSeasonPerformance = {
-  teamName: string;
-  playerName: string;
-  position: string;
-  week: number;
-  fantasyPoints: number;
-  salary: number | null;
+type WeekBadgeRow = {
+  fantasy_team_id: number;
+  team_name: string;
+  badge_key: string;
+  badge_name: string;
+  badge_category: "ACHIEVEMENT" | "INFAMY";
+  badge_emoji: string;
+  detail: string;
+  nfl_player_id: number | null;
+  player_name: string | null;
+  metric_value: number | string | null;
+  awarded_at: string;
 };
 
 type TrophyRow = {
@@ -98,129 +52,184 @@ type TrophyRow = {
   team_name: string;
   badge_key: string;
   badge_name: string;
-  badge_category:
-    "ACHIEVEMENT" |
-    "INFAMY";
+  badge_category: "ACHIEVEMENT" | "INFAMY";
   badge_emoji: string;
-  award_count:
-    number |
-    string;
+  award_count: number | string;
   first_earned_week: number;
   last_earned_week: number;
-  latest_detail:
-    string |
-    null;
+  latest_detail: string | null;
 };
 
-type TeamSummary = {
+type TeamRecap = {
   teamId: number;
   teamName: string;
-  rank: number;
-  totalPoints: number;
-  weeksScored: number;
-  highWeek: number;
-  lowWeek: number;
-  averageWeek: number;
-  bestWeekNumber:
-    number |
-    null;
-  bestWeekPoints: number;
-  salaryEfficiency:
-    number |
-    null;
-  trophyAwards: number;
-  weeklyKings: number;
+  weekPoints: number;
+  projectedPoints: number;
+  seasonPoints: number;
+  seasonRank: number | null;
+  salaryUsed: number | null;
+  lineup: SeasonLongTeamLiveLineupData;
+  badges: WeekBadgeRow[];
 };
+
+const POSITION_ORDER = [
+  "QB",
+  "RB",
+  "WR",
+  "TE",
+  "FLEX",
+  "SUPERFLEX",
+  "K",
+  "DST",
+];
 
 function n(
   value:
-    number |
-    string |
-    null |
-    undefined
+    | number
+    | string
+    | null
+    | undefined
 ) {
   const parsed =
-    Number(
-      value ??
-      0
-    );
+    Number(value ?? 0);
 
-  return Number.isFinite(
-    parsed
-  )
+  return Number.isFinite(parsed)
     ? parsed
     : 0;
 }
 
 function points(
   value:
-    number |
-    string |
-    null |
-    undefined
+    | number
+    | string
+    | null
+    | undefined
 ) {
-  return n(
-    value
-  ).toFixed(
-    2
-  );
+  return n(value).toFixed(2);
 }
 
 function money(
   value:
-    number |
-    string |
-    null |
-    undefined
+    | number
+    | string
+    | null
+    | undefined
 ) {
   return new Intl.NumberFormat(
     "en-US",
     {
-      style:
-        "currency",
-      currency:
-        "USD",
-      maximumFractionDigits:
-        0,
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
     }
   ).format(
-    n(
-      value
-    )
+    n(value)
   );
 }
 
-function medal(
-  rank: number
+function playerLabel(
+  player:
+    SeasonLongLiveLineupPlayer
 ) {
-  if (
-    rank === 1
-  ) {
-    return "🏆";
-  }
+  const jersey =
+    player.jerseyNumber
+      ? ` #${player.jerseyNumber}`
+      : "";
 
-  if (
-    rank === 2
-  ) {
-    return "🥈";
-  }
-
-  if (
-    rank === 3
-  ) {
-    return "🥉";
-  }
-
-  return "🏈";
+  return `${player.fullName} · ${player.position}${jersey}`;
 }
 
-export type SeasonLongSeasonRecapProps = {
+function bestPlayer(
+  teams:
+    TeamRecap[],
+  positions:
+    string[]
+) {
+  return (
+    teams
+      .flatMap(
+        (
+          team
+        ) =>
+          team.lineup.players.map(
+            (
+              player
+            ) => ({
+              team,
+              player,
+            })
+          )
+      )
+      .filter(
+        ({
+          player,
+        }) =>
+          positions.includes(
+            player.position
+          ) ||
+          positions.includes(
+            player.lineupSlot
+          )
+      )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          b.player
+            .fantasyPoints -
+          a.player
+            .fantasyPoints
+      )[0] ??
+    null
+  );
+}
+
+function statLine(
+  player:
+    SeasonLongLiveLineupPlayer
+) {
+  const s =
+    player.stats;
+
+  const pos =
+    player.position;
+
+  if (pos === "QB") {
+    return `${s.passingCompletions}/${s.passingAttempts} CMP · ${s.passingYards} PASS YDS · ${s.passingTouchdowns} PASS TD · ${s.passingInterceptions} INT · ${s.rushingYards} RUSH YDS`;
+  }
+
+  if (pos === "RB") {
+    return `${s.rushingAttempts} CAR · ${s.rushingYards} RUSH YDS · ${s.rushingTouchdowns} RUSH TD · ${s.receptions}/${s.receivingTargets} REC/TGT · ${s.receivingYards} REC YDS`;
+  }
+
+  if (
+    pos === "WR" ||
+    pos === "TE"
+  ) {
+    return `${s.receptions}/${s.receivingTargets} REC/TGT · ${s.receivingYards} REC YDS · ${s.receivingTouchdowns} REC TD · ${s.rushingYards} RUSH YDS`;
+  }
+
+  if (pos === "K") {
+    return `${s.fieldGoalsMade}/${s.fieldGoalsAttempted} FG · ${s.extraPointsMade}/${s.extraPointsAttempted} XP`;
+  }
+
+  if (pos === "DST") {
+    return `${s.dstSacks} SACK · ${s.dstInterceptions} INT · ${s.dstFumbleRecoveries} FR · ${s.dstTouchdowns} TD · ${s.dstSafeties} SAF · ${s.dstBlockedKicks} BLK · ${s.dstPointsAllowed} PA · ${s.dstYardsAllowed} YA · ${s.defensiveTotalTackles} TKL · ${s.defensiveTacklesForLoss} TFL`;
+  }
+
+  return "Final stat line unavailable";
+}
+
+export type SeasonLongRecapProps = {
   leagueId: string;
+  requestedWeek?: string;
 };
 
-export default async function SeasonLongSeasonRecap({
+export default async function SeasonLongRecap({
   leagueId,
-}: SeasonLongSeasonRecapProps) {
+  requestedWeek,
+}: SeasonLongRecapProps) {
   const access =
     await requireLeagueMember(
       leagueId
@@ -246,15 +255,52 @@ export default async function SeasonLongSeasonRecap({
       .playerSelectionMode ===
     "salary";
 
+  const activeWeekResult =
+    await supabase.rpc(
+      "get_active_season_long_week",
+      {
+        p_league_id:
+          leagueId,
+      }
+    );
+
+  const activeWeekRaw =
+    Number(
+      activeWeekResult.data ??
+        1
+    );
+
+  const activeWeek =
+    Number.isInteger(
+      activeWeekRaw
+    ) &&
+    activeWeekRaw > 0
+      ? activeWeekRaw
+      : 1;
+
+  const requestedWeekNumber =
+    Number(
+      requestedWeek ??
+        activeWeek
+    );
+
+  const week =
+    Number.isInteger(
+      requestedWeekNumber
+    ) &&
+    requestedWeekNumber >
+      0 &&
+    requestedWeekNumber <=
+      18
+      ? requestedWeekNumber
+      : activeWeek;
+
   const [
     teamsResult,
-    standingsResult,
     scoresResult,
-    lineupResult,
-    playerScoresResult,
-    nflPlayersResult,
+    standingsResult,
+    weekBadgesResult,
     trophyResult,
-    renewalResult,
   ] =
     await Promise.all([
       supabase
@@ -262,7 +308,7 @@ export default async function SeasonLongSeasonRecap({
           "fantasy_teams"
         )
         .select(
-          "id,team_name,active"
+          "id, team_name, active"
         )
         .eq(
           "league_id",
@@ -272,38 +318,14 @@ export default async function SeasonLongSeasonRecap({
           "active",
           true
         )
-        .order(
-          "team_name"
-        ),
-
-      supabase
-        .from(
-          "season_long_standings"
-        )
-        .select(`
-          fantasy_team_id,
-          total_points,
-          weeks_scored,
-          highest_week_score,
-          lowest_week_score,
-          average_week_score,
-          current_rank
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "season",
-          season
-        ),
+        .order("id"),
 
       supabase
         .from(
           "season_long_weekly_scores"
         )
         .select(
-          "fantasy_team_id,week,fantasy_points,salary_used,is_final"
+          "fantasy_team_id, week, fantasy_points, salary_used, lineup_player_count, is_final"
         )
         .eq(
           "league_id",
@@ -313,20 +335,17 @@ export default async function SeasonLongSeasonRecap({
           "season",
           season
         )
-        .order(
+        .eq(
           "week",
-          {
-            ascending:
-              true,
-          }
+          week
         ),
 
       supabase
         .from(
-          "season_long_weekly_lineups"
+          "season_long_standings"
         )
         .select(
-          "fantasy_team_id,player_id,week,nfl_game_id,salary_at_selection"
+          "fantasy_team_id, total_points, weeks_scored, current_rank"
         )
         .eq(
           "league_id",
@@ -337,33 +356,17 @@ export default async function SeasonLongSeasonRecap({
           season
         ),
 
-      supabase
-        .from(
-          "fantasy_player_game_scores"
-        )
-        .select(
-          "nfl_player_id,nfl_game_id,week,fantasy_points,is_final"
-        )
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "season",
-          season
-        )
-        .eq(
-          "season_type",
-          2
-        ),
-
-      supabase
-        .from(
-          "nfl_players"
-        )
-        .select(
-          "id,full_name,primary_position"
-        ),
+      supabase.rpc(
+        "get_season_long_week_badges",
+        {
+          p_league_id:
+            leagueId,
+          p_season:
+            season,
+          p_week:
+            week,
+        }
+      ),
 
       supabase.rpc(
         "get_season_long_trophy_case",
@@ -374,24 +377,6 @@ export default async function SeasonLongSeasonRecap({
             season,
         }
       ),
-
-      supabase
-        .from(
-          "season_long_league_renewals"
-        )
-        .select(
-          "target_league_id,target_season"
-        )
-        .eq(
-          "source_league_id",
-          leagueId
-        )
-        .eq(
-          "target_season",
-          season +
-            1
-        )
-        .maybeSingle(),
     ]);
 
   if (
@@ -399,14 +384,6 @@ export default async function SeasonLongSeasonRecap({
   ) {
     throw new Error(
       `Could not load teams: ${teamsResult.error.message}`
-    );
-  }
-
-  if (
-    standingsResult.error
-  ) {
-    throw new Error(
-      `Could not load standings: ${standingsResult.error.message}`
     );
   }
 
@@ -419,26 +396,18 @@ export default async function SeasonLongSeasonRecap({
   }
 
   if (
-    lineupResult.error
+    standingsResult.error
   ) {
     throw new Error(
-      `Could not load season lineups: ${lineupResult.error.message}`
+      `Could not load standings: ${standingsResult.error.message}`
     );
   }
 
   if (
-    playerScoresResult.error
+    weekBadgesResult.error
   ) {
     throw new Error(
-      `Could not load player scores: ${playerScoresResult.error.message}`
-    );
-  }
-
-  if (
-    nflPlayersResult.error
-  ) {
-    throw new Error(
-      `Could not load NFL players: ${nflPlayersResult.error.message}`
+      `Could not load weekly badges: ${weekBadgesResult.error.message}`
     );
   }
 
@@ -450,25 +419,11 @@ export default async function SeasonLongSeasonRecap({
     );
   }
 
-  if (
-    renewalResult.error
-  ) {
-    throw new Error(
-      `Could not load league renewal status: ${renewalResult.error.message}`
-    );
-  }
-
   const teams =
     (
       teamsResult.data ??
       []
     ) as TeamRow[];
-
-  const standings =
-    (
-      standingsResult.data ??
-      []
-    ) as StandingRow[];
 
   const weeklyScores =
     (
@@ -476,31 +431,37 @@ export default async function SeasonLongSeasonRecap({
       []
     ) as WeeklyScoreRow[];
 
-  const lineups =
+  const standings =
     (
-      lineupResult.data ??
+      standingsResult.data ??
       []
-    ) as LineupRow[];
+    ) as StandingRow[];
 
-  const playerScores =
+  const weekBadges =
     (
-      playerScoresResult.data ??
+      weekBadgesResult.data ??
       []
-    ) as PlayerScoreRow[];
+    ) as WeekBadgeRow[];
 
-  const nflPlayers =
-    (
-      nflPlayersResult.data ??
-      []
-    ) as NflPlayerRow[];
-
-  const trophies =
+  const trophyRows =
     (
       trophyResult.data ??
       []
     ) as TrophyRow[];
 
-  const standingMap =
+  const scoreMap =
+    new Map(
+      weeklyScores.map(
+        (
+          row
+        ) => [
+          row.fantasy_team_id,
+          row,
+        ]
+      )
+    );
+
+  const standingsMap =
     new Map(
       standings.map(
         (
@@ -512,136 +473,81 @@ export default async function SeasonLongSeasonRecap({
       )
     );
 
-  const scoresByTeam =
+  const badgesByTeam =
     new Map<
       number,
-      WeeklyScoreRow[]
+      WeekBadgeRow[]
     >();
 
   for (
-    const row
-    of weeklyScores
+    const badge
+    of weekBadges
   ) {
-    const list =
-      scoresByTeam.get(
-        row.fantasy_team_id
-      ) ??
-      [];
+    const current =
+      badgesByTeam.get(
+        badge.fantasy_team_id
+      ) ?? [];
 
-    list.push(
-      row
+    current.push(
+      badge
     );
 
-    scoresByTeam.set(
-      row.fantasy_team_id,
-      list
+    badgesByTeam.set(
+      badge.fantasy_team_id,
+      current
     );
   }
 
-  let summaries:
-    TeamSummary[] =
+  const lineupData =
+    await Promise.all(
       teams.map(
         (
           team
+        ) =>
+          getSeasonLongTeamLiveLineupData(
+            supabase,
+            {
+              leagueId,
+
+              fantasyTeamId:
+                team.id,
+
+              viewerFantasyTeamId:
+                access
+                  .fantasyTeam
+                  ?.id ??
+                null,
+
+              season,
+              week,
+
+              selectionMode:
+                isSalary
+                  ? "salary"
+                  : "no_salary",
+
+              activeWeek,
+            }
+          )
+      )
+    );
+
+  let recaps:
+    TeamRecap[] =
+      teams.map(
+        (
+          team,
+          index
         ) => {
+          const score =
+            scoreMap.get(
+              team.id
+            );
+
           const standing =
-            standingMap.get(
+            standingsMap.get(
               team.id
             );
-
-          const scores =
-            scoresByTeam.get(
-              team.id
-            ) ??
-            [];
-
-          const finalScores =
-            scores.filter(
-              (
-                score
-              ) =>
-                score.is_final ===
-                true
-            );
-
-          const bestWeek =
-            [
-              ...finalScores,
-            ].sort(
-              (
-                a,
-                b
-              ) =>
-                n(
-                  b.fantasy_points
-                ) -
-                n(
-                  a.fantasy_points
-                )
-            )[0] ??
-            null;
-
-          const totalSalary =
-            finalScores.reduce(
-              (
-                total,
-                row
-              ) =>
-                total +
-                n(
-                  row.salary_used
-                ),
-              0
-            );
-
-          const totalPoints =
-            n(
-              standing
-                ?.total_points
-            );
-
-          const trophyRows =
-            trophies.filter(
-              (
-                trophy
-              ) =>
-                trophy.fantasy_team_id ===
-                team.id
-            );
-
-          const trophyAwards =
-            trophyRows.reduce(
-              (
-                total,
-                trophy
-              ) =>
-                total +
-                n(
-                  trophy.award_count
-                ),
-              0
-            );
-
-          const weeklyKings =
-            trophyRows
-              .filter(
-                (
-                  trophy
-                ) =>
-                  trophy.badge_key ===
-                  "weekly_king"
-              )
-              .reduce(
-                (
-                  total,
-                  trophy
-                ) =>
-                  total +
-                  n(
-                    trophy.award_count
-                  ),
-                0
-              );
 
           return {
             teamId:
@@ -650,548 +556,165 @@ export default async function SeasonLongSeasonRecap({
             teamName:
               team.team_name,
 
-            rank:
+            weekPoints:
+              n(
+                score
+                  ?.fantasy_points ??
+                  lineupData[
+                    index
+                  ]
+                    ?.weekPoints
+              ),
+
+            projectedPoints:
+              n(
+                lineupData[
+                  index
+                ]
+                  ?.projectedPoints
+              ),
+
+            seasonPoints:
+              n(
+                standing
+                  ?.total_points
+              ),
+
+            seasonRank:
               standing
                 ?.current_rank ??
-              999,
-
-            totalPoints,
-
-            weeksScored:
-              standing
-                ?.weeks_scored ??
-              0,
-
-            highWeek:
-              n(
-                standing
-                  ?.highest_week_score
-              ),
-
-            lowWeek:
-              n(
-                standing
-                  ?.lowest_week_score
-              ),
-
-            averageWeek:
-              n(
-                standing
-                  ?.average_week_score
-              ),
-
-            bestWeekNumber:
-              bestWeek
-                ?.week ??
               null,
 
-            bestWeekPoints:
-              n(
-                bestWeek
-                  ?.fantasy_points
-              ),
-
-            salaryEfficiency:
-              isSalary &&
-              totalSalary >
-                0
-                ? totalPoints /
-                  totalSalary
+            salaryUsed:
+              isSalary
+                ? n(
+                    score
+                      ?.salary_used ??
+                      lineupData[
+                        index
+                      ]
+                        ?.salaryUsed
+                  )
                 : null,
 
-            trophyAwards,
+            lineup:
+              lineupData[
+                index
+              ],
 
-            weeklyKings,
+            badges:
+              badgesByTeam.get(
+                team.id
+              ) ??
+              [],
           };
         }
       );
 
-  summaries =
-    summaries.sort(
+  recaps =
+    recaps.sort(
       (
         a,
         b
       ) =>
-        a.rank -
-          b.rank ||
-        b.totalPoints -
-          a.totalPoints ||
+        b.weekPoints -
+          a.weekPoints ||
         a.teamName.localeCompare(
           b.teamName
         )
     );
 
-  summaries.forEach(
-    (
-      summary,
-      index
-    ) => {
-      if (
-        summary.rank ===
-        999
-      ) {
-        summary.rank =
-          index +
-          1;
-      }
-    }
-  );
-
-  const champion =
-    summaries[0] ??
-    null;
-
-  const biggestWeek =
-    [
-      ...summaries,
-    ].sort(
-      (
-        a,
-        b
-      ) =>
-        b.bestWeekPoints -
-        a.bestWeekPoints
-    )[0] ??
-    null;
-
-  const mostConsistent =
-    summaries
-      .filter(
-        (
-          summary
-        ) =>
-          summary.weeksScored >
-          1
-      )
-      .sort(
-        (
-          a,
-          b
-        ) =>
-          (
-            a.highWeek -
-            a.lowWeek
-          ) -
-          (
-            b.highWeek -
-            b.lowWeek
-          )
-      )[0] ??
-    null;
-
-  const weeklyKingLeader =
-    [
-      ...summaries,
-    ].sort(
-      (
-        a,
-        b
-      ) =>
-        b.weeklyKings -
-          a.weeklyKings ||
-        b.totalPoints -
-          a.totalPoints
-    )[0] ??
-    null;
-
-  const salaryMvp =
-    isSalary
-      ? [
-          ...summaries,
-        ]
-          .filter(
-            (
-              summary
-            ) =>
-              summary.salaryEfficiency !==
-              null
-          )
-          .sort(
-            (
-              a,
-              b
-            ) =>
-              n(
-                b.salaryEfficiency
-              ) -
-              n(
-                a.salaryEfficiency
-              )
-          )[0] ??
-        null
-      : null;
-
-  const teamNameById =
-    new Map(
-      teams.map(
-        (
-          team
-        ) => [
-          team.id,
-          team.team_name,
-        ]
-      )
-    );
-
-  const playerById =
-    new Map(
-      nflPlayers.map(
-        (
-          player
-        ) => [
-          player.id,
-          player,
-        ]
-      )
-    );
-
-  const playerScoreMap =
-    new Map<
-      string,
-      PlayerScoreRow
-    >();
-
-  for (
-    const score
-    of playerScores
-  ) {
-    const key =
-      `${score.nfl_player_id}:${score.week}:${score.nfl_game_id ?? "null"}`;
-
-    const existing =
-      playerScoreMap.get(
-        key
-      );
-
-    if (
-      !existing ||
-      n(
-        score.fantasy_points
-      ) >
-        n(
-          existing.fantasy_points
-        )
-    ) {
-      playerScoreMap.set(
-        key,
-        score
-      );
-    }
-  }
-
-  const playerPerformances:
-    PlayerSeasonPerformance[] =
-      lineups
-        .map(
-          (
-            lineup
-          ) => {
-            const player =
-              playerById.get(
-                lineup.player_id
-              );
-
-            const score =
-              playerScoreMap.get(
-                `${lineup.player_id}:${lineup.week}:${lineup.nfl_game_id ?? "null"}`
-              );
-
-            if (
-              !player ||
-              !score ||
-              score.is_final !==
-                true
-            ) {
-              return null;
-            }
-
-            return {
-              teamName:
-                teamNameById.get(
-                  lineup.fantasy_team_id
-                ) ??
-                "Unknown Team",
-
-              playerName:
-                player.full_name,
-
-              position:
-                String(
-                  player.primary_position ??
-                  ""
-                ).toUpperCase(),
-
-              week:
-                lineup.week,
-
-              fantasyPoints:
-                n(
-                  score.fantasy_points
-                ),
-
-              salary:
-                isSalary
-                  ? n(
-                      lineup.salary_at_selection
-                    )
-                  : null,
-            } satisfies PlayerSeasonPerformance;
-          }
-        )
-        .filter(
-          (
-            item
-          ): item is PlayerSeasonPerformance =>
-            item !==
-            null
-        );
-
-  function bestAt(
-    positions:
-      string[]
-  ) {
-    return (
-      playerPerformances
-        .filter(
-          (
-            performance
-          ) =>
-            positions.includes(
-              performance.position
-            )
-        )
-        .sort(
-          (
-            a,
-            b
-          ) =>
-            b.fantasyPoints -
-            a.fantasyPoints
-        )[0] ??
-      null
-    );
-  }
-
-  const positionAwards =
-    [
-      {
-        label:
-          "TOP QB",
-        emoji:
-          "🎯",
-        performance:
-          bestAt(
-            [
-              "QB",
-            ]
-          ),
-      },
-      {
-        label:
-          "TOP RB",
-        emoji:
-          "🚂",
-        performance:
-          bestAt(
-            [
-              "RB",
-            ]
-          ),
-      },
-      {
-        label:
-          "TOP WR",
-        emoji:
-          "✈️",
-        performance:
-          bestAt(
-            [
-              "WR",
-            ]
-          ),
-      },
-      {
-        label:
-          "TOP TE",
-        emoji:
-          "🧲",
-        performance:
-          bestAt(
-            [
-              "TE",
-            ]
-          ),
-      },
-      {
-        label:
-          "TOP K",
-        emoji:
-          "🥾",
-        performance:
-          bestAt(
-            [
-              "K",
-              "PK",
-            ]
-          ),
-      },
-      {
-        label:
-          "TOP DST",
-        emoji:
-          "🛡️",
-        performance:
-          bestAt(
-            [
-              "DST",
-            ]
-          ),
-      },
-    ];
-
-  const bestBargain =
-    isSalary
-      ? [
-          ...playerPerformances,
-        ]
-          .filter(
-            (
-              performance
-            ) =>
-              n(
-                performance.salary
-              ) >
-              0
-          )
-          .sort(
-            (
-              a,
-              b
-            ) =>
-              (
-                b.fantasyPoints /
-                n(
-                  b.salary
-                )
-              ) -
-              (
-                a.fantasyPoints /
-                n(
-                  a.salary
-                )
-              )
-          )[0] ??
-        null
-      : null;
-
-  const biggestDisappointment =
-    isSalary
-      ? [
-          ...playerPerformances,
-        ]
-          .filter(
-            (
-              performance
-            ) =>
-              n(
-                performance.salary
-              ) >
-              0
-          )
-          .sort(
-            (
-              a,
-              b
-            ) => {
-              const aPain =
-                n(
-                  a.salary
-                ) /
-                Math.max(
-                  a.fantasyPoints,
-                  0.25
-                );
-
-              const bPain =
-                n(
-                  b.salary
-                ) /
-                Math.max(
-                  b.fantasyPoints,
-                  0.25
-                );
-
-              return (
-                bPain -
-                aPain
-              );
-            }
-          )[0] ??
-        null
-      : null;
-
-  const finalizedWeeks =
-    new Set(
-      weeklyScores
-        .filter(
-          (
-            row
-          ) =>
-            row.is_final ===
-            true
-        )
-        .map(
-          (
-            row
-          ) =>
-            row.week
-        )
-    );
-
-  const maxFinalWeek =
-    finalizedWeeks.size >
-      0
-      ? Math.max(
-          ...Array.from(
-            finalizedWeeks
-          )
-        )
-      : 0;
-
   /*
-   * NFL regular season = 18 fantasy weeks.
-   * The season recap remains viewable before then, but is marked
-   * IN PROGRESS. Renew becomes active only after all active teams
-   * have a final Week 18 score.
+   * A recap is FINAL only when every active
+   * Season-Long team has a final weekly score row.
+   *
+   * This matches the permanent badge generator.
    */
-  const week18FinalTeams =
-    new Set(
-      weeklyScores
-        .filter(
-          (
-            row
-          ) =>
-            row.week ===
-              18 &&
-            row.is_final ===
-              true
-        )
-        .map(
-          (
-            row
-          ) =>
-            row.fantasy_team_id
-        )
-    );
-
-  const seasonComplete =
+  const isFinal =
     teams.length >
       0 &&
-    week18FinalTeams.size ===
-      teams.length;
+    weeklyScores.length ===
+      teams.length &&
+    weeklyScores.every(
+      (
+        row
+      ) =>
+        row.is_final ===
+        true
+    );
 
-  const existingRenewal =
-    renewalResult.data;
+  const champion =
+    recaps[0] ??
+    null;
+
+  const topPlayer =
+    bestPlayer(
+      recaps,
+      [
+        "QB",
+        "RB",
+        "WR",
+        "TE",
+        "K",
+        "DST",
+      ]
+    );
+
+  const weeks =
+    Array.from(
+      {
+        length: 18,
+      },
+      (
+        _,
+        index
+      ) =>
+        index + 1
+    );
+
+  const trophyTeams =
+    teams
+      .map(
+        (
+          team
+        ) => ({
+          teamId:
+            team.id,
+
+          teamName:
+            team.team_name,
+
+          badges:
+            trophyRows.filter(
+              (
+                badge
+              ) =>
+                badge.fantasy_team_id ===
+                team.id
+            ),
+        })
+      )
+      .filter(
+        (
+          team
+        ) =>
+          team.badges
+            .length >
+          0
+      );
+
+  const totalTrophyAwards =
+    trophyRows.reduce(
+      (
+        total,
+        badge
+      ) =>
+        total +
+        n(
+          badge.award_count
+        ),
+      0
+    );
 
   return (
     <main
@@ -1216,7 +739,7 @@ export default async function SeasonLongSeasonRecap({
               }
             >
               G365
-              SEASON RECAP
+              RECAP
             </p>
 
             <h1
@@ -1235,15 +758,11 @@ export default async function SeasonLongSeasonRecap({
                 styles.subtitle
               }
             >
-              {season}
+              Week {week}
               {" · "}
               {isSalary
                 ? "Salary Cap"
                 : "No Salary Cap"}
-              {" · "}
-              {seasonComplete
-                ? "FINAL"
-                : `IN PROGRESS · THROUGH WEEK ${maxFinalWeek}`}
             </p>
           </div>
 
@@ -1262,451 +781,258 @@ export default async function SeasonLongSeasonRecap({
             </Link>
 
             <Link
-              href={`/league/${leagueId}/season-long/recap`}
+              href={`/league/${leagueId}/season-long/settings`}
               style={
                 styles.secondaryButton
               }
             >
-              WEEKLY RECAP
+              SETTINGS
             </Link>
           </div>
         </header>
 
-        <section
+        <div
           style={
-            styles.championCard
+            styles.weekBar
           }
         >
-          <div
+          <span
             style={
-              styles.championIcon
+              styles.weekLabel
             }
           >
-            🏆
-          </div>
-
-          <div>
-            <p
-              style={
-                styles.sectionEyebrow
-              }
-            >
-              {seasonComplete
-                ? "SEASON CHAMPION"
-                : "CURRENT SEASON LEADER"}
-            </p>
-
-            <h2
-              style={
-                styles.championName
-              }
-            >
-              {champion
-                ?.teamName ??
-                "No standings yet"}
-            </h2>
-
-            <p
-              style={
-                styles.championDetail
-              }
-            >
-              {champion
-                ? `${points(
-                    champion.totalPoints
-                  )} total points · ${champion.weeksScored} weeks scored`
-                : "Season results will appear here."}
-            </p>
-          </div>
-        </section>
-
-        <section
-          style={
-            styles.awardGrid
-          }
-        >
-          <AwardCard
-            emoji="🔥"
-            label="BIGGEST WEEK"
-            value={
-              biggestWeek
-                ?.teamName ??
-              "—"
-            }
-            detail={
-              biggestWeek
-                ? `${points(
-                    biggestWeek.bestWeekPoints
-                  )} pts · Week ${biggestWeek.bestWeekNumber ?? "—"}`
-                : "—"
-            }
-          />
-
-          <AwardCard
-            emoji="🎯"
-            label="MOST CONSISTENT"
-            value={
-              mostConsistent
-                ?.teamName ??
-              "—"
-            }
-            detail={
-              mostConsistent
-                ? `${points(
-                    mostConsistent.highWeek -
-                      mostConsistent.lowWeek
-                  )} pt high/low spread`
-                : "—"
-            }
-          />
-
-          <AwardCard
-            emoji="👑"
-            label="WEEKLY KING LEADER"
-            value={
-              weeklyKingLeader
-                ?.teamName ??
-              "—"
-            }
-            detail={
-              weeklyKingLeader
-                ? `${weeklyKingLeader.weeklyKings} Weekly King award${weeklyKingLeader.weeklyKings === 1 ? "" : "s"}`
-                : "—"
-            }
-          />
-
-          {isSalary ? (
-            <AwardCard
-              emoji="💰"
-              label="VALUE MVP"
-              value={
-                salaryMvp
-                  ?.teamName ??
-                "—"
-              }
-              detail={
-                salaryMvp
-                  ?.salaryEfficiency !==
-                  null &&
-                salaryMvp
-                  ?.salaryEfficiency !==
-                  undefined
-                  ? `${(
-                      salaryMvp.salaryEfficiency *
-                      1000
-                    ).toFixed(
-                      3
-                    )} points per $1K`
-                  : "—"
-              }
-            />
-          ) : null}
-        </section>
-
-        <section
-          style={
-            styles.card
-          }
-        >
-          <div
-            style={
-              styles.sectionHead
-            }
-          >
-            <div>
-              <p
-                style={
-                  styles.sectionEyebrow
-                }
-              >
-                PLAYER AWARDS
-              </p>
-
-              <h2
-                style={
-                  styles.sectionTitle
-                }
-              >
-                Best Performances
-                of the Season
-              </h2>
-            </div>
-          </div>
+            WEEK
+          </span>
 
           <div
             style={
-              styles.awardGrid
+              styles.weekLinks
             }
           >
-            {positionAwards.map(
+            {weeks.map(
               (
-                award
+                item
               ) => (
-                <AwardCard
+                <Link
                   key={
-                    award.label
+                    item
                   }
-                  emoji={
-                    award.emoji
-                  }
-                  label={
-                    award.label
-                  }
-                  value={
-                    award.performance
-                      ?.playerName ??
-                    "—"
-                  }
-                  detail={
-                    award.performance
-                      ? `${award.performance.teamName} · Week ${award.performance.week} · ${points(
-                          award.performance.fantasyPoints
-                        )} pts`
-                      : "—"
-                  }
-                />
+                  href={`/league/${leagueId}/season-long/recap?week=${item}`}
+                  style={{
+                    ...styles.weekButton,
+
+                    ...(item ===
+                    week
+                      ? styles.weekButtonActive
+                      : {}),
+                  }}
+                >
+                  {item}
+                </Link>
               )
             )}
-
-            {isSalary ? (
-              <>
-                <AwardCard
-                  emoji="💎"
-                  label="BEST BARGAIN"
-                  value={
-                    bestBargain
-                      ?.playerName ??
-                    "—"
-                  }
-                  detail={
-                    bestBargain
-                      ? `${bestBargain.teamName} · Week ${bestBargain.week} · ${points(
-                          bestBargain.fantasyPoints
-                        )} pts at ${money(
-                          bestBargain.salary
-                        )}`
-                      : "—"
-                  }
-                />
-
-                <AwardCard
-                  emoji="📉"
-                  label="BIGGEST DISAPPOINTMENT"
-                  value={
-                    biggestDisappointment
-                      ?.playerName ??
-                    "—"
-                  }
-                  detail={
-                    biggestDisappointment
-                      ? `${biggestDisappointment.teamName} · Week ${biggestDisappointment.week} · ${points(
-                          biggestDisappointment.fantasyPoints
-                        )} pts at ${money(
-                          biggestDisappointment.salary
-                        )}`
-                      : "—"
-                  }
-                />
-              </>
-            ) : null}
           </div>
-        </section>
+        </div>
 
         <section
           style={
-            styles.card
+            styles.spotlightGrid
           }
         >
-          <div
+          <Spotlight
+            eyebrow={
+              isFinal
+                ? "WEEKLY CHAMPION"
+                : "CURRENT LEADER"
+            }
+            value={
+              champion
+                ?.teamName ??
+              "No scores yet"
+            }
+            detail={
+              champion
+                ? `${points(
+                    champion.weekPoints
+                  )} points`
+                : "—"
+            }
+            emoji="🏆"
+          />
+
+          <Spotlight
+            eyebrow={
+              isFinal
+                ? "PLAYER OF THE WEEK"
+                : "TOP PLAYER"
+            }
+            value={
+              topPlayer
+                ?.player
+                .fullName ??
+              "No player scores yet"
+            }
+            detail={
+              topPlayer
+                ? `${topPlayer.player.position} · ${points(
+                    topPlayer
+                      .player
+                      .fantasyPoints
+                  )} pts`
+                : "—"
+            }
+            emoji="⭐"
+          />
+
+          <Spotlight
+            eyebrow="RECAP STATUS"
+            value={
+              isFinal
+                ? "FINAL"
+                : "IN PROGRESS"
+            }
+            detail={
+              isFinal
+                ? "Permanent awards are locked into the trophy case"
+                : "Awards lock after every active team is final"
+            }
+            emoji={
+              isFinal
+                ? "🔒"
+                : "🔥"
+            }
+          />
+        </section>
+
+        {isFinal ? (
+          <section
             style={
-              styles.sectionHead
+              styles.card
             }
           >
-            <div>
-              <p
-                style={
-                  styles.sectionEyebrow
-                }
-              >
-                FINAL TABLE
-              </p>
-
-              <h2
-                style={
-                  styles.sectionTitle
-                }
-              >
-                Season
-                Standings
-              </h2>
-            </div>
-          </div>
-
-          <div
-            style={
-              styles.tableWrap
-            }
-          >
-            <table
+            <div
               style={
-                styles.table
+                styles.sectionHead
               }
             >
-              <thead>
-                <tr>
-                  <th
-                    style={
-                      styles.th
-                    }
-                  >
-                    Rank
-                  </th>
+              <div>
+                <p
+                  style={
+                    styles.sectionEyebrow
+                  }
+                >
+                  WEEK {week}
+                  {" "}
+                  HONORS
+                </p>
 
-                  <th
-                    style={
-                      styles.th
-                    }
-                  >
-                    Team
-                  </th>
+                <h2
+                  style={
+                    styles.sectionTitle
+                  }
+                >
+                  Badges
+                  Earned
+                </h2>
+              </div>
 
-                  <th
-                    style={
-                      styles.thRight
-                    }
-                  >
-                    Total
-                  </th>
+              <span
+                style={
+                  styles.countBadge
+                }
+              >
+                {
+                  weekBadges.length
+                }{" "}
+                AWARDS
+              </span>
+            </div>
 
-                  <th
-                    style={
-                      styles.thRight
-                    }
-                  >
-                    Avg
-                  </th>
-
-                  <th
-                    style={
-                      styles.thRight
-                    }
-                  >
-                    Best
-                  </th>
-
-                  <th
-                    style={
-                      styles.thRight
-                    }
-                  >
-                    Low
-                  </th>
-
-                  <th
-                    style={
-                      styles.thRight
-                    }
-                  >
-                    Awards
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {summaries.map(
+            {weekBadges.length >
+            0 ? (
+              <div
+                style={
+                  styles.badgeGrid
+                }
+              >
+                {weekBadges.map(
                   (
-                    team
+                    badge,
+                    index
                   ) => (
-                    <tr
-                      key={
-                        team.teamId
-                      }
+                    <article
+                      key={`${badge.fantasy_team_id}-${badge.badge_key}-${index}`}
+                      style={{
+                        ...styles.badgeCard,
+
+                        ...(badge.badge_category ===
+                        "INFAMY"
+                          ? styles.infamyCard
+                          : {}),
+                      }}
                     >
-                      <td
+                      <div
                         style={
-                          styles.td
+                          styles.badgeEmoji
                         }
                       >
-                        <strong>
-                          {medal(
-                            team.rank
-                          )}
-                          {" "}
-                          #
+                        {
+                          badge.badge_emoji
+                        }
+                      </div>
+
+                      <div>
+                        <span
+                          style={
+                            styles.badgeCategory
+                          }
+                        >
                           {
-                            team.rank
+                            badge.badge_category
+                          }
+                        </span>
+
+                        <h3
+                          style={
+                            styles.badgeName
+                          }
+                        >
+                          {
+                            badge.badge_name
+                          }
+                        </h3>
+
+                        <strong
+                          style={
+                            styles.badgeTeam
+                          }
+                        >
+                          {
+                            badge.team_name
                           }
                         </strong>
-                      </td>
 
-                      <td
-                        style={
-                          styles.td
-                        }
-                      >
-                        {
-                          team.teamName
-                        }
-                      </td>
-
-                      <td
-                        style={
-                          styles.tdRight
-                        }
-                      >
-                        <strong>
-                          {points(
-                            team.totalPoints
-                          )}
-                        </strong>
-                      </td>
-
-                      <td
-                        style={
-                          styles.tdRight
-                        }
-                      >
-                        {points(
-                          team.averageWeek
-                        )}
-                      </td>
-
-                      <td
-                        style={
-                          styles.tdRight
-                        }
-                      >
-                        {points(
-                          team.highWeek
-                        )}
-                      </td>
-
-                      <td
-                        style={
-                          styles.tdRight
-                        }
-                      >
-                        {points(
-                          team.lowWeek
-                        )}
-                      </td>
-
-                      <td
-                        style={
-                          styles.tdRight
-                        }
-                      >
-                        {
-                          team.trophyAwards
-                        }
-                      </td>
-                    </tr>
+                        <p
+                          style={
+                            styles.badgeDetail
+                          }
+                        >
+                          {
+                            badge.detail
+                          }
+                        </p>
+                      </div>
+                    </article>
                   )
                 )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+              </div>
+            ) : (
+              <EmptyState
+                text="The week is final, but no permanent badge rows were found. Run the badge backfill once for this already-final week."
+              />
+            )}
+          </section>
+        ) : null}
 
         <section
           style={
@@ -1724,7 +1050,8 @@ export default async function SeasonLongSeasonRecap({
                   styles.sectionEyebrow
                 }
               >
-                TROPHY ROOM
+                SEASON
+                TROPHY CASE
               </p>
 
               <h2
@@ -1732,30 +1059,63 @@ export default async function SeasonLongSeasonRecap({
                   styles.sectionTitle
                 }
               >
-                Season
+                Earned
                 Badges
               </h2>
             </div>
+
+            <span
+              style={
+                styles.countBadge
+              }
+            >
+              {
+                totalTrophyAwards
+              }{" "}
+              TOTAL AWARDS
+            </span>
           </div>
 
-          {summaries.length >
+          {trophyTeams.length >
           0 ? (
             <div
               style={
                 styles.trophyGrid
               }
             >
-              {summaries.map(
+              {trophyTeams.map(
                 (
                   team
                 ) => {
-                  const teamTrophies =
-                    trophies.filter(
+                  const achievements =
+                    team.badges.filter(
                       (
-                        trophy
+                        badge
                       ) =>
-                        trophy.fantasy_team_id ===
-                        team.teamId
+                        badge.badge_category ===
+                        "ACHIEVEMENT"
+                    );
+
+                  const infamy =
+                    team.badges.filter(
+                      (
+                        badge
+                      ) =>
+                        badge.badge_category ===
+                        "INFAMY"
+                    );
+
+                  const teamAwardCount =
+                    team.badges.reduce(
+                      (
+                        total,
+                        badge
+                      ) =>
+                        total +
+                        n(
+                          badge.award_count
+                        ),
+                      0
                     );
 
                   return (
@@ -1772,224 +1132,432 @@ export default async function SeasonLongSeasonRecap({
                           styles.trophyHeader
                         }
                       >
-                        <strong>
-                          {
-                            team.teamName
-                          }
-                        </strong>
+                        <div>
+                          <span
+                            style={
+                              styles.sectionEyebrow
+                            }
+                          >
+                            TROPHY CASE
+                          </span>
+
+                          <h3
+                            style={
+                              styles.trophyTeamName
+                            }
+                          >
+                            {
+                              team.teamName
+                            }
+                          </h3>
+                        </div>
 
                         <span
                           style={
-                            styles.countBadge
+                            styles.trophyTotal
                           }
                         >
                           {
-                            team.trophyAwards
+                            teamAwardCount
                           }{" "}
                           AWARDS
                         </span>
                       </div>
 
-                      {teamTrophies.length >
-                      0 ? (
-                        <div
-                          style={
-                            styles.trophyList
-                          }
-                        >
-                          {teamTrophies.map(
-                            (
-                              trophy
-                            ) => (
-                              <div
-                                key={`${team.teamId}-${trophy.badge_key}`}
-                                style={
-                                  styles.trophyRow
-                                }
-                              >
-                                <span
-                                  style={
-                                    styles.trophyEmoji
-                                  }
-                                >
-                                  {
-                                    trophy.badge_emoji
-                                  }
-                                </span>
+                      <TrophyGroup
+                        title="ACHIEVEMENTS"
+                        badges={
+                          achievements
+                        }
+                        emptyText="No achievement badges yet."
+                      />
 
-                                <div>
-                                  <strong>
-                                    {
-                                      trophy.badge_name
-                                    }
-                                  </strong>
-
-                                  <span
-                                    style={
-                                      styles.trophyMeta
-                                    }
-                                  >
-                                    x
-                                    {n(
-                                      trophy.award_count
-                                    )}
-                                    {" · "}
-                                    Week
-                                    {" "}
-                                    {
-                                      trophy.first_earned_week
-                                    }
-                                    {trophy.first_earned_week !==
-                                    trophy.last_earned_week
-                                      ? `–${trophy.last_earned_week}`
-                                      : ""}
-                                  </span>
-                                </div>
-                              </div>
-                            )
-                          )}
-                        </div>
-                      ) : (
-                        <p
-                          style={
-                            styles.empty
-                          }
-                        >
-                          No badges
-                          earned yet.
-                        </p>
-                      )}
+                      <TrophyGroup
+                        title="INFAMY"
+                        badges={
+                          infamy
+                        }
+                        emptyText="No infamy badges yet."
+                        infamy
+                      />
                     </article>
                   );
                 }
               )}
             </div>
           ) : (
-            <p
-              style={
-                styles.empty
-              }
-            >
-              Trophy cases will
-              appear as the season
-              progresses.
-            </p>
+            <EmptyState
+              text="Trophy cases will appear after the first fully finalized Season-Long week."
+            />
           )}
         </section>
 
         <section
           style={
-            styles.wrapCard
+            styles.card
           }
         >
-          <p
+          <div
             style={
-              styles.sectionEyebrow
+              styles.sectionHead
             }
           >
-            THAT&apos;S
-            A WRAP
-          </p>
+            <div>
+              <p
+                style={
+                  styles.sectionEyebrow
+                }
+              >
+                WEEK {week}
+              </p>
 
-          <h2
-            style={
-              styles.wrapTitle
-            }
-          >
-            {seasonComplete
-              ? `${season} Season Complete`
-              : `${season} Season In Progress`}
-          </h2>
-
-          <p
-            style={
-              styles.wrapText
-            }
-          >
-            {seasonComplete
-              ? `${champion?.teamName ?? "The champion"} finishes on top. The full G365 trophy case and final standings are locked for the season.`
-              : `This season recap updates as finalized NFL weeks are added. Final champion status and renewal unlock after Week 18 is complete.`}
-          </p>
-
-          {access.isCommissioner ? (
-            <div
-              style={
-                styles.renewBox
-              }
-            >
-              <div>
-                <strong
-                  style={
-                    styles.renewTitle
-                  }
-                >
-                  Next Season
-                </strong>
-
-                <p
-                  style={
-                    styles.renewText
-                  }
-                >
-                  Carry forward the league name, Salary/No-Salary format, lineup settings, scoring, members and team names. Weekly lineups, scores, standings, salaries and trophies start fresh.
-                </p>
-              </div>
-
-              {existingRenewal ? (
-                <Link
-                  href={`/league/${existingRenewal.target_league_id}`}
-                  style={
-                    styles.renewLink
-                  }
-                >
-                  OPEN{" "}
-                  {
-                    existingRenewal.target_season
-                  }{" "}
-                  LEAGUE
-                </Link>
-              ) : (
-                <SeasonLongRenewButton
-                  leagueId={
-                    leagueId
-                  }
-                  nextSeason={
-                    season +
-                    1
-                  }
-                  disabled={
-                    !seasonComplete
-                  }
-                />
-              )}
+              <h2
+                style={
+                  styles.sectionTitle
+                }
+              >
+                Weekly
+                Rankings
+              </h2>
             </div>
-          ) : null}
+          </div>
+
+          <div
+            style={
+              styles.rankList
+            }
+          >
+            {recaps.map(
+              (
+                team,
+                index
+              ) => (
+                <Link
+                  key={
+                    team.teamId
+                  }
+                  href={`/league/${leagueId}/teams/${team.teamId}?week=${week}`}
+                  style={
+                    styles.rankRow
+                  }
+                >
+                  <span
+                    style={
+                      index ===
+                      0
+                        ? styles.rankTop
+                        : styles.rank
+                    }
+                  >
+                    #
+                    {index +
+                      1}
+                  </span>
+
+                  <div
+                    style={
+                      styles.rankTeam
+                    }
+                  >
+                    <strong>
+                      {
+                        team.teamName
+                      }
+                    </strong>
+
+                    <span>
+                      Season #
+                      {
+                        team.seasonRank ??
+                        "—"
+                      }
+                      {" · "}
+                      {points(
+                        team.seasonPoints
+                      )}
+                      {" "}
+                      season pts
+                    </span>
+                  </div>
+
+                  {isSalary ? (
+                    <span
+                      style={
+                        styles.rankMeta
+                      }
+                    >
+                      {money(
+                        team.salaryUsed
+                      )}
+                    </span>
+                  ) : null}
+
+                  <strong
+                    style={
+                      styles.rankPoints
+                    }
+                  >
+                    {points(
+                      team.weekPoints
+                    )}
+                  </strong>
+                </Link>
+              )
+            )}
+          </div>
         </section>
+
+        <section
+          style={
+            styles.card
+          }
+        >
+          <div
+            style={
+              styles.sectionHead
+            }
+          >
+            <div>
+              <p
+                style={
+                  styles.sectionEyebrow
+                }
+              >
+                {isFinal
+                  ? "FINAL LINEUPS"
+                  : "WEEKLY LINEUPS"}
+              </p>
+
+              <h2
+                style={
+                  styles.sectionTitle
+                }
+              >
+                Team-by-Team
+                Recap
+              </h2>
+            </div>
+          </div>
+
+          <div
+            style={
+              styles.teamGrid
+            }
+          >
+            {recaps.map(
+              (
+                team
+              ) => (
+                <article
+                  key={
+                    team.teamId
+                  }
+                  style={
+                    styles.teamCard
+                  }
+                >
+                  <div
+                    style={
+                      styles.teamHead
+                    }
+                  >
+                    <div>
+                      <span
+                        style={
+                          styles.teamRank
+                        }
+                      >
+                        WEEK #
+                        {recaps.findIndex(
+                          (
+                            current
+                          ) =>
+                            current.teamId ===
+                            team.teamId
+                        ) +
+                          1}
+                      </span>
+
+                      <h3
+                        style={
+                          styles.teamName
+                        }
+                      >
+                        {
+                          team.teamName
+                        }
+                      </h3>
+                    </div>
+
+                    <div
+                      style={
+                        styles.teamScore
+                      }
+                    >
+                      {points(
+                        team.weekPoints
+                      )}
+                    </div>
+                  </div>
+
+                  {team.badges.length >
+                  0 ? (
+                    <div
+                      style={
+                        styles.miniBadges
+                      }
+                    >
+                      {team.badges.map(
+                        (
+                          badge
+                        ) => (
+                          <span
+                            key={`${team.teamId}-${badge.badge_key}`}
+                            style={
+                              styles.miniBadge
+                            }
+                          >
+                            {
+                              badge.badge_emoji
+                            }{" "}
+                            {
+                              badge.badge_name
+                            }
+                          </span>
+                        )
+                      )}
+                    </div>
+                  ) : null}
+
+                  <div
+                    style={
+                      styles.playerList
+                    }
+                  >
+                    {[
+                      ...team
+                        .lineup
+                        .players,
+                    ]
+                      .sort(
+                        (
+                          a,
+                          b
+                        ) =>
+                          POSITION_ORDER.indexOf(
+                            a.lineupSlot
+                          ) -
+                            POSITION_ORDER.indexOf(
+                              b.lineupSlot
+                            ) ||
+                          a.slotIndex -
+                            b.slotIndex
+                      )
+                      .map(
+                        (
+                          player
+                        ) => (
+                          <div
+                            key={`${player.lineupSlot}-${player.slotIndex}-${player.playerId}`}
+                            style={
+                              styles.playerRow
+                            }
+                          >
+                            <span
+                              style={
+                                styles.slot
+                              }
+                            >
+                              {
+                                player.lineupSlot
+                              }
+                            </span>
+
+                            <div
+                              style={
+                                styles.playerBody
+                              }
+                            >
+                              <strong
+                                style={
+                                  styles.playerName
+                                }
+                              >
+                                {playerLabel(
+                                  player
+                                )}
+                              </strong>
+
+                              <span
+                                style={
+                                  styles.statLine
+                                }
+                              >
+                                {statLine(
+                                  player
+                                )}
+                              </span>
+                            </div>
+
+                            {isSalary ? (
+                              <span
+                                style={
+                                  styles.playerSalary
+                                }
+                              >
+                                {money(
+                                  player.salary
+                                )}
+                              </span>
+                            ) : null}
+
+                            <strong
+                              style={
+                                styles.playerPoints
+                              }
+                            >
+                              {points(
+                                player.fantasyPoints
+                              )}
+                            </strong>
+                          </div>
+                        )
+                      )}
+                  </div>
+                </article>
+              )
+            )}
+          </div>
+        </section>
+
+        <SeasonLongSeasonSummary
+          leagueId={leagueId}
+        />
       </section>
     </main>
   );
 }
 
-function AwardCard({
-  emoji,
-  label,
+function Spotlight({
+  eyebrow,
   value,
   detail,
+  emoji,
 }: {
-  emoji: string;
-  label: string;
+  eyebrow: string;
   value: string;
   detail: string;
+  emoji: string;
 }) {
   return (
     <article
       style={
-        styles.awardCard
+        styles.spotlight
       }
     >
       <div
         style={
-          styles.awardEmoji
+          styles.spotlightEmoji
         }
       >
         {emoji}
@@ -1997,15 +1565,15 @@ function AwardCard({
 
       <span
         style={
-          styles.awardLabel
+          styles.spotlightEyebrow
         }
       >
-        {label}
+        {eyebrow}
       </span>
 
       <strong
         style={
-          styles.awardValue
+          styles.spotlightValue
         }
       >
         {value}
@@ -2013,12 +1581,141 @@ function AwardCard({
 
       <span
         style={
-          styles.awardDetail
+          styles.spotlightDetail
         }
       >
         {detail}
       </span>
     </article>
+  );
+}
+
+function TrophyGroup({
+  title,
+  badges,
+  emptyText,
+  infamy = false,
+}: {
+  title: string;
+  badges: TrophyRow[];
+  emptyText: string;
+  infamy?: boolean;
+}) {
+  return (
+    <div
+      style={
+        styles.trophyGroup
+      }
+    >
+      <div
+        style={
+          styles.trophyGroupTitle
+        }
+      >
+        {title}
+      </div>
+
+      {badges.length >
+      0 ? (
+        <div
+          style={
+            styles.trophyBadgeList
+          }
+        >
+          {badges.map(
+            (
+              badge
+            ) => (
+              <div
+                key={`${badge.fantasy_team_id}-${badge.badge_key}`}
+                style={{
+                  ...styles.trophyBadge,
+
+                  ...(infamy
+                    ? styles.trophyBadgeInfamy
+                    : {}),
+                }}
+              >
+                <span
+                  style={
+                    styles.trophyBadgeEmoji
+                  }
+                >
+                  {
+                    badge.badge_emoji
+                  }
+                </span>
+
+                <div
+                  style={
+                    styles.trophyBadgeBody
+                  }
+                >
+                  <strong>
+                    {
+                      badge.badge_name
+                    }
+                  </strong>
+
+                  <span>
+                    x
+                    {
+                      n(
+                        badge.award_count
+                      )
+                    }
+                    {" · "}
+                    Week
+                    {" "}
+                    {
+                      badge.first_earned_week
+                    }
+                    {badge.first_earned_week !==
+                    badge.last_earned_week
+                      ? `–${badge.last_earned_week}`
+                      : ""}
+                  </span>
+
+                  {badge.latest_detail ? (
+                    <small>
+                      Latest:
+                      {" "}
+                      {
+                        badge.latest_detail
+                      }
+                    </small>
+                  ) : null}
+                </div>
+              </div>
+            )
+          )}
+        </div>
+      ) : (
+        <span
+          style={
+            styles.trophyEmpty
+          }
+        >
+          {emptyText}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function EmptyState({
+  text,
+}: {
+  text: string;
+}) {
+  return (
+    <div
+      style={
+        styles.emptyState
+      }
+    >
+      {text}
+    </div>
   );
 }
 
@@ -2030,10 +1727,13 @@ const styles:
     page: {
       minHeight:
         "100vh",
+
       background:
         "#080808",
+
       color:
         "#fff",
+
       padding:
         "28px 16px 60px",
     },
@@ -2041,6 +1741,7 @@ const styles:
     shell: {
       width:
         "min(1240px,100%)",
+
       margin:
         "0 auto",
     },
@@ -2048,33 +1749,42 @@ const styles:
     hero: {
       display:
         "flex",
+
       justifyContent:
         "space-between",
+
       alignItems:
         "flex-end",
-      gap:
-        20,
+
+      gap: 20,
+
       flexWrap:
         "wrap",
-      padding:
-        26,
+
+      padding: 26,
+
       border:
         "1px solid #2c2c2c",
+
       borderRadius:
         22,
+
       background:
         "radial-gradient(circle at top right,#371307 0,transparent 34%),linear-gradient(135deg,#191919,#0e0e0e 72%)",
     },
 
     eyebrow: {
-      margin:
-        0,
+      margin: 0,
+
       color:
         "#ff6a1a",
+
       fontWeight:
         950,
+
       fontSize:
         11,
+
       letterSpacing:
         2,
     },
@@ -2082,17 +1792,20 @@ const styles:
     title: {
       margin:
         "8px 0 5px",
+
       fontSize:
         "clamp(32px,5vw,54px)",
+
       lineHeight:
         0.98,
     },
 
     subtitle: {
-      margin:
-        0,
+      margin: 0,
+
       color:
         "#aaa",
+
       fontWeight:
         700,
     },
@@ -2100,8 +1813,9 @@ const styles:
     actions: {
       display:
         "flex",
-      gap:
-        10,
+
+      gap: 10,
+
       flexWrap:
         "wrap",
     },
@@ -2109,154 +1823,223 @@ const styles:
     secondaryButton: {
       display:
         "inline-flex",
+
       alignItems:
         "center",
+
       minHeight:
         42,
+
       padding:
         "0 15px",
+
       borderRadius:
         10,
+
       border:
         "1px solid #3a3a3a",
+
       background:
         "#1b1b1b",
+
       color:
         "#fff",
+
       textDecoration:
         "none",
+
       fontSize:
         11,
+
       fontWeight:
         900,
     },
 
-    championCard: {
-      marginTop:
-        16,
+    weekBar: {
       display:
         "flex",
+
+      gap: 12,
+
       alignItems:
         "center",
-      gap:
-        18,
-      padding:
-        24,
-      border:
-        "1px solid #683519",
-      borderRadius:
-        18,
-      background:
-        "linear-gradient(135deg,#24130c,#111 70%)",
-    },
 
-    championIcon: {
-      fontSize:
-        48,
-    },
-
-    sectionEyebrow: {
       margin:
-        0,
-      color:
-        "#e34b20",
+        "14px 0",
+
+      overflowX:
+        "auto",
+
+      padding:
+        "12px 14px",
+
+      border:
+        "1px solid #272727",
+
+      borderRadius:
+        14,
+
+      background:
+        "#101010",
+    },
+
+    weekLabel: {
       fontSize:
         10,
+
       fontWeight:
         950,
+
+      color:
+        "#777",
+
       letterSpacing:
-        1.6,
+        1.5,
     },
 
-    championName: {
-      margin:
-        "4px 0",
-      fontSize:
-        "clamp(26px,4vw,42px)",
+    weekLinks: {
+      display:
+        "flex",
+
+      gap: 6,
     },
 
-    championDetail: {
-      margin:
-        0,
+    weekButton: {
+      minWidth:
+        34,
+
+      height: 32,
+
+      display:
+        "inline-flex",
+
+      alignItems:
+        "center",
+
+      justifyContent:
+        "center",
+
+      borderRadius:
+        8,
+
+      border:
+        "1px solid #2d2d2d",
+
       color:
         "#aaa",
+
+      textDecoration:
+        "none",
+
+      background:
+        "#171717",
+
+      fontWeight:
+        850,
+
       fontSize:
-        13,
+        12,
     },
 
-    awardGrid: {
+    weekButtonActive: {
+      background:
+        "linear-gradient(90deg,#a61919,#f0631d)",
+
+      color:
+        "#fff",
+
+      borderColor:
+        "#d94a1c",
+    },
+
+    spotlightGrid: {
       display:
         "grid",
+
       gridTemplateColumns:
-        "repeat(auto-fit,minmax(220px,1fr))",
-      gap:
-        12,
-      marginTop:
-        16,
+        "repeat(auto-fit,minmax(240px,1fr))",
+
+      gap: 12,
     },
 
-    awardCard: {
+    spotlight: {
       minHeight:
-        150,
-      padding:
-        18,
+        145,
+
       border:
         "1px solid #303030",
+
       borderRadius:
-        16,
+        17,
+
+      padding: 18,
+
       background:
-        "linear-gradient(145deg,#171717,#0e0e0e)",
+        "linear-gradient(145deg,#171717,#0f0f0f)",
     },
 
-    awardEmoji: {
+    spotlightEmoji: {
       fontSize:
         28,
+
       marginBottom:
         9,
     },
 
-    awardLabel: {
+    spotlightEyebrow: {
       display:
         "block",
+
       color:
         "#e34b20",
+
       fontSize:
-        9,
+        10,
+
+      letterSpacing:
+        1.5,
+
       fontWeight:
         950,
-      letterSpacing:
-        1.3,
     },
 
-    awardValue: {
+    spotlightValue: {
       display:
         "block",
+
       marginTop:
         7,
+
       fontSize:
-        19,
+        22,
     },
 
-    awardDetail: {
+    spotlightDetail: {
       display:
         "block",
+
+      color:
+        "#929292",
+
       marginTop:
         5,
-      color:
-        "#919191",
+
       fontSize:
-        11,
+        12,
     },
 
     card: {
       marginTop:
         16,
-      padding:
-        22,
+
+      padding: 22,
+
       borderRadius:
         18,
+
       border:
         "1px solid #292929",
+
       background:
         "#111",
     },
@@ -2264,274 +2047,615 @@ const styles:
     sectionHead: {
       display:
         "flex",
+
       justifyContent:
         "space-between",
+
       alignItems:
         "center",
-      gap:
-        12,
+
+      gap: 12,
+
       flexWrap:
         "wrap",
+    },
+
+    sectionEyebrow: {
+      margin: 0,
+
+      color:
+        "#e34b20",
+
+      fontSize:
+        10,
+
+      fontWeight:
+        950,
+
+      letterSpacing:
+        1.6,
     },
 
     sectionTitle: {
       margin:
         "5px 0 15px",
+
       fontSize:
         24,
     },
 
-    tableWrap: {
-      overflowX:
-        "auto",
-    },
-
-    table: {
-      width:
-        "100%",
-      minWidth:
-        760,
-      borderCollapse:
-        "collapse",
-    },
-
-    th: {
+    countBadge: {
       padding:
-        "10px 8px",
-      textAlign:
-        "left",
-      borderBottom:
-        "1px solid #333",
+        "7px 10px",
+
+      borderRadius:
+        999,
+
+      background:
+        "#2a150d",
+
+      border:
+        "1px solid #62301a",
+
       color:
-        "#777",
+        "#ffad82",
+
+      fontSize:
+        10,
+
+      fontWeight:
+        900,
+    },
+
+    badgeGrid: {
+      display:
+        "grid",
+
+      gridTemplateColumns:
+        "repeat(auto-fit,minmax(250px,1fr))",
+
+      gap: 10,
+    },
+
+    badgeCard: {
+      display:
+        "flex",
+
+      gap: 13,
+
+      padding: 15,
+
+      borderRadius:
+        14,
+
+      border:
+        "1px solid #5b351d",
+
+      background:
+        "linear-gradient(145deg,#21150f,#121212)",
+    },
+
+    infamyCard: {
+      borderColor:
+        "#4a4a4a",
+
+      background:
+        "linear-gradient(145deg,#191919,#101010)",
+    },
+
+    badgeEmoji: {
+      fontSize:
+        30,
+    },
+
+    badgeCategory: {
+      color:
+        "#8c8c8c",
+
       fontSize:
         9,
+
+      fontWeight:
+        900,
+
       letterSpacing:
-        1.2,
+        1.3,
     },
 
-    thRight: {
-      padding:
-        "10px 8px",
-      textAlign:
-        "right",
-      borderBottom:
-        "1px solid #333",
-      color:
-        "#777",
+    badgeName: {
+      margin:
+        "2px 0 3px",
+
       fontSize:
-        9,
-      letterSpacing:
-        1.2,
+        17,
     },
 
-    td: {
-      padding:
-        "13px 8px",
-      borderBottom:
-        "1px solid #232323",
+    badgeTeam: {
+      color:
+        "#ff7a38",
+
       fontSize:
         12,
     },
 
-    tdRight: {
-      padding:
-        "13px 8px",
-      borderBottom:
-        "1px solid #232323",
-      textAlign:
-        "right",
+    badgeDetail: {
+      margin:
+        "4px 0 0",
+
+      color:
+        "#989898",
+
       fontSize:
-        12,
+        11,
+
+      lineHeight:
+        1.4,
     },
 
     trophyGrid: {
       display:
         "grid",
+
       gridTemplateColumns:
-        "repeat(auto-fit,minmax(280px,1fr))",
-      gap:
-        12,
+        "repeat(auto-fit,minmax(300px,1fr))",
+
+      gap: 12,
     },
 
     trophyCard: {
-      padding:
-        15,
-      borderRadius:
-        14,
       border:
-        "1px solid #31271f",
+        "1px solid #30261f",
+
+      borderRadius:
+        16,
+
+      padding: 16,
+
       background:
-        "#0d0d0d",
+        "linear-gradient(145deg,#17120f,#0c0c0c)",
     },
 
     trophyHeader: {
       display:
         "flex",
+
       justifyContent:
         "space-between",
+
       alignItems:
-        "center",
-      gap:
-        10,
+        "flex-start",
+
+      gap: 12,
+
       paddingBottom:
-        10,
+        12,
+
       borderBottom:
-        "1px solid #242424",
+        "1px solid #2b241f",
     },
 
-    countBadge: {
+    trophyTeamName: {
+      margin:
+        "4px 0 0",
+
+      fontSize:
+        19,
+    },
+
+    trophyTotal: {
       padding:
-        "5px 8px",
+        "6px 9px",
+
       borderRadius:
         999,
-      background:
-        "#24130d",
+
       border:
         "1px solid #62301a",
+
+      background:
+        "#24130d",
+
       color:
         "#ff9a68",
+
       fontSize:
         9,
+
       fontWeight:
         950,
     },
 
-    trophyList: {
+    trophyGroup: {
+      marginTop:
+        14,
+    },
+
+    trophyGroupTitle: {
+      marginBottom:
+        8,
+
+      color:
+        "#777",
+
+      fontSize:
+        9,
+
+      fontWeight:
+        950,
+
+      letterSpacing:
+        1.5,
+    },
+
+    trophyBadgeList: {
       display:
         "grid",
-      gap:
-        7,
-      marginTop:
-        10,
+
+      gap: 7,
     },
 
-    trophyRow: {
+    trophyBadge: {
       display:
         "flex",
-      gap:
-        9,
+
+      gap: 10,
+
       alignItems:
-        "center",
-      padding:
-        "8px 0",
+        "flex-start",
+
+      border:
+        "1px solid #4f2d1b",
+
+      borderRadius:
+        12,
+
+      padding: 10,
+
+      background:
+        "#19100c",
     },
 
-    trophyEmoji: {
+    trophyBadgeInfamy: {
+      borderColor:
+        "#343434",
+
+      background:
+        "#121212",
+    },
+
+    trophyBadgeEmoji: {
       fontSize:
-        22,
+        24,
+
+      lineHeight:
+        1,
     },
 
-    trophyMeta: {
+    trophyBadgeBody: {
       display:
-        "block",
-      color:
-        "#777",
+        "flex",
+
+      flexDirection:
+        "column",
+
+      gap: 3,
+
+      minWidth: 0,
+
       fontSize:
-        10,
-      marginTop:
-        2,
+        12,
+
+      color:
+        "#fff",
     },
 
-    empty: {
+    trophyEmpty: {
       color:
-        "#777",
+        "#666",
+
       fontSize:
         11,
     },
 
-    wrapCard: {
-      marginTop:
-        16,
+    emptyState: {
       padding:
-        "28px 24px",
+        "18px 14px",
+
       border:
-        "1px solid #5b2f19",
+        "1px dashed #343434",
+
       borderRadius:
-        20,
-      background:
-        "radial-gradient(circle at 80% 20%,rgba(240,99,29,.16),transparent 30%),linear-gradient(135deg,#17100c,#0c0c0c)",
-    },
+        12,
 
-    wrapTitle: {
-      margin:
-        "6px 0",
-      fontSize:
-        "clamp(28px,4vw,44px)",
-    },
-
-    wrapText: {
-      margin:
-        0,
-      maxWidth:
-        760,
       color:
-        "#aaa",
-      lineHeight:
-        1.6,
+        "#777",
+
+      background:
+        "#0c0c0c",
+
+      fontSize:
+        12,
+    },
+
+    rankList: {
+      borderTop:
+        "1px solid #272727",
+
+      overflowX:
+        "auto",
+    },
+
+    rankRow: {
+      display:
+        "grid",
+
+      gridTemplateColumns:
+        "58px minmax(180px,1fr) auto 90px",
+
+      gap: 12,
+
+      alignItems:
+        "center",
+
+      minHeight:
+        64,
+
+      minWidth:
+        520,
+
+      borderBottom:
+        "1px solid #242424",
+
+      color:
+        "#fff",
+
+      textDecoration:
+        "none",
+    },
+
+    rank: {
+      fontSize:
+        18,
+
+      fontWeight:
+        900,
+
+      color:
+        "#777",
+    },
+
+    rankTop: {
+      fontSize:
+        22,
+
+      fontWeight:
+        950,
+
+      color:
+        "#ff6a1a",
+    },
+
+    rankTeam: {
+      display:
+        "flex",
+
+      flexDirection:
+        "column",
+
+      gap: 3,
+    },
+
+    rankMeta: {
+      color:
+        "#929292",
+
+      fontSize:
+        12,
+
+      textAlign:
+        "right",
+    },
+
+    rankPoints: {
+      textAlign:
+        "right",
+
+      fontSize:
+        20,
+    },
+
+    teamGrid: {
+      display:
+        "grid",
+
+      gap: 14,
+    },
+
+    teamCard: {
+      border:
+        "1px solid #2a2a2a",
+
+      borderRadius:
+        16,
+
+      background:
+        "#0c0c0c",
+
+      overflow:
+        "hidden",
+    },
+
+    teamHead: {
+      display:
+        "flex",
+
+      justifyContent:
+        "space-between",
+
+      alignItems:
+        "center",
+
+      gap: 12,
+
+      padding:
+        "16px 18px",
+
+      background:
+        "linear-gradient(90deg,#171717,#101010)",
+    },
+
+    teamRank: {
+      color:
+        "#e44c20",
+
+      fontSize:
+        9,
+
+      fontWeight:
+        950,
+
+      letterSpacing:
+        1.4,
+    },
+
+    teamName: {
+      margin:
+        "3px 0 0",
+
+      fontSize:
+        20,
+    },
+
+    teamScore: {
+      fontSize:
+        28,
+
+      fontWeight:
+        950,
+    },
+
+    miniBadges: {
+      display:
+        "flex",
+
+      gap: 7,
+
+      flexWrap:
+        "wrap",
+
+      padding:
+        "10px 18px 0",
+    },
+
+    miniBadge: {
+      fontSize:
+        10,
+
+      fontWeight:
+        850,
+
+      color:
+        "#ffb18d",
+
+      border:
+        "1px solid #57301e",
+
+      background:
+        "#21130d",
+
+      padding:
+        "5px 8px",
+
+      borderRadius:
+        999,
+    },
+
+    playerList: {
+      padding:
+        "10px 14px 14px",
+
+      overflowX:
+        "auto",
+    },
+
+    playerRow: {
+      display:
+        "grid",
+
+      gridTemplateColumns:
+        "70px minmax(240px,1fr) 90px 70px",
+
+      gap: 10,
+
+      alignItems:
+        "center",
+
+      minWidth:
+        520,
+
+      padding:
+        "11px 4px",
+
+      borderBottom:
+        "1px solid #222",
+    },
+
+    slot: {
+      color:
+        "#ff6a1a",
+
+      fontSize:
+        10,
+
+      fontWeight:
+        950,
+    },
+
+    playerBody: {
+      minWidth: 0,
+    },
+
+    playerName: {
+      display:
+        "block",
+
       fontSize:
         13,
     },
 
-    renewBox: {
+    statLine: {
+      display:
+        "block",
+
       marginTop:
-        22,
-      paddingTop:
-        18,
-      borderTop:
-        "1px solid #3a281f",
-      display:
-        "flex",
-      justifyContent:
-        "space-between",
-      gap:
-        18,
-      alignItems:
-        "center",
-      flexWrap:
-        "wrap",
-    },
+        4,
 
-    renewTitle: {
-      fontSize:
-        17,
-    },
-
-    renewText: {
-      margin:
-        "5px 0 0",
-      maxWidth:
-        760,
       color:
-        "#8f8f8f",
+        "#898989",
+
       fontSize:
-        11,
+        10,
+
       lineHeight:
-        1.5,
+        1.35,
     },
 
-    renewLink: {
-      minHeight:
-        46,
-      padding:
-        "0 18px",
-      display:
-        "inline-flex",
-      alignItems:
-        "center",
-      borderRadius:
-        12,
-      border:
-        "1px solid #e85c1b",
-      background:
-        "linear-gradient(90deg,#a61919,#f0631d)",
+    playerSalary: {
       color:
-        "#fff",
-      textDecoration:
-        "none",
-      fontWeight:
-        950,
+        "#999",
+
       fontSize:
         11,
+
+      textAlign:
+        "right",
+    },
+
+    playerPoints: {
+      textAlign:
+        "right",
+
+      fontSize:
+        15,
     },
   };

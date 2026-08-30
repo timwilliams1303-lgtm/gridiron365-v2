@@ -214,13 +214,13 @@ function medal(
   return "🏈";
 }
 
-export type SeasonLongSeasonRecapProps = {
+export type SeasonLongSeasonSummaryProps = {
   leagueId: string;
 };
 
-export default async function SeasonLongSeasonRecap({
+export default async function SeasonLongSeasonSummary({
   leagueId,
-}: SeasonLongSeasonRecapProps) {
+}: SeasonLongSeasonSummaryProps) {
   const access =
     await requireLeagueMember(
       leagueId
@@ -1193,690 +1193,535 @@ export default async function SeasonLongSeasonRecap({
   const existingRenewal =
     renewalResult.data;
 
+  if (
+    !seasonComplete
+  ) {
+    return null;
+  }
+
   return (
-    <main
-      style={
-        styles.page
-      }
+    <section
+      style={{
+        marginTop: 18,
+      }}
     >
       <section
         style={
-          styles.shell
+          styles.wrapCard
         }
       >
-        <header
+        <p
           style={
-            styles.hero
+            styles.sectionEyebrow
           }
         >
-          <div>
-            <p
-              style={
-                styles.eyebrow
-              }
-            >
-              G365
-              SEASON RECAP
-            </p>
+          G365 SEASON SUMMARY
+        </p>
 
-            <h1
-              style={
-                styles.title
-              }
-            >
-              {
-                access.league
-                  .name
-              }
-            </h1>
-
-            <p
-              style={
-                styles.subtitle
-              }
-            >
-              {season}
-              {" · "}
-              {isSalary
-                ? "Salary Cap"
-                : "No Salary Cap"}
-              {" · "}
-              {seasonComplete
-                ? "FINAL"
-                : `IN PROGRESS · THROUGH WEEK ${maxFinalWeek}`}
-            </p>
-          </div>
-
-          <div
-            style={
-              styles.actions
-            }
-          >
-            <Link
-              href={`/league/${leagueId}`}
-              style={
-                styles.secondaryButton
-              }
-            >
-              LEAGUE HOME
-            </Link>
-
-            <Link
-              href={`/league/${leagueId}/season-long/recap`}
-              style={
-                styles.secondaryButton
-              }
-            >
-              WEEKLY RECAP
-            </Link>
-          </div>
-        </header>
-
-        <section
+        <h2
           style={
-            styles.championCard
+            styles.wrapTitle
           }
         >
-          <div
+          {season} Season Complete
+        </h2>
+
+        <p
+          style={
+            styles.wrapText
+          }
+        >
+          The final standings, season awards, player performances and trophy case are now locked.
+        </p>
+      </section>
+
+      <section
+        style={
+          styles.championCard
+        }
+      >
+        <div
+          style={
+            styles.championIcon
+          }
+        >
+          🏆
+        </div>
+
+        <div>
+          <p
             style={
-              styles.championIcon
+              styles.sectionEyebrow
             }
           >
-            🏆
-          </div>
+            SEASON CHAMPION
+          </p>
 
+          <h2
+            style={
+              styles.championName
+            }
+          >
+            {champion
+              ?.teamName ??
+              "No champion"}
+          </h2>
+
+          <p
+            style={
+              styles.championDetail
+            }
+          >
+            {champion
+              ? `${points(
+                  champion.totalPoints
+                )} total points · ${champion.weeksScored} weeks scored`
+              : "—"}
+          </p>
+        </div>
+      </section>
+
+      <section
+        style={
+          styles.awardGrid
+        }
+      >
+        <AwardCard
+          emoji="🔥"
+          label="BIGGEST WEEK"
+          value={
+            biggestWeek
+              ?.teamName ??
+            "—"
+          }
+          detail={
+            biggestWeek
+              ? `${points(
+                  biggestWeek.bestWeekPoints
+                )} pts · Week ${biggestWeek.bestWeekNumber ?? "—"}`
+              : "—"
+          }
+        />
+
+        <AwardCard
+          emoji="🎯"
+          label="MOST CONSISTENT"
+          value={
+            mostConsistent
+              ?.teamName ??
+            "—"
+          }
+          detail={
+            mostConsistent
+              ? `${points(
+                  mostConsistent.highWeek -
+                    mostConsistent.lowWeek
+                )} pt high/low spread`
+              : "—"
+          }
+        />
+
+        <AwardCard
+          emoji="👑"
+          label="WEEKLY KING LEADER"
+          value={
+            weeklyKingLeader
+              ?.teamName ??
+            "—"
+          }
+          detail={
+            weeklyKingLeader
+              ? `${weeklyKingLeader.weeklyKings} Weekly King award${weeklyKingLeader.weeklyKings === 1 ? "" : "s"}`
+              : "—"
+          }
+        />
+
+        {isSalary ? (
+          <AwardCard
+            emoji="💰"
+            label="VALUE MVP"
+            value={
+              salaryMvp
+                ?.teamName ??
+              "—"
+            }
+            detail={
+              salaryMvp
+                ?.salaryEfficiency !==
+                null &&
+              salaryMvp
+                ?.salaryEfficiency !==
+                undefined
+                ? `${(
+                    salaryMvp.salaryEfficiency *
+                    1000
+                  ).toFixed(
+                    3
+                  )} points per $1K`
+                : "—"
+            }
+          />
+        ) : null}
+      </section>
+
+      <section
+        style={
+          styles.card
+        }
+      >
+        <div
+          style={
+            styles.sectionHead
+          }
+        >
           <div>
             <p
               style={
                 styles.sectionEyebrow
               }
             >
-              {seasonComplete
-                ? "SEASON CHAMPION"
-                : "CURRENT SEASON LEADER"}
+              PLAYER AWARDS
             </p>
 
             <h2
               style={
-                styles.championName
+                styles.sectionTitle
               }
             >
-              {champion
-                ?.teamName ??
-                "No standings yet"}
+              Best Performances of the Season
             </h2>
-
-            <p
-              style={
-                styles.championDetail
-              }
-            >
-              {champion
-                ? `${points(
-                    champion.totalPoints
-                  )} total points · ${champion.weeksScored} weeks scored`
-                : "Season results will appear here."}
-            </p>
           </div>
-        </section>
+        </div>
 
-        <section
+        <div
           style={
             styles.awardGrid
           }
         >
-          <AwardCard
-            emoji="🔥"
-            label="BIGGEST WEEK"
-            value={
-              biggestWeek
-                ?.teamName ??
-              "—"
-            }
-            detail={
-              biggestWeek
-                ? `${points(
-                    biggestWeek.bestWeekPoints
-                  )} pts · Week ${biggestWeek.bestWeekNumber ?? "—"}`
-                : "—"
-            }
-          />
-
-          <AwardCard
-            emoji="🎯"
-            label="MOST CONSISTENT"
-            value={
-              mostConsistent
-                ?.teamName ??
-              "—"
-            }
-            detail={
-              mostConsistent
-                ? `${points(
-                    mostConsistent.highWeek -
-                      mostConsistent.lowWeek
-                  )} pt high/low spread`
-                : "—"
-            }
-          />
-
-          <AwardCard
-            emoji="👑"
-            label="WEEKLY KING LEADER"
-            value={
-              weeklyKingLeader
-                ?.teamName ??
-              "—"
-            }
-            detail={
-              weeklyKingLeader
-                ? `${weeklyKingLeader.weeklyKings} Weekly King award${weeklyKingLeader.weeklyKings === 1 ? "" : "s"}`
-                : "—"
-            }
-          />
+          {positionAwards.map(
+            (
+              award
+            ) => (
+              <AwardCard
+                key={
+                  award.label
+                }
+                emoji={
+                  award.emoji
+                }
+                label={
+                  award.label
+                }
+                value={
+                  award.performance
+                    ?.playerName ??
+                  "—"
+                }
+                detail={
+                  award.performance
+                    ? `${award.performance.teamName} · Week ${award.performance.week} · ${points(
+                        award.performance.fantasyPoints
+                      )} pts`
+                    : "—"
+                }
+              />
+            )
+          )}
 
           {isSalary ? (
-            <AwardCard
-              emoji="💰"
-              label="VALUE MVP"
-              value={
-                salaryMvp
-                  ?.teamName ??
-                "—"
-              }
-              detail={
-                salaryMvp
-                  ?.salaryEfficiency !==
-                  null &&
-                salaryMvp
-                  ?.salaryEfficiency !==
-                  undefined
-                  ? `${(
-                      salaryMvp.salaryEfficiency *
-                      1000
-                    ).toFixed(
-                      3
-                    )} points per $1K`
-                  : "—"
-              }
-            />
+            <>
+              <AwardCard
+                emoji="💎"
+                label="BEST BARGAIN"
+                value={
+                  bestBargain
+                    ?.playerName ??
+                  "—"
+                }
+                detail={
+                  bestBargain
+                    ? `${bestBargain.teamName} · Week ${bestBargain.week} · ${points(
+                        bestBargain.fantasyPoints
+                      )} pts at ${money(
+                        bestBargain.salary
+                      )}`
+                    : "—"
+                }
+              />
+
+              <AwardCard
+                emoji="📉"
+                label="BIGGEST DISAPPOINTMENT"
+                value={
+                  biggestDisappointment
+                    ?.playerName ??
+                  "—"
+                }
+                detail={
+                  biggestDisappointment
+                    ? `${biggestDisappointment.teamName} · Week ${biggestDisappointment.week} · ${points(
+                        biggestDisappointment.fantasyPoints
+                      )} pts at ${money(
+                        biggestDisappointment.salary
+                      )}`
+                    : "—"
+                }
+              />
+            </>
           ) : null}
-        </section>
+        </div>
+      </section>
 
-        <section
+      <section
+        style={
+          styles.card
+        }
+      >
+        <div
           style={
-            styles.card
+            styles.sectionHead
           }
         >
-          <div
-            style={
-              styles.sectionHead
-            }
-          >
-            <div>
-              <p
-                style={
-                  styles.sectionEyebrow
-                }
-              >
-                PLAYER AWARDS
-              </p>
-
-              <h2
-                style={
-                  styles.sectionTitle
-                }
-              >
-                Best Performances
-                of the Season
-              </h2>
-            </div>
-          </div>
-
-          <div
-            style={
-              styles.awardGrid
-            }
-          >
-            {positionAwards.map(
-              (
-                award
-              ) => (
-                <AwardCard
-                  key={
-                    award.label
-                  }
-                  emoji={
-                    award.emoji
-                  }
-                  label={
-                    award.label
-                  }
-                  value={
-                    award.performance
-                      ?.playerName ??
-                    "—"
-                  }
-                  detail={
-                    award.performance
-                      ? `${award.performance.teamName} · Week ${award.performance.week} · ${points(
-                          award.performance.fantasyPoints
-                        )} pts`
-                      : "—"
-                  }
-                />
-              )
-            )}
-
-            {isSalary ? (
-              <>
-                <AwardCard
-                  emoji="💎"
-                  label="BEST BARGAIN"
-                  value={
-                    bestBargain
-                      ?.playerName ??
-                    "—"
-                  }
-                  detail={
-                    bestBargain
-                      ? `${bestBargain.teamName} · Week ${bestBargain.week} · ${points(
-                          bestBargain.fantasyPoints
-                        )} pts at ${money(
-                          bestBargain.salary
-                        )}`
-                      : "—"
-                  }
-                />
-
-                <AwardCard
-                  emoji="📉"
-                  label="BIGGEST DISAPPOINTMENT"
-                  value={
-                    biggestDisappointment
-                      ?.playerName ??
-                    "—"
-                  }
-                  detail={
-                    biggestDisappointment
-                      ? `${biggestDisappointment.teamName} · Week ${biggestDisappointment.week} · ${points(
-                          biggestDisappointment.fantasyPoints
-                        )} pts at ${money(
-                          biggestDisappointment.salary
-                        )}`
-                      : "—"
-                  }
-                />
-              </>
-            ) : null}
-          </div>
-        </section>
-
-        <section
-          style={
-            styles.card
-          }
-        >
-          <div
-            style={
-              styles.sectionHead
-            }
-          >
-            <div>
-              <p
-                style={
-                  styles.sectionEyebrow
-                }
-              >
-                FINAL TABLE
-              </p>
-
-              <h2
-                style={
-                  styles.sectionTitle
-                }
-              >
-                Season
-                Standings
-              </h2>
-            </div>
-          </div>
-
-          <div
-            style={
-              styles.tableWrap
-            }
-          >
-            <table
+          <div>
+            <p
               style={
-                styles.table
+                styles.sectionEyebrow
               }
             >
-              <thead>
-                <tr>
-                  <th
-                    style={
-                      styles.th
-                    }
-                  >
-                    Rank
-                  </th>
+              FINAL TABLE
+            </p>
 
-                  <th
-                    style={
-                      styles.th
-                    }
-                  >
-                    Team
-                  </th>
-
-                  <th
-                    style={
-                      styles.thRight
-                    }
-                  >
-                    Total
-                  </th>
-
-                  <th
-                    style={
-                      styles.thRight
-                    }
-                  >
-                    Avg
-                  </th>
-
-                  <th
-                    style={
-                      styles.thRight
-                    }
-                  >
-                    Best
-                  </th>
-
-                  <th
-                    style={
-                      styles.thRight
-                    }
-                  >
-                    Low
-                  </th>
-
-                  <th
-                    style={
-                      styles.thRight
-                    }
-                  >
-                    Awards
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {summaries.map(
-                  (
-                    team
-                  ) => (
-                    <tr
-                      key={
-                        team.teamId
-                      }
-                    >
-                      <td
-                        style={
-                          styles.td
-                        }
-                      >
-                        <strong>
-                          {medal(
-                            team.rank
-                          )}
-                          {" "}
-                          #
-                          {
-                            team.rank
-                          }
-                        </strong>
-                      </td>
-
-                      <td
-                        style={
-                          styles.td
-                        }
-                      >
-                        {
-                          team.teamName
-                        }
-                      </td>
-
-                      <td
-                        style={
-                          styles.tdRight
-                        }
-                      >
-                        <strong>
-                          {points(
-                            team.totalPoints
-                          )}
-                        </strong>
-                      </td>
-
-                      <td
-                        style={
-                          styles.tdRight
-                        }
-                      >
-                        {points(
-                          team.averageWeek
-                        )}
-                      </td>
-
-                      <td
-                        style={
-                          styles.tdRight
-                        }
-                      >
-                        {points(
-                          team.highWeek
-                        )}
-                      </td>
-
-                      <td
-                        style={
-                          styles.tdRight
-                        }
-                      >
-                        {points(
-                          team.lowWeek
-                        )}
-                      </td>
-
-                      <td
-                        style={
-                          styles.tdRight
-                        }
-                      >
-                        {
-                          team.trophyAwards
-                        }
-                      </td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section
-          style={
-            styles.card
-          }
-        >
-          <div
-            style={
-              styles.sectionHead
-            }
-          >
-            <div>
-              <p
-                style={
-                  styles.sectionEyebrow
-                }
-              >
-                TROPHY ROOM
-              </p>
-
-              <h2
-                style={
-                  styles.sectionTitle
-                }
-              >
-                Season
-                Badges
-              </h2>
-            </div>
-          </div>
-
-          {summaries.length >
-          0 ? (
-            <div
+            <h2
               style={
-                styles.trophyGrid
+                styles.sectionTitle
               }
             >
+              Final Standings
+            </h2>
+          </div>
+        </div>
+
+        <div
+          style={
+            styles.tableWrap
+          }
+        >
+          <table
+            style={
+              styles.table
+            }
+          >
+            <thead>
+              <tr>
+                <th style={styles.th}>Rank</th>
+                <th style={styles.th}>Team</th>
+                <th style={styles.thRight}>Total</th>
+                <th style={styles.thRight}>Avg</th>
+                <th style={styles.thRight}>Best</th>
+                <th style={styles.thRight}>Low</th>
+                <th style={styles.thRight}>Awards</th>
+              </tr>
+            </thead>
+
+            <tbody>
               {summaries.map(
                 (
                   team
-                ) => {
-                  const teamTrophies =
-                    trophies.filter(
-                      (
-                        trophy
-                      ) =>
-                        trophy.fantasy_team_id ===
-                        team.teamId
-                    );
+                ) => (
+                  <tr
+                    key={
+                      team.teamId
+                    }
+                  >
+                    <td style={styles.td}>
+                      <strong>
+                        {medal(
+                          team.rank
+                        )}{" "}
+                        #{team.rank}
+                      </strong>
+                    </td>
 
-                  return (
-                    <article
-                      key={
-                        team.teamId
-                      }
-                      style={
-                        styles.trophyCard
-                      }
-                    >
-                      <div
-                        style={
-                          styles.trophyHeader
-                        }
-                      >
-                        <strong>
-                          {
-                            team.teamName
-                          }
-                        </strong>
+                    <td style={styles.td}>
+                      {team.teamName}
+                    </td>
 
-                        <span
-                          style={
-                            styles.countBadge
-                          }
-                        >
-                          {
-                            team.trophyAwards
-                          }{" "}
-                          AWARDS
-                        </span>
-                      </div>
+                    <td style={styles.tdRight}>
+                      <strong>
+                        {points(
+                          team.totalPoints
+                        )}
+                      </strong>
+                    </td>
 
-                      {teamTrophies.length >
-                      0 ? (
-                        <div
-                          style={
-                            styles.trophyList
-                          }
-                        >
-                          {teamTrophies.map(
-                            (
-                              trophy
-                            ) => (
-                              <div
-                                key={`${team.teamId}-${trophy.badge_key}`}
-                                style={
-                                  styles.trophyRow
-                                }
-                              >
-                                <span
-                                  style={
-                                    styles.trophyEmoji
-                                  }
-                                >
-                                  {
-                                    trophy.badge_emoji
-                                  }
-                                </span>
-
-                                <div>
-                                  <strong>
-                                    {
-                                      trophy.badge_name
-                                    }
-                                  </strong>
-
-                                  <span
-                                    style={
-                                      styles.trophyMeta
-                                    }
-                                  >
-                                    x
-                                    {n(
-                                      trophy.award_count
-                                    )}
-                                    {" · "}
-                                    Week
-                                    {" "}
-                                    {
-                                      trophy.first_earned_week
-                                    }
-                                    {trophy.first_earned_week !==
-                                    trophy.last_earned_week
-                                      ? `–${trophy.last_earned_week}`
-                                      : ""}
-                                  </span>
-                                </div>
-                              </div>
-                            )
-                          )}
-                        </div>
-                      ) : (
-                        <p
-                          style={
-                            styles.empty
-                          }
-                        >
-                          No badges
-                          earned yet.
-                        </p>
+                    <td style={styles.tdRight}>
+                      {points(
+                        team.averageWeek
                       )}
-                    </article>
-                  );
-                }
+                    </td>
+
+                    <td style={styles.tdRight}>
+                      {points(
+                        team.highWeek
+                      )}
+                    </td>
+
+                    <td style={styles.tdRight}>
+                      {points(
+                        team.lowWeek
+                      )}
+                    </td>
+
+                    <td style={styles.tdRight}>
+                      {team.trophyAwards}
+                    </td>
+                  </tr>
+                )
               )}
-            </div>
-          ) : (
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section
+        style={
+          styles.card
+        }
+      >
+        <div
+          style={
+            styles.sectionHead
+          }
+        >
+          <div>
             <p
               style={
-                styles.empty
+                styles.sectionEyebrow
               }
             >
-              Trophy cases will
-              appear as the season
-              progresses.
+              TROPHY ROOM
             </p>
-          )}
-        </section>
 
+            <h2
+              style={
+                styles.sectionTitle
+              }
+            >
+              Final Trophy Case
+            </h2>
+          </div>
+        </div>
+
+        <div
+          style={
+            styles.trophyGrid
+          }
+        >
+          {summaries.map(
+            (
+              team
+            ) => {
+              const teamTrophies =
+                trophies.filter(
+                  (
+                    trophy
+                  ) =>
+                    trophy.fantasy_team_id ===
+                    team.teamId
+                );
+
+              return (
+                <article
+                  key={
+                    team.teamId
+                  }
+                  style={
+                    styles.trophyCard
+                  }
+                >
+                  <div
+                    style={
+                      styles.trophyHeader
+                    }
+                  >
+                    <strong>
+                      {team.teamName}
+                    </strong>
+
+                    <span
+                      style={
+                        styles.countBadge
+                      }
+                    >
+                      {team.trophyAwards} AWARDS
+                    </span>
+                  </div>
+
+                  {teamTrophies.length >
+                  0 ? (
+                    <div
+                      style={
+                        styles.trophyList
+                      }
+                    >
+                      {teamTrophies.map(
+                        (
+                          trophy
+                        ) => (
+                          <div
+                            key={`${team.teamId}-${trophy.badge_key}`}
+                            style={
+                              styles.trophyRow
+                            }
+                          >
+                            <span
+                              style={
+                                styles.trophyEmoji
+                              }
+                            >
+                              {trophy.badge_emoji}
+                            </span>
+
+                            <div>
+                              <strong>
+                                {trophy.badge_name}
+                              </strong>
+
+                              <span
+                                style={
+                                  styles.trophyMeta
+                                }
+                              >
+                                x{n(
+                                  trophy.award_count
+                                )} · Week {trophy.first_earned_week}
+                                {trophy.first_earned_week !==
+                                trophy.last_earned_week
+                                  ? `–${trophy.last_earned_week}`
+                                  : ""}
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  ) : (
+                    <p
+                      style={
+                        styles.empty
+                      }
+                    >
+                      No badges earned.
+                    </p>
+                  )}
+                </article>
+              );
+            }
+          )}
+        </div>
+      </section>
+
+      {access.isCommissioner ? (
         <section
           style={
             styles.wrapCard
@@ -1887,8 +1732,7 @@ export default async function SeasonLongSeasonRecap({
               styles.sectionEyebrow
             }
           >
-            THAT&apos;S
-            A WRAP
+            COMMISSIONER
           </p>
 
           <h2
@@ -1896,9 +1740,7 @@ export default async function SeasonLongSeasonRecap({
               styles.wrapTitle
             }
           >
-            {seasonComplete
-              ? `${season} Season Complete`
-              : `${season} Season In Progress`}
+            Renew League
           </h2>
 
           <p
@@ -1906,67 +1748,38 @@ export default async function SeasonLongSeasonRecap({
               styles.wrapText
             }
           >
-            {seasonComplete
-              ? `${champion?.teamName ?? "The champion"} finishes on top. The full G365 trophy case and final standings are locked for the season.`
-              : `This season recap updates as finalized NFL weeks are added. Final champion status and renewal unlock after Week 18 is complete.`}
+            Carry forward league settings, scoring, members and team names. Weekly lineups, scores, standings, salaries and trophies start fresh.
           </p>
 
-          {access.isCommissioner ? (
-            <div
-              style={
-                styles.renewBox
-              }
-            >
-              <div>
-                <strong
-                  style={
-                    styles.renewTitle
-                  }
-                >
-                  Next Season
-                </strong>
-
-                <p
-                  style={
-                    styles.renewText
-                  }
-                >
-                  Carry forward the league name, Salary/No-Salary format, lineup settings, scoring, members and team names. Weekly lineups, scores, standings, salaries and trophies start fresh.
-                </p>
-              </div>
-
-              {existingRenewal ? (
-                <Link
-                  href={`/league/${existingRenewal.target_league_id}`}
-                  style={
-                    styles.renewLink
-                  }
-                >
-                  OPEN{" "}
-                  {
-                    existingRenewal.target_season
-                  }{" "}
-                  LEAGUE
-                </Link>
-              ) : (
-                <SeasonLongRenewButton
-                  leagueId={
-                    leagueId
-                  }
-                  nextSeason={
-                    season +
-                    1
-                  }
-                  disabled={
-                    !seasonComplete
-                  }
-                />
-              )}
-            </div>
-          ) : null}
+          <div
+            style={
+              styles.renewBox
+            }
+          >
+            {existingRenewal ? (
+              <Link
+                href={`/league/${existingRenewal.target_league_id}`}
+                style={
+                  styles.renewLink
+                }
+              >
+                OPEN {existingRenewal.target_season} LEAGUE
+              </Link>
+            ) : (
+              <SeasonLongRenewButton
+                leagueId={
+                  leagueId
+                }
+                nextSeason={
+                  season +
+                  1
+                }
+              />
+            )}
+          </div>
         </section>
-      </section>
-    </main>
+      ) : null}
+    </section>
   );
 }
 

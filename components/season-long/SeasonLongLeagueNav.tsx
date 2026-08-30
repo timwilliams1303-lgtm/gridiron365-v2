@@ -54,15 +54,9 @@ export default function SeasonLongLeagueNav({
       },
       {
         label:
-          "Weekly Recap",
+          "Recap",
         href:
           `/league/${leagueId}/season-long/recap`,
-      },
-      {
-        label:
-          "Season Recap",
-        href:
-          `/league/${leagueId}/season-long/season-recap`,
       },
       {
         label:

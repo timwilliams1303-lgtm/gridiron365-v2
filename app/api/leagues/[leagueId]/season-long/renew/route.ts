@@ -198,59 +198,9 @@ async function requireCommissioner(
     };
   }
 
-  let isCommissioner =
+  const isCommissioner =
     league.commissioner_user_id ===
     userData.user.id;
-
-  if (
-    !isCommissioner
-  ) {
-    const {
-      data:
-        membership,
-      error:
-        membershipError,
-    } =
-      await admin
-        .from(
-          "league_members"
-        )
-        .select(
-          "role"
-        )
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "user_id",
-          userData.user.id
-        )
-        .maybeSingle();
-
-    if (
-      membershipError
-    ) {
-      return {
-        error:
-          membershipError.message,
-        status:
-          500,
-        userId:
-          null,
-        league:
-          null,
-        admin:
-          null,
-      };
-    }
-
-    isCommissioner =
-      membership?.role ===
-        "commissioner" ||
-      membership?.role ===
-        "co_commissioner";
-  }
 
   if (
     !isCommissioner
