@@ -200,6 +200,32 @@ export default function SignupPage() {
         );
       }
 
+      /*
+        With Supabase Confirm email disabled,
+        signUp returns a live session immediately.
+
+        For a league invitation, nextPath is
+        /invite/[token]. Returning there lets the
+        invitation page automatically accept the
+        invitation and then send the owner to
+        /my-leagues.
+
+        For a normal signup, nextPath defaults to
+        /my-leagues.
+      */
+      if (data.session) {
+        window.location.replace(
+          nextPath
+        );
+
+        return;
+      }
+
+      /*
+        Defensive fallback: if Supabase ever does
+        not return a session, preserve the intended
+        destination through the login page.
+      */
       const loginUrl =
         `/auth/login?next=${encodeURIComponent(
           nextPath
