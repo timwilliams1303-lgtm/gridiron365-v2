@@ -159,9 +159,10 @@ type Member = {
 };
 
 type Profile = {
-  id: string;
+  user_id: string;
+  first_name: string | null;
+  last_name: string | null;
   display_name: string | null;
-  email: string | null;
 };
 
 type RosterRow = {
@@ -663,25 +664,30 @@ export default function TraditionalCommissioner({
 
     const loadedTeams = (results[9].data ?? []) as Team[];
     const loadedMembers = (results[10].data ?? []) as Member[];
-    const memberUserIds = Array.from(
-      new Set(loadedMembers.map((member) => member.user_id).filter(Boolean))
+    const profileUserIds = Array.from(
+      new Set(
+        [
+          ...loadedMembers.map((member) => member.user_id),
+          ...loadedTeams
+            .map((team) => team.owner_id)
+            .filter((ownerId): ownerId is string => Boolean(ownerId)),
+        ].filter(Boolean)
+      )
     );
 
     let loadedProfiles: Profile[] = [];
 
-    if (memberUserIds.length > 0) {
+    if (profileUserIds.length > 0) {
       const profileResult = await supabase
         .from("profiles")
-        .select("id,display_name,email")
-        .in("id", memberUserIds);
+        .select("user_id,first_name,last_name,display_name")
+        .in("user_id", profileUserIds);
 
       if (profileResult.error) {
-        setError(profileResult.error.message);
-        if (showLoading) setLoading(false);
-        return;
+        console.error("Failed to load league profiles:", profileResult.error);
+      } else {
+        loadedProfiles = (profileResult.data ?? []) as Profile[];
       }
-
-      loadedProfiles = (profileResult.data ?? []) as Profile[];
     }
 
     setTeams(loadedTeams);
@@ -803,8 +809,29 @@ export default function TraditionalCommissioner({
   );
 
   const profileByUserId = useMemo(
-    () => new Map(profiles.map((profile) => [profile.id, profile] as const)),
+    () => new Map(profiles.map((profile) => [profile.user_id, profile] as const)),
     [profiles]
+  );
+
+  const profileName = useCallback(
+    (userId: string | null | undefined) => {
+      if (!userId) return "";
+
+      const profile = profileByUserId.get(userId);
+      const displayName = profile?.display_name?.trim();
+
+      if (displayName) return displayName;
+
+      const fullName = [
+        profile?.first_name?.trim(),
+        profile?.last_name?.trim(),
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      return fullName || shortId(userId);
+    },
+    [profileByUserId]
   );
 
   const rostered = useMemo(
@@ -1970,15 +1997,18 @@ export default function TraditionalCommissioner({
                                       key={member.id}
                                       value={member.user_id}
                                     >
-                                      {profileByUserId.get(member.user_id)?.display_name?.trim() ||
-                                        profileByUserId.get(member.user_id)?.email?.trim() ||
-                                        shortId(member.user_id)}
-                                      {profileByUserId.get(member.user_id)?.email?.trim()
-                                        ? ` • ${profileByUserId.get(member.user_id)?.email}`
-                                        : ""}
+                                      {profileName(member.user_id)}
                                       {` • ${pretty(member.role)}`}
                                     </option>
                                   ))}
+                                  {team?.owner_id &&
+                                  !members.some(
+                                    (member) => member.user_id === team.owner_id
+                                  ) ? (
+                                    <option value={team.owner_id}>
+                                      {profileName(team.owner_id)} • MEMBER
+                                    </option>
+                                  ) : null}
                                 </select>
                               </label>
                             ) : (
@@ -2011,8 +2041,7 @@ export default function TraditionalCommissioner({
                                   {isCpu
                                     ? "CPU TEAM"
                                     : hasOwner
-                                      ? profileByUserId.get(team!.owner_id!)?.email?.trim() ||
-                                        "OWNER ASSIGNED"
+                                      ? profileName(team!.owner_id!)
                                       : pendingInvite
                                         ? `${pendingInvite.email} • PENDING`
                                         : "VACANT"}
@@ -2029,15 +2058,7 @@ export default function TraditionalCommissioner({
                               ) : hasOwner ? (
                                 <>
                                   <strong>OWNER ASSIGNED</strong>
-                                  <span>
-                                    {profileByUserId.get(team!.owner_id!)?.display_name?.trim() ||
-                                      profileByUserId.get(team!.owner_id!)?.email?.trim() ||
-                                      shortId(team!.owner_id!)}
-                                    {profileByUserId.get(team!.owner_id!)?.email?.trim() &&
-                                    profileByUserId.get(team!.owner_id!)?.display_name?.trim()
-                                      ? ` • ${profileByUserId.get(team!.owner_id!)?.email}`
-                                      : ""}
-                                  </span>
+                                  <span>{profileName(team!.owner_id!)}</span>
                                 </>
                               ) : pendingInvite ? (
                                 <>
