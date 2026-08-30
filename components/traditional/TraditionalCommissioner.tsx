@@ -1139,7 +1139,7 @@ export default function TraditionalCommissioner({
         throw new Error("Your login session is missing. Sign in again and retry.");
       }
 
-      const response = await fetch(`/api/leagues/${league.id}/invite`, {
+      const response = await fetch(`/api/league/${league.id}/invite`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
