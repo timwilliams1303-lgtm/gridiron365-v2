@@ -29,13 +29,9 @@ import {
 } from "@/lib/leagues/league.service";
 
 
-type LeagueFormat = {
+type LeagueTypeOption = {
   id:
-    | "traditional"
-    | "season_long_salary"
-    | "season_long_no_salary"
-    | "playoffs_salary"
-    | "playoffs_no_salary";
+    LeagueType;
 
   title:
     string;
@@ -43,99 +39,95 @@ type LeagueFormat = {
   description:
     string;
 
-  leagueType:
-    LeagueType;
-
-  playerSelectionMode:
-    PlayerSelectionMode;
+  participationLabel:
+    string;
 };
 
 
-const leagueFormats:
-  LeagueFormat[] = [
+type PlayerSelectionOption = {
+  id:
+    Extract<
+      PlayerSelectionMode,
+      "salary" |
+      "no_salary"
+    >;
+
+  title:
+    string;
+
+  description:
+    string;
+};
+
+
+const leagueTypeOptions:
+  LeagueTypeOption[] = [
     {
       id:
         "traditional",
 
       title:
-        "Traditional Draft",
+        "Traditional",
 
       description:
         "Season-long head-to-head fantasy football with a live draft, permanent rosters, waivers, trades, weekly matchups, standings, and playoffs.",
 
-      leagueType:
-        "traditional",
-
-      playerSelectionMode:
-        "draft",
+      participationLabel:
+        "UP TO 12 TEAMS",
     },
 
     {
       id:
-        "season_long_salary",
-
-      title:
-        "Season-Long Salary Cap",
-
-      description:
-        "Build a new fantasy lineup every NFL week while staying under the league salary cap. Players can be used by multiple teams.",
-
-      leagueType:
         "season_long",
 
-      playerSelectionMode:
-        "salary",
+      title:
+        "Season-Long",
+
+      description:
+        "Build a completely new fantasy lineup each NFL week and compete on cumulative points across the regular season.",
+
+      participationLabel:
+        "LARGE PARTICIPATION",
     },
 
     {
       id:
-        "season_long_no_salary",
-
-      title:
-        "Season-Long No Salary Cap",
-
-      description:
-        "Build a new fantasy lineup every NFL week with no player salary restriction. Players can be used by multiple teams.",
-
-      leagueType:
-        "season_long",
-
-      playerSelectionMode:
-        "no_salary",
-    },
-
-    {
-      id:
-        "playoffs_salary",
-
-      title:
-        "NFL Playoffs Salary Cap",
-
-      description:
-        "Build fantasy lineups for the NFL postseason while staying under the league salary cap.",
-
-      leagueType:
         "nfl_playoffs",
 
-      playerSelectionMode:
+      title:
+        "NFL Playoffs",
+
+      description:
+        "Build fantasy lineups throughout the NFL postseason and compete on cumulative playoff scoring.",
+
+      participationLabel:
+        "LARGE PARTICIPATION",
+    },
+  ];
+
+
+const playerSelectionOptions:
+  PlayerSelectionOption[] = [
+    {
+      id:
         "salary",
+
+      title:
+        "Salary Cap",
+
+      description:
+        "Every player has a weekly salary. Build your lineup while staying under the league salary cap.",
     },
 
     {
       id:
-        "playoffs_no_salary",
+        "no_salary",
 
       title:
-        "NFL Playoffs No Salary Cap",
+        "No Salary Cap",
 
       description:
-        "Build fantasy lineups throughout the NFL postseason without a player salary restriction.",
-
-      leagueType:
-        "nfl_playoffs",
-
-      playerSelectionMode:
-        "no_salary",
+        "Choose any eligible players each week with no salary restriction.",
     },
   ];
 
@@ -153,13 +145,24 @@ export default function CreateLeaguePage() {
 
 
   const [
-    selectedFormatId,
-    setSelectedFormatId,
+    selectedLeagueType,
+    setSelectedLeagueType,
   ] =
     useState<
-      LeagueFormat["id"]
+      LeagueType
     >(
       "traditional"
+    );
+
+
+  const [
+    selectedPlayerSelectionMode,
+    setSelectedPlayerSelectionMode,
+  ] =
+    useState<
+      PlayerSelectionMode
+    >(
+      "draft"
     );
 
 
@@ -210,29 +213,29 @@ export default function CreateLeaguePage() {
     useState(false);
 
 
-  const selectedFormat =
-    leagueFormats.find(
+  const selectedLeagueTypeOption =
+    leagueTypeOptions.find(
       (
-        format
+        option
       ) =>
-        format.id ===
-        selectedFormatId
+        option.id ===
+        selectedLeagueType
     ) ??
-    leagueFormats[0];
+    leagueTypeOptions[0];
 
 
   const isTraditional =
-    selectedFormat.leagueType ===
+    selectedLeagueType ===
     "traditional";
 
 
   const isSeasonLong =
-    selectedFormat.leagueType ===
+    selectedLeagueType ===
     "season_long";
 
 
   const isPlayoffs =
-    selectedFormat.leagueType ===
+    selectedLeagueType ===
     "nfl_playoffs";
 
 
@@ -242,8 +245,53 @@ export default function CreateLeaguePage() {
 
 
   const isSalary =
-    selectedFormat.playerSelectionMode ===
+    selectedPlayerSelectionMode ===
     "salary";
+
+
+  const selectedFormatTitle =
+    isTraditional
+      ? "Traditional Draft"
+      : isSeasonLong
+        ? isSalary
+          ? "Season-Long • Salary Cap"
+          : "Season-Long • No Salary Cap"
+        : isSalary
+          ? "NFL Playoffs • Salary Cap"
+          : "NFL Playoffs • No Salary Cap";
+
+
+  function selectLeagueType(
+    leagueType:
+      LeagueType
+  ) {
+    setSelectedLeagueType(
+      leagueType
+    );
+
+    if (
+      leagueType ===
+      "traditional"
+    ) {
+      setSelectedPlayerSelectionMode(
+        "draft"
+      );
+    } else {
+      /*
+       * Salary Cap is the default for
+       * Season-Long and NFL Playoffs.
+       *
+       * The commissioner can immediately
+       * switch to No Salary Cap below.
+       */
+      setSelectedPlayerSelectionMode(
+        "salary"
+      );
+    }
+
+    setMessage("");
+    setIsError(false);
+  }
 
 
   async function handleSubmit(
@@ -252,7 +300,9 @@ export default function CreateLeaguePage() {
   ) {
     event.preventDefault();
 
-    if (working) {
+    if (
+      working
+    ) {
       return;
     }
 
@@ -277,12 +327,10 @@ export default function CreateLeaguePage() {
               leagueName,
 
             leagueType:
-              selectedFormat
-                .leagueType,
+              selectedLeagueType,
 
             playerSelectionMode:
-              selectedFormat
-                .playerSelectionMode,
+              selectedPlayerSelectionMode,
 
             season:
               parsedSeason,
@@ -317,12 +365,12 @@ export default function CreateLeaguePage() {
 
 
       /*
-       * For now, all newly-created formats
-       * return to My Leagues.
+       * Keep the existing safe post-create
+       * behavior for all league types.
        *
-       * Once the Season-Long league home
-       * page is built, we can send the
-       * commissioner directly there.
+       * The league will appear immediately
+       * on My Leagues and can be entered from
+       * there.
        */
       router.replace(
         "/my-leagues"
@@ -330,12 +378,14 @@ export default function CreateLeaguePage() {
 
       router.refresh();
 
-    } catch (error) {
+    } catch (
+      error
+    ) {
       setIsError(true);
 
       setMessage(
         error instanceof
-          Error
+        Error
           ? error.message
           : "The league could not be created."
       );
@@ -406,100 +456,291 @@ export default function CreateLeaguePage() {
               styles.subtitle
             }
           >
-            Choose the fantasy football format you want to play.
+            Choose your league type, then choose how players are selected.
           </p>
         </div>
 
 
+        {/* ==================================================
+            LEAGUE TYPE
+        =================================================== */}
+
         <section
           style={
-            styles.formatGrid
+            styles.selectionSection
           }
         >
-          {leagueFormats.map(
-            (
-              format
-            ) => {
-              const selected =
-                format.id ===
-                selectedFormatId;
+          <div
+            style={
+              styles.selectionHeader
+            }
+          >
+            <div>
+              <p
+                style={
+                  styles.sectionEyebrow
+                }
+              >
+                STEP 1
+              </p>
+
+              <h2
+                style={
+                  styles.sectionTitle
+                }
+              >
+                League Type
+              </h2>
+            </div>
+
+            <span
+              style={
+                styles.sectionHelper
+              }
+            >
+              Choose the overall competition format.
+            </span>
+          </div>
 
 
-              return (
-                <button
-                  key={
-                    format.id
-                  }
-                  type="button"
-                  onClick={
-                    () => {
-                      setSelectedFormatId(
-                        format.id
-                      );
+          <div
+            style={
+              styles.formatGrid
+            }
+          >
+            {leagueTypeOptions.map(
+              (
+                option
+              ) => {
+                const selected =
+                  option.id ===
+                  selectedLeagueType;
 
-                      setMessage("");
-                      setIsError(false);
+
+                return (
+                  <button
+                    key={
+                      option.id
                     }
-                  }
-                  style={{
-                    ...styles.formatButton,
-
-                    ...(selected
-                      ? styles.formatButtonSelected
-                      : {}),
-                  }}
-                >
-                  <span
+                    type="button"
+                    onClick={
+                      () =>
+                        selectLeagueType(
+                          option.id
+                        )
+                    }
                     style={{
-                      ...styles.formatIndicator,
+                      ...styles.formatButton,
 
                       ...(selected
-                        ? styles.formatIndicatorSelected
+                        ? styles.formatButtonSelected
                         : {}),
                     }}
-                  />
-
-                  <span
-                    style={
-                      styles.formatTitle
-                    }
                   >
-                    {format.title}
-                  </span>
+                    <span
+                      style={{
+                        ...styles.formatIndicator,
 
-                  <span
-                    style={
-                      styles.formatDescription
-                    }
-                  >
-                    {format.description}
-                  </span>
+                        ...(selected
+                          ? styles.formatIndicatorSelected
+                          : {}),
+                      }}
+                    />
 
-
-                  {format.leagueType ===
-                  "traditional" ? (
                     <span
                       style={
-                        styles.traditionalBadge
+                        styles.formatTitle
                       }
                     >
-                      UP TO 12 TEAMS
+                      {option.title}
                     </span>
-                  ) : (
+
                     <span
                       style={
-                        styles.largeLeagueBadge
+                        styles.formatDescription
                       }
                     >
-                      LARGE PARTICIPATION
+                      {option.description}
                     </span>
-                  )}
-                </button>
-              );
-            }
-          )}
+
+                    <span
+                      style={
+                        option.id ===
+                        "traditional"
+                          ? styles.traditionalBadge
+                          : styles.largeLeagueBadge
+                      }
+                    >
+                      {option.participationLabel}
+                    </span>
+                  </button>
+                );
+              }
+            )}
+          </div>
         </section>
 
+
+        {/* ==================================================
+            PLAYER SELECTION
+        =================================================== */}
+
+        {!isTraditional ? (
+          <section
+            style={
+              styles.selectionSection
+            }
+          >
+            <div
+              style={
+                styles.selectionHeader
+              }
+            >
+              <div>
+                <p
+                  style={
+                    styles.sectionEyebrow
+                  }
+                >
+                  STEP 2
+                </p>
+
+                <h2
+                  style={
+                    styles.sectionTitle
+                  }
+                >
+                  Player Selection
+                </h2>
+              </div>
+
+              <span
+                style={
+                  styles.sectionHelper
+                }
+              >
+                Choose whether this league uses a weekly salary cap.
+              </span>
+            </div>
+
+
+            <div
+              style={
+                styles.playerSelectionGrid
+              }
+            >
+              {playerSelectionOptions.map(
+                (
+                  option
+                ) => {
+                  const selected =
+                    option.id ===
+                    selectedPlayerSelectionMode;
+
+
+                  return (
+                    <button
+                      key={
+                        option.id
+                      }
+                      type="button"
+                      onClick={
+                        () => {
+                          setSelectedPlayerSelectionMode(
+                            option.id
+                          );
+
+                          setMessage("");
+                          setIsError(false);
+                        }
+                      }
+                      style={{
+                        ...styles.playerSelectionButton,
+
+                        ...(selected
+                          ? styles.playerSelectionButtonSelected
+                          : {}),
+                      }}
+                    >
+                      <span
+                        style={{
+                          ...styles.modeDot,
+
+                          ...(selected
+                            ? styles.modeDotSelected
+                            : {}),
+                        }}
+                      />
+
+                      <span
+                        style={
+                          styles.playerSelectionTitle
+                        }
+                      >
+                        {option.title}
+                      </span>
+
+                      <span
+                        style={
+                          styles.playerSelectionDescription
+                        }
+                      >
+                        {option.description}
+                      </span>
+
+                      <span
+                        style={
+                          styles.selectedModeLabel
+                        }
+                      >
+                        {selected
+                          ? "SELECTED"
+                          : "SELECT"}
+                      </span>
+                    </button>
+                  );
+                }
+              )}
+            </div>
+          </section>
+        ) : (
+          <section
+            style={
+              styles.draftModeSummary
+            }
+          >
+            <div>
+              <p
+                style={
+                  styles.sectionEyebrow
+                }
+              >
+                PLAYER SELECTION
+              </p>
+
+              <strong
+                style={
+                  styles.draftModeTitle
+                }
+              >
+                Live Draft
+              </strong>
+            </div>
+
+            <span
+              style={
+                styles.draftModeDescription
+              }
+            >
+              Traditional leagues use a draft with permanent, exclusive rosters.
+            </span>
+          </section>
+        )}
+
+
+        {/* ==================================================
+            LEAGUE DETAILS
+        =================================================== */}
 
         <Card
           style={
@@ -524,7 +765,7 @@ export default function CreateLeaguePage() {
                 styles.formEyebrow
               }
             >
-              {selectedFormat.title}
+              {selectedFormatTitle}
             </p>
 
             <h2
@@ -654,8 +895,8 @@ export default function CreateLeaguePage() {
               >
                 <strong>
                   {isSalary
-                    ? "Season-Long Salary Cap"
-                    : "Season-Long No Salary Cap"}
+                    ? "Season-Long • Salary Cap"
+                    : "Season-Long • No Salary Cap"}
                 </strong>
 
                 <span>
@@ -697,20 +938,26 @@ export default function CreateLeaguePage() {
               >
                 <strong>
                   {isSalary
-                    ? "NFL Playoffs Salary Cap"
-                    : "NFL Playoffs No Salary Cap"}
+                    ? "NFL Playoffs • Salary Cap"
+                    : "NFL Playoffs • No Salary Cap"}
                 </strong>
 
                 <span>
-                  This format will use the NFL postseason rather
-                  than the 18-week regular-season schedule.
+                  This format uses the NFL postseason rather than
+                  the regular-season schedule.
                 </span>
 
-                <span>
-                  The league can be created now. We will build its
-                  postseason lineup and scoring system after the
-                  Season-Long format is completed.
-                </span>
+                {isSalary ? (
+                  <span>
+                    Owners will build playoff lineups while staying
+                    under the league salary cap.
+                  </span>
+                ) : (
+                  <span>
+                    Owners will build playoff lineups without a
+                    player salary restriction.
+                  </span>
+                )}
               </div>
             ) : null}
 
@@ -876,12 +1123,76 @@ const styles = {
       "14px",
   },
 
+  selectionSection: {
+    display:
+      "grid",
+
+    gap:
+      "14px",
+  },
+
+  selectionHeader: {
+    display:
+      "flex",
+
+    alignItems:
+      "flex-end",
+
+    justifyContent:
+      "space-between",
+
+    gap:
+      "18px",
+
+    flexWrap:
+      "wrap" as const,
+  },
+
+  sectionEyebrow: {
+    margin:
+      0,
+
+    color:
+      "#ff8c00",
+
+    fontSize:
+      "9px",
+
+    fontWeight:
+      900,
+
+    letterSpacing:
+      ".13em",
+
+    textTransform:
+      "uppercase" as const,
+  },
+
+  sectionTitle: {
+    margin:
+      "5px 0 0",
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "21px",
+  },
+
+  sectionHelper: {
+    color:
+      "#7f8794",
+
+    fontSize:
+      "12px",
+  },
+
   formatGrid: {
     display:
       "grid",
 
     gridTemplateColumns:
-      "repeat(auto-fit,minmax(210px,1fr))",
+      "repeat(auto-fit,minmax(250px,1fr))",
 
     gap:
       "14px",
@@ -892,7 +1203,7 @@ const styles = {
       "relative" as const,
 
     minHeight:
-      "215px",
+      "210px",
 
     display:
       "flex",
@@ -934,6 +1245,9 @@ const styles = {
 
     boxShadow:
       "0 14px 36px rgba(255,69,0,.13)",
+
+    transform:
+      "translateY(-1px)",
   },
 
   formatIndicator: {
@@ -963,7 +1277,7 @@ const styles = {
       "#ffffff",
 
     fontSize:
-      "15px",
+      "17px",
 
     fontWeight:
       900,
@@ -1021,6 +1335,214 @@ const styles = {
 
     letterSpacing:
       ".09em",
+  },
+
+  playerSelectionGrid: {
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(260px,1fr))",
+
+    gap:
+      "14px",
+
+    maxWidth:
+      "820px",
+  },
+
+  playerSelectionButton: {
+    position:
+      "relative" as const,
+
+    minHeight:
+      "155px",
+
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "18px 1fr",
+
+    gridTemplateRows:
+      "auto auto auto",
+
+    columnGap:
+      "11px",
+
+    rowGap:
+      "7px",
+
+    alignItems:
+      "start",
+
+    padding:
+      "18px",
+
+    border:
+      "1px solid rgba(255,255,255,.09)",
+
+    borderRadius:
+      "12px",
+
+    background:
+      "rgba(12,12,14,.94)",
+
+    color:
+      "#ffffff",
+
+    cursor:
+      "pointer",
+
+    textAlign:
+      "left" as const,
+
+    transition:
+      "border-color .15s ease, box-shadow .15s ease, transform .15s ease",
+  },
+
+  playerSelectionButtonSelected: {
+    border:
+      "1px solid rgba(255,140,0,.65)",
+
+    boxShadow:
+      "0 12px 30px rgba(255,69,0,.11)",
+
+    transform:
+      "translateY(-1px)",
+  },
+
+  modeDot: {
+    width:
+      "13px",
+
+    height:
+      "13px",
+
+    marginTop:
+      "3px",
+
+    border:
+      "2px solid #555d68",
+
+    borderRadius:
+      "50%",
+
+    background:
+      "transparent",
+  },
+
+  modeDotSelected: {
+    border:
+      "3px solid #ff8c00",
+
+    background:
+      "#ff3b12",
+
+    boxShadow:
+      "0 0 0 3px rgba(255,94,0,.12)",
+  },
+
+  playerSelectionTitle: {
+    color:
+      "#ffffff",
+
+    fontSize:
+      "15px",
+
+    fontWeight:
+      900,
+  },
+
+  playerSelectionDescription: {
+    gridColumn:
+      "2",
+
+    color:
+      "#8f96a3",
+
+    fontSize:
+      "12px",
+
+    lineHeight:
+      1.5,
+  },
+
+  selectedModeLabel: {
+    gridColumn:
+      "2",
+
+    marginTop:
+      "7px",
+
+    color:
+      "#ff8c00",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      900,
+
+    letterSpacing:
+      ".1em",
+  },
+
+  draftModeSummary: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "space-between",
+
+    gap:
+      "18px",
+
+    flexWrap:
+      "wrap" as const,
+
+    padding:
+      "16px 18px",
+
+    border:
+      "1px solid rgba(255,94,0,.17)",
+
+    borderRadius:
+      "12px",
+
+    background:
+      "rgba(255,69,0,.045)",
+  },
+
+  draftModeTitle: {
+    display:
+      "block",
+
+    marginTop:
+      "5px",
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "15px",
+  },
+
+  draftModeDescription: {
+    maxWidth:
+      "620px",
+
+    color:
+      "#9299a5",
+
+    fontSize:
+      "12px",
+
+    lineHeight:
+      1.5,
   },
 
   formCard: {
@@ -1220,5 +1742,5 @@ const styles = {
 
     paddingRight:
       "24px",
-  },
-};
+  }
+  };

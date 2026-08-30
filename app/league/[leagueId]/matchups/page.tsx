@@ -29,17 +29,6 @@ type PageProps = {
 };
 
 
-type ProjectionDisplaySettings = {
-  fractional_scoring_enabled:
-    boolean |
-    null;
-
-  decimal_places:
-    number |
-    null;
-};
-
-
 type PlayoffSettingsRow = {
   playoff_teams: number;
 
@@ -161,26 +150,11 @@ type PlayoffMatchupView = {
 
 
 function formatPoints(
-  value: number,
-  fractionalScoringEnabled = true,
-  decimalPlaces = 2
+  value: number
 ) {
-  const places =
-    fractionalScoringEnabled
-      ? Math.min(
-          4,
-          Math.max(
-            0,
-            Number.isFinite(
-              decimalPlaces
-            )
-              ? decimalPlaces
-              : 2
-          )
-        )
-      : 0;
-
-  return value.toFixed(places);
+  return value.toFixed(
+    2
+  );
 }
 
 
@@ -375,7 +349,6 @@ export default async function TraditionalMatchupsPage({
     playoffSettingsResult,
     teamResult,
     seasonStateResult,
-    scoringDisplayResult,
   ] =
     await Promise.all([
       supabase
@@ -425,20 +398,6 @@ export default async function TraditionalMatchupsPage({
           season
         )
         .maybeSingle(),
-
-      supabase
-        .from(
-          "league_scoring_settings"
-        )
-        .select(`
-          fractional_scoring_enabled,
-          decimal_places
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .maybeSingle(),
     ]);
 
 
@@ -467,35 +426,6 @@ export default async function TraditionalMatchupsPage({
       `Could not load active week: ${seasonStateResult.error.message}`
     );
   }
-
-
-  if (
-    scoringDisplayResult.error
-  ) {
-    throw new Error(
-      `Could not load scoring display settings: ${scoringDisplayResult.error.message}`
-    );
-  }
-
-
-  const scoringDisplaySettings =
-    scoringDisplayResult.data as
-      ProjectionDisplaySettings |
-      null;
-
-
-  const fractionalScoringEnabled =
-    scoringDisplaySettings
-      ?.fractional_scoring_enabled ??
-    true;
-
-
-  const projectionDecimalPlaces =
-    fractionalScoringEnabled
-      ? scoringDisplaySettings
-          ?.decimal_places ??
-        2
-      : 0;
 
 
   const playoffSettings =
@@ -1107,12 +1037,6 @@ export default async function TraditionalMatchupsPage({
                         matchup={
                           matchup
                         }
-                        fractionalScoringEnabled={
-                          fractionalScoringEnabled
-                        }
-                        projectionDecimalPlaces={
-                          projectionDecimalPlaces
-                        }
                       />
                     )
                   )}
@@ -1472,17 +1396,11 @@ function PlayoffTeamRow({
 function MatchupLinkCard({
   leagueId,
   matchup,
-  fractionalScoringEnabled,
-  projectionDecimalPlaces,
 }: {
   leagueId: string;
 
   matchup:
     TraditionalMatchupRow;
-
-  fractionalScoringEnabled: boolean;
-
-  projectionDecimalPlaces: number;
 }) {
   const probability =
     getWinProbabilities(
@@ -1562,12 +1480,6 @@ function MatchupLinkCard({
           projectedPoints={
             matchup.away.projectedPoints
           }
-          fractionalScoringEnabled={
-            fractionalScoringEnabled
-          }
-          projectionDecimalPlaces={
-            projectionDecimalPlaces
-          }
           isMyTeam={
             matchup.away.isMyTeam
           }
@@ -1578,10 +1490,14 @@ function MatchupLinkCard({
             matchup.isLive
           }
           playersLive={
-            matchup.away.playersLive
+            matchup.isFinal
+              ? 0
+              : matchup.away.playersLive
           }
           playersRemaining={
-            matchup.away.playersRemaining
+            matchup.isFinal
+              ? 0
+              : matchup.away.playersRemaining
           }
           starterCount={
             matchup.away.starters.length
@@ -1610,12 +1526,6 @@ function MatchupLinkCard({
           projectedPoints={
             matchup.home.projectedPoints
           }
-          fractionalScoringEnabled={
-            fractionalScoringEnabled
-          }
-          projectionDecimalPlaces={
-            projectionDecimalPlaces
-          }
           isMyTeam={
             matchup.home.isMyTeam
           }
@@ -1626,10 +1536,14 @@ function MatchupLinkCard({
             matchup.isLive
           }
           playersLive={
-            matchup.home.playersLive
+            matchup.isFinal
+              ? 0
+              : matchup.home.playersLive
           }
           playersRemaining={
-            matchup.home.playersRemaining
+            matchup.isFinal
+              ? 0
+              : matchup.home.playersRemaining
           }
           starterCount={
             matchup.home.starters.length
@@ -1745,8 +1659,6 @@ function TeamRow({
   teamName,
   points,
   projectedPoints,
-  fractionalScoringEnabled,
-  projectionDecimalPlaces,
   isMyTeam,
   isWinner,
   isLive,
@@ -1760,10 +1672,6 @@ function TeamRow({
   points: number;
 
   projectedPoints: number;
-
-  fractionalScoringEnabled: boolean;
-
-  projectionDecimalPlaces: number;
 
   isMyTeam: boolean;
 
@@ -1913,9 +1821,7 @@ function TeamRow({
           >
             PROJ{" "}
             {formatPoints(
-              projectedPoints,
-              fractionalScoringEnabled,
-              projectionDecimalPlaces
+              projectedPoints
             )}
           </span>
 

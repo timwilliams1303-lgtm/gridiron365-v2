@@ -1,8 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import TraditionalLiveRefresh from "@/components/traditional/TraditionalLiveRefresh";
-
 import {
   notFound,
 } from "next/navigation";
@@ -16,6 +14,7 @@ import {
   type MatchupDetailGameContext,
   type MatchupDetailPlayer,
   type MatchupDetailTeam,
+  type TraditionalMatchupDetailData,
 } from "@/lib/traditional/matchup-detail.service";
 
 import {
@@ -32,85 +31,10 @@ type PageProps = {
 };
 
 
-type MatchupLineupSettings = {
-  starting_qb:
-    number |
-    null;
-
-  starting_rb:
-    number |
-    null;
-
-  starting_wr:
-    number |
-    null;
-
-  starting_te:
-    number |
-    null;
-
-  starting_flex:
-    number |
-    null;
-
-  starting_superflex:
-    number |
-    null;
-
-  starting_k:
-    number |
-    null;
-
-  starting_dst:
-    number |
-    null;
-};
-
-
-type StarterRequirement = {
-  slot: string;
-
-  count: number;
-};
-
-
-type ProjectionDisplaySettings = {
-  fractional_scoring_enabled:
-    boolean |
-    null;
-
-  decimal_places:
-    number |
-    null;
-};
-
-
 function points(
   value: number
 ) {
   return value.toFixed(2);
-}
-
-
-function projectedPointsLabel(
-  value: number,
-  fractionalScoringEnabled: boolean,
-  decimalPlaces: number
-) {
-  const places =
-    fractionalScoringEnabled
-      ? Math.min(
-          4,
-          Math.max(
-            0,
-            Number.isFinite(decimalPlaces)
-              ? decimalPlaces
-              : 2
-          )
-        )
-      : 0;
-
-  return value.toFixed(places);
 }
 
 
@@ -223,237 +147,65 @@ function playerStatus(
   const context =
     player.gameContext;
 
-  const normalizedGameStatus =
-    (
-      player.gameStatus ??
-      context?.statusName ??
-      ""
-    ).toUpperCase();
-
 
   /*
-   * Never show the internal lineup-lock state as the player's
-   * matchup status. "Locked" is a roster-management rule, not
-   * an NFL game status.
+   * Keep the matchup STATUS column intentionally simple:
    *
-   * Final takes precedence so a player whose lineup slot remains
-   * locked after kickoff still displays FINAL once the NFL game
-   * is complete.
+   * BEFORE GAME:
+   *   UPCOMING
+   *
+   * LIVE:
+   *   Q1 12:34
+   *   Q2 04:18
+   *   Q3 09:02
+   *   Q4 00:41
+   *   OT 07:55
+   *
+   * COMPLETE:
+   *   FINAL
+   *
+   * Do not show lineup-lock state, kickoff date/time, or any
+   * other designation in this column. Injury designations stay
+   * beside the player's name where they belong.
    */
-  if (
-    player.scoreIsFinal ||
-    context?.statusCompleted ||
-    normalizedGameStatus.includes(
-      "FINAL"
-    )
-  ) {
-    return "FINAL";
-  }
-
 
   if (
-    context?.isActuallyLive ||
-    player.scoreIsLive ||
-    normalizedGameStatus.includes(
-      "IN_PROGRESS"
-    ) ||
-    normalizedGameStatus.includes(
-      "HALFTIME"
-    )
+    context
+      ?.isActuallyLive
   ) {
-    const liveClock =
+    const liveGameStatus =
       [
         quarter(
-          context?.period ??
-            null
+          context.period
         ),
 
-        context?.clock ??
-          null,
+        context.clock,
       ]
-        .filter(Boolean)
-        .join(" ");
+        .filter(
+          Boolean
+        )
+        .join(
+          " "
+        );
+
 
     return (
-      liveClock ||
+      liveGameStatus ||
       "LIVE"
     );
   }
 
 
   if (
-    player.nflOpponent
+    player.scoreIsFinal ||
+    context
+      ?.statusCompleted
   ) {
-    return kickoffLabel(
-      player.kickoffAt
-    );
+    return "FINAL";
   }
 
 
-  return "BYE";
-}
-
-
-function scoringPlayLabel(
-  text:
-    string |
-    null,
-  scoreValue:
-    number |
-    null
-) {
-  const normalized =
-    (
-      text ??
-      ""
-    ).toUpperCase();
-
-
-  /*
-   * Defensive fantasy events come first so an interception-return
-   * touchdown can read INT TD instead of the generic TD badge.
-   */
-  const isTouchdown =
-    normalized.includes(
-      "TOUCHDOWN"
-    );
-
-
-  if (
-    normalized.includes(
-      "INTERCEPT"
-    )
-  ) {
-    return isTouchdown
-      ? "INT TD"
-      : "INT";
-  }
-
-
-  if (
-    normalized.includes(
-      "FUMBLE"
-    ) ||
-    normalized.includes(
-      "RECOVER"
-    )
-  ) {
-    return isTouchdown
-      ? "FUM TD"
-      : "FUM";
-  }
-
-
-  if (
-    normalized.includes(
-      "SACK"
-    )
-  ) {
-    return "SACK";
-  }
-
-
-  if (
-    normalized.includes(
-      "BLOCKED"
-    )
-  ) {
-    return "BLK";
-  }
-
-
-  if (
-    normalized.includes(
-      "SAFETY"
-    )
-  ) {
-    return "SFTY";
-  }
-
-
-  if (
-    normalized.includes(
-      "FIELD GOAL"
-    )
-  ) {
-    return "FG";
-  }
-
-
-  if (
-    normalized.includes(
-      "EXTRA POINT"
-    )
-  ) {
-    return "XP";
-  }
-
-
-  if (
-    normalized.includes(
-      "TWO-POINT"
-    ) ||
-    normalized.includes(
-      "TWO POINT"
-    )
-  ) {
-    return "2PT";
-  }
-
-
-  if (isTouchdown) {
-    return "TD";
-  }
-
-
-  switch (scoreValue) {
-    case 6:
-      return "TD";
-
-    case 3:
-      return "FG";
-
-    case 2:
-      return "2PT";
-
-    case 1:
-      return "XP";
-
-    default:
-      return "SCORE";
-  }
-}
-
-
-function playerFieldState(
-  player:
-    MatchupDetailPlayer
-) {
-  const context =
-    player.gameContext;
-
-  if (!context?.isActuallyLive) {
-    return null;
-  }
-
-  if (player.isRedZone) {
-    return {
-      label: "RED ZONE",
-      tone: "redZone" as const,
-    };
-  }
-
-  if (player.hasPossession) {
-    return {
-      label: "ON FIELD",
-      tone: "onField" as const,
-    };
-  }
-
-  return {
-    label: "OFF FIELD",
-    tone: "offField" as const,
-  };
+  return "UPCOMING";
 }
 
 
@@ -597,193 +349,6 @@ export default async function TraditionalMatchupDetailPage({
     await createSupabaseServerClient();
 
 
-  const [
-    lineupSettingsResult,
-    scoringDisplayResult,
-  ] =
-    await Promise.all([
-      supabase
-        .from(
-          "league_settings"
-        )
-        .select(`
-          starting_qb,
-          starting_rb,
-          starting_wr,
-          starting_te,
-          starting_flex,
-          starting_superflex,
-          starting_k,
-          starting_dst
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .maybeSingle(),
-
-      supabase
-        .from(
-          "league_scoring_settings"
-        )
-        .select(`
-          fractional_scoring_enabled,
-          decimal_places
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .maybeSingle(),
-    ]);
-
-
-  /*
-   * These two settings reads are display/layout helpers only.
-   *
-   * They must NEVER prevent the matchup itself from loading.
-   * If a settings row is missing, temporarily unavailable, or
-   * blocked by an RLS policy, fall back to safe defaults below.
-   */
-  if (
-    lineupSettingsResult.error
-  ) {
-    console.warn(
-      "Matchup detail lineup settings fallback:",
-      lineupSettingsResult.error.message
-    );
-  }
-
-
-  if (
-    scoringDisplayResult.error
-  ) {
-    console.warn(
-      "Matchup detail scoring display fallback:",
-      scoringDisplayResult.error.message
-    );
-  }
-
-
-  const lineupSettings =
-    (
-      lineupSettingsResult.error
-        ? null
-        : lineupSettingsResult.data
-    ) as
-      MatchupLineupSettings |
-      null;
-
-
-  const scoringDisplaySettings =
-    (
-      scoringDisplayResult.error
-        ? null
-        : scoringDisplayResult.data
-    ) as
-      ProjectionDisplaySettings |
-      null;
-
-
-  const fractionalScoringEnabled =
-    scoringDisplaySettings
-      ?.fractional_scoring_enabled ??
-    true;
-
-
-  const rawProjectionDecimalPlaces =
-    Number(
-      scoringDisplaySettings
-        ?.decimal_places ??
-      2
-    );
-
-
-  const projectionDecimalPlaces =
-    fractionalScoringEnabled
-      ? Number.isFinite(
-          rawProjectionDecimalPlaces
-        )
-        ? Math.min(
-            4,
-            Math.max(
-              0,
-              Math.trunc(
-                rawProjectionDecimalPlaces
-              )
-            )
-          )
-        : 2
-      : 0;
-
-  const starterRequirements:
-    StarterRequirement[] =
-      [
-        {
-          slot: "QB",
-          count:
-            lineupSettings
-              ?.starting_qb ??
-            1,
-        },
-        {
-          slot: "RB",
-          count:
-            lineupSettings
-              ?.starting_rb ??
-            2,
-        },
-        {
-          slot: "WR",
-          count:
-            lineupSettings
-              ?.starting_wr ??
-            2,
-        },
-        {
-          slot: "TE",
-          count:
-            lineupSettings
-              ?.starting_te ??
-            1,
-        },
-        {
-          slot: "FLEX",
-          count:
-            lineupSettings
-              ?.starting_flex ??
-            1,
-        },
-        {
-          slot: "SUPERFLEX",
-          count:
-            lineupSettings
-              ?.starting_superflex ??
-            0,
-        },
-        {
-          slot: "K",
-          count:
-            lineupSettings
-              ?.starting_k ??
-            1,
-        },
-        {
-          slot: "DST",
-          count:
-            lineupSettings
-              ?.starting_dst ??
-            1,
-        },
-      ].filter(
-        (
-          requirement
-        ) =>
-          requirement.count >
-          0
-      );
-
-
   let data;
 
 
@@ -826,168 +391,9 @@ export default async function TraditionalMatchupDetailPage({
     );
 
 
-  /*
-   * ============================================================
-   * MATCHUP-ONLY FANTASY SCORING PLAYS
-   * ============================================================
-   *
-   * ESPN scoring plays are game-wide. The matchup screen should
-   * only surface a scoring play when at least one STARTING fantasy
-   * player in this matchup participated in it.
-   *
-   * The service already gives us participant ESPN player IDs, so
-   * this is much safer than trying to match names from play text.
-   */
-  const matchupFantasyPlayersByEspnId =
-    new Map<
-      string,
-      {
-        player:
-          MatchupDetailPlayer;
-
-        isMyTeam:
-          boolean;
-      }
-    >();
-
-
-  for (
-    const team
-    of [
-      data.away,
-      data.home,
-    ]
-  ) {
-    for (
-      const player
-      of team.starters
-    ) {
-      if (
-        player.espnPlayerId
-      ) {
-        matchupFantasyPlayersByEspnId.set(
-          player.espnPlayerId,
-          {
-            player,
-            isMyTeam:
-              team.isMyTeam,
-          }
-        );
-      }
-    }
-  }
-
-
-  const matchupScoringPlays =
-    data.recentScoringPlays
-      .map(
-        (
-          play
-        ) => {
-          const fantasyPlayers =
-            Array.from(
-              new Map(
-                play
-                  .participantEspnPlayerIds
-                  .map(
-                    (
-                      espnPlayerId
-                    ) =>
-                      matchupFantasyPlayersByEspnId.get(
-                        espnPlayerId
-                      ) ??
-                      null
-                  )
-                  .filter(
-                    (
-                      entry
-                    ): entry is {
-                      player:
-                        MatchupDetailPlayer;
-
-                      isMyTeam:
-                        boolean;
-                    } =>
-                      entry !==
-                      null
-                  )
-                  .map(
-                    (
-                      entry
-                    ) => [
-                      entry
-                        .player
-                        .playerId,
-                      entry,
-                    ] as const
-                  )
-              ).values()
-            );
-
-
-          /*
-           * DST scoring events usually name individual defenders, not
-           * the fantasy DST pseudo-player. If the service identifies the
-           * defense on the play, attach the matchup's starting DST so its
-           * fantasy-team color/name can be shown just like offensive players.
-           */
-          if (
-            play.defenseTeamAbbreviation
-          ) {
-            for (
-              const team
-              of [
-                data.away,
-                data.home,
-              ]
-            ) {
-              const dstPlayer =
-                team.starters.find(
-                  (player) =>
-                    player.position
-                      .toUpperCase() ===
-                      "DST" &&
-                    player.teamAbbreviation ===
-                      play.defenseTeamAbbreviation
-                );
-
-              if (
-                dstPlayer &&
-                !fantasyPlayers.some(
-                  (entry) =>
-                    entry.player.playerId ===
-                    dstPlayer.playerId
-                )
-              ) {
-                fantasyPlayers.push({
-                  player: dstPlayer,
-                  isMyTeam:
-                    team.isMyTeam,
-                });
-              }
-            }
-          }
-
-
-          return {
-            ...play,
-            fantasyPlayers,
-          };
-        }
-      )
-      .filter(
-        (
-          play
-        ) =>
-          play
-            .fantasyPlayers
-            .length >
-          0
-      );
-
-
   const latestScoringPlay =
-    matchupScoringPlays[0] ??
+    data
+      .recentScoringPlays[0] ??
     null;
 
 
@@ -1047,65 +453,12 @@ export default async function TraditionalMatchupDetailPage({
     data.liveGames.length;
 
 
-  /*
-   * ============================================================
-   * MATCHUP-SCOPED NFL GAME IDS
-   * ============================================================
-   *
-   * Subscribe to play-by-play changes only for NFL games that
-   * belong to players in this fantasy matchup.
-   *
-   * Using all starters and bench players means the subscription
-   * can already exist before an NFL game changes to live status.
-   */
-  const matchupNflGameIds =
-    Array.from(
-      new Set(
-        [
-          ...data.away.starters,
-          ...data.away.bench,
-          ...data.home.starters,
-          ...data.home.bench,
-        ]
-          .map(
-            (
-              player
-            ) =>
-              player.nflGameId
-          )
-          .filter(
-            (
-              nflGameId
-            ): nflGameId is number =>
-              typeof nflGameId ===
-                "number" &&
-              Number.isInteger(
-                nflGameId
-              ) &&
-              nflGameId >
-                0
-          )
-      )
-    );
-
-
   return (
     <main
       style={
         styles.page
       }
     >
-      <TraditionalLiveRefresh
-        leagueId={
-          leagueId
-        }
-        mode="games"
-        nflGameIds={
-          matchupNflGameIds
-        }
-      />
-
-
       <div
         style={
           styles.shell
@@ -1423,9 +776,21 @@ export default async function TraditionalMatchupDetailPage({
                 styles.scoringText
               }
             >
-              {latestScoringPlay
-                ?.text ??
-                "No scoring play yet"}
+              {latestScoringPlay ? (
+                <HighlightedScoringPlayText
+                  text={
+                    latestScoringPlay.text
+                  }
+                  participants={
+                    scoringParticipantHighlights(
+                      data,
+                      latestScoringPlay
+                    )
+                  }
+                />
+              ) : (
+                "No scoring play yet"
+              )}
             </strong>
 
 
@@ -1501,15 +866,6 @@ export default async function TraditionalMatchupDetailPage({
             week={
               data.week
             }
-            slotRequirements={
-              starterRequirements
-            }
-            fractionalScoringEnabled={
-              fractionalScoringEnabled
-            }
-            projectionDecimalPlaces={
-              projectionDecimalPlaces
-            }
           />
 
 
@@ -1558,10 +914,12 @@ export default async function TraditionalMatchupDetailPage({
             <Panel
               title="RECENT SCORING PLAYS"
             >
-              {matchupScoringPlays
+              {data
+                .recentScoringPlays
                 .length >
               0 ? (
-                matchupScoringPlays
+                data
+                  .recentScoringPlays
                   .slice(
                     0,
                     5
@@ -1583,10 +941,7 @@ export default async function TraditionalMatchupDetailPage({
                             styles.scoringDot
                           }
                         >
-                          {scoringPlayLabel(
-                            play.text,
-                            play.scoreValue
-                          )}
+                          TD
                         </span>
 
 
@@ -1595,46 +950,24 @@ export default async function TraditionalMatchupDetailPage({
                             styles.scoringRowText
                           }
                         >
-                          <div
-                            style={
-                              styles.scoringPlayerNames
-                            }
-                          >
+                          <strong>
                             {play
-                              .fantasyPlayers
-                              .map(
-                                (
-                                  entry,
-                                  index
-                                ) => (
-                                  <span
-                                    key={
-                                      entry
-                                        .player
-                                        .playerId
-                                    }
-                                    style={
-                                      entry
-                                        .isMyTeam
-                                        ? styles.myScoringPlayer
-                                        : styles.opponentScoringPlayer
-                                    }
-                                  >
-                                    {index >
-                                    0
-                                      ? " • "
-                                      : ""}
-
-                                    {entry
-                                      .player
-                                      .fullName}
-                                  </span>
-                                )
-                              )}
-                          </div>
+                              .possessionTeamAbbreviation ??
+                              "NFL"}
+                          </strong>
 
                           <span>
-                            {play.text}
+                            <HighlightedScoringPlayText
+                              text={
+                                play.text
+                              }
+                              participants={
+                                scoringParticipantHighlights(
+                                  data,
+                                  play
+                                )
+                              }
+                            />
                           </span>
                         </div>
 
@@ -1671,15 +1004,6 @@ export default async function TraditionalMatchupDetailPage({
             label="STARTERS"
             week={
               data.week
-            }
-            slotRequirements={
-              starterRequirements
-            }
-            fractionalScoringEnabled={
-              fractionalScoringEnabled
-            }
-            projectionDecimalPlaces={
-              projectionDecimalPlaces
             }
           />
         </section>
@@ -2052,18 +1376,603 @@ function LiveGame({
 }
 
 
-function getSlotLabel(
-  slot: string,
-  index: number,
-  count: number
+function formatPlayerStatLine(
+  player:
+    MatchupDetailPlayer
+): string | null {
+  const stats =
+    player.stats;
+
+  const parts:
+    string[] = [];
+
+
+  switch (
+    player.position
+      .trim()
+      .toUpperCase()
+  ) {
+    case "QB": {
+      if (
+        stats.passingAttempts >
+          0 ||
+        stats.passingCompletions >
+          0 ||
+        stats.passingYards !==
+          0 ||
+        stats.passingTouchdowns >
+          0 ||
+        stats.passingInterceptions >
+          0
+      ) {
+        parts.push(
+          `${stats.passingCompletions}/${stats.passingAttempts} CMP`,
+          `${stats.passingYards} PASS YDS`
+        );
+
+        if (
+          stats.passingTouchdowns >
+          0
+        ) {
+          parts.push(
+            `${stats.passingTouchdowns} PASS TD`
+          );
+        }
+
+        if (
+          stats.passingInterceptions >
+          0
+        ) {
+          parts.push(
+            `${stats.passingInterceptions} INT`
+          );
+        }
+      }
+
+
+      if (
+        stats.rushingAttempts >
+          0 ||
+        stats.rushingYards !==
+          0 ||
+        stats.rushingTouchdowns >
+          0
+      ) {
+        parts.push(
+          `${stats.rushingAttempts} CAR`,
+          `${stats.rushingYards} RUSH YDS`
+        );
+
+        if (
+          stats.rushingTouchdowns >
+          0
+        ) {
+          parts.push(
+            `${stats.rushingTouchdowns} RUSH TD`
+          );
+        }
+      }
+
+      break;
+    }
+
+
+    case "RB": {
+      if (
+        stats.rushingAttempts >
+          0 ||
+        stats.rushingYards !==
+          0 ||
+        stats.rushingTouchdowns >
+          0
+      ) {
+        parts.push(
+          `${stats.rushingAttempts} CAR`,
+          `${stats.rushingYards} RUSH YDS`
+        );
+
+        if (
+          stats.rushingTouchdowns >
+          0
+        ) {
+          parts.push(
+            `${stats.rushingTouchdowns} RUSH TD`
+          );
+        }
+      }
+
+
+      if (
+        stats.receivingTargets >
+          0 ||
+        stats.receptions >
+          0 ||
+        stats.receivingYards !==
+          0 ||
+        stats.receivingTouchdowns >
+          0
+      ) {
+        parts.push(
+          `${stats.receptions}/${stats.receivingTargets} REC/TGT`,
+          `${stats.receivingYards} REC YDS`
+        );
+
+        if (
+          stats.receivingTouchdowns >
+          0
+        ) {
+          parts.push(
+            `${stats.receivingTouchdowns} REC TD`
+          );
+        }
+      }
+
+      break;
+    }
+
+
+    case "WR":
+    case "TE": {
+      if (
+        stats.receivingTargets >
+          0 ||
+        stats.receptions >
+          0 ||
+        stats.receivingYards !==
+          0 ||
+        stats.receivingTouchdowns >
+          0
+      ) {
+        parts.push(
+          `${stats.receptions}/${stats.receivingTargets} REC/TGT`,
+          `${stats.receivingYards} REC YDS`
+        );
+
+        if (
+          stats.receivingTouchdowns >
+          0
+        ) {
+          parts.push(
+            `${stats.receivingTouchdowns} REC TD`
+          );
+        }
+      }
+
+
+      if (
+        stats.rushingAttempts >
+          0 ||
+        stats.rushingYards !==
+          0 ||
+        stats.rushingTouchdowns >
+          0
+      ) {
+        parts.push(
+          `${stats.rushingAttempts} CAR`,
+          `${stats.rushingYards} RUSH YDS`
+        );
+
+        if (
+          stats.rushingTouchdowns >
+          0
+        ) {
+          parts.push(
+            `${stats.rushingTouchdowns} RUSH TD`
+          );
+        }
+      }
+
+      break;
+    }
+
+
+    case "K":
+    case "PK": {
+      if (
+        stats.fieldGoalsAttempted >
+          0 ||
+        stats.fieldGoalsMade >
+          0
+      ) {
+        parts.push(
+          `${stats.fieldGoalsMade}/${stats.fieldGoalsAttempted} FG`
+        );
+      }
+
+
+      if (
+        stats.extraPointsAttempted >
+          0 ||
+        stats.extraPointsMade >
+          0
+      ) {
+        parts.push(
+          `${stats.extraPointsMade}/${stats.extraPointsAttempted} XP`
+        );
+      }
+
+      break;
+    }
+
+
+    case "DST":
+    case "DEF": {
+      if (
+        stats.dstSacks !==
+        0
+      ) {
+        parts.push(
+          `${stats.dstSacks} SACK`
+        );
+      }
+
+      if (
+        stats.dstInterceptions >
+        0
+      ) {
+        parts.push(
+          `${stats.dstInterceptions} INT`
+        );
+      }
+
+      if (
+        stats.dstFumbleRecoveries >
+        0
+      ) {
+        parts.push(
+          `${stats.dstFumbleRecoveries} FR`
+        );
+      }
+
+      if (
+        stats.dstTouchdowns >
+        0
+      ) {
+        parts.push(
+          `${stats.dstTouchdowns} TD`
+        );
+      }
+
+      if (
+        stats.dstSafeties >
+        0
+      ) {
+        parts.push(
+          `${stats.dstSafeties} SAFETY`
+        );
+      }
+
+      if (
+        stats.dstBlockedKicks >
+        0
+      ) {
+        parts.push(
+          `${stats.dstBlockedKicks} BLK`
+        );
+      }
+
+      parts.push(
+        `${stats.dstPointsAllowed} PA`,
+        `${stats.dstYardsAllowed} YA`
+      );
+
+      break;
+    }
+
+
+    default: {
+      if (
+        stats.rushingAttempts >
+          0 ||
+        stats.rushingYards !==
+          0
+      ) {
+        parts.push(
+          `${stats.rushingAttempts} CAR`,
+          `${stats.rushingYards} RUSH YDS`
+        );
+      }
+
+      if (
+        stats.receivingTargets >
+          0 ||
+        stats.receptions >
+          0 ||
+        stats.receivingYards !==
+          0
+      ) {
+        parts.push(
+          `${stats.receptions}/${stats.receivingTargets} REC/TGT`,
+          `${stats.receivingYards} REC YDS`
+        );
+      }
+    }
+  }
+
+
+  if (
+    stats.fumblesLost >
+    0
+  ) {
+    parts.push(
+      `${stats.fumblesLost} FUM LOST`
+    );
+  }
+
+
+  if (
+    parts.length >
+    0
+  ) {
+    return parts.join(
+      " • "
+    );
+  }
+
+
+  return null;
+}
+
+
+type ScoringParticipantHighlight = {
+  aliases: string[];
+  isMyTeam: boolean;
+};
+
+
+function playerScoringAliases(
+  fullName:
+    string
 ) {
-  const normalized =
-    slot.toUpperCase();
+  const clean =
+    fullName.trim();
+
+  const parts =
+    clean.split(
+      /\s+/
+    );
+
+  const aliases =
+    new Set<string>();
 
 
-  return count > 1
-    ? `${normalized}${index + 1}`
-    : normalized;
+  if (clean) {
+    aliases.add(
+      clean
+    );
+  }
+
+
+  if (
+    parts.length >=
+      2 &&
+    parts[0]
+  ) {
+    const firstInitial =
+      parts[0][0];
+
+    const lastName =
+      parts[
+        parts.length -
+          1
+      ];
+
+
+    if (
+      firstInitial &&
+      lastName
+    ) {
+      aliases.add(
+        `${firstInitial}.${lastName}`
+      );
+
+      aliases.add(
+        `${firstInitial}. ${lastName}`
+      );
+    }
+  }
+
+
+  return Array.from(
+    aliases
+  );
+}
+
+
+function scoringParticipantHighlights(
+  data:
+    TraditionalMatchupDetailData,
+  play:
+    TraditionalMatchupDetailData[
+      "recentScoringPlays"
+    ][number]
+):
+  ScoringParticipantHighlight[] {
+  const players = [
+    ...data.away.starters.map(
+      (
+        player
+      ) => ({
+        player,
+        isMyTeam:
+          data.away
+            .isMyTeam,
+      })
+    ),
+
+    ...data.home.starters.map(
+      (
+        player
+      ) => ({
+        player,
+        isMyTeam:
+          data.home
+            .isMyTeam,
+      })
+    ),
+  ];
+
+
+  return players
+    .filter(
+      ({
+        player,
+      }) =>
+        Boolean(
+          player.espnPlayerId &&
+          play
+            .participantEspnPlayerIds
+            .includes(
+              player.espnPlayerId
+            )
+        )
+    )
+    .map(
+      ({
+        player,
+        isMyTeam,
+      }) => ({
+        aliases:
+          playerScoringAliases(
+            player.fullName
+          ),
+        isMyTeam,
+      })
+    );
+}
+
+
+function HighlightedScoringPlayText({
+  text,
+  participants,
+}: {
+  text:
+    string |
+    null;
+
+  participants:
+    ScoringParticipantHighlight[];
+}) {
+  const value =
+    text ??
+    "";
+
+
+  const aliases =
+    participants.flatMap(
+      (
+        participant
+      ) =>
+        participant.aliases.map(
+          (
+            alias
+          ) => ({
+            alias,
+            isMyTeam:
+              participant.isMyTeam,
+          })
+        )
+    )
+    .filter(
+      (
+        item
+      ) =>
+        item.alias.length >
+        0
+    )
+    .sort(
+      (
+        a,
+        b
+      ) =>
+        b.alias.length -
+        a.alias.length
+    );
+
+
+  if (
+    aliases.length ===
+    0
+  ) {
+    return (
+      <>
+        {value}
+      </>
+    );
+  }
+
+
+  const escaped =
+    aliases.map(
+      (
+        item
+      ) =>
+        item.alias.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        )
+    );
+
+
+  const pattern =
+    new RegExp(
+      `(${escaped.join("|")})`,
+      "gi"
+    );
+
+
+  return (
+    <>
+      {value.split(
+        pattern
+      ).map(
+        (
+          part,
+          index
+        ) => {
+          const match =
+            aliases.find(
+              (
+                item
+              ) =>
+                item.alias.toLowerCase() ===
+                part.toLowerCase()
+            );
+
+
+          if (
+            !match
+          ) {
+            return (
+              <span
+                key={
+                  `${part}-${index}`
+                }
+              >
+                {part}
+              </span>
+            );
+          }
+
+
+          return (
+            <strong
+              key={
+                `${part}-${index}`
+              }
+              style={
+                match.isMyTeam
+                  ? styles.scoringPlayMyPlayerName
+                  : styles.scoringPlayOpponentPlayerName
+              }
+            >
+              {part}
+            </strong>
+          );
+        }
+      )}
+    </>
+  );
 }
 
 
@@ -2071,9 +1980,6 @@ function CompactRoster({
   team,
   label,
   week,
-  slotRequirements,
-  fractionalScoringEnabled,
-  projectionDecimalPlaces,
 }: {
   team:
     MatchupDetailTeam;
@@ -2081,70 +1987,7 @@ function CompactRoster({
   label: string;
 
   week: number;
-
-  slotRequirements:
-    StarterRequirement[];
-
-  fractionalScoringEnabled: boolean;
-
-  projectionDecimalPlaces: number;
 }) {
-  const destinations =
-    slotRequirements.flatMap(
-      (
-        requirement
-      ) => {
-        const playersForSlot =
-          team.starters
-            .filter(
-              (
-                player
-              ) =>
-                player.lineupSlot
-                  .toUpperCase() ===
-                requirement.slot
-                  .toUpperCase()
-            )
-            .sort(
-              (
-                a,
-                b
-              ) =>
-                a.slotIndex -
-                b.slotIndex
-            );
-
-
-        return Array.from(
-          {
-            length:
-              requirement.count,
-          },
-          (
-            _,
-            index
-          ) => ({
-            key:
-              `${requirement.slot}-${index}`,
-
-            label:
-              getSlotLabel(
-                requirement.slot,
-                index,
-                requirement.count
-              ),
-
-            player:
-              playersForSlot[
-                index
-              ] ??
-              null,
-          })
-        );
-      }
-    );
-
-
   return (
     <div
       style={
@@ -2166,226 +2009,116 @@ function CompactRoster({
       </div>
 
 
-      <div
-        style={
-          styles.tableHeader
-        }
-      >
-        <span>
-          POS
-        </span>
-
-        <span>
-          PLAYER
-        </span>
-
-        <span>
-          TEAM
-        </span>
-
-        <span>
-          STATUS
-        </span>
-
-        <span
-          style={
-            styles.rightText
-          }
-        >
-          PROJ
-        </span>
-
-        <span
-          style={
-            styles.rightText
-          }
-        >
-          PTS
-        </span>
-      </div>
-
-
-      {destinations.map(
-        (
-          destination
-        ) =>
-          destination.player ? (
-            <CompactPlayerRow
-              key={
-                destination.key
-              }
-              player={
-                destination.player
-              }
-              slotLabel={
-                destination.label
-              }
-              fractionalScoringEnabled={
-                fractionalScoringEnabled
-              }
-              projectionDecimalPlaces={
-                projectionDecimalPlaces
-              }
-            />
-          ) : (
-            <VacantPlayerRow
-              key={
-                destination.key
-              }
-              slotLabel={
-                destination.label
-              }
-              week={
-                week
-              }
-              fractionalScoringEnabled={
-                fractionalScoringEnabled
-              }
-              projectionDecimalPlaces={
-                projectionDecimalPlaces
-              }
-            />
-          )
-      )}
-
-
-      <div
-        style={
-          styles.totalRow
-        }
-      >
-        <strong>
-          TOTAL
-        </strong>
-
-        <span
-          style={
-            styles.totalProjection
-          }
-        >
-          PROJ {projectedPointsLabel(
-            team.expectedFinalPoints,
-            fractionalScoringEnabled,
-            projectionDecimalPlaces
-          )}
-        </span>
-
-        <strong>
-          {points(
-            team.points
-          )}
-        </strong>
-      </div>
-    </div>
-  );
-}
-
-
-function VacantPlayerRow({
-  slotLabel,
-  week,
-  fractionalScoringEnabled,
-  projectionDecimalPlaces,
-}: {
-  slotLabel: string;
-
-  week: number;
-
-  fractionalScoringEnabled: boolean;
-
-  projectionDecimalPlaces: number;
-}) {
-  return (
-    <div
-      style={{
-        ...styles.playerRow,
-        ...styles.vacantRow,
-      }}
-    >
-      <strong
-        style={
-          styles.slot
-        }
-      >
-        {slotLabel}
-      </strong>
-
-
-      <div
-        style={
-          styles.vacantPlayerCell
-        }
-      >
+      {team.starters.length ===
+      0 ? (
         <div
           style={
-            styles.vacantIcon
-          }
-        >
-          —
-        </div>
-
-        <div
-          style={
-            styles.playerNames
+            styles.lineupEmptyState
           }
         >
           <strong
             style={
-              styles.vacantPlayerName
+              styles.lineupEmptyTitle
             }
           >
-            VACANT
+            LINEUP NOT SET
           </strong>
 
           <span
             style={
-              styles.playerSub
+              styles.lineupEmptyText
             }
           >
-            No player assigned
+            No Week {week} lineup has
+            been created for this team
+            yet.
           </span>
         </div>
-      </div>
+      ) : (
+        <>
+          <div
+            style={
+              styles.tableHeader
+            }
+          >
+            <span>
+              SLOT
+            </span>
+
+            <span>
+              PLAYER
+            </span>
+
+            <span>
+              OPP
+            </span>
+
+            <span>
+              STATUS
+            </span>
+
+            <span
+              style={
+                styles.rightText
+              }
+            >
+              PROJ
+            </span>
+
+            <span
+              style={
+                styles.rightText
+              }
+            >
+              PTS
+            </span>
+          </div>
 
 
-      <span
-        style={
-          styles.vacantValue
-        }
-      >
-        —
-      </span>
+          {team.starters.map(
+            (
+              player
+            ) => (
+              <CompactPlayerRow
+                key={`${player.lineupSlot}:${player.slotIndex}:${player.playerId}`}
+                player={
+                  player
+                }
+                isMyTeam={
+                  team.isMyTeam
+                }
+              />
+            )
+          )}
 
 
-      <span
-        style={
-          styles.vacantStatus
-        }
-      >
-        WEEK {week}
-      </span>
+          <div
+            style={
+              styles.totalRow
+            }
+          >
+            <strong>
+              TOTAL
+            </strong>
 
+            <span
+              style={
+                styles.totalProjection
+              }
+            >
+              PROJ {points(
+                team.expectedFinalPoints
+              )}
+            </span>
 
-      <strong
-        style={
-          styles.vacantValueRight
-        }
-      >
-        {projectedPointsLabel(
-          0,
-          fractionalScoringEnabled,
-          projectionDecimalPlaces
-        )}
-      </strong>
-
-
-      <strong
-        style={
-          styles.vacantValueRight
-        }
-      >
-        0.00
-      </strong>
+            <strong>
+              {points(
+                team.points
+              )}
+            </strong>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -2443,6 +2176,9 @@ function CompactBench({
                   player
                 }
                 bench
+                isMyTeam={
+                  team.isMyTeam
+                }
               />
             )
           )
@@ -2455,20 +2191,14 @@ function CompactBench({
 function CompactPlayerRow({
   player,
   bench = false,
-  slotLabel,
-  fractionalScoringEnabled = true,
-  projectionDecimalPlaces = 2,
+  isMyTeam = false,
 }: {
   player:
     MatchupDetailPlayer;
 
   bench?: boolean;
 
-  slotLabel?: string;
-
-  fractionalScoringEnabled?: boolean;
-
-  projectionDecimalPlaces?: number;
+  isMyTeam?: boolean;
 }) {
   const possession =
     !bench &&
@@ -2478,14 +2208,6 @@ function CompactPlayerRow({
   const redZone =
     !bench &&
     player.isRedZone;
-
-
-  const fieldState =
-    !bench
-      ? playerFieldState(
-          player
-        )
-      : null;
 
 
   const displayedOpponent =
@@ -2513,8 +2235,7 @@ function CompactPlayerRow({
       >
         {bench
           ? "BN"
-          : slotLabel ??
-            player.lineupSlot}
+          : player.lineupSlot}
       </strong>
 
 
@@ -2567,21 +2288,85 @@ function CompactPlayerRow({
             </strong>
 
 
+            <span
+              style={
+                styles.playerPositionTeam
+              }
+            >
+              {player.position}
+              {" • "}
+              {player.teamAbbreviation ??
+                "FA"}
+            </span>
+
+
+            {player.injuryStatus ? (
+              <span
+                title={
+                  [
+                    player.injuryStatus,
+                    player.injuryType,
+                    player.injuryDetail,
+                  ]
+                    .filter(
+                      Boolean
+                    )
+                    .join(
+                      " • "
+                    )
+                }
+                style={
+                  styles.injuryBadge
+                }
+              >
+                {player.injuryStatus}
+              </span>
+            ) : null}
+
+
+            {redZone ? (
+              <span
+                style={
+                  styles.redZoneTag
+                }
+              >
+                RZ
+              </span>
+            ) : possession ? (
+              <span
+                style={
+                  styles.possessionTag
+                }
+              >
+                BALL
+              </span>
+            ) : null}
           </div>
 
 
           <span
+            title={
+              formatPlayerStatLine(
+                player
+              ) ??
+              undefined
+            }
             style={
-              styles.playerSub
+              player
+                .gameContext
+                ?.isActuallyLive
+                ? styles.playerStatLineLive
+                : styles.playerStatLine
             }
           >
-            {player.teamAbbreviation ??
-              "FA"}{" "}
-            {player.position}
-
-            {player.injuryStatus
-              ? ` • ${player.injuryStatus}`
-              : ""}
+            {formatPlayerStatLine(
+              player
+            ) ??
+              (
+                player.nflOpponent
+                  ? "NO STATS AVAILABLE"
+                  : "NO STATS AVAILABLE"
+              )}
           </span>
         </div>
       </div>
@@ -2591,14 +2376,10 @@ function CompactPlayerRow({
         style={
           styles.opp
         }
-        title={
-          displayedOpponent
-            ? `${player.opponentPrefix ?? "vs"} ${displayedOpponent}`
-            : "BYE"
-        }
       >
-        {player.teamAbbreviation ??
-          "FA"}
+        {displayedOpponent
+          ? `${player.opponentPrefix ?? "vs"} ${displayedOpponent}`
+          : "BYE"}
       </span>
 
 
@@ -2614,47 +2395,29 @@ function CompactPlayerRow({
         {playerStatus(
           player
         )}
-
-        {fieldState ? (
-          <>
-            {" • "}
-            <strong
-              style={
-                fieldState.tone ===
-                  "redZone"
-                  ? styles.redZoneStatus
-                  : fieldState.tone ===
-                      "onField"
-                    ? styles.onFieldStatus
-                    : styles.offFieldStatus
-              }
-            >
-              {fieldState.label}
-            </strong>
-          </>
-        ) : null}
       </span>
 
 
       <strong
         title={
           player.projectionSource ===
-            "season_average"
-            ? "Weekly baseline from current season projection"
-            : "No projection available"
+            "weekly"
+            ? "Weekly player projection"
+            : player.projectionSource ===
+                "season_average"
+              ? "Weekly baseline from current season projection"
+              : "No projection available"
         }
         style={
           styles.playerProjection
         }
       >
-        {projectedPointsLabel(
-          Math.max(
-            0,
-            player.projectedPoints
-          ),
-          fractionalScoringEnabled,
-          projectionDecimalPlaces
-        )}
+        {player.projectedPoints >
+        0
+          ? points(
+              player.projectedPoints
+            )
+          : "—"}
       </strong>
 
 
@@ -3726,39 +3489,6 @@ const styles = {
   },
 
 
-  scoringPlayerNames: {
-    display:
-      "flex",
-
-    flexWrap:
-      "wrap" as const,
-
-    alignItems:
-      "center",
-
-    gap:
-      "0",
-
-    fontSize:
-      "12px",
-
-    fontWeight:
-      950,
-  },
-
-
-  myScoringPlayer: {
-    color:
-      "#38d996",
-  },
-
-
-  opponentScoringPlayer: {
-    color:
-      "#ff5b55",
-  },
-
-
   scoringPoints: {
     justifySelf:
       "end",
@@ -3903,7 +3633,7 @@ const styles = {
 
   playerRow: {
     minHeight:
-      "44px",
+      "52px",
 
     padding:
       "3px 7px",
@@ -3925,125 +3655,18 @@ const styles = {
   },
 
 
-  vacantRow: {
-    background:
-      "rgba(255,255,255,.018)",
-
-    borderBottom:
-      "1px dashed rgba(255,255,255,.07)",
-  },
-
-
-  vacantPlayerCell: {
-    minWidth: 0,
-
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    gap:
-      "8px",
-  },
-
-
-  vacantIcon: {
-    width:
-      "28px",
-
-    height:
-      "28px",
-
-    flex:
-      "0 0 28px",
-
-    display:
-      "grid",
-
-    placeItems:
-      "center",
-
-    border:
-      "1px dashed rgba(255,139,34,.35)",
-
-    borderRadius:
-      "50%",
-
-    color:
-      "#8b8f96",
-
-    background:
-      "rgba(255,139,34,.035)",
-
-    fontSize:
-      "12px",
-
-    fontWeight:
-      900,
-  },
-
-
-  vacantPlayerName: {
-    color:
-      "#ff8a2a",
-
-    fontSize:
-      "12px",
-
-    fontWeight:
-      950,
-
-    letterSpacing:
-      ".06em",
-  },
-
-
-  vacantValue: {
-    color:
-      "#666c74",
-
-    fontSize:
-      "11px",
-  },
-
-
-  vacantStatus: {
-    color:
-      "#666c74",
-
-    fontSize:
-      "10px",
-
-    fontWeight:
-      850,
-  },
-
-
-  vacantValueRight: {
-    color:
-      "#666c74",
-
-    fontSize:
-      "11px",
-
-    textAlign:
-      "right" as const,
-  },
-
-
   possessionRow: {
     boxShadow:
-      "inset 4px 0 0 #42d982, inset 0 0 22px rgba(66,217,130,.10)",
+      "inset 4px 0 0 #ff7c22, inset 0 0 22px rgba(255,100,15,.08)",
 
     background:
-      "linear-gradient(90deg,rgba(66,217,130,.16),rgba(66,217,130,.035) 52%,transparent)",
+      "linear-gradient(90deg,rgba(255,95,15,.15),rgba(255,95,15,.035) 52%,transparent)",
 
     borderTop:
-      "1px solid rgba(66,217,130,.20)",
+      "1px solid rgba(255,125,35,.18)",
 
     borderBottom:
-      "1px solid rgba(66,217,130,.20)",
+      "1px solid rgba(255,125,35,.18)",
   },
 
 
@@ -4162,6 +3785,36 @@ const styles = {
   },
 
 
+  scoringPlayerName: {
+    color:
+      "#43d982",
+  },
+
+
+  nonScoringPlayerName: {
+    color:
+      "#ff5a50",
+  },
+
+
+  scoringPlayMyPlayerName: {
+    color:
+      "#43d982",
+
+    fontWeight:
+      950,
+  },
+
+
+  scoringPlayOpponentPlayerName: {
+    color:
+      "#ff5a50",
+
+    fontWeight:
+      950,
+  },
+
+
   playerName: {
     overflow:
       "hidden",
@@ -4184,6 +3837,111 @@ const styles = {
       "#686e77",
 
     fontSize: "11px",
+  },
+
+
+  playerPositionTeam: {
+    flex:
+      "0 0 auto",
+
+    color:
+      "#858b94",
+
+    fontSize:
+      "10px",
+
+    fontWeight:
+      850,
+
+    whiteSpace:
+      "nowrap" as const,
+  },
+
+
+  playerStatLine: {
+    overflow:
+      "hidden",
+
+    textOverflow:
+      "ellipsis",
+
+    whiteSpace:
+      "nowrap" as const,
+
+    color:
+      "#a6adb7",
+
+    fontSize:
+      "10px",
+
+    fontWeight:
+      750,
+
+    fontVariantNumeric:
+      "tabular-nums",
+  },
+
+
+  playerStatLineLive: {
+    overflow:
+      "hidden",
+
+    textOverflow:
+      "ellipsis",
+
+    whiteSpace:
+      "nowrap" as const,
+
+    color:
+      "#ff9a43",
+
+    fontSize:
+      "10px",
+
+    fontWeight:
+      850,
+
+    fontVariantNumeric:
+      "tabular-nums",
+  },
+
+
+  injuryBadge: {
+    display:
+      "inline-flex",
+
+    alignItems:
+      "center",
+
+    minHeight:
+      "16px",
+
+    padding:
+      "1px 5px",
+
+    border:
+      "1px solid rgba(255,171,64,.45)",
+
+    borderRadius:
+      "999px",
+
+    background:
+      "rgba(255,145,0,.10)",
+
+    color:
+      "#ffad55",
+
+    fontSize:
+      "9px",
+
+    fontWeight:
+      950,
+
+    lineHeight:
+      1,
+
+    whiteSpace:
+      "nowrap" as const,
   },
 
 
@@ -4251,39 +4009,9 @@ const styles = {
 
   liveStatus: {
     color:
-      "#d9dde2",
-
-    fontSize: "12px",
-  },
-
-
-  onFieldStatus: {
-    color:
       "#42d982",
 
-    fontWeight:
-      950,
-  },
-
-
-  offFieldStatus: {
-    color:
-      "#ff5a50",
-
-    fontWeight:
-      950,
-  },
-
-
-  redZoneStatus: {
-    color:
-      "#ff4137",
-
-    fontWeight:
-      950,
-
-    textShadow:
-      "0 0 8px rgba(255,65,55,.35)",
+    fontSize: "12px",
   },
 
 
@@ -4361,4 +4089,3 @@ const styles = {
       "center" as const,
   },
 };
-

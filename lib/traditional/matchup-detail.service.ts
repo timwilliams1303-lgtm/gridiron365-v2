@@ -333,10 +333,6 @@ export type TraditionalMatchupDetailData = {
       string |
       null;
 
-    defenseTeamAbbreviation:
-      string |
-      null;
-
     scoreValue:
       number |
       null;
@@ -432,6 +428,11 @@ type ScoreRow = {
 
   nfl_player_id: number;
 
+  player_game_stat_id:
+    number |
+    string |
+    null;
+
   base_points:
     number |
     string |
@@ -453,7 +454,19 @@ type ScoreRow = {
 };
 
 
+type WeeklyProjectionRow = {
+  player_id: number;
+
+  projected_points:
+    number |
+    string |
+    null;
+};
+
+
 type StatsRow = {
+  id: number;
+
   nfl_game_id: number;
 
   nfl_player_id: number;
@@ -584,34 +597,6 @@ type NflGameRow = {
 };
 
 
-type ProjectionRow = {
-  player_id: number;
-
-  projected_points:
-    number |
-    string |
-    null;
-};
-
-
-type StoredWeeklyProjectionRow = {
-  player_id: number;
-
-  projected_points:
-    number |
-    string |
-    null;
-
-  is_bye:
-    boolean |
-    null;
-
-  opponent_abbreviation:
-    string |
-    null;
-};
-
-
 type NflTeamRow = {
   id: number;
 
@@ -642,8 +627,6 @@ type InjuryRow = {
 
 type ScoringPlayRow = {
   nfl_game_id: number;
-
-  scoring_play: boolean;
 
   espn_play_id: string;
 
@@ -1270,10 +1253,10 @@ export async function getTraditionalMatchupDetailData(
    * WEEKLY PLAYER PROJECTIONS
    * =====================================================
    *
-   * Use the existing Gridiron365 weekly projection engine first.
-   * If a weekly projection has not been generated yet, fall back
-   * to the season projection divided by 17 so the matchup page
-   * still displays a useful projected value.
+   * Traditional matchup pages use the same saved weekly
+   * projections that were already generated for the league.
+   * These are pregame/full-game projections and remain visible
+   * after the fantasy matchup becomes final.
    */
 
   const projectionMap =
@@ -1283,116 +1266,48 @@ export async function getTraditionalMatchupDetailData(
     >();
 
 
-  const projectionSourceMap =
-    new Map<
-      number,
-      "weekly" |
-      "season_average" |
-      "none"
-    >();
-
-
   if (
     playerIds.length >
     0
   ) {
-    const [
-      weeklyProjectionResult,
-      seasonFallbackResult,
-    ] =
-      await Promise.all([
-        supabase
-          .from(
-            "traditional_weekly_player_projections"
-          )
-          .select(`
-            player_id,
-            projected_points,
-            is_bye,
-            opponent_abbreviation
-          `)
-          .eq(
-            "league_id",
-            leagueId
-          )
-          .eq(
-            "season",
-            refreshed.season
-          )
-          .eq(
-            "season_type",
-            2
-          )
-          .eq(
-            "week",
-            refreshed.week
-          )
-          .in(
-            "player_id",
-            playerIds
-          ),
+    const {
+      data:
+        projectionData,
 
-        supabase
-          .from(
-            "traditional_default_draft_rankings"
-          )
-          .select(`
-            player_id,
-            projected_points
-          `)
-          .eq(
-            "season",
-            refreshed.season
-          )
-          .in(
-            "player_id",
-            playerIds
-          ),
-      ]);
-
-
-    const weeklyRows =
-      (
-        weeklyProjectionResult.data ??
-        []
-      ) as StoredWeeklyProjectionRow[];
-
-
-    const weeklyIds =
-      new Set<number>();
-
-
-    for (
-      const row
-      of weeklyRows
-    ) {
-      const playerId =
-        Number(
-          row.player_id
+      error:
+        projectionError,
+    } =
+      await supabase
+        .from(
+          "traditional_weekly_player_projections"
+        )
+        .select(`
+          player_id,
+          projected_points
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          refreshed.season
+        )
+        .eq(
+          "week",
+          refreshed.week
+        )
+        .in(
+          "player_id",
+          playerIds
         );
 
 
-      weeklyIds.add(
-        playerId
-      );
-
-
-      projectionMap.set(
-        playerId,
-        row.is_bye
-          ? 0
-          : Math.max(
-              0,
-              numberValue(
-                row.projected_points
-              )
-            )
-      );
-
-
-      projectionSourceMap.set(
-        playerId,
-        "weekly"
+    if (
+      projectionError
+    ) {
+      throw new Error(
+        `Could not load weekly projections: ${projectionError.message}`
       );
     }
 
@@ -1400,51 +1315,17 @@ export async function getTraditionalMatchupDetailData(
     for (
       const row
       of (
-        seasonFallbackResult.data ??
+        projectionData ??
         []
-      ) as ProjectionRow[]
+      ) as WeeklyProjectionRow[]
     ) {
-      const playerId =
+      projectionMap.set(
         Number(
           row.player_id
-        );
-
-
-      if (
-        weeklyIds.has(
-          playerId
-        )
-      ) {
-        continue;
-      }
-
-
-      const seasonProjection =
+        ),
         numberValue(
           row.projected_points
-        );
-
-
-      const weeklyFallback =
-        seasonProjection >
-          0
-          ? seasonProjection /
-            17
-          : 0;
-
-
-      projectionMap.set(
-        playerId,
-        weeklyFallback
-      );
-
-
-      projectionSourceMap.set(
-        playerId,
-        weeklyFallback >
-          0
-          ? "season_average"
-          : "none"
+        )
       );
     }
   }
@@ -1481,6 +1362,7 @@ export async function getTraditionalMatchupDetailData(
         .select(`
           nfl_game_id,
           nfl_player_id,
+          player_game_stat_id,
           base_points,
           custom_rule_points,
           fantasy_points,
@@ -1537,6 +1419,20 @@ export async function getTraditionalMatchupDetailData(
    * =====================================================
    * PLAYER GAME STATS
    * =====================================================
+   *
+   * IMPORTANT:
+   *
+   * fantasy_player_game_scores.player_game_stat_id is the
+   * authoritative link to the exact nfl_player_game_stats row
+   * that produced the fantasy score.
+   *
+   * Load those rows BY ID first so the displayed box-score
+   * stat line and the displayed fantasy points can never drift
+   * apart because of season/week lookup ambiguity.
+   *
+   * Then load a player/week fallback only for players that do
+   * not yet have a fantasy score row (for example, a player whose
+   * box score arrived before league scoring was recalculated).
    */
 
   const statsMap =
@@ -1546,51 +1442,157 @@ export async function getTraditionalMatchupDetailData(
     >();
 
 
+  const statsById =
+    new Map<
+      number,
+      StatsRow
+    >();
+
+
+  const playerGameStatIds =
+    Array.from(
+      new Set(
+        Array.from(
+          scoreMap.values()
+        )
+          .map(
+            (
+              score
+            ) =>
+              Number(
+                score
+                  .player_game_stat_id
+              )
+          )
+          .filter(
+            (
+              id
+            ) =>
+              Number.isInteger(
+                id
+              ) &&
+              id >
+                0
+          )
+      )
+    );
+
+
+  const statsSelect = `
+    id,
+    nfl_game_id,
+    nfl_player_id,
+    game_status,
+    passing_attempts,
+    passing_completions,
+    passing_yards,
+    passing_touchdowns,
+    passing_interceptions,
+    rushing_attempts,
+    rushing_yards,
+    rushing_touchdowns,
+    receiving_targets,
+    receptions,
+    receiving_yards,
+    receiving_touchdowns,
+    fumbles_lost,
+    field_goals_made,
+    field_goals_attempted,
+    extra_points_made,
+    extra_points_attempted,
+    dst_sacks,
+    dst_interceptions,
+    dst_fumble_recoveries,
+    dst_touchdowns,
+    dst_safeties,
+    dst_blocked_kicks,
+    dst_points_allowed,
+    dst_yards_allowed
+  `;
+
+
+  /*
+   * Exact source rows used to calculate fantasy points.
+   */
+  if (
+    playerGameStatIds.length >
+    0
+  ) {
+    const {
+      data:
+        linkedStatsData,
+
+      error:
+        linkedStatsError,
+    } =
+      await supabase
+        .from(
+          "nfl_player_game_stats"
+        )
+        .select(
+          statsSelect
+        )
+        .in(
+          "id",
+          playerGameStatIds
+        );
+
+
+    if (
+      linkedStatsError
+    ) {
+      throw new Error(
+        `Could not load fantasy-score source stats: ${linkedStatsError.message}`
+      );
+    }
+
+
+    for (
+      const stat
+      of (
+        linkedStatsData ??
+        []
+      ) as StatsRow[]
+    ) {
+      statsById.set(
+        Number(
+          stat.id
+        ),
+        stat
+      );
+
+      statsMap.set(
+        Number(
+          stat.nfl_player_id
+        ),
+        stat
+      );
+    }
+  }
+
+
+  /*
+   * Fallback for players whose raw box score exists but whose
+   * fantasy score row has not been recalculated yet.
+   */
   if (
     playerIds.length >
     0
   ) {
     const {
       data:
-        statsData,
+        fallbackStatsData,
 
       error:
-        statsError,
+        fallbackStatsError,
     } =
       await supabase
         .from(
           "nfl_player_game_stats"
         )
-        .select(`
-          nfl_game_id,
-          nfl_player_id,
-          game_status,
-          passing_attempts,
-          passing_completions,
-          passing_yards,
-          passing_touchdowns,
-          passing_interceptions,
-          rushing_attempts,
-          rushing_yards,
-          rushing_touchdowns,
-          receiving_targets,
-          receptions,
-          receiving_yards,
-          receiving_touchdowns,
-          fumbles_lost,
-          field_goals_made,
-          field_goals_attempted,
-          extra_points_made,
-          extra_points_attempted,
-          dst_sacks,
-          dst_interceptions,
-          dst_fumble_recoveries,
-          dst_touchdowns,
-          dst_safeties,
-          dst_blocked_kicks,
-          dst_points_allowed,
-          dst_yards_allowed
-        `)
+        .select(
+          statsSelect
+        )
         .eq(
           "season",
           nflSeason
@@ -1610,10 +1612,10 @@ export async function getTraditionalMatchupDetailData(
 
 
     if (
-      statsError
+      fallbackStatsError
     ) {
       throw new Error(
-        `Could not load player game stats: ${statsError.message}`
+        `Could not load player game stats: ${fallbackStatsError.message}`
       );
     }
 
@@ -1621,14 +1623,34 @@ export async function getTraditionalMatchupDetailData(
     for (
       const stat
       of (
-        statsData ??
+        fallbackStatsData ??
         []
       ) as StatsRow[]
     ) {
-      statsMap.set(
-        stat.nfl_player_id,
+      statsById.set(
+        Number(
+          stat.id
+        ),
         stat
       );
+
+      /*
+       * Never overwrite the exact score-linked row loaded above.
+       */
+      if (
+        !statsMap.has(
+          Number(
+            stat.nfl_player_id
+          )
+        )
+      ) {
+        statsMap.set(
+          Number(
+            stat.nfl_player_id
+          ),
+          stat
+        );
+      }
     }
   }
 
@@ -1673,6 +1695,7 @@ export async function getTraditionalMatchupDetailData(
           "nfl_player_game_stats"
         )
         .select(`
+          id,
           nfl_game_id,
           nfl_player_id,
           game_status,
@@ -2041,18 +2064,20 @@ export async function getTraditionalMatchupDetailData(
 
   /*
    * =====================================================
-   * RECENT FANTASY SCORING PLAYS
+   * RECENT SCORING PLAYS
    * =====================================================
    *
-   * Offensive/kicking plays are included only when a STARTING
-   * fantasy player in this matchup is an ESPN participant.
+   * IMPORTANT:
    *
-   * Team-defense plays are also included for a STARTING DST when
-   * the play belongs to that defense and contains a fantasy-defense
-   * event such as a sack, interception, fumble recovery, safety,
-   * blocked kick, or defensive touchdown.
+   * Only show scoring plays involving a STARTING fantasy
+   * player in THIS matchup.
    *
-   * Bench players remain excluded.
+   * We intentionally do not show every scoring play from an
+   * NFL game merely because one matchup player is playing in
+   * that NFL game.
+   *
+   * Bench-player scoring plays are also excluded because bench
+   * points do not count toward the fantasy matchup.
    */
 
   let recentScoringPlays:
@@ -2062,21 +2087,22 @@ export async function getTraditionalMatchupDetailData(
       [];
 
 
-  const starterLineups =
-    lineups.filter(
-      (lineup) =>
-        isStarterSlot(
-          lineup.lineup_slot
-        )
-    );
-
-
   const matchupStarterEspnPlayerIds =
     Array.from(
       new Set(
-        starterLineups
+        lineups
+          .filter(
+            (
+              lineup
+            ) =>
+              isStarterSlot(
+                lineup.lineup_slot
+              )
+          )
           .map(
-            (lineup) =>
+            (
+              lineup
+            ) =>
               playerMap.get(
                 lineup.player_id
               )
@@ -2084,7 +2110,9 @@ export async function getTraditionalMatchupDetailData(
               null
           )
           .filter(
-            (espnPlayerId):
+            (
+              espnPlayerId
+            ):
               espnPlayerId is string =>
                 Boolean(
                   espnPlayerId
@@ -2094,79 +2122,18 @@ export async function getTraditionalMatchupDetailData(
     );
 
 
-  const matchupDstTeamAbbreviations =
-    new Set(
-      starterLineups
-        .map(
-          (lineup) =>
-            playerMap.get(
-              lineup.player_id
-            )
-        )
-        .filter(
-          (player) =>
-            Boolean(
-              player &&
-              normalizePosition(
-                player.primary_position
-              ) === "DST" &&
-              player.team_abbreviation
-            )
-        )
-        .map(
-          (player) =>
-            player
-              ?.team_abbreviation as string
-        )
-    );
-
-
-  const starterEspnIdSet =
-    new Set(
-      matchupStarterEspnPlayerIds
-    );
-
-
-  function isFantasyDefensePlayText(
-    text: string | null
-  ) {
-    const normalized =
-      (text ?? "")
-        .toUpperCase();
-
-    return (
-      normalized.includes(
-        "SACK"
-      ) ||
-      normalized.includes(
-        "INTERCEPT"
-      ) ||
-      normalized.includes(
-        "FUMBLE"
-      ) ||
-      normalized.includes(
-        "RECOVER"
-      ) ||
-      normalized.includes(
-        "SAFETY"
-      ) ||
-      normalized.includes(
-        "BLOCKED"
-      )
-    );
-  }
-
-
   if (
-    gameIds.length > 0 &&
-    (
-      matchupStarterEspnPlayerIds.length > 0 ||
-      matchupDstTeamAbbreviations.size > 0
-    )
+    gameIds.length >
+      0 &&
+    matchupStarterEspnPlayerIds.length >
+      0
   ) {
     const {
-      data: playData,
-      error: playError,
+      data:
+        scoringData,
+
+      error:
+        scoringError,
     } =
       await supabase
         .from(
@@ -2175,8 +2142,6 @@ export async function getTraditionalMatchupDetailData(
         .select(`
           nfl_game_id,
           espn_play_id,
-          sequence_number,
-          scoring_play,
           period,
           clock_display,
           possession_team_espn_id,
@@ -2188,146 +2153,87 @@ export async function getTraditionalMatchupDetailData(
           "nfl_game_id",
           gameIds
         )
+        .eq(
+          "scoring_play",
+          true
+        )
+        .overlaps(
+          "participant_espn_player_ids",
+          matchupStarterEspnPlayerIds
+        )
         .order(
           "sequence_number",
           {
-            ascending: false,
+            ascending:
+              false,
           }
         )
         .limit(
-          200
+          12
         );
 
 
-    if (!playError) {
+    if (
+      !scoringError
+    ) {
       recentScoringPlays =
         (
-          playData ??
+          scoringData ??
           []
-        )
-          .map(
-            (raw) => {
-              const play =
-                raw as unknown as
-                  ScoringPlayRow;
+        ).map(
+          (
+            raw
+          ) => {
+            const play =
+              raw as
+                ScoringPlayRow;
 
-              const participantIds =
+
+            const possessionTeam =
+              nflTeams.find(
+                (
+                  team
+                ) =>
+                  team.espn_team_id ===
+                  play
+                    .possession_team_espn_id
+              );
+
+
+            return {
+              nflGameId:
+                play.nfl_game_id,
+
+              espnPlayId:
+                play.espn_play_id,
+
+              period:
+                play.period,
+
+              clock:
+                play
+                  .clock_display,
+
+              possessionTeamAbbreviation:
+                possessionTeam
+                  ?.abbreviation ??
+                null,
+
+              scoreValue:
+                play
+                  .score_value,
+
+              text:
+                play
+                  .play_text,
+
+              participantEspnPlayerIds:
                 play
                   .participant_espn_player_ids ??
-                [];
-
-              const starterParticipated =
-                participantIds.some(
-                  (espnPlayerId) =>
-                    starterEspnIdSet.has(
-                      espnPlayerId
-                    )
-                );
-
-              const possessionTeam =
-                nflTeams.find(
-                  (team) =>
-                    team.espn_team_id ===
-                    play
-                      .possession_team_espn_id
-                );
-
-              const game =
-                gameMap.get(
-                  play.nfl_game_id
-                );
-
-              let defenseTeam:
-                NflTeamRow |
-                undefined;
-
-              if (
-                game &&
-                possessionTeam
-              ) {
-                const defenseTeamId =
-                  game.home_team_id ===
-                  possessionTeam.id
-                    ? game.away_team_id
-                    : game.home_team_id;
-
-                defenseTeam =
-                  nflTeams.find(
-                    (team) =>
-                      team.id ===
-                      defenseTeamId
-                  );
-              }
-
-              const dstFantasyPlay =
-                Boolean(
-                  defenseTeam &&
-                  matchupDstTeamAbbreviations.has(
-                    defenseTeam.abbreviation
-                  ) &&
-                  isFantasyDefensePlayText(
-                    play.play_text
-                  )
-                );
-
-              const offensiveOrKickingFantasyPlay =
-                Boolean(
-                  play.scoring_play &&
-                  starterParticipated
-                );
-
-              if (
-                !offensiveOrKickingFantasyPlay &&
-                !dstFantasyPlay
-              ) {
-                return null;
-              }
-
-              return {
-                nflGameId:
-                  play.nfl_game_id,
-
-                espnPlayId:
-                  play.espn_play_id,
-
-                period:
-                  play.period,
-
-                clock:
-                  play.clock_display,
-
-                possessionTeamAbbreviation:
-                  possessionTeam
-                    ?.abbreviation ??
-                  null,
-
-                defenseTeamAbbreviation:
-                  defenseTeam
-                    ?.abbreviation ??
-                  null,
-
-                scoreValue:
-                  play.score_value,
-
-                text:
-                  play.play_text,
-
-                participantEspnPlayerIds:
-                  participantIds,
-              };
-            }
-          )
-          .filter(
-            (play):
-              play is NonNullable<
-                typeof play
-              > =>
-                play !== null
-          )
-          .slice(
-            0,
-            12
-          );
+                [],
+            };
+          }
+        );
     }
   }
 
@@ -2356,8 +2262,25 @@ export async function getTraditionalMatchupDetailData(
 
 
     const stats =
+      (
+        score
+          ?.player_game_stat_id !==
+            null &&
+        score
+          ?.player_game_stat_id !==
+            undefined
+          ? statsById.get(
+              Number(
+                score
+                  .player_game_stat_id
+              )
+            )
+          : undefined
+      ) ??
       statsMap.get(
-        lineup.player_id
+        Number(
+          lineup.player_id
+        )
       );
 
 
@@ -2456,28 +2379,20 @@ export async function getTraditionalMatchupDetailData(
         ?.kickoff_at ??
       null;
 
-    /*
-     * Weekly matchup projection. The central weekly projection
-     * table is authoritative; season-average is only a fallback.
-     */
     const projectedPoints =
       projectionMap.get(
         lineup.player_id
       ) ??
       0;
 
+
     const projectionSource:
       MatchupDetailPlayer[
         "projectionSource"
       ] =
         projectedPoints >
-          0
-          ? (
-              projectionSourceMap.get(
-                lineup.player_id
-              ) ??
-              "none"
-            )
+        0
+          ? "weekly"
           : "none";
 
     const hasPossession =
@@ -2648,89 +2563,106 @@ export async function getTraditionalMatchupDetailData(
 
       stats: {
         passingAttempts:
-          stats
-            ?.passing_attempts ??
-          0,
+          numberValue(
+            stats
+              ?.passing_attempts
+          ),
 
         passingCompletions:
-          stats
-            ?.passing_completions ??
-          0,
+          numberValue(
+            stats
+              ?.passing_completions
+          ),
 
         passingYards:
-          stats
-            ?.passing_yards ??
-          0,
+          numberValue(
+            stats
+              ?.passing_yards
+          ),
 
         passingTouchdowns:
-          stats
-            ?.passing_touchdowns ??
-          0,
+          numberValue(
+            stats
+              ?.passing_touchdowns
+          ),
 
         passingInterceptions:
-          stats
-            ?.passing_interceptions ??
-          0,
+          numberValue(
+            stats
+              ?.passing_interceptions
+          ),
 
         rushingAttempts:
-          stats
-            ?.rushing_attempts ??
-          0,
+          numberValue(
+            stats
+              ?.rushing_attempts
+          ),
 
         rushingYards:
-          stats
-            ?.rushing_yards ??
-          0,
+          numberValue(
+            stats
+              ?.rushing_yards
+          ),
 
         rushingTouchdowns:
-          stats
-            ?.rushing_touchdowns ??
-          0,
+          numberValue(
+            stats
+              ?.rushing_touchdowns
+          ),
 
         receivingTargets:
-          stats
-            ?.receiving_targets ??
-          0,
+          numberValue(
+            stats
+              ?.receiving_targets
+          ),
 
         receptions:
-          stats
-            ?.receptions ??
-          0,
+          numberValue(
+            stats
+              ?.receptions
+          ),
 
         receivingYards:
-          stats
-            ?.receiving_yards ??
-          0,
+          numberValue(
+            stats
+              ?.receiving_yards
+          ),
 
         receivingTouchdowns:
-          stats
-            ?.receiving_touchdowns ??
-          0,
+          numberValue(
+            stats
+              ?.receiving_touchdowns
+          ),
 
         fumblesLost:
-          stats
-            ?.fumbles_lost ??
-          0,
+          numberValue(
+            stats
+              ?.fumbles_lost
+          ),
 
         fieldGoalsMade:
-          stats
-            ?.field_goals_made ??
-          0,
+          numberValue(
+            stats
+              ?.field_goals_made
+          ),
 
         fieldGoalsAttempted:
-          stats
-            ?.field_goals_attempted ??
-          0,
+          numberValue(
+            stats
+              ?.field_goals_attempted
+          ),
 
         extraPointsMade:
-          stats
-            ?.extra_points_made ??
-          0,
+          numberValue(
+            stats
+              ?.extra_points_made
+          ),
 
         extraPointsAttempted:
-          stats
-            ?.extra_points_attempted ??
-          0,
+          numberValue(
+            stats
+              ?.extra_points_attempted
+          ),
 
         dstSacks:
           numberValue(
@@ -2739,39 +2671,46 @@ export async function getTraditionalMatchupDetailData(
           ),
 
         dstInterceptions:
-          stats
-            ?.dst_interceptions ??
-          0,
+          numberValue(
+            stats
+              ?.dst_interceptions
+          ),
 
         dstFumbleRecoveries:
-          stats
-            ?.dst_fumble_recoveries ??
-          0,
+          numberValue(
+            stats
+              ?.dst_fumble_recoveries
+          ),
 
         dstTouchdowns:
-          stats
-            ?.dst_touchdowns ??
-          0,
+          numberValue(
+            stats
+              ?.dst_touchdowns
+          ),
 
         dstSafeties:
-          stats
-            ?.dst_safeties ??
-          0,
+          numberValue(
+            stats
+              ?.dst_safeties
+          ),
 
         dstBlockedKicks:
-          stats
-            ?.dst_blocked_kicks ??
-          0,
+          numberValue(
+            stats
+              ?.dst_blocked_kicks
+          ),
 
         dstPointsAllowed:
-          stats
-            ?.dst_points_allowed ??
-          0,
+          numberValue(
+            stats
+              ?.dst_points_allowed
+          ),
 
         dstYardsAllowed:
-          stats
-            ?.dst_yards_allowed ??
-          0,
+          numberValue(
+            stats
+              ?.dst_yards_allowed
+          ),
       },
     };
   }
@@ -2834,36 +2773,56 @@ export async function getTraditionalMatchupDetailData(
       );
 
 
+    /*
+     * The fantasy matchup itself is authoritative once it is final.
+     *
+     * A starter can occasionally have a stale/missing player score
+     * final flag or NFL-game link (including bye-week edge cases).
+     * That must never leave a FINAL fantasy matchup showing players
+     * live or players remaining.
+     */
+    const matchupIsFinal =
+      refreshed.is_final ===
+      true;
+
+
     const playersLive =
-      starters.filter(
-        (
-          player
-        ) =>
-          player
-            .gameContext
-            ?.isActuallyLive
-      ).length;
+      matchupIsFinal
+        ? 0
+        : starters.filter(
+            (
+              player
+            ) =>
+              player
+                .gameContext
+                ?.isActuallyLive
+          ).length;
 
 
     const playersFinal =
-      starters.filter(
-        (
-          player
-        ) =>
-          player
-            .scoreIsFinal ||
-          player
-            .gameContext
-            ?.statusCompleted
-      ).length;
+      matchupIsFinal
+        ? starters.length
+        : starters.filter(
+            (
+              player
+            ) =>
+              player
+                .scoreIsFinal ||
+              player
+                .gameContext
+                ?.statusCompleted
+          ).length;
 
 
     const playersRemaining =
-      Math.max(
-        0,
-        starters.length -
-          playersFinal
-      );
+      matchupIsFinal
+        ? 0
+        : Math.max(
+            0,
+            starters.length -
+              playersFinal
+          );
+
 
     const projectedPoints =
       starters.reduce(
@@ -2876,23 +2835,26 @@ export async function getTraditionalMatchupDetailData(
         0
       );
 
+
     const expectedFinalPoints =
-      starters.reduce(
-        (
-          total,
-          player
-        ) =>
-          total +
-          (
-            player.scoreIsFinal ||
-            player.gameContext
-              ?.statusCompleted
-              ? player.fantasyPoints
-              : player.fantasyPoints +
-                player.projectedPoints
-          ),
-        0
-      );
+      matchupIsFinal
+        ? projectedPoints
+        : starters.reduce(
+            (
+              total,
+              player
+            ) =>
+              total +
+              (
+                player.scoreIsFinal ||
+                player.gameContext
+                  ?.statusCompleted
+                  ? player.fantasyPoints
+                  : player.fantasyPoints +
+                    player.projectedPoints
+              ),
+            0
+          );
 
 
     return {

@@ -4,8 +4,6 @@ import type {
 
 import {
   getTraditionalMatchupDetailData,
-  type MatchupDetailPlayer,
-  type MatchupDetailTeam,
 } from "@/lib/traditional/matchup-detail.service";
 
 
@@ -17,12 +15,10 @@ export type TraditionalMatchupPlayer = {
   position: string;
 
   teamAbbreviation:
-    string |
-    null;
+    string | null;
 
   headshotUrl:
-    string |
-    null;
+    string | null;
 
   lineupSlot: string;
 
@@ -52,11 +48,6 @@ export type TraditionalMatchupTeam = {
 
   points: number;
 
-  /*
-   * IMPORTANT:
-   * This is the SAME expectedFinalPoints shown on the
-   * Matchup Detail scoreboard.
-   */
   projectedPoints: number;
 
   playersLive: number;
@@ -114,136 +105,224 @@ export type TraditionalMatchupsData = {
 };
 
 
-type SeasonStateRow = {
-  active_week:
+type MatchupDbRow = {
+  id: number;
+
+  week: number;
+
+  home_fantasy_team_id: number;
+
+  away_fantasy_team_id: number;
+
+  home_points:
+    number |
+    string |
+    null;
+
+  away_points:
+    number |
+    string |
+    null;
+
+  is_live:
+    boolean |
+    null;
+
+  is_final:
+    boolean |
+    null;
+
+  winner_fantasy_team_id:
     number |
     null;
+
+  tied:
+    boolean |
+    null;
+};
+
+
+type FantasyTeamRow = {
+  id: number;
+
+  team_name: string;
+};
+
+
+type SeasonStateRow = {
+  active_week:
+    number | null;
 };
 
 
 type LeagueSettingsRow = {
   regular_season_weeks:
+    number | null;
+};
+
+
+type WeeklyLineupRow = {
+  fantasy_team_id: number;
+
+  player_id: number;
+
+  lineup_slot: string;
+
+  slot_index: number;
+
+  is_locked: boolean;
+};
+
+
+type PlayerRow = {
+  id: number;
+
+  full_name: string;
+
+  primary_position: string;
+
+  team_abbreviation:
+    string | null;
+
+  headshot_url:
+    string | null;
+};
+
+
+type PlayerScoreRow = {
+  nfl_player_id: number;
+
+  fantasy_points:
     number |
+    string |
+    null;
+
+  is_live:
+    boolean |
+    null;
+
+  is_final:
+    boolean |
+    null;
+};
+
+type WeeklyProjectionRow = {
+  player_id: number;
+
+  projected_points:
+    number |
+    string |
     null;
 };
 
 
-type MatchupIdRow = {
-  id: number;
 
-  week: number;
-};
+function numericValue(
+  value:
+    number |
+    string |
+    null
+) {
+  if (
+    value ===
+    null
+  ) {
+    return 0;
+  }
 
 
-function normalizePlayer(
-  player:
-    MatchupDetailPlayer
-): TraditionalMatchupPlayer {
-  const isLive =
-    Boolean(
-      player.scoreIsLive ||
-      player.gameContext
-        ?.isActuallyLive
+  const parsed =
+    Number(
+      value
     );
 
 
-  const isFinal =
-    Boolean(
-      player.scoreIsFinal ||
-      player.gameContext
-        ?.statusCompleted
-    );
-
-
-  return {
-    playerId:
-      player.playerId,
-
-    fullName:
-      player.fullName,
-
-    position:
-      player.position,
-
-    teamAbbreviation:
-      player.teamAbbreviation,
-
-    headshotUrl:
-      player.headshotUrl,
-
-    lineupSlot:
-      player.lineupSlot,
-
-    slotIndex:
-      player.slotIndex,
-
-    fantasyPoints:
-      player.fantasyPoints,
-
-    projectedPoints:
-      player.projectedPoints,
-
-    isLive,
-
-    isFinal,
-
-    isLocked:
-      player.isLocked,
-
-    status:
-      isFinal
-        ? "final"
-        : isLive
-          ? "live"
-          : "scheduled",
-  };
+  return Number.isFinite(
+    parsed
+  )
+    ? parsed
+    : 0;
 }
 
 
-function normalizeTeam(
-  team:
-    MatchupDetailTeam
-): TraditionalMatchupTeam {
-  return {
-    fantasyTeamId:
-      team.fantasyTeamId,
+function normalizePosition(
+  position: string
+) {
+  if (
+    position.toUpperCase() ===
+    "PK"
+  ) {
+    return "K";
+  }
 
-    teamName:
-      team.teamName,
 
-    points:
-      team.points,
+  return position.toUpperCase();
+}
 
-    /*
-     * Match the detail page EXACTLY.
-     *
-     * Before games begin:
-     *   expectedFinalPoints === full weekly projected total.
-     *
-     * While games are live:
-     *   expectedFinalPoints === actual points already scored
-     *   + projected points still expected from unfinished players.
-     */
-    projectedPoints:
-      team.expectedFinalPoints,
 
-    playersLive:
-      team.playersLive,
+function getStatus(
+  isLive: boolean,
+  isFinal: boolean
+):
+  | "scheduled"
+  | "live"
+  | "final" {
+  if (
+    isFinal
+  ) {
+    return "final";
+  }
 
-    playersRemaining:
-      team.playersRemaining,
 
-    isWinner:
-      team.isWinner,
+  if (
+    isLive
+  ) {
+    return "live";
+  }
 
-    isMyTeam:
-      team.isMyTeam,
 
-    starters:
-      team.starters.map(
-        normalizePlayer
-      ),
-  };
+  return "scheduled";
+}
+
+
+function isStarterSlot(
+  lineupSlot: string
+) {
+  return ![
+    "BENCH",
+    "BN",
+    "IR",
+  ].includes(
+    lineupSlot.toUpperCase()
+  );
+}
+
+
+function slotSortOrder(
+  slot: string
+) {
+  const order:
+    Record<
+      string,
+      number
+    > = {
+      QB: 1,
+      RB: 2,
+      WR: 3,
+      TE: 4,
+      FLEX: 5,
+      SUPERFLEX: 6,
+      K: 7,
+      DST: 8,
+    };
+
+
+  return (
+    order[
+      slot.toUpperCase()
+    ] ??
+    99
+  );
 }
 
 
@@ -253,82 +332,53 @@ export async function getTraditionalMatchupsData(
   leagueId: string,
   season: number,
   selectedWeekInput:
-    number |
-    null,
+    number | null,
   myFantasyTeamId:
-    number |
-    null
+    number | null
 ): Promise<TraditionalMatchupsData> {
   /*
    * =====================================================
-   * ACTIVE WEEK + REGULAR SEASON LENGTH
+   * ACTIVE WEEK
    * =====================================================
    */
 
-  const [
-    seasonStateResult,
-    settingsResult,
-  ] =
-    await Promise.all([
-      supabase
-        .from(
-          "traditional_season_state"
-        )
-        .select(
-          "active_week"
-        )
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "season",
-          season
-        )
-        .maybeSingle(),
+  const {
+    data:
+      seasonStateData,
 
-      supabase
-        .from(
-          "league_settings"
-        )
-        .select(
-          "regular_season_weeks"
-        )
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .maybeSingle(),
-    ]);
+    error:
+      seasonStateError,
+  } =
+    await supabase
+      .from(
+        "traditional_season_state"
+      )
+      .select(
+        "active_week"
+      )
+      .eq(
+        "league_id",
+        leagueId
+      )
+      .eq(
+        "season",
+        season
+      )
+      .maybeSingle();
 
 
   if (
-    seasonStateResult.error
+    seasonStateError
   ) {
     throw new Error(
-      `Could not load active week: ${seasonStateResult.error.message}`
-    );
-  }
-
-
-  if (
-    settingsResult.error
-  ) {
-    throw new Error(
-      `Could not load league settings: ${settingsResult.error.message}`
+      `Could not load active week: ${seasonStateError.message}`
     );
   }
 
 
   const seasonState =
-    seasonStateResult.data as
+    seasonStateData as
       SeasonStateRow |
-      null;
-
-
-  const settings =
-    settingsResult.data as
-      LeagueSettingsRow |
       null;
 
 
@@ -338,11 +388,59 @@ export async function getTraditionalMatchupsData(
     1;
 
 
+  /*
+   * =====================================================
+   * REGULAR SEASON LENGTH
+   * =====================================================
+   */
+
+  const {
+    data:
+      settingsData,
+
+    error:
+      settingsError,
+  } =
+    await supabase
+      .from(
+        "league_settings"
+      )
+      .select(
+        "regular_season_weeks"
+      )
+      .eq(
+        "league_id",
+        leagueId
+      )
+      .maybeSingle();
+
+
+  if (
+    settingsError
+  ) {
+    throw new Error(
+      `Could not load league settings: ${settingsError.message}`
+    );
+  }
+
+
+  const settings =
+    settingsData as
+      LeagueSettingsRow |
+      null;
+
+
   const regularSeasonWeeks =
     settings
       ?.regular_season_weeks ??
     14;
 
+
+  /*
+   * =====================================================
+   * SELECTED WEEK
+   * =====================================================
+   */
 
   const requestedWeek =
     selectedWeekInput ??
@@ -361,42 +459,131 @@ export async function getTraditionalMatchupsData(
 
   /*
    * =====================================================
-   * LOAD ONLY THE MATCHUP IDS FOR THIS WEEK
+   * REFRESH MATCHUP TOTALS
    * =====================================================
-   *
-   * Do not rebuild scores/projections here.
-   *
-   * Every card below is normalized from
-   * getTraditionalMatchupDetailData(), which is the same
-   * function used by:
-   *
-   *   /matchups/[matchupId]
-   *
-   * This guarantees both screens use the same:
-   *   - actual score
-   *   - expected final / projected score
-   *   - lineup
-   *   - players live
-   *   - players remaining
-   *   - game status
-   *   - winner / tie
+   */
+
+  const {
+    error:
+      refreshError,
+  } =
+    await supabase.rpc(
+      "refresh_traditional_week_matchups",
+      {
+        p_league_id:
+          leagueId,
+
+        p_season:
+          season,
+
+        p_week:
+          selectedWeek,
+      }
+    );
+
+
+  if (
+    refreshError
+  ) {
+    throw new Error(
+      `Could not refresh matchup scores: ${refreshError.message}`
+    );
+  }
+
+
+  /*
+   * =====================================================
+   * FANTASY TEAMS
    * =====================================================
    */
 
   const {
     data:
-      matchupIdData,
+      fantasyTeamData,
 
     error:
-      matchupIdError,
+      fantasyTeamError,
+  } =
+    await supabase
+      .from(
+        "fantasy_teams"
+      )
+      .select(
+        "id, team_name"
+      )
+      .eq(
+        "league_id",
+        leagueId
+      )
+      .eq(
+        "active",
+        true
+      );
+
+
+  if (
+    fantasyTeamError
+  ) {
+    throw new Error(
+      `Could not load fantasy teams: ${fantasyTeamError.message}`
+    );
+  }
+
+
+  const fantasyTeams =
+    (
+      fantasyTeamData ??
+      []
+    ) as FantasyTeamRow[];
+
+
+  const teamNames =
+    new Map<
+      number,
+      string
+    >();
+
+
+  for (
+    const team
+    of fantasyTeams
+  ) {
+    teamNames.set(
+      team.id,
+      team.team_name
+    );
+  }
+
+
+  /*
+   * =====================================================
+   * MATCHUPS
+   * =====================================================
+   */
+
+  const {
+    data:
+      matchupData,
+
+    error:
+      matchupError,
   } =
     await supabase
       .from(
         "traditional_matchups"
       )
-      .select(
-        "id, week"
-      )
+      .select(`
+        id,
+        week,
+        home_fantasy_team_id,
+        away_fantasy_team_id,
+        home_points,
+        away_points,
+        is_live,
+        is_final,
+        winner_fantasy_team_id,
+        tied
+      `)
       .eq(
         "league_id",
         leagueId
@@ -419,59 +606,867 @@ export async function getTraditionalMatchupsData(
 
 
   if (
-    matchupIdError
+    matchupError
   ) {
     throw new Error(
-      `Could not load matchups: ${matchupIdError.message}`
+      `Could not load Traditional matchups: ${matchupError.message}`
     );
   }
 
 
-  const matchupIds =
+  const matchupRows =
     (
-      matchupIdData ??
+      matchupData ??
       []
-    ) as MatchupIdRow[];
+    ) as MatchupDbRow[];
 
 
   /*
-   * The detail loader refreshes the official matchup first,
-   * then reloads the finalized state before calculating its
-   * display data.
+   * =====================================================
+   * WEEKLY STARTING LINEUPS
+   * =====================================================
    */
-  const detailRows =
-    await Promise.all(
-      matchupIds.map(
-        (
-          row
-        ) =>
-          getTraditionalMatchupDetailData(
-            supabase,
-            leagueId,
-            row.id,
-            myFantasyTeamId
-          )
+
+  const {
+    data:
+      lineupData,
+
+    error:
+      lineupError,
+  } =
+    await supabase
+      .from(
+        "weekly_lineups"
+      )
+      .select(`
+        fantasy_team_id,
+        player_id,
+        lineup_slot,
+        slot_index,
+        is_locked
+      `)
+      .eq(
+        "league_id",
+        leagueId
+      )
+      .eq(
+        "season",
+        season
+      )
+      .eq(
+        "week",
+        selectedWeek
+      );
+
+
+  if (
+    lineupError
+  ) {
+    throw new Error(
+      `Could not load weekly lineups: ${lineupError.message}`
+    );
+  }
+
+
+  const lineupRows =
+    (
+      lineupData ??
+      []
+    ) as WeeklyLineupRow[];
+
+
+  const starterRows =
+    lineupRows.filter(
+      (
+        row
+      ) =>
+        isStarterSlot(
+          row.lineup_slot
+        )
+    );
+
+
+  /*
+   * =====================================================
+   * PLAYER INFORMATION
+   * =====================================================
+   */
+
+  const playerIds =
+    Array.from(
+      new Set(
+        starterRows.map(
+          (
+            row
+          ) =>
+            row.player_id
+        )
       )
     );
 
 
+  const playerMap =
+    new Map<
+      number,
+      PlayerRow
+    >();
+
+
+  if (
+    playerIds.length >
+    0
+  ) {
+    const {
+      data:
+        playerData,
+
+      error:
+        playerError,
+    } =
+      await supabase
+        .from(
+          "nfl_players"
+        )
+        .select(`
+          id,
+          full_name,
+          primary_position,
+          team_abbreviation,
+          headshot_url
+        `)
+        .in(
+          "id",
+          playerIds
+        );
+
+
+    if (
+      playerError
+    ) {
+      throw new Error(
+        `Could not load matchup players: ${playerError.message}`
+      );
+    }
+
+
+    for (
+      const player
+      of (
+        playerData ??
+        []
+      ) as PlayerRow[]
+    ) {
+      playerMap.set(
+        player.id,
+        player
+      );
+    }
+  }
+
+
+  /*
+   * =====================================================
+   * WEEKLY PROJECTIONS
+   * =====================================================
+   */
+
+  const projectionMap =
+    new Map<
+      number,
+      number
+    >();
+
+
+  if (
+    playerIds.length >
+    0
+  ) {
+    const {
+      data:
+        projectionData,
+
+      error:
+        projectionError,
+    } =
+      await supabase
+        .from(
+          "traditional_weekly_player_projections"
+        )
+        .select(`
+          player_id,
+          projected_points
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        )
+        .eq(
+          "season_type",
+          2
+        )
+        .eq(
+          "week",
+          selectedWeek
+        )
+        .in(
+          "player_id",
+          playerIds
+        );
+
+
+    if (
+      projectionError
+    ) {
+      throw new Error(
+        `Could not load weekly projections: ${projectionError.message}`
+      );
+    }
+
+
+    for (
+      const row
+      of (
+        projectionData ??
+        []
+      ) as WeeklyProjectionRow[]
+    ) {
+      projectionMap.set(
+        Number(
+          row.player_id
+        ),
+        numericValue(
+          row.projected_points
+        )
+      );
+    }
+  }
+
+
+  /*
+   * =====================================================
+   * PLAYER FANTASY SCORES
+   * =====================================================
+   */
+
+  const scoreMap =
+    new Map<
+      number,
+      PlayerScoreRow
+    >();
+
+
+  if (
+    playerIds.length >
+    0
+  ) {
+    const {
+      data:
+        scoreData,
+
+      error:
+        scoreError,
+    } =
+      await supabase
+        .from(
+          "fantasy_player_game_scores"
+        )
+        .select(`
+          nfl_player_id,
+          fantasy_points,
+          is_live,
+          is_final
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        )
+        .eq(
+          "season_type",
+          2
+        )
+        .eq(
+          "week",
+          selectedWeek
+        )
+        .in(
+          "nfl_player_id",
+          playerIds
+        );
+
+
+    if (
+      scoreError
+    ) {
+      throw new Error(
+        `Could not load player fantasy scores: ${scoreError.message}`
+      );
+    }
+
+
+    for (
+      const score
+      of (
+        scoreData ??
+        []
+      ) as PlayerScoreRow[]
+    ) {
+      scoreMap.set(
+        score.nfl_player_id,
+        score
+      );
+    }
+  }
+
+
+  /*
+   * =====================================================
+   * BUILD STARTERS BY FANTASY TEAM
+   * =====================================================
+   */
+
+  const startersByTeam =
+    new Map<
+      number,
+      TraditionalMatchupPlayer[]
+    >();
+
+
+  for (
+    const lineup
+    of starterRows
+  ) {
+    const player =
+      playerMap.get(
+        lineup.player_id
+      );
+
+
+    const score =
+      scoreMap.get(
+        lineup.player_id
+      );
+
+
+    const isLive =
+      score
+        ?.is_live ??
+      false;
+
+
+    const isFinal =
+      score
+        ?.is_final ??
+      false;
+
+
+    const starter:
+      TraditionalMatchupPlayer = {
+        playerId:
+          lineup.player_id,
+
+        fullName:
+          player
+            ?.full_name ??
+          "Unknown Player",
+
+        position:
+          normalizePosition(
+            player
+              ?.primary_position ??
+            "—"
+          ),
+
+        teamAbbreviation:
+          player
+            ?.team_abbreviation ??
+          null,
+
+        headshotUrl:
+          player
+            ?.headshot_url ??
+          null,
+
+        lineupSlot:
+          lineup.lineup_slot,
+
+        slotIndex:
+          lineup.slot_index,
+
+        fantasyPoints:
+          numericValue(
+            score
+              ?.fantasy_points ??
+            null
+          ),
+
+        projectedPoints:
+          projectionMap.get(
+            lineup.player_id
+          ) ??
+          0,
+
+        isLive,
+
+        isFinal,
+
+        isLocked:
+          lineup.is_locked,
+
+        status:
+          getStatus(
+            isLive,
+            isFinal
+          ),
+      };
+
+
+    const existing =
+      startersByTeam.get(
+        lineup.fantasy_team_id
+      ) ??
+      [];
+
+
+    existing.push(
+      starter
+    );
+
+
+    startersByTeam.set(
+      lineup.fantasy_team_id,
+      existing
+    );
+  }
+
+
+  /*
+   * Sort each lineup in normal fantasy order.
+   */
+
+  for (
+    const [
+      teamId,
+      starters,
+    ]
+    of startersByTeam
+  ) {
+    starters.sort(
+      (
+        a,
+        b
+      ) => {
+        const slotDifference =
+          slotSortOrder(
+            a.lineupSlot
+          ) -
+          slotSortOrder(
+            b.lineupSlot
+          );
+
+
+        if (
+          slotDifference !==
+          0
+        ) {
+          return slotDifference;
+        }
+
+
+        return (
+          a.slotIndex -
+          b.slotIndex
+        );
+      }
+    );
+
+
+    startersByTeam.set(
+      teamId,
+      starters
+    );
+  }
+
+
+  /*
+   * =====================================================
+   * NORMALIZE MATCHUPS
+   * =====================================================
+   */
+
   const matchups:
     TraditionalMatchupRow[] =
-      detailRows.map(
+      matchupRows.map(
         (
-          detail
+          matchup
         ) => {
-          const home =
-            normalizeTeam(
-              detail.home
+          const isLive =
+            matchup
+              .is_live ??
+            false;
+
+
+          const isFinal =
+            matchup
+              .is_final ??
+            false;
+
+
+          const tied =
+            matchup
+              .tied ??
+            false;
+
+
+          const homeIsWinner =
+            isFinal &&
+            !tied &&
+            matchup
+              .winner_fantasy_team_id ===
+              matchup
+                .home_fantasy_team_id;
+
+
+          const awayIsWinner =
+            isFinal &&
+            !tied &&
+            matchup
+              .winner_fantasy_team_id ===
+              matchup
+                .away_fantasy_team_id;
+
+
+          const isMyMatchup =
+            myFantasyTeamId !==
+              null &&
+            (
+              matchup
+                .home_fantasy_team_id ===
+                myFantasyTeamId ||
+              matchup
+                .away_fantasy_team_id ===
+                myFantasyTeamId
             );
 
 
-          const away =
-            normalizeTeam(
-              detail.away
+          return {
+            matchupId:
+              matchup.id,
+
+            week:
+              matchup.week,
+
+            home: {
+              fantasyTeamId:
+                matchup
+                  .home_fantasy_team_id,
+
+              teamName:
+                teamNames.get(
+                  matchup
+                    .home_fantasy_team_id
+                ) ??
+                "Home Team",
+
+              points:
+                numericValue(
+                  matchup
+                    .home_points
+                ),
+
+              projectedPoints:
+                (
+                  startersByTeam.get(
+                    matchup
+                      .home_fantasy_team_id
+                  ) ??
+                  []
+                ).reduce(
+                  (
+                    total,
+                    player
+                  ) =>
+                    total +
+                    player.projectedPoints,
+                  0
+                ),
+
+              playersLive:
+                (
+                  startersByTeam.get(
+                    matchup
+                      .home_fantasy_team_id
+                  ) ??
+                  []
+                ).filter(
+                  (
+                    player
+                  ) =>
+                    player.isLive
+                ).length,
+
+              playersRemaining:
+                (
+                  startersByTeam.get(
+                    matchup
+                      .home_fantasy_team_id
+                  ) ??
+                  []
+                ).filter(
+                  (
+                    player
+                  ) =>
+                    !player.isFinal
+                ).length,
+
+              isWinner:
+                homeIsWinner,
+
+              isMyTeam:
+                myFantasyTeamId !==
+                  null &&
+                matchup
+                  .home_fantasy_team_id ===
+                  myFantasyTeamId,
+
+              starters:
+                startersByTeam.get(
+                  matchup
+                    .home_fantasy_team_id
+                ) ??
+                [],
+            },
+
+            away: {
+              fantasyTeamId:
+                matchup
+                  .away_fantasy_team_id,
+
+              teamName:
+                teamNames.get(
+                  matchup
+                    .away_fantasy_team_id
+                ) ??
+                "Away Team",
+
+              points:
+                numericValue(
+                  matchup
+                    .away_points
+                ),
+
+              projectedPoints:
+                (
+                  startersByTeam.get(
+                    matchup
+                      .away_fantasy_team_id
+                  ) ??
+                  []
+                ).reduce(
+                  (
+                    total,
+                    player
+                  ) =>
+                    total +
+                    player.projectedPoints,
+                  0
+                ),
+
+              playersLive:
+                (
+                  startersByTeam.get(
+                    matchup
+                      .away_fantasy_team_id
+                  ) ??
+                  []
+                ).filter(
+                  (
+                    player
+                  ) =>
+                    player.isLive
+                ).length,
+
+              playersRemaining:
+                (
+                  startersByTeam.get(
+                    matchup
+                      .away_fantasy_team_id
+                  ) ??
+                  []
+                ).filter(
+                  (
+                    player
+                  ) =>
+                    !player.isFinal
+                ).length,
+
+              isWinner:
+                awayIsWinner,
+
+              isMyTeam:
+                myFantasyTeamId !==
+                  null &&
+                matchup
+                  .away_fantasy_team_id ===
+                  myFantasyTeamId,
+
+              starters:
+                startersByTeam.get(
+                  matchup
+                    .away_fantasy_team_id
+                ) ??
+                [],
+            },
+
+            isLive,
+
+            isFinal,
+
+            tied,
+
+            status:
+              getStatus(
+                isLive,
+                isFinal
+              ),
+
+            isMyMatchup,
+          };
+        }
+      );
+
+
+  /*
+   * =====================================================
+   * SYNC SCOREBOARD WITH MATCHUP DETAIL
+   * =====================================================
+   *
+   * Matchup Detail is the authoritative presentation model for
+   * weekly points, projections, live/final state and remaining
+   * starters. Re-hydrate each scoreboard matchup from that same
+   * service so the card and detail screen cannot disagree.
+   */
+  const syncedMatchups: TraditionalMatchupRow[] =
+    await Promise.all(
+      matchups.map(
+        async (matchup) => {
+          const detail =
+            await getTraditionalMatchupDetailData(
+              supabase,
+              leagueId,
+              matchup.matchupId,
+              myFantasyTeamId
             );
 
+          const mapTeam = (
+            team: typeof detail.home
+          ): TraditionalMatchupTeam => ({
+            fantasyTeamId:
+              team.fantasyTeamId,
+
+            teamName:
+              team.teamName,
+
+            points:
+              team.points,
+
+            // This intentionally matches the number shown in the
+            // Matchup Detail scoreboard. Before kickoff this equals
+            // the weekly projection; while games are live it becomes
+            // the expected final score.
+            projectedPoints:
+              team.expectedFinalPoints,
+
+            playersLive:
+              detail.isFinal
+                ? 0
+                : team.playersLive,
+
+            playersRemaining:
+              detail.isFinal
+                ? 0
+                : team.playersRemaining,
+
+            isWinner:
+              team.isWinner,
+
+            isMyTeam:
+              team.isMyTeam,
+
+            starters:
+              team.starters.map(
+                (player) => ({
+                  playerId:
+                    player.playerId,
+
+                  fullName:
+                    player.fullName,
+
+                  position:
+                    player.position,
+
+                  teamAbbreviation:
+                    player.teamAbbreviation,
+
+                  headshotUrl:
+                    player.headshotUrl,
+
+                  lineupSlot:
+                    player.lineupSlot,
+
+                  slotIndex:
+                    player.slotIndex,
+
+                  fantasyPoints:
+                    player.fantasyPoints,
+
+                  projectedPoints:
+                    player.projectedPoints,
+
+                  isLive:
+                    detail.isFinal
+                      ? false
+                      : Boolean(
+                          player.scoreIsLive ||
+                          player.gameContext
+                            ?.isActuallyLive
+                        ),
+
+                  isFinal:
+                    detail.isFinal
+                      ? true
+                      : Boolean(
+                          player.scoreIsFinal ||
+                          player.gameContext
+                            ?.statusCompleted
+                        ),
+
+                  isLocked:
+                    player.isLocked,
+
+                  status:
+                    getStatus(
+                      Boolean(
+                        player.scoreIsLive ||
+                        player.gameContext
+                          ?.isActuallyLive
+                      ),
+                      Boolean(
+                        player.scoreIsFinal ||
+                        player.gameContext
+                          ?.statusCompleted
+                      )
+                    ),
+                })
+              ),
+          });
 
           return {
             matchupId:
@@ -480,12 +1475,22 @@ export async function getTraditionalMatchupsData(
             week:
               detail.week,
 
-            home,
+            home:
+              mapTeam(
+                detail.home
+              ),
 
-            away,
+            away:
+              mapTeam(
+                detail.away
+              ),
 
             isLive:
-              detail.isLive,
+              detail.isLive ||
+              detail.liveGames.some(
+                (game) =>
+                  game.isActuallyLive
+              ),
 
             isFinal:
               detail.isFinal,
@@ -494,24 +1499,25 @@ export async function getTraditionalMatchupsData(
               detail.tied,
 
             status:
-              detail.status,
+              getStatus(
+                detail.isLive ||
+                  detail.liveGames.some(
+                    (game) =>
+                      game.isActuallyLive
+                  ),
+                detail.isFinal
+              ),
 
             isMyMatchup:
-              myFantasyTeamId !==
-                null &&
-              (
-                home.fantasyTeamId ===
-                  myFantasyTeamId ||
-                away.fantasyTeamId ===
-                  myFantasyTeamId
-              ),
+              matchup.isMyMatchup,
           };
         }
-      );
+      )
+    );
 
 
   const myMatchup =
-    matchups.find(
+    syncedMatchups.find(
       (
         matchup
       ) =>
@@ -527,7 +1533,8 @@ export async function getTraditionalMatchupsData(
 
     regularSeasonWeeks,
 
-    matchups,
+    matchups:
+      syncedMatchups,
 
     myMatchup,
   };

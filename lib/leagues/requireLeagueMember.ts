@@ -13,15 +13,31 @@ import {
 } from "@/lib/supabase/server";
 
 
+export type LeagueType =
+  | "traditional"
+  | "season_long"
+  | "nfl_playoffs";
+
+
+export type PlayerSelectionMode =
+  | "draft"
+  | "salary"
+  | "no_salary";
+
+
+export type LeagueMemberRole =
+  | "commissioner"
+  | "co_commissioner"
+  | "member";
+
+
 export type LeagueAccess = {
   userId: string;
 
   leagueId: string;
 
   role:
-    | "commissioner"
-    | "co_commissioner"
-    | "member";
+    LeagueMemberRole;
 
   league: {
     id: string;
@@ -29,14 +45,10 @@ export type LeagueAccess = {
     name: string;
 
     leagueType:
-      | "traditional"
-      | "weekly"
-      | "nfl_playoffs";
+      LeagueType;
 
     playerSelectionMode:
-      | "draft"
-      | "salary_cap"
-      | "no_salary_cap";
+      PlayerSelectionMode;
 
     season: number;
 
@@ -56,11 +68,86 @@ export type LeagueAccess = {
 };
 
 
+type MembershipRow = {
+  role:
+    LeagueMemberRole;
+};
+
+
+type LeagueRow = {
+  id: string;
+
+  name: string;
+
+  league_type:
+    LeagueType;
+
+  player_selection_mode:
+    PlayerSelectionMode;
+
+  season: number;
+
+  status: string;
+
+  commissioner_user_id: string;
+};
+
+
+type FantasyTeamRow = {
+  id: number;
+
+  team_name: string;
+};
+
+
+function isLeagueType(
+  value: unknown
+): value is LeagueType {
+  return (
+    value ===
+      "traditional" ||
+    value ===
+      "season_long" ||
+    value ===
+      "nfl_playoffs"
+  );
+}
+
+
+function isPlayerSelectionMode(
+  value: unknown
+): value is PlayerSelectionMode {
+  return (
+    value ===
+      "draft" ||
+    value ===
+      "salary" ||
+    value ===
+      "no_salary"
+  );
+}
+
+
+function isLeagueMemberRole(
+  value: unknown
+): value is LeagueMemberRole {
+  return (
+    value ===
+      "commissioner" ||
+    value ===
+      "co_commissioner" ||
+    value ===
+      "member"
+  );
+}
+
+
 export async function requireLeagueMember(
   leagueId: string
 ): Promise<LeagueAccess> {
   const user =
     await requireUser();
+
 
   if (!leagueId) {
     redirect(
@@ -68,16 +155,19 @@ export async function requireLeagueMember(
     );
   }
 
+
   const supabase =
     await createSupabaseServerClient();
 
 
   /*
-   * 1. Membership
+   * =========================================
+   * 1. VERIFY LEAGUE MEMBERSHIP
+   * =========================================
    */
   const {
     data:
-      membership,
+      membershipData,
 
     error:
       membershipError,
@@ -109,19 +199,48 @@ export async function requireLeagueMember(
   }
 
 
-  if (!membership) {
+  if (
+    !membershipData
+  ) {
     redirect(
       "/my-leagues"
     );
   }
 
 
+  const rawMembership =
+    membershipData as {
+      role:
+        unknown;
+    };
+
+
+  if (
+    !isLeagueMemberRole(
+      rawMembership.role
+    )
+  ) {
+    throw new Error(
+      "League membership has an invalid role."
+    );
+  }
+
+
+  const membership:
+    MembershipRow = {
+      role:
+        rawMembership.role,
+    };
+
+
   /*
-   * 2. League
+   * =========================================
+   * 2. LOAD LEAGUE
+   * =========================================
    */
   const {
     data:
-      league,
+      leagueData,
 
     error:
       leagueError,
@@ -155,61 +274,235 @@ export async function requireLeagueMember(
   }
 
 
-  if (!league) {
+  if (
+    !leagueData
+  ) {
     redirect(
       "/my-leagues"
     );
   }
 
 
-  /*
-   * 3. User's Traditional fantasy team, if one exists.
-   *
-   * Weekly / NFL Playoff leagues will not use this table.
-   */
-  const {
-    data:
-      fantasyTeam,
+  const rawLeague =
+    leagueData as {
+      id:
+        unknown;
 
-    error:
-      teamError,
-  } =
-    await supabase
-      .from(
-        "fantasy_teams"
-      )
-      .select(
-        "id, team_name"
-      )
-      .eq(
-        "league_id",
-        leagueId
-      )
-      .eq(
-        "owner_id",
-        user.id
-      )
-      .eq(
-        "active",
-        true
-      )
-      .maybeSingle();
+      name:
+        unknown;
+
+      league_type:
+        unknown;
+
+      player_selection_mode:
+        unknown;
+
+      season:
+        unknown;
+
+      status:
+        unknown;
+
+      commissioner_user_id:
+        unknown;
+    };
 
 
   if (
-    teamError
+    typeof rawLeague.id !==
+      "string" ||
+    typeof rawLeague.name !==
+      "string" ||
+    typeof rawLeague.season !==
+      "number" ||
+    typeof rawLeague.status !==
+      "string" ||
+    typeof rawLeague
+      .commissioner_user_id !==
+      "string"
   ) {
     throw new Error(
-      `Could not load fantasy team: ${teamError.message}`
+      "League returned invalid data."
     );
   }
 
 
+  if (
+    !isLeagueType(
+      rawLeague.league_type
+    )
+  ) {
+    throw new Error(
+      `Unsupported league type: ${String(
+        rawLeague.league_type
+      )}`
+    );
+  }
+
+
+  if (
+    !isPlayerSelectionMode(
+      rawLeague
+        .player_selection_mode
+    )
+  ) {
+    throw new Error(
+      `Unsupported player selection mode: ${String(
+        rawLeague
+          .player_selection_mode
+      )}`
+    );
+  }
+
+
+  const league:
+    LeagueRow = {
+      id:
+        rawLeague.id,
+
+      name:
+        rawLeague.name,
+
+      league_type:
+        rawLeague.league_type,
+
+      player_selection_mode:
+        rawLeague
+          .player_selection_mode,
+
+      season:
+        rawLeague.season,
+
+      status:
+        rawLeague.status,
+
+      commissioner_user_id:
+        rawLeague
+          .commissioner_user_id,
+    };
+
+
+  /*
+   * =========================================
+   * 3. LOAD USER'S FANTASY TEAM
+   * =========================================
+   *
+   * fantasy_teams is currently used by:
+   *
+   * - Traditional leagues
+   *   Permanent drafted roster ownership.
+   *
+   * - Season-Long leagues
+   *   Participant identity and weekly
+   *   lineup ownership.
+   *
+   * NFL Playoffs can use its own entry
+   * model when that league type is wired.
+   * =========================================
+   */
+  let fantasyTeam:
+    FantasyTeamRow | null =
+      null;
+
+
+  if (
+    league.league_type ===
+      "traditional" ||
+    league.league_type ===
+      "season_long"
+  ) {
+    const {
+      data:
+        fantasyTeamData,
+
+      error:
+        teamError,
+    } =
+      await supabase
+        .from(
+          "fantasy_teams"
+        )
+        .select(
+          "id, team_name"
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "owner_id",
+          user.id
+        )
+        .eq(
+          "active",
+          true
+        )
+        .maybeSingle();
+
+
+    if (
+      teamError
+    ) {
+      throw new Error(
+        `Could not load fantasy team: ${teamError.message}`
+      );
+    }
+
+
+    if (
+      fantasyTeamData
+    ) {
+      const rawTeam =
+        fantasyTeamData as {
+          id:
+            unknown;
+
+          team_name:
+            unknown;
+        };
+
+
+      const parsedId =
+        typeof rawTeam.id ===
+          "number"
+          ? rawTeam.id
+          : Number(
+              rawTeam.id
+            );
+
+
+      if (
+        !Number.isFinite(
+          parsedId
+        ) ||
+        typeof rawTeam
+          .team_name !==
+          "string"
+      ) {
+        throw new Error(
+          "Fantasy team returned invalid data."
+        );
+      }
+
+
+      fantasyTeam = {
+        id:
+          parsedId,
+
+        team_name:
+          rawTeam.team_name,
+      };
+    }
+  }
+
+
+  /*
+   * =========================================
+   * 4. BUILD ACCESS OBJECT
+   * =========================================
+   */
   const role =
-    membership.role as
-      | "commissioner"
-      | "co_commissioner"
-      | "member";
+    membership.role;
 
 
   return {
@@ -231,7 +524,8 @@ export async function requireLeagueMember(
         league.league_type,
 
       playerSelectionMode:
-        league.player_selection_mode,
+        league
+          .player_selection_mode,
 
       season:
         league.season,
@@ -240,7 +534,8 @@ export async function requireLeagueMember(
         league.status,
 
       commissionerUserId:
-        league.commissioner_user_id,
+        league
+          .commissioner_user_id,
     },
 
     fantasyTeam:
@@ -250,7 +545,8 @@ export async function requireLeagueMember(
               fantasyTeam.id,
 
             teamName:
-              fantasyTeam.team_name,
+              fantasyTeam
+                .team_name,
           }
         : null,
 

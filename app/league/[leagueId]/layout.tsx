@@ -6,12 +6,14 @@ import {
   redirect,
 } from "next/navigation";
 
+import SeasonLongLeagueNav from "@/components/season-long/SeasonLongLeagueNav";
+
 import TraditionalLeagueNav from "@/components/traditional/TraditionalLeagueNav";
 import TraditionalLiveRefresh from "@/components/traditional/TraditionalLiveRefresh";
 
 import {
-  requireTraditionalLeague,
-} from "@/lib/traditional/requireTraditionalLeague";
+  requireLeagueMember,
+} from "@/lib/leagues/requireLeagueMember";
 
 import "./league-shell.css";
 
@@ -37,7 +39,75 @@ function isUuid(
 }
 
 
-export default async function TraditionalLeagueLayout({
+function getLeagueTypeLabel(
+  leagueType:
+    string,
+  playerSelectionMode:
+    string
+) {
+  if (
+    leagueType ===
+    "traditional"
+  ) {
+    return "TRADITIONAL";
+  }
+
+
+  if (
+    leagueType ===
+    "season_long"
+  ) {
+    return "SEASON-LONG";
+  }
+
+
+  if (
+    leagueType ===
+    "nfl_playoffs"
+  ) {
+    return "NFL PLAYOFFS";
+  }
+
+
+  return "GRIDIRON365";
+}
+
+
+function getSelectionModeLabel(
+  leagueType:
+    string,
+  playerSelectionMode:
+    string
+) {
+  if (
+    leagueType ===
+    "traditional"
+  ) {
+    return null;
+  }
+
+
+  if (
+    playerSelectionMode ===
+    "salary"
+  ) {
+    return "SALARY CAP";
+  }
+
+
+  if (
+    playerSelectionMode ===
+    "no_salary"
+  ) {
+    return "NO SALARY CAP";
+  }
+
+
+  return null;
+}
+
+
+export default async function LeagueLayout({
   children,
   params,
 }: LayoutProps) {
@@ -51,14 +121,6 @@ export default async function TraditionalLeagueLayout({
    * ============================================================
    * ROUTE SAFETY
    * ============================================================
-   *
-   * Prevent paths such as:
-   *
-   * /league/commissioner
-   * /league/settings
-   * /league/draft
-   *
-   * from ever being sent to Supabase as league UUIDs.
    */
   if (
     !leagueId ||
@@ -72,8 +134,13 @@ export default async function TraditionalLeagueLayout({
   }
 
 
+  /*
+   * ============================================================
+   * SHARED LEAGUE ACCESS
+   * ============================================================
+   */
   const access =
-    await requireTraditionalLeague(
+    await requireLeagueMember(
       leagueId
     );
 
@@ -100,21 +167,67 @@ export default async function TraditionalLeagueLayout({
     );
 
 
+  const isTraditional =
+    league.leagueType ===
+    "traditional";
+
+
+  const isSeasonLong =
+    league.leagueType ===
+    "season_long";
+
+
+  const isNflPlayoffs =
+    league.leagueType ===
+    "nfl_playoffs";
+
+
+  const leagueTypeLabel =
+    getLeagueTypeLabel(
+      league.leagueType,
+      league.playerSelectionMode
+    );
+
+
+  const selectionModeLabel =
+    getSelectionModeLabel(
+      league.leagueType,
+      league.playerSelectionMode
+    );
+
+
+  const primaryActionLabel =
+    isTraditional
+      ? "My Team"
+      : isSeasonLong
+        ? "My Entry"
+        : "League Home";
+
+
+  const primaryActionHref =
+    isTraditional
+      ? `/league/${leagueId}/team`
+      : isSeasonLong
+        ? `/league/${leagueId}/entry`
+        : `/league/${leagueId}`;
+
+
   return (
     <div
       className="g365-league-shell"
     >
       {/* ==================================================
-          MATCHUPS LEAGUE-SCOPED REALTIME
-          Invisible and only activates on matchup routes.
+          TRADITIONAL REALTIME ONLY
       =================================================== */}
 
-      <TraditionalLiveRefresh
-        leagueId={
-          leagueId
-        }
-        mode="league"
-      />
+      {isTraditional ? (
+        <TraditionalLiveRefresh
+          leagueId={
+            leagueId
+          }
+          mode="league"
+        />
+      ) : null}
 
 
       {/* ==================================================
@@ -156,8 +269,20 @@ export default async function TraditionalLeagueLayout({
             <span
               className="g365-league-badge"
             >
-              TRADITIONAL
+              {leagueTypeLabel}
             </span>
+
+
+            {selectionModeLabel ? (
+              <span
+                className="
+                  g365-league-badge
+                  g365-league-badge-muted
+                "
+              >
+                {selectionModeLabel}
+              </span>
+            ) : null}
 
 
             <span
@@ -218,13 +343,15 @@ export default async function TraditionalLeagueLayout({
 
           {fantasyTeam ? (
             <Link
-              href={`/league/${leagueId}/team`}
+              href={
+                primaryActionHref
+              }
               className="
                 g365-league-action
                 g365-league-action-primary
               "
             >
-              My Team
+              {primaryActionLabel}
             </Link>
           ) : null}
         </div>
@@ -232,17 +359,64 @@ export default async function TraditionalLeagueLayout({
 
 
       {/* ==================================================
-          LEAGUE NAV
+          LEAGUE NAVIGATION
       =================================================== */}
 
-      <TraditionalLeagueNav
-        leagueId={
-          leagueId
-        }
-        isCommissioner={
-          isCommissioner
-        }
-      />
+      {isTraditional ? (
+        <TraditionalLeagueNav
+          leagueId={
+            leagueId
+          }
+          isCommissioner={
+            isCommissioner
+          }
+        />
+      ) : null}
+
+
+      {isSeasonLong ? (
+        <SeasonLongLeagueNav
+          leagueId={
+            leagueId
+          }
+        />
+      ) : null}
+
+
+      {isNflPlayoffs ? (
+        <nav
+          aria-label="NFL Playoffs League Navigation"
+          style={{
+            display:
+              "flex",
+
+            flexWrap:
+              "wrap",
+
+            gap:
+              "10px",
+
+            padding:
+              "10px 18px",
+
+            borderTop:
+              "1px solid rgba(255,255,255,0.07)",
+
+            borderBottom:
+              "1px solid rgba(255,255,255,0.08)",
+
+            background:
+              "rgba(8,8,10,0.94)",
+          }}
+        >
+          <Link
+            href={`/league/${leagueId}`}
+            className="g365-league-action"
+          >
+            Home
+          </Link>
+        </nav>
+      ) : null}
 
 
       {/* ==================================================

@@ -2,14 +2,12 @@ import {
   redirect,
 } from "next/navigation";
 
-import TraditionalLeagueHome from "@/components/traditional/TraditionalLeagueHome";
-
-import SeasonLongLeagueHome from "@/components/season-long/SeasonLongLeagueHome";
+import SeasonLongScoring from "@/components/season-long/SeasonLongScoring";
+import TraditionalScoring from "@/components/traditional/TraditionalScoring";
 
 import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
-
 
 type PageProps = {
   params:
@@ -18,8 +16,7 @@ type PageProps = {
     }>;
 };
 
-
-export default async function LeagueHomePage({
+export default async function CommissionerScoringPage({
   params,
 }: PageProps) {
   const {
@@ -27,39 +24,44 @@ export default async function LeagueHomePage({
   } =
     await params;
 
-
   const access =
     await requireLeagueMember(
       leagueId
     );
 
+  if (
+    !access.isCommissioner
+  ) {
+    redirect(
+      `/league/${leagueId}`
+    );
+  }
 
   switch (
     access.league.leagueType
   ) {
     case "traditional":
       return (
-        <TraditionalLeagueHome
+        <TraditionalScoring
           leagueId={
             leagueId
           }
         />
       );
-
 
     case "season_long":
       return (
-        <SeasonLongLeagueHome
+        <SeasonLongScoring
           leagueId={
             leagueId
           }
         />
       );
 
-
     case "nfl_playoffs":
+    default:
       redirect(
-        "/my-leagues"
+        `/league/${leagueId}`
       );
   }
 }
