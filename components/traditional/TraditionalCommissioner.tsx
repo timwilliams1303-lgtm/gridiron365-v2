@@ -686,6 +686,81 @@ export default function TraditionalCommissioner({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel(`traditional-commissioner-${leagueId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "league_invitations",
+          filter: `league_id=eq.${leagueId}`,
+        },
+        () => {
+          void load({
+            showLoading: false,
+            clearMessages: false,
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "fantasy_teams",
+          filter: `league_id=eq.${leagueId}`,
+        },
+        () => {
+          void load({
+            showLoading: false,
+            clearMessages: false,
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "league_members",
+          filter: `league_id=eq.${leagueId}`,
+        },
+        () => {
+          void load({
+            showLoading: false,
+            clearMessages: false,
+          });
+        }
+      )
+      .subscribe();
+
+    const fallbackInterval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void load({
+          showLoading: false,
+          clearMessages: false,
+        });
+      }
+    }, 5000);
+
+    const handleFocus = () => {
+      void load({
+        showLoading: false,
+        clearMessages: false,
+      });
+    };
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      window.clearInterval(fallbackInterval);
+      window.removeEventListener("focus", handleFocus);
+      void supabase.removeChannel(channel);
+    };
+  }, [leagueId, load]);
+
   const playerMap = useMemo(
     () => new Map(players.map((p) => [p.id, p] as const)),
     [players]
@@ -1001,7 +1076,7 @@ export default function TraditionalCommissioner({
         throw new Error("Your login session is missing. Sign in again and retry.");
       }
 
-      const response = await fetch(`/api/league/${league.id}/invite`, {
+      const response = await fetch(`/api/leagues/${league.id}/invite`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
