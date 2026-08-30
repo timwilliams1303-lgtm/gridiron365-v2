@@ -1358,30 +1358,44 @@ export default function SeasonLongCommissioner({
                             </button>
                           ) : null}
 
-                          {hasOwner &&
-                          team.owner_id !==
+                          {hasOwner ? (
+                            team.owner_id ===
                             data.league.commissioner_user_id ? (
-                            <button
-                              type="button"
-                              disabled={
-                                saving ||
-                                removingOwnerTeamId !==
-                                  null
-                              }
-                              onClick={() =>
-                                void removeSeasonLongOwner(
-                                  team
-                                )
-                              }
-                              style={
-                                styles.linkButton
-                              }
-                            >
-                              {removingOwnerTeamId ===
-                              team.id
-                                ? "REMOVING…"
-                                : "REMOVE OWNER"}
-                            </button>
+                              <button
+                                type="button"
+                                disabled
+                                title="Transfer primary commissioner ownership before removing this owner."
+                                style={{
+                                  ...styles.linkButton,
+                                  opacity: 0.45,
+                                  cursor: "not-allowed",
+                                }}
+                              >
+                                PRIMARY COMMISSIONER
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={
+                                  saving ||
+                                  removingOwnerTeamId !==
+                                    null
+                                }
+                                onClick={() =>
+                                  void removeSeasonLongOwner(
+                                    team
+                                  )
+                                }
+                                style={
+                                  styles.linkButton
+                                }
+                              >
+                                {removingOwnerTeamId ===
+                                team.id
+                                  ? "REMOVING…"
+                                  : "REMOVE OWNER"}
+                              </button>
+                            )
                           ) : null}
 
                           <button

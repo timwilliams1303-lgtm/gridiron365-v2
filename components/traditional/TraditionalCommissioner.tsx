@@ -2,9 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { useRouter } from "next/navigation";
-
-import TraditionalScoring from "@/components/traditional/TraditionalScoring";
+import { useParams, useRouter } from "next/navigation";
 
 type Tab =
   | "overview"
@@ -149,20 +147,12 @@ type Team = {
   owner_id: string | null;
   team_name: string;
   active: boolean;
-  is_cpu: boolean;
 };
 
 type Member = {
   id: number;
   user_id: string;
   role: string;
-};
-
-type Profile = {
-  user_id: string;
-  first_name: string | null;
-  last_name: string | null;
-  display_name: string | null;
 };
 
 type RosterRow = {
@@ -223,15 +213,6 @@ type InviteApiResponse = {
   invitationUrl?: string;
   invitation_url?: string;
   url?: string;
-};
-
-type LeagueInvitation = {
-  id: string;
-  league_id: string;
-  fantasy_team_id: number | null;
-  email: string;
-  status: string;
-  expires_at: string | null;
 };
 
 type ScoringCategoryKey =
@@ -430,7 +411,7 @@ function pretty(value?: string | null) {
 }
 
 function shortId(value?: string | null) {
-  return value ? `${value.slice(0, 8)}…` : "—";
+  return value ? `${value.slice(0, 8)}…` : "OWNERLESS / CPU";
 }
 
 function localDate(value: string | null) {
@@ -438,17 +419,6 @@ function localDate(value: string | null) {
   const d = new Date(value);
   const shifted = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
   return shifted.toISOString().slice(0, 16);
-}
-
-function playoffRounds(teamCount: number) {
-  const count = Math.max(2, teamCount);
-  return Math.ceil(Math.log2(count));
-}
-
-function derivedPlayoffWeeks(regularSeasonWeeks: number, playoffTeams: number) {
-  const startWeek = regularSeasonWeeks + 1;
-  const championshipWeek = regularSeasonWeeks + playoffRounds(playoffTeams);
-  return { startWeek, championshipWeek };
 }
 
 function Section(props: {
@@ -512,14 +482,10 @@ function Button(props: {
   );
 }
 
-type TraditionalCommissionerProps = {
-  leagueId: string;
-};
-
-export default function TraditionalCommissioner({
-  leagueId,
-}: TraditionalCommissionerProps) {
+export default function TraditionalCommissionerPage() {
+  const params = useParams<{ leagueId: string }>();
   const router = useRouter();
+  const leagueId = params.leagueId;
 
   const [tab, setTab] = useState<Tab>("overview");
   const [loading, setLoading] = useState(true);
@@ -539,7 +505,6 @@ export default function TraditionalCommissioner({
   const [season, setSeason] = useState<SeasonState | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [rosters, setRosters] = useState<RosterRow[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [claims, setClaims] = useState<WaiverClaim[]>([]);
@@ -548,32 +513,20 @@ export default function TraditionalCommissioner({
   const [scoringCategory, setScoringCategory] = useState<ScoringCategoryKey>("passing");
   const [draftOrderMode, setDraftOrderMode] = useState<"manual" | "random">("manual");
   const [draftOrder, setDraftOrder] = useState<number[]>([]);
-  const [teamInviteEmails, setTeamInviteEmails] = useState<Record<number, string>>({});
-  const [invitingTeamId, setInvitingTeamId] = useState<number | null>(null);
-  const [invitations, setInvitations] = useState<LeagueInvitation[]>([]);
-  const [cpuBusy, setCpuBusy] = useState(false);
+  const [inviteFirstName, setInviteFirstName] = useState("");
+  const [inviteLastName, setInviteLastName] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviting, setInviting] = useState(false);
   const [removingOwnerTeamId, setRemovingOwnerTeamId] = useState<number | null>(null);
-  const [deletingLeague, setDeletingLeague] = useState(false);
 
   const [rosterTeamId, setRosterTeamId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [addPlayerId, setAddPlayerId] = useState<number | null>(null);
 
-  const load = useCallback(async (options?: {
-    showLoading?: boolean;
-    clearMessages?: boolean;
-  }) => {
-    const showLoading = options?.showLoading ?? true;
-    const clearMessages = options?.clearMessages ?? true;
-
-    if (showLoading) {
-      setLoading(true);
-    }
-
-    if (clearMessages) {
-      setError(null);
-      setSuccess(null);
-    }
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
 
     const auth = await supabase.rpc("is_traditional_league_commissioner", {
       p_league_id: leagueId,
@@ -581,13 +534,13 @@ export default function TraditionalCommissioner({
 
     if (auth.error) {
       setError(auth.error.message);
-      if (showLoading) setLoading(false);
+      setLoading(false);
       return;
     }
 
     if (auth.data !== true) {
       setAuthorized(false);
-      if (showLoading) setLoading(false);
+      setLoading(false);
       return;
     }
 
@@ -610,17 +563,12 @@ export default function TraditionalCommissioner({
       supabase.from("league_scoring_rules").select("id,league_id,category,rule_type,stat_key,min_value,max_value,points,is_enabled,stacking_mode,priority,label").eq("league_id", leagueId).order("category").order("priority"),
       supabase.from("traditional_waiver_claims").select("*").eq("league_id", leagueId).order("submitted_at", { ascending: false }).limit(100),
       supabase.from("traditional_trade_offers").select("*").eq("league_id", leagueId).order("created_at", { ascending: false }).limit(100),
-      supabase
-        .from("league_invitations")
-        .select("id,league_id,fantasy_team_id,email,status,expires_at")
-        .eq("league_id", leagueId)
-        .eq("status", "pending"),
     ]);
 
     const failed = results.find((r) => r.error);
     if (failed?.error) {
       setError(failed.error.message);
-      if (showLoading) setLoading(false);
+      setLoading(false);
       return;
     }
 
@@ -630,76 +578,16 @@ export default function TraditionalCommissioner({
     setScoring(results[3].data as Scoring | null);
     setDraft(results[4].data as Draft | null);
     setWaivers(results[5].data as WaiverSettings | null);
-    const loadedLeagueSettings = results[1].data as LeagueSettings | null;
-    const loadedTrades = results[6].data as TradeSettings | null;
-
-    if (loadedTrades && loadedLeagueSettings) {
-      const regularSeasonWeeks = loadedLeagueSettings.regular_season_weeks ?? 14;
-      setTrades({
-        ...loadedTrades,
-        trade_deadline_week:
-          loadedTrades.trade_deadline_week === null
-            ? null
-            : Math.min(loadedTrades.trade_deadline_week, regularSeasonWeeks),
-      });
-    } else {
-      setTrades(loadedTrades);
-    }
-    const loadedPlayoffs = results[7].data as PlayoffSettings | null;
-
-    if (loadedPlayoffs && loadedLeagueSettings) {
-      const derived = derivedPlayoffWeeks(
-        loadedLeagueSettings.regular_season_weeks ?? 14,
-        loadedPlayoffs.playoff_teams
-      );
-
-      setPlayoffs({
-        ...loadedPlayoffs,
-        playoff_start_week: derived.startWeek,
-        championship_week: derived.championshipWeek,
-      });
-    } else {
-      setPlayoffs(loadedPlayoffs);
-    }
+    setTrades(results[6].data as TradeSettings | null);
+    setPlayoffs(results[7].data as PlayoffSettings | null);
     setSeason(results[8].data as SeasonState | null);
-
-    const loadedTeams = (results[9].data ?? []) as Team[];
-    const loadedMembers = (results[10].data ?? []) as Member[];
-    const profileUserIds = Array.from(
-      new Set(
-        [
-          ...loadedMembers.map((member) => member.user_id),
-          ...loadedTeams
-            .map((team) => team.owner_id)
-            .filter((ownerId): ownerId is string => Boolean(ownerId)),
-        ].filter(Boolean)
-      )
-    );
-
-    let loadedProfiles: Profile[] = [];
-
-    if (profileUserIds.length > 0) {
-      const profileResult = await supabase
-        .from("profiles")
-        .select("user_id,first_name,last_name,display_name")
-        .in("user_id", profileUserIds);
-
-      if (profileResult.error) {
-        console.error("Failed to load league profiles:", profileResult.error);
-      } else {
-        loadedProfiles = (profileResult.data ?? []) as Profile[];
-      }
-    }
-
-    setTeams(loadedTeams);
-    setMembers(loadedMembers);
-    setProfiles(loadedProfiles);
+    setTeams((results[9].data ?? []) as Team[]);
+    setMembers((results[10].data ?? []) as Member[]);
     setRosters((results[11].data ?? []) as RosterRow[]);
     setPlayers((results[12].data ?? []) as Player[]);
     setScoringRules((results[13].data ?? []) as ScoringRule[]);
     setClaims((results[14].data ?? []) as WaiverClaim[]);
     setOffers((results[15].data ?? []) as TradeOffer[]);
-    setInvitations((results[16].data ?? []) as LeagueInvitation[]);
 
     const activeTeams = ((results[9].data ?? []) as Team[]).filter((team) => team.active);
 
@@ -713,91 +601,16 @@ export default function TraditionalCommissioner({
       return currentIsValid ? current : activeTeamIds;
     });
 
-    setRosterTeamId((current) => current ?? activeTeams[0]?.id ?? null);
-
-    if (showLoading) {
-      setLoading(false);
+    if (!rosterTeamId) {
+      setRosterTeamId(activeTeams[0]?.id ?? null);
     }
-  }, [leagueId]);
+
+    setLoading(false);
+  }, [leagueId, rosterTeamId]);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    const channel = supabase
-      .channel(`traditional-commissioner-${leagueId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "league_invitations",
-          filter: `league_id=eq.${leagueId}`,
-        },
-        () => {
-          void load({
-            showLoading: false,
-            clearMessages: false,
-          });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "fantasy_teams",
-          filter: `league_id=eq.${leagueId}`,
-        },
-        () => {
-          void load({
-            showLoading: false,
-            clearMessages: false,
-          });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "league_members",
-          filter: `league_id=eq.${leagueId}`,
-        },
-        () => {
-          void load({
-            showLoading: false,
-            clearMessages: false,
-          });
-        }
-      )
-      .subscribe();
-
-    const fallbackInterval = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        void load({
-          showLoading: false,
-          clearMessages: false,
-        });
-      }
-    }, 5000);
-
-    const handleFocus = () => {
-      void load({
-        showLoading: false,
-        clearMessages: false,
-      });
-    };
-
-    window.addEventListener("focus", handleFocus);
-
-    return () => {
-      window.clearInterval(fallbackInterval);
-      window.removeEventListener("focus", handleFocus);
-      void supabase.removeChannel(channel);
-    };
-  }, [leagueId, load]);
 
   const playerMap = useMemo(
     () => new Map(players.map((p) => [p.id, p] as const)),
@@ -807,32 +620,6 @@ export default function TraditionalCommissioner({
   const teamMap = useMemo(
     () => new Map(teams.map((t) => [t.id, t] as const)),
     [teams]
-  );
-
-  const profileByUserId = useMemo(
-    () => new Map(profiles.map((profile) => [profile.user_id, profile] as const)),
-    [profiles]
-  );
-
-  const profileName = useCallback(
-    (userId: string | null | undefined) => {
-      if (!userId) return "";
-
-      const profile = profileByUserId.get(userId);
-      const displayName = profile?.display_name?.trim();
-
-      if (displayName) return displayName;
-
-      const fullName = [
-        profile?.first_name?.trim(),
-        profile?.last_name?.trim(),
-      ]
-        .filter(Boolean)
-        .join(" ");
-
-      return fullName || shortId(userId);
-    },
-    [profileByUserId]
   );
 
   const rostered = useMemo(
@@ -891,12 +678,11 @@ export default function TraditionalCommissioner({
         return;
       }
 
-      await load({
-        showLoading: false,
-        clearMessages: false,
-      });
+      setSuccess(
+        message
+      );
 
-      setSuccess(message);
+      await load();
     } catch (
       err
     ) {
@@ -910,124 +696,6 @@ export default function TraditionalCommissioner({
         false
       );
     }
-  }
-
-  function changeMaximumTeams(nextMaxTeams: number) {
-    if (!leagueSettings) return;
-
-    const maxTeams = Math.max(4, Math.min(12, nextMaxTeams));
-    setLeagueSettings({ ...leagueSettings, max_teams: maxTeams });
-
-    if (playoffs && playoffs.playoff_teams > maxTeams) {
-      const nextPlayoffTeams = maxTeams >= 8 ? 8 : maxTeams >= 6 ? 6 : maxTeams >= 4 ? 4 : 2;
-      const regularWeeks = leagueSettings.regular_season_weeks ?? 14;
-      const derived = derivedPlayoffWeeks(regularWeeks, nextPlayoffTeams);
-      setPlayoffs({
-        ...playoffs,
-        playoff_teams: nextPlayoffTeams,
-        playoff_start_week: derived.startWeek,
-        championship_week: derived.championshipWeek,
-      });
-    }
-  }
-
-  function changeRegularSeasonWeeks(nextRegularSeasonWeeks: number) {
-    if (!leagueSettings) return;
-
-    const regularSeasonWeeks = Math.max(1, Math.min(17, nextRegularSeasonWeeks));
-    setLeagueSettings({ ...leagueSettings, regular_season_weeks: regularSeasonWeeks });
-
-    // A trade deadline can never be later than the final regular-season week.
-    if (trades?.trade_deadline_week !== null &&
-        trades?.trade_deadline_week !== undefined &&
-        trades.trade_deadline_week > regularSeasonWeeks) {
-      setTrades({ ...trades, trade_deadline_week: regularSeasonWeeks });
-    }
-
-    if (playoffs) {
-      const derived = derivedPlayoffWeeks(regularSeasonWeeks, playoffs.playoff_teams);
-      setPlayoffs({
-        ...playoffs,
-        playoff_start_week: derived.startWeek,
-        championship_week: derived.championshipWeek,
-      });
-    }
-  }
-
-  function changePlayoffTeams(nextPlayoffTeams: number) {
-    if (!playoffs || !leagueSettings) return;
-
-    const maxTeams = leagueSettings.max_teams ?? 12;
-    const playoffTeams = Math.min(nextPlayoffTeams, maxTeams);
-    let regularSeasonWeeks = leagueSettings.regular_season_weeks ?? 14;
-    const rounds = playoffRounds(playoffTeams);
-
-    // The NFL regular season ends in Week 18. If a larger playoff field needs
-    // another round, shorten the fantasy regular season automatically so the
-    // championship still fits inside Week 18.
-    if (regularSeasonWeeks + rounds > 18) {
-      regularSeasonWeeks = 18 - rounds;
-      setLeagueSettings({ ...leagueSettings, regular_season_weeks: regularSeasonWeeks });
-    }
-
-    const derived = derivedPlayoffWeeks(regularSeasonWeeks, playoffTeams);
-    setPlayoffs({
-      ...playoffs,
-      playoff_teams: playoffTeams,
-      playoff_start_week: derived.startWeek,
-      championship_week: derived.championshipWeek,
-    });
-  }
-
-  function changePlayoffStartWeek(nextStartWeek: number) {
-    if (!playoffs || !leagueSettings) return;
-
-    const rounds = playoffRounds(playoffs.playoff_teams);
-    const maxStartWeek = 19 - rounds;
-    const startWeek = Math.max(2, Math.min(maxStartWeek, nextStartWeek));
-    const regularSeasonWeeks = startWeek - 1;
-    const derived = derivedPlayoffWeeks(regularSeasonWeeks, playoffs.playoff_teams);
-
-    setLeagueSettings({ ...leagueSettings, regular_season_weeks: regularSeasonWeeks });
-
-    // Moving the playoffs earlier also moves the latest possible trade deadline.
-    if (trades?.trade_deadline_week !== null &&
-        trades?.trade_deadline_week !== undefined &&
-        trades.trade_deadline_week > regularSeasonWeeks) {
-      setTrades({ ...trades, trade_deadline_week: regularSeasonWeeks });
-    }
-
-    setPlayoffs({
-      ...playoffs,
-      playoff_start_week: derived.startWeek,
-      championship_week: derived.championshipWeek,
-    });
-  }
-
-  async function saveLeagueStructure() {
-    if (!leagueSettings || !playoffs) return;
-
-    const maxTeams = leagueSettings.max_teams ?? 12;
-    const regularSeasonWeeks = leagueSettings.regular_season_weeks ?? 14;
-    const derived = derivedPlayoffWeeks(regularSeasonWeeks, playoffs.playoff_teams);
-
-    if (derived.championshipWeek > 18) {
-      setError(
-        `This setup would place the championship in Week ${derived.championshipWeek}. Reduce the regular-season weeks or playoff field so the championship is Week 18 or earlier.`
-      );
-      return;
-    }
-
-    await action(
-      () =>
-        supabase.rpc("commissioner_save_traditional_structure", {
-          p_league_id: leagueId,
-          p_max_teams: maxTeams,
-          p_regular_season_weeks: regularSeasonWeeks,
-          p_playoff_teams: playoffs.playoff_teams,
-        }),
-      `League structure saved: ${maxTeams} teams, ${regularSeasonWeeks} regular-season weeks, playoffs Weeks ${derived.startWeek}-${derived.championshipWeek}.`
-    );
   }
 
   async function saveDraftOrder(order: number[]) {
@@ -1083,311 +751,81 @@ export default function TraditionalCommissioner({
     router.push(`/league/${leagueId}/draft`);
   }
 
-  async function sendTeamInvite(
-    team: Team | null,
-    slotIndex: number
-  ) {
-    if (!league || invitingTeamId !== null) return;
+  async function sendInvite() {
+    if (!league || inviting) return;
 
-    const inviteKey = team?.id ?? -(slotIndex + 1);
-    const email = (teamInviteEmails[inviteKey] ?? "").trim().toLowerCase();
+    const firstName = inviteFirstName.trim();
+    const lastName = inviteLastName.trim();
+    const email = inviteEmail.trim().toLowerCase();
 
-    if (!email || !email.includes("@")) {
-      setError(`Enter a valid email address for Team ${slotIndex + 1}.`);
+    if (!firstName || !lastName || !email.includes("@")) {
+      setError("Enter the owner's first name, last name, and a valid email address.");
       return;
     }
 
-    setInvitingTeamId(inviteKey);
+    setInviting(true);
     setError(null);
     setSuccess(null);
 
     try {
-      let fantasyTeamId = team?.id ?? null;
-      let teamName = team?.team_name ?? `Team ${slotIndex + 1}`;
-
-      /*
-       * A visible vacant slot is only a UI slot until the commissioner
-       * actually uses it. Create the real fantasy team only when an invite
-       * is sent. This avoids filling the database with fake teams.
-       */
-      if (!fantasyTeamId) {
-        const { data: createdTeamId, error: createError } =
-          await supabase.rpc("commissioner_add_open_team_slot", {
-            p_league_id: leagueId,
-            p_team_name: teamName,
-          });
-
-        if (createError) {
-          throw new Error(createError.message);
-        }
-
-        fantasyTeamId = Number(createdTeamId);
-
-        if (!Number.isFinite(fantasyTeamId) || fantasyTeamId <= 0) {
-          throw new Error("The vacant team slot could not be created.");
-        }
-      }
-
       const sessionResult = await supabase.auth.getSession();
-
-      if (sessionResult.error) {
-        throw new Error(sessionResult.error.message);
-      }
+      if (sessionResult.error) throw new Error(sessionResult.error.message);
 
       const token = sessionResult.data.session?.access_token;
+      if (!token) throw new Error("Your login session is missing. Sign in again and retry.");
 
-      if (!token) {
-        throw new Error("Your login session is missing. Sign in again and retry.");
-      }
-
-      const response = await fetch(`/api/league/${league.id}/invite`, {
+      const response = await fetch(`/api/leagues/${league.id}/invite`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          email,
-          firstName: teamName,
-          lastName: "Owner",
-          fantasyTeamId,
-        }),
+        body: JSON.stringify({ firstName, lastName, email }),
       });
 
-      const responseText = await response.text();
       let result: InviteApiResponse = {};
-
-      if (responseText) {
-        try {
-          result = JSON.parse(responseText) as InviteApiResponse;
-        } catch {
-          result = {};
-        }
+      try {
+        result = (await response.json()) as InviteApiResponse;
+      } catch {
+        result = {};
       }
 
       if (!response.ok || result.success === false) {
-        throw new Error(
-          result.error ??
-            result.message ??
-            (responseText && !responseText.trim().startsWith("<")
-              ? responseText
-              : `Invitation request failed (${response.status}).`)
-        );
+        throw new Error(result.error ?? result.message ?? "The invitation could not be sent.");
       }
 
-      setSuccess(`Invitation sent to ${email} for ${teamName}.`);
-      setTeamInviteEmails((current) => ({
-        ...current,
-        [inviteKey]: "",
-      }));
-
-      await load({
-        showLoading: false,
-        clearMessages: false,
-      });
+      setSuccess(`Invitation sent to ${email}.`);
+      setInviteFirstName("");
+      setInviteLastName("");
+      setInviteEmail("");
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "The invitation could not be sent."
-      );
+      setError(err instanceof Error ? err.message : "The invitation could not be sent.");
     } finally {
-      setInvitingTeamId(null);
+      setInviting(false);
     }
   }
 
-  async function addCpuTeam() {
-    if (cpuBusy) return;
-
-    const maxTeams = leagueSettings?.max_teams ?? 12;
-    const pendingTeamIds = new Set(
-      invitations
-        .filter((invite) => invite.status === "pending")
-        .map((invite) => Number(invite.fantasy_team_id))
-        .filter((id) => Number.isFinite(id) && id > 0)
-    );
-
-    const filledCount = teams.filter(
-      (team) =>
-        team.active &&
-        (Boolean(team.owner_id) ||
-          Boolean(team.is_cpu) ||
-          pendingTeamIds.has(team.id))
-    ).length;
-
-    if (filledCount >= maxTeams) {
-      setError(`This league is already at its ${maxTeams}-team limit.`);
+  async function removeTraditionalOwner(team: Team) {
+    if (
+      removingOwnerTeamId !== null ||
+      !team.owner_id
+    ) {
       return;
     }
 
-    setCpuBusy(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const { error: cpuError } = await supabase.rpc(
-        "commissioner_add_cpu_to_vacant_slot",
-        {
-          p_league_id: leagueId,
-        }
-      );
-
-      if (cpuError) {
-        throw new Error(cpuError.message);
-      }
-
-      await load({
-        showLoading: false,
-        clearMessages: false,
-      });
-
-      setSuccess("CPU team added.");
-    } catch (err) {
+    if (
+      league?.commissioner_user_id &&
+      team.owner_id === league.commissioner_user_id
+    ) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "The CPU team could not be added."
+        "The primary commissioner cannot be removed from their own league. Transfer commissioner ownership first."
       );
-    } finally {
-      setCpuBusy(false);
-    }
-  }
-
-  async function fillRemainingWithCpu() {
-    if (cpuBusy) return;
-
-    const maxTeams = leagueSettings?.max_teams ?? 12;
-    const pendingTeamIds = new Set(
-      invitations
-        .filter((invite) => invite.status === "pending")
-        .map((invite) => Number(invite.fantasy_team_id))
-        .filter((id) => Number.isFinite(id) && id > 0)
-    );
-
-    const filledCount = teams.filter(
-      (team) =>
-        team.active &&
-        (Boolean(team.owner_id) ||
-          Boolean(team.is_cpu) ||
-          pendingTeamIds.has(team.id))
-    ).length;
-
-    const remaining = Math.max(0, maxTeams - filledCount);
-
-    if (remaining <= 0) {
-      setError(`This league is already at its ${maxTeams}-team limit.`);
       return;
     }
 
     if (
       !window.confirm(
-        `Fill the remaining ${remaining} team slot${
-          remaining === 1 ? "" : "s"
-        } with CPU teams?`
-      )
-    ) {
-      return;
-    }
-
-    setCpuBusy(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const { data, error: fillError } = await supabase.rpc(
-        "commissioner_fill_vacant_slots_with_cpu",
-        {
-          p_league_id: leagueId,
-        }
-      );
-
-      if (fillError) {
-        throw new Error(fillError.message);
-      }
-
-      const added = Number(data ?? remaining);
-
-      await load({
-        showLoading: false,
-        clearMessages: false,
-      });
-
-      setSuccess(
-        `${added} CPU team${added === 1 ? "" : "s"} added.`
-      );
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "The CPU teams could not be added."
-      );
-    } finally {
-      setCpuBusy(false);
-    }
-  }
-
-  async function removeCpuTeam(team: Team) {
-    if (cpuBusy || !team.is_cpu) return;
-
-    if (
-      !window.confirm(
-        `Remove ${team.team_name} from this league?`
-      )
-    ) {
-      return;
-    }
-
-    setCpuBusy(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const { error: removeError } = await supabase.rpc("remove_cpu_team", {
-        p_league_id: leagueId,
-        p_team_id: team.id,
-      });
-
-      if (removeError) {
-        throw new Error(removeError.message);
-      }
-
-      await load({
-        showLoading: false,
-        clearMessages: false,
-      });
-
-      setSuccess(`${team.team_name} was removed.`);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "The CPU team could not be removed."
-      );
-    } finally {
-      setCpuBusy(false);
-    }
-  }
-
-  async function removeTeamOwner(team: Team) {
-    if (
-      !team.owner_id ||
-      removingOwnerTeamId !== null
-    ) {
-      return;
-    }
-
-    if (team.owner_id === league?.commissioner_user_id) {
-      setError(
-        "The primary commissioner cannot be removed from their own league."
-      );
-      return;
-    }
-
-    const ownerName = profileName(team.owner_id) || "this owner";
-
-    if (
-      !window.confirm(
-        `Remove ${ownerName} from ${team.team_name}? The team, roster, draft slot, standings and league history will stay intact, and this spot will become available for a replacement owner.`
+        `Remove the current owner from ${team.team_name}? The fantasy team, roster, draft history, matchup history, scores, standings and league history will stay in place. The team will become ownerless / CPU and can be invited to a replacement owner.`
       )
     ) {
       return;
@@ -1398,75 +836,57 @@ export default function TraditionalCommissioner({
     setSuccess(null);
 
     try {
-      const { error: removeError } = await supabase.rpc(
-        "commissioner_remove_traditional_owner",
+      const response = await fetch(
+        `/api/leagues/${leagueId}/commissioner/remove-owner`,
         {
-          p_league_id: leagueId,
-          p_fantasy_team_id: team.id,
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fantasyTeamId: team.id,
+          }),
         }
       );
 
-      if (removeError) {
-        throw new Error(removeError.message);
+      let payload: {
+        success?: boolean;
+        error?: string;
+        cancelledInvitations?: number;
+      } = {};
+
+      try {
+        payload = await response.json();
+      } catch {
+        payload = {};
       }
 
-      await load({
-        showLoading: false,
-        clearMessages: false,
-      });
+      if (
+        !response.ok ||
+        payload.success !== true
+      ) {
+        throw new Error(
+          payload.error ??
+            "The owner could not be removed."
+        );
+      }
 
       setSuccess(
-        `${ownerName} was removed from ${team.team_name}. The team is now vacant and ready for a replacement invitation.`
+        `Owner removed from ${team.team_name}. The team is now ownerless / CPU and ready for a replacement invitation.`
       );
-    } catch (err) {
+
+      await load();
+    } catch (actionError) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "The owner could not be removed from this team."
+        actionError instanceof Error
+          ? actionError.message
+          : "The owner could not be removed."
       );
     } finally {
       setRemovingOwnerTeamId(null);
     }
   }
 
-  async function deleteLeague() {
-    if (!league || deletingLeague) return;
-
-    if (
-      !window.confirm(
-        `Permanently delete ${league.name}? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
-
-    setDeletingLeague(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const { error: deleteError } = await supabase.rpc(
-        "commissioner_delete_league",
-        {
-          p_league_id: leagueId,
-        }
-      );
-
-      if (deleteError) {
-        throw new Error(deleteError.message);
-      }
-
-      router.replace("/my-leagues");
-      router.refresh();
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "The league could not be deleted."
-      );
-      setDeletingLeague(false);
-    }
-  }
 
   async function saveBonusRule(rule: ScoringRule) {
     await action(
@@ -1594,26 +1014,8 @@ export default function TraditionalCommissioner({
                 <Stat label="Season" value={league?.season ?? "—"} />
                 <Stat label="Active Week" value={season?.active_week ?? "—"} />
                 <Stat label="Phase" value={pretty(season?.phase)} />
-                <Stat
-                  label="Owners Joined"
-                  value={teams.filter((t) => t.active && Boolean(t.owner_id)).length}
-                />
-                <Stat
-                  label="CPU Teams"
-                  value={teams.filter((t) => t.active && t.is_cpu).length}
-                />
-                <Stat
-                  label="Open Spots"
-                  value={Math.max(
-                    0,
-                    (leagueSettings?.max_teams ?? 12) -
-                      teams.filter(
-                        (t) =>
-                          t.active &&
-                          (Boolean(t.owner_id) || t.is_cpu)
-                      ).length
-                  )}
-                />
+                <Stat label="Active Teams" value={teams.filter((t) => t.active).length} />
+                <Stat label="Ownerless / CPU" value={teams.filter((t) => !t.owner_id).length} />
                 <Stat label="Rostered Players" value={rosters.length} />
                 <Stat label="Draft Status" value={pretty(draft?.status)} />
                 <Stat label="Pending Waivers" value={claims.filter((c) => c.status === "pending").length} />
@@ -1622,7 +1024,7 @@ export default function TraditionalCommissioner({
             </Section>
             <Section title="Commissioner Workflow">
               <div style={styles.guides}>
-                <Guide title="Before Draft" text="Confirm league, roster, scoring, draft, waiver, trade and playoff settings. Assign owners or invite new owners by email." />
+                <Guide title="Before Draft" text="Confirm league, roster, scoring, draft, waiver, trade and playoff settings. Assign owners or leave CPU teams ownerless." />
                 <Guide title="During Draft" text="Use the Live Draft for pause/resume, commissioner picks and Undo Last Pick." />
                 <Guide title="Regular Season" text="Use roster tools only when needed. Process waivers, enforce deadlines, rebuild standings and advance weeks after results are ready." />
                 <Guide title="Playoffs" text="Confirm field size and reseeding rules before starting the postseason." />
@@ -1633,71 +1035,35 @@ export default function TraditionalCommissioner({
 
         {tab === "league" && leagueSettings && rosterSettings ? (
           <>
-            <Section
-              title="League Structure"
-              subtitle="League size, regular-season length and playoff timing stay synchronized automatically."
-            >
+            <Section title="League Structure" subtitle="Set the league size and regular-season length.">
               <div style={styles.leagueStructureGrid}>
-                <label style={styles.field}>
-                  <span style={styles.fieldLabel}>Maximum Teams</span>
-                  <select
-                    value={leagueSettings.max_teams ?? 12}
-                    onChange={(e) => changeMaximumTeams(n(e.target.value, 12))}
-                    style={styles.input}
-                  >
-                    {[4, 6, 8, 10, 12].map((count) => (
-                      <option key={count} value={count}>
-                        {count} Teams
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label style={styles.field}>
-                  <span style={styles.fieldLabel}>Regular Season Weeks</span>
-                  <select
-                    value={leagueSettings.regular_season_weeks ?? 14}
-                    onChange={(e) => changeRegularSeasonWeeks(n(e.target.value, 14))}
-                    style={styles.input}
-                  >
-                    {Array.from({ length: 17 }, (_, index) => index + 1).map((week) => (
-                      <option key={week} value={week}>
-                        {week} Weeks
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {playoffs ? (
-                  <>
-                    <Input
-                      label="Playoff Start Week"
-                      value={playoffs.playoff_start_week}
-                      onChange={(v) => changePlayoffStartWeek(n(v, playoffs.playoff_start_week))}
-                    />
-                    <Input
-                      label="Championship Week"
-                      value={playoffs.championship_week}
-                      disabled
-                      onChange={() => {}}
-                    />
-                  </>
-                ) : null}
+                <Input
+                  label="Maximum Teams"
+                  value={leagueSettings.max_teams ?? 12}
+                  onChange={(v) => setLeagueSettings({ ...leagueSettings, max_teams: n(v, 12) })}
+                />
+                <Input
+                  label="Regular Season Weeks"
+                  value={leagueSettings.regular_season_weeks ?? 14}
+                  onChange={(v) => setLeagueSettings({ ...leagueSettings, regular_season_weeks: n(v, 14) })}
+                />
               </div>
-
-              <div style={styles.commissionerNotice}>
-                <strong>Linked League Calendar</strong>
-                <span>
-                  Changing Regular Season Weeks moves the playoff start automatically. Changing Playoff Start Week changes the regular-season length. Championship Week is calculated from the playoff field size.
-                </span>
-              </div>
-
               <div style={styles.actions}>
                 <Button
-                  disabled={saving || !playoffs}
-                  onClick={() => void saveLeagueStructure()}
+                  disabled={saving}
+                  onClick={() =>
+                    void action(
+                      () =>
+                        supabase.rpc("save_traditional_league_settings", {
+                          p_league_id: leagueId,
+                          p_max_teams: leagueSettings.max_teams ?? 12,
+                          p_regular_season_weeks: leagueSettings.regular_season_weeks ?? 14,
+                        }),
+                      "League settings saved."
+                    )
+                  }
                 >
-                  SAVE LEAGUE STRUCTURE
+                  SAVE LEAGUE SETTINGS
                 </Button>
               </div>
             </Section>
@@ -1779,11 +1145,211 @@ export default function TraditionalCommissioner({
           </>
         ) : null}
 
-        {tab === "scoring" ? (
-          <TraditionalScoring
-            leagueId={leagueId}
-            embedded
-          />
+        {tab === "scoring" && scoring ? (
+          <Section
+            title="Scoring"
+            subtitle="Base scoring and category-specific bonuses include yardage milestones, multiple-TD bonuses, long-play/long-TD bonuses, kicking distance bonuses, and DST thresholds. Tiered bonuses use highest-only non-stacking logic."
+          >
+            <div style={styles.scoringCategoryTabs}>
+              {(Object.keys(scoringGroups) as ScoringCategoryKey[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setScoringCategory(key)}
+                  style={{
+                    ...styles.scoringCategoryTab,
+                    ...(scoringCategory === key ? styles.scoringCategoryTabActive : {}),
+                  }}
+                >
+                  {scoringGroups[key].label}
+                </button>
+              ))}
+            </div>
+
+            <div style={styles.scoringCategoryPanel}>
+              <div style={styles.subsectionTitle}>
+                {scoringGroups[scoringCategory].label.toUpperCase()} BASE SCORING
+              </div>
+              <div style={styles.scoringBaseGrid}>
+                {scoringGroups[scoringCategory].baseFields.map(([key, label]) => (
+                  <Input
+                    key={key}
+                    label={label}
+                    value={scoring[key] === null ? "" : String(scoring[key])}
+                    onChange={(v) =>
+                      setScoring({
+                        ...scoring,
+                        [key]: v === "" ? null : n(v),
+                      } as Scoring)
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div style={styles.scoringCategoryPanel}>
+              <div style={styles.bonusHeader}>
+                <div>
+                  <div style={styles.subsectionTitle}>
+                    {scoringGroups[scoringCategory].label.toUpperCase()} BONUS RULES
+                  </div>
+                  <p style={styles.sectionSub}>
+                    Add yardage, multiple-touchdown, long-play/long-TD, kicking-distance, or defense threshold bonuses. Use Minimum for the threshold and Maximum when you want a range. If multiple enabled thresholds in the same stat family are reached, only the highest qualifying bonus is awarded.
+                  </p>
+                </div>
+                <Button onClick={addBonusRule}>+ ADD BONUS RULE</Button>
+              </div>
+
+              <div style={styles.bonusRuleList}>
+                {scoringRules
+                  .filter((rule) => rule.category.toLowerCase() === scoringGroups[scoringCategory].label.toLowerCase())
+                  .map((rule) => (
+                    <div key={rule.id} style={styles.bonusRuleRow}>
+                      <label style={styles.field}>
+                        <span style={styles.fieldLabel}>Rule Name</span>
+                        <input
+                          value={rule.label ?? ""}
+                          onChange={(e) =>
+                            setScoringRules((current) =>
+                              current.map((row) =>
+                                row.id === rule.id ? { ...row, label: e.target.value } : row
+                              )
+                            )
+                          }
+                          style={styles.input}
+                        />
+                      </label>
+
+                      <label style={styles.field}>
+                        <span style={styles.fieldLabel}>Statistic</span>
+                        <select
+                          value={rule.stat_key}
+                          onChange={(e) =>
+                            setScoringRules((current) =>
+                              current.map((row) =>
+                                row.id === rule.id ? { ...row, stat_key: e.target.value } : row
+                              )
+                            )
+                          }
+                          style={styles.input}
+                        >
+                          {scoringGroups[scoringCategory].bonusStats.map(([key, label]) => (
+                            <option key={key} value={key}>{label}</option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <Input
+                        label="Minimum"
+                        value={rule.min_value ?? ""}
+                        onChange={(v) =>
+                          setScoringRules((current) =>
+                            current.map((row) =>
+                              row.id === rule.id ? { ...row, min_value: v === "" ? null : n(v) } : row
+                            )
+                          )
+                        }
+                      />
+
+                      <Input
+                        label="Maximum (optional)"
+                        value={rule.max_value ?? ""}
+                        onChange={(v) =>
+                          setScoringRules((current) =>
+                            current.map((row) =>
+                              row.id === rule.id ? { ...row, max_value: v === "" ? null : n(v) } : row
+                            )
+                          )
+                        }
+                      />
+
+                      <Input
+                        label="Bonus Points"
+                        value={String(rule.points)}
+                        onChange={(v) =>
+                          setScoringRules((current) =>
+                            current.map((row) =>
+                              row.id === rule.id ? { ...row, points: n(v) } : row
+                            )
+                          )
+                        }
+                      />
+
+                      <label style={styles.check}>
+                        <input
+                          type="checkbox"
+                          checked={rule.is_enabled}
+                          onChange={(e) =>
+                            setScoringRules((current) =>
+                              current.map((row) =>
+                                row.id === rule.id ? { ...row, is_enabled: e.target.checked } : row
+                              )
+                            )
+                          }
+                        />
+                        ENABLED
+                      </label>
+
+                      <div style={styles.bonusActions}>
+                        <Button disabled={saving} onClick={() => void saveBonusRule(rule)}>SAVE</Button>
+                        <Button danger disabled={saving} onClick={() => void deleteBonusRule(rule.id)}>DELETE</Button>
+                      </div>
+                    </div>
+                  ))}
+
+                {!scoringRules.some(
+                  (rule) => rule.category.toLowerCase() === scoringGroups[scoringCategory].label.toLowerCase()
+                ) ? (
+                  <div style={styles.empty}>
+                    No {scoringGroups[scoringCategory].label.toLowerCase()} bonus rules yet.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div style={styles.scoringAdvanced}>
+              <label style={styles.field}>
+                <span style={styles.fieldLabel}>Fractional Scoring</span>
+                <select
+                  value={scoring.fractional_scoring_enabled ? "true" : "false"}
+                  onChange={(e) =>
+                    setScoring({
+                      ...scoring,
+                      fractional_scoring_enabled: e.target.value === "true",
+                    })
+                  }
+                  style={styles.input}
+                >
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+              <Input
+                label="Decimal Places"
+                value={scoring.decimal_places}
+                onChange={(v) => setScoring({ ...scoring, decimal_places: n(v, 2) })}
+              />
+            </div>
+
+            <div style={styles.actions}>
+              <Button
+                disabled={saving}
+                onClick={() => {
+                  const { league_id: _ignore, ...payload } = scoring;
+                  void action(
+                    () =>
+                      supabase.rpc("save_traditional_base_scoring", {
+                        p_league_id: leagueId,
+                        p_settings: payload,
+                      }),
+                    "Base scoring settings saved."
+                  );
+                }}
+              >
+                SAVE BASE SCORING
+              </Button>
+            </div>
+          </Section>
         ) : null}
 
         {tab === "draft" && draft ? (
@@ -1921,334 +1487,180 @@ export default function TraditionalCommissioner({
 
         {tab === "teams" ? (
           <>
-            {(() => {
-              const maxTeams = leagueSettings?.max_teams ?? 12;
-              const activeTeams = teams.filter((team) => team.active);
-              const pendingInviteByTeamId = new Map(
-                invitations
-                  .filter(
-                    (invite) =>
-                      invite.status === "pending" &&
-                      invite.fantasy_team_id !== null
-                  )
-                  .map((invite) => [
-                    Number(invite.fantasy_team_id),
-                    invite,
-                  ] as const)
-              );
+            <div id="commissioner-email-invite">
+              <Section
+                title="Invite Owner by Email"
+                subtitle="Send a secure Gridiron365 invitation to a new league owner. You can also choose Invite Owner by Email directly from any team owner dropdown."
+              >
+              <div style={styles.inviteGrid}>
+                <Input
+                  label="First Name"
+                  type="text"
+                  value={inviteFirstName}
+                  onChange={setInviteFirstName}
+                />
+                <Input
+                  label="Last Name"
+                  type="text"
+                  value={inviteLastName}
+                  onChange={setInviteLastName}
+                />
+                <Input
+                  label="Email Address"
+                  type="email"
+                  value={inviteEmail}
+                  onChange={setInviteEmail}
+                />
+                <div style={styles.inviteButtonWrap}>
+                  <Button disabled={inviting} onClick={() => void sendInvite()}>
+                    {inviting ? "SENDING…" : "✉ SEND EMAIL INVITE"}
+                  </Button>
+                </div>
+              </div>
+              </Section>
+            </div>
 
-              const humanOwnerCount = activeTeams.filter(
-                (team) => Boolean(team.owner_id)
-              ).length;
-              const cpuCount = activeTeams.filter(
-                (team) => team.is_cpu
-              ).length;
-              const pendingCount = activeTeams.filter(
-                (team) =>
-                  !team.owner_id &&
-                  !team.is_cpu &&
-                  pendingInviteByTeamId.has(team.id)
-              ).length;
-              const reservedCount = humanOwnerCount + cpuCount + pendingCount;
-              const vacantCount = Math.max(0, maxTeams - reservedCount);
+            <Section
+              title="Teams & Owners"
+              subtitle="Manage team ownership here. Remove an owner at any time without deleting the team or league history; ownerless teams remain available as CPU teams until a replacement owner accepts an invitation."
+            >
+              <div style={styles.list}>
+                {teams.map((team, index) => (
+                  <div key={team.id} style={styles.teamRowExpanded}>
+                    <strong style={styles.teamIndex}>{index + 1}</strong>
 
-              return (
-                <>
-                  <Section
-                    title="Teams & Owners"
-                    subtitle="Invite human owners to vacant spots, manage pending invitations, or fill open Traditional league spots with CPU teams."
-                  >
-                    <div style={styles.teamToolbar}>
-                      <div>
-                        <strong>
-                          {humanOwnerCount} / {maxTeams} OWNERS JOINED
-                        </strong>
-                        <div style={styles.smallMuted}>
-                          {cpuCount} CPU • {pendingCount} pending invitation{pendingCount === 1 ? "" : "s"} • {vacantCount} open spot{vacantCount === 1 ? "" : "s"}.
-                        </div>
-                      </div>
+                    <input
+                      value={team.team_name}
+                      onChange={(e) =>
+                        setTeams((current) =>
+                          current.map((row) =>
+                            row.id === team.id ? { ...row, team_name: e.target.value } : row
+                          )
+                        )
+                      }
+                      style={styles.input}
+                    />
 
-                      <div style={styles.teamActions}>
-                        <Button
-                          disabled={cpuBusy || vacantCount === 0}
-                          onClick={() => void addCpuTeam()}
-                        >
-                          {cpuBusy ? "WORKING…" : "+ ADD CPU TEAM"}
-                        </Button>
+                    <select
+                      value={team.owner_id ?? ""}
+                      onChange={(e) => {
+                        const nextOwnerId = e.target.value;
 
-                        <Button
-                          disabled={cpuBusy || vacantCount === 0}
-                          onClick={() => void fillRemainingWithCpu()}
-                        >
-                          FILL REMAINING WITH CPU
-                        </Button>
-                      </div>
-                    </div>
+                        if (nextOwnerId === "__invite_by_email__") {
+                          setInviteFirstName("");
+                          setInviteLastName("");
+                          setInviteEmail("");
+                          setTimeout(() => {
+                            document
+                              .getElementById("commissioner-email-invite")
+                              ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }, 0);
+                          return;
+                        }
 
-                    <div style={styles.list}>
-                      {Array.from({
-                        length: maxTeams,
-                      }).map((_, index) => {
-                        const team = activeTeams[index] ?? null;
-                        const inviteKey = team?.id ?? -(index + 1);
-                        const isCpu = Boolean(team?.is_cpu);
-                        const pendingInvite =
-                          team ? pendingInviteByTeamId.get(team.id) ?? null : null;
-                        const hasOwner = Boolean(team?.owner_id);
-                        const isVacant =
-                          !team || (!hasOwner && !isCpu && !pendingInvite);
-
-                        return (
-                          <div
-                            key={team?.id ?? `vacant-${index}`}
-                            style={styles.teamRowExpanded}
-                          >
-                            <strong style={styles.teamIndex}>{index + 1}</strong>
-
-                            {team ? (
-                              <label style={styles.field}>
-                                <span style={styles.fieldLabel}>Team Name</span>
-                                <input
-                                  value={team.team_name}
-                                  disabled={isCpu}
-                                  onChange={(e) =>
-                                    setTeams((current) =>
-                                      current.map((row) =>
-                                        row.id === team.id
-                                          ? {
-                                              ...row,
-                                              team_name: e.target.value,
-                                            }
-                                          : row
-                                      )
-                                    )
-                                  }
-                                  style={styles.input}
-                                />
-                              </label>
-                            ) : (
-                              <div style={styles.vacantField}>
-                                <span style={styles.fieldLabel}>Team Name</span>
-                                <strong>Vacant Team {index + 1}</strong>
-                              </div>
-                            )}
-
-                            {team && !isCpu ? (
-                              <label style={styles.field}>
-                                <span style={styles.fieldLabel}>Owner</span>
-                                <select
-                                  value={team.owner_id ?? ""}
-                                  disabled={hasOwner}
-                                  onChange={(e) => {
-                                    const nextOwnerId = e.target.value;
-                                    setTeams((current) =>
-                                      current.map((row) =>
-                                        row.id === team.id
-                                          ? {
-                                              ...row,
-                                              owner_id: nextOwnerId || null,
-                                            }
-                                          : row
-                                      )
-                                    );
-                                  }}
-                                  style={styles.input}
-                                >
-                                  <option value="">NO OWNER</option>
-                                  {members.map((member) => (
-                                    <option
-                                      key={member.id}
-                                      value={member.user_id}
-                                    >
-                                      {profileName(member.user_id)}
-                                      {` • ${pretty(member.role)}`}
-                                    </option>
-                                  ))}
-                                  {team?.owner_id &&
-                                  !members.some(
-                                    (member) => member.user_id === team.owner_id
-                                  ) ? (
-                                    <option value={team.owner_id}>
-                                      {profileName(team.owner_id)} • MEMBER
-                                    </option>
-                                  ) : null}
-                                </select>
-                              </label>
-                            ) : (
-                              <div style={styles.vacantField}>
-                                <span style={styles.fieldLabel}>Owner</span>
-                                <strong>{isCpu ? "CPU" : "VACANT"}</strong>
-                              </div>
-                            )}
-
-                            {!isCpu && !hasOwner && !pendingInvite ? (
-                              <label style={styles.field}>
-                                <span style={styles.fieldLabel}>Email Invite</span>
-                                <input
-                                  type="email"
-                                  placeholder="owner@example.com"
-                                  value={teamInviteEmails[inviteKey] ?? ""}
-                                  onChange={(e) =>
-                                    setTeamInviteEmails((current) => ({
-                                      ...current,
-                                      [inviteKey]: e.target.value,
-                                    }))
-                                  }
-                                  style={styles.input}
-                                />
-                              </label>
-                            ) : (
-                              <div style={styles.vacantField}>
-                                <span style={styles.fieldLabel}>Email / Status</span>
-                                <strong>
-                                  {isCpu
-                                    ? "CPU TEAM"
-                                    : hasOwner
-                                      ? profileName(team!.owner_id!)
-                                      : pendingInvite
-                                        ? `${pendingInvite.email} • PENDING`
-                                        : "VACANT"}
-                                </strong>
-                              </div>
-                            )}
-
-                            <div style={styles.ownerStatus}>
-                              {isCpu ? (
-                                <>
-                                  <strong>CPU TEAM</strong>
-                                  <span>Managed automatically by Gridiron365.</span>
-                                </>
-                              ) : hasOwner ? (
-                                <>
-                                  <strong>OWNER ASSIGNED</strong>
-                                  <span>{profileName(team!.owner_id!)}</span>
-                                </>
-                              ) : pendingInvite ? (
-                                <>
-                                  <strong>INVITE PENDING</strong>
-                                  <span>{pendingInvite.email}</span>
-                                </>
-                              ) : isVacant ? (
-                                <>
-                                  <strong>VACANT</strong>
-                                  <span>
-                                    Send an invitation or replace this spot with a CPU team.
-                                  </span>
-                                </>
-                              ) : null}
-                            </div>
-
-                            <div style={styles.teamActions}>
-                              {!isCpu && !hasOwner && !pendingInvite ? (
-                                <Button
-                                  disabled={
-                                    invitingTeamId !== null ||
-                                    !(teamInviteEmails[inviteKey] ?? "").trim()
-                                  }
-                                  onClick={() =>
-                                    void sendTeamInvite(team, index)
-                                  }
-                                >
-                                  {invitingTeamId === inviteKey
-                                    ? "SENDING…"
-                                    : "✉ INVITE"}
-                                </Button>
-                              ) : null}
-
-                              {team && !isCpu ? (
-                                <Button
-                                  disabled={saving}
-                                  onClick={() =>
-                                    void action(
-                                      () =>
-                                        supabase.rpc(
-                                          "commissioner_update_traditional_team",
-                                          {
-                                            p_league_id: leagueId,
-                                            p_fantasy_team_id: team.id,
-                                            p_team_name: team.team_name,
-                                            p_owner_id: team.owner_id,
-                                            p_active: true,
-                                          }
-                                        ),
-                                      `${team.team_name} updated.`
-                                    )
-                                  }
-                                >
-                                  SAVE
-                                </Button>
-                              ) : null}
-
-                              {team &&
-                              !isCpu &&
-                              hasOwner &&
-                              team.owner_id !== league?.commissioner_user_id ? (
-                                <Button
-                                  danger
-                                  disabled={
-                                    saving ||
-                                    removingOwnerTeamId !== null
-                                  }
-                                  onClick={() => void removeTeamOwner(team)}
-                                >
-                                  {removingOwnerTeamId === team.id
-                                    ? "REMOVING…"
-                                    : "REMOVE OWNER"}
-                                </Button>
-                              ) : null}
-
-                              {team &&
-                              !isCpu &&
-                              hasOwner &&
-                              team.owner_id === league?.commissioner_user_id ? (
-                                <span style={styles.smallMuted}>
-                                  PRIMARY COMMISSIONER
-                                </span>
-                              ) : null}
-
-                              {team && isCpu ? (
-                                <Button
-                                  danger
-                                  disabled={cpuBusy}
-                                  onClick={() => void removeCpuTeam(team)}
-                                >
-                                  REMOVE CPU
-                                </Button>
-                              ) : null}
-                            </div>
-                          </div>
+                        setTeams((current) =>
+                          current.map((row) =>
+                            row.id === team.id
+                              ? { ...row, owner_id: nextOwnerId || null }
+                              : row
+                          )
                         );
-                      })}
-                    </div>
-                  </Section>
+                      }}
+                      style={styles.input}
+                    >
+                      <option value="">OWNERLESS / CPU</option>
+                      <option value="__invite_by_email__">✉ INVITE OWNER BY EMAIL…</option>
+                      {members.map((m) => (
+                        <option key={m.id} value={m.user_id}>
+                          {shortId(m.user_id)} • {pretty(m.role)}
+                        </option>
+                      ))}
+                    </select>
 
-                  <Section
-                    title="Danger Zone"
-                    subtitle="Only the primary commissioner can permanently delete the league."
-                  >
-                    <div style={styles.dangerZone}>
-                      <div>
-                        <strong>DELETE LEAGUE</strong>
-                        <p style={styles.smallMuted}>
-                          This permanently deletes the league and all league-owned data.
-                          This action cannot be undone.
-                        </p>
-                      </div>
+                    <div style={styles.ownerStatus}>
+                      {team.owner_id ? (
+                        <>
+                          <strong>OWNER ASSIGNED</strong>
+                          <span>{shortId(team.owner_id)}</span>
+                        </>
+                      ) : (
+                        <>
+                          <strong>VACANT / CPU</strong>
+                          <span>Invite an owner or keep CPU-controlled</span>
+                        </>
+                      )}
+                    </div>
+
+                    <label style={styles.check}>
+                      <input
+                        type="checkbox"
+                        checked={team.active}
+                        onChange={(e) =>
+                          setTeams((current) =>
+                            current.map((row) =>
+                              row.id === team.id ? { ...row, active: e.target.checked } : row
+                            )
+                          )
+                        }
+                      />
+                      ACTIVE
+                    </label>
+
+                    <div style={styles.teamActions}>
+                      {!team.owner_id ? (
+                        <Button
+                          onClick={() => {
+                            setInviteFirstName("");
+                            setInviteLastName("");
+                            setInviteEmail("");
+                            window.scrollTo({ top: 0, behavior: "smooth" });
+                          }}
+                        >
+                          ✉ INVITE
+                        </Button>
+                      ) : null}
+
+                      {team.owner_id &&
+                      team.owner_id !== league?.commissioner_user_id ? (
+                        <Button
+                          danger
+                          disabled={
+                            saving ||
+                            removingOwnerTeamId !== null
+                          }
+                          onClick={() =>
+                            void removeTraditionalOwner(team)
+                          }
+                        >
+                          {removingOwnerTeamId === team.id
+                            ? "REMOVING…"
+                            : "REMOVE OWNER"}
+                        </Button>
+                      ) : null}
 
                       <Button
-                        danger
-                        disabled={deletingLeague || !league}
-                        onClick={() => void deleteLeague()}
+                        disabled={saving}
+                        onClick={() =>
+                          void action(
+                            () =>
+                              supabase.rpc("commissioner_update_traditional_team", {
+                                p_league_id: leagueId,
+                                p_fantasy_team_id: team.id,
+                                p_team_name: team.team_name,
+                                p_owner_id: team.owner_id,
+                                p_active: team.active,
+                              }),
+                            `${team.team_name} updated.`
+                          )
+                        }
                       >
-                        {deletingLeague
-                          ? "DELETING…"
-                          : "PERMANENTLY DELETE LEAGUE"}
+                        SAVE
                       </Button>
                     </div>
-                  </Section>
-                </>
-              );
-            })()}
+                  </div>
+                ))}
+              </div>
+            </Section>
           </>
         ) : null}
 
@@ -2262,7 +1674,7 @@ export default function TraditionalCommissioner({
                   onChange={(e) => setRosterTeamId(n(e.target.value))}
                   style={styles.input}
                 >
-                  {teams.filter((t) => t.active).map((t) => <option key={t.id} value={t.id}>{t.team_name}</option>)}
+                  {teams.map((t) => <option key={t.id} value={t.id}>{t.team_name}</option>)}
                 </select>
               </label>
               <Input label="Find Available Player" type="text" value={search} onChange={setSearch} />
@@ -2436,63 +1848,18 @@ export default function TraditionalCommissioner({
 
         {tab === "trades" && trades && league ? (
           <>
-            <Section
-              title="Trade Settings"
-              subtitle={`The trade deadline can only be set during the regular season (Weeks 1-${leagueSettings?.regular_season_weeks ?? 14}).`}
-            >
+            <Section title="Trade Settings">
               <div style={styles.grid}>
-                <label style={styles.field}>
-                  <span style={styles.fieldLabel}>Trade Deadline Week</span>
-                  <select
-                    key={`trade-deadline-${leagueSettings?.regular_season_weeks ?? 14}`}
-                    value={
-                      trades.trade_deadline_week !== null &&
-                      trades.trade_deadline_week <= (leagueSettings?.regular_season_weeks ?? 14)
-                        ? trades.trade_deadline_week
-                        : ""
-                    }
-                    onChange={(e) => {
-                      const regularSeasonWeeks = leagueSettings?.regular_season_weeks ?? 14;
-                      const selected =
-                        e.target.value === ""
-                          ? null
-                          : Math.min(n(e.target.value), regularSeasonWeeks);
-
-                      setTrades({
-                        ...trades,
-                        trade_deadline_week: selected,
-                      });
-                    }}
-                    style={styles.input}
-                  >
-                    <option value="">No Trade Deadline</option>
-                    {Array.from(
-                      { length: leagueSettings?.regular_season_weeks ?? 14 },
-                      (_, index) => index + 1
-                    ).map((week) => (
-                      <option key={week} value={week}>
-                        Week {week}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <Input
+                  label="Trade Deadline Week"
+                  value={trades.trade_deadline_week ?? ""}
+                  onChange={(v) => setTrades({ ...trades, trade_deadline_week: v === "" ? null : n(v) })}
+                />
               </div>
               <div style={styles.actions}>
                 <Button
                   disabled={saving}
-                  onClick={() => {
-                    const regularSeasonWeeks = leagueSettings?.regular_season_weeks ?? 14;
-
-                    if (
-                      trades.trade_deadline_week !== null &&
-                      trades.trade_deadline_week > regularSeasonWeeks
-                    ) {
-                      setError(
-                        `Trade deadline must be Week ${regularSeasonWeeks} or earlier because the regular season ends in Week ${regularSeasonWeeks}.`
-                      );
-                      return;
-                    }
-
+                  onClick={() =>
                     void action(
                       () =>
                         supabase.rpc("save_traditional_trade_settings", {
@@ -2500,11 +1867,9 @@ export default function TraditionalCommissioner({
                           p_season: league.season,
                           p_trade_deadline_week: trades.trade_deadline_week,
                         }),
-                      trades.trade_deadline_week === null
-                        ? "Trade deadline removed."
-                        : `Trade deadline saved for Week ${trades.trade_deadline_week}.`
-                    );
-                  }}
+                      "Trade settings saved."
+                    )
+                  }
                 >
                   SAVE TRADE SETTINGS
                 </Button>
@@ -2594,36 +1959,27 @@ export default function TraditionalCommissioner({
         {tab === "playoffs" && playoffs && league ? (
           <Section title="Playoff Administration">
             <div style={styles.grid}>
-              <label style={styles.field}>
-                <span style={styles.fieldLabel}>Playoff Teams</span>
-                <select
-                  value={playoffs.playoff_teams}
-                  onChange={(e) => changePlayoffTeams(n(e.target.value, 6))}
-                  style={styles.input}
-                >
-                  {[2, 4, 5, 6, 7, 8]
-                    .filter((count) => count <= (leagueSettings?.max_teams ?? 12))
-                    .map((count) => (
-                      <option key={count} value={count}>
-                        {count} Teams
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <Input
-                label="Playoff Start Week"
-                value={playoffs.playoff_start_week}
-                onChange={(v) => changePlayoffStartWeek(n(v, playoffs.playoff_start_week))}
-              />
+              <Input label="Playoff Teams" value={playoffs.playoff_teams} onChange={(v) => setPlayoffs({ ...playoffs, playoff_teams: n(v, 6) })} />
+              <Input label="Playoff Start Week" value={playoffs.playoff_start_week} disabled onChange={() => {}} />
               <Input label="Championship Week" value={playoffs.championship_week} disabled onChange={() => {}} />
               <Toggle label="Reseed Each Round" value={playoffs.reseed_each_round} onChange={(v) => setPlayoffs({ ...playoffs, reseed_each_round: v })} />
             </div>
             <div style={styles.actions}>
               <Button
-                disabled={saving || !leagueSettings}
-                onClick={() => void saveLeagueStructure()}
+                disabled={saving}
+                onClick={() =>
+                  void action(
+                    () =>
+                      supabase.rpc("set_traditional_playoff_team_count", {
+                        p_league_id: leagueId,
+                        p_season: league.season,
+                        p_playoff_teams: playoffs.playoff_teams,
+                      }),
+                    "Playoff field saved."
+                  )
+                }
               >
-                SAVE PLAYOFF STRUCTURE
+                SAVE PLAYOFF TEAMS
               </Button>
               <Button
                 disabled={saving}
@@ -2787,8 +2143,4 @@ const styles: Record<string, React.CSSProperties> = {
   teamIndex: { color: "#ff6c31", textAlign: "center" },
   ownerStatus: { display: "flex", flexDirection: "column", gap: "3px", color: "#9299a4", fontSize: "10px" },
   teamActions: { display: "flex", gap: "6px", justifyContent: "flex-end" },
-  teamToolbar: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap", marginBottom: "12px", padding: "12px", border: "1px solid rgba(255,95,40,.18)", borderRadius: "10px", background: "rgba(255,80,25,.045)" },
-  vacantField: { display: "flex", flexDirection: "column", gap: "6px", minHeight: "40px", justifyContent: "center", color: "#d8dce3" },
-  smallMuted: { margin: "5px 0 0", color: "#8f96a2", fontSize: "11px", lineHeight: 1.5 },
-  dangerZone: { display: "grid", gap: "12px", padding: "14px", border: "1px solid rgba(255,75,75,.34)", borderRadius: "10px", background: "rgba(130,10,10,.12)" },
 };
