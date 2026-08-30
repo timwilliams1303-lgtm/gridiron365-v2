@@ -219,6 +219,15 @@ type InviteApiResponse = {
   url?: string;
 };
 
+type LeagueInvitation = {
+  id: string;
+  league_id: string;
+  fantasy_team_id: number | null;
+  email: string;
+  status: string;
+  expires_at: string | null;
+};
+
 type ScoringCategoryKey =
   | "passing"
   | "rushing"
@@ -534,8 +543,8 @@ export default function TraditionalCommissioner({
   const [draftOrder, setDraftOrder] = useState<number[]>([]);
   const [teamInviteEmails, setTeamInviteEmails] = useState<Record<number, string>>({});
   const [invitingTeamId, setInvitingTeamId] = useState<number | null>(null);
+  const [invitations, setInvitations] = useState<LeagueInvitation[]>([]);
   const [cpuBusy, setCpuBusy] = useState(false);
-  const [deleteLeagueName, setDeleteLeagueName] = useState("");
   const [deletingLeague, setDeletingLeague] = useState(false);
 
   const [rosterTeamId, setRosterTeamId] = useState<number | null>(null);
@@ -593,6 +602,11 @@ export default function TraditionalCommissioner({
       supabase.from("league_scoring_rules").select("id,league_id,category,rule_type,stat_key,min_value,max_value,points,is_enabled,stacking_mode,priority,label").eq("league_id", leagueId).order("category").order("priority"),
       supabase.from("traditional_waiver_claims").select("*").eq("league_id", leagueId).order("submitted_at", { ascending: false }).limit(100),
       supabase.from("traditional_trade_offers").select("*").eq("league_id", leagueId).order("created_at", { ascending: false }).limit(100),
+      supabase
+        .from("league_invitations")
+        .select("id,league_id,fantasy_team_id,email,status,expires_at")
+        .eq("league_id", leagueId)
+        .eq("status", "pending"),
     ]);
 
     const failed = results.find((r) => r.error);
@@ -647,6 +661,7 @@ export default function TraditionalCommissioner({
     setScoringRules((results[13].data ?? []) as ScoringRule[]);
     setClaims((results[14].data ?? []) as WaiverClaim[]);
     setOffers((results[15].data ?? []) as TradeOffer[]);
+    setInvitations((results[16].data ?? []) as LeagueInvitation[]);
 
     const activeTeams = ((results[9].data ?? []) as Team[]).filter((team) => team.active);
 
@@ -1000,19 +1015,24 @@ export default function TraditionalCommissioner({
         }),
       });
 
+      const responseText = await response.text();
       let result: InviteApiResponse = {};
 
-      try {
-        result = (await response.json()) as InviteApiResponse;
-      } catch {
-        result = {};
+      if (responseText) {
+        try {
+          result = JSON.parse(responseText) as InviteApiResponse;
+        } catch {
+          result = {};
+        }
       }
 
       if (!response.ok || result.success === false) {
         throw new Error(
           result.error ??
             result.message ??
-            "The invitation could not be sent."
+            (responseText && !responseText.trim().startsWith("<")
+              ? responseText
+              : `Invitation request failed (${response.status}).`)
         );
       }
 
@@ -1041,9 +1061,22 @@ export default function TraditionalCommissioner({
     if (cpuBusy) return;
 
     const maxTeams = leagueSettings?.max_teams ?? 12;
-    const activeTeams = teams.filter((team) => team.active);
+    const pendingTeamIds = new Set(
+      invitations
+        .filter((invite) => invite.status === "pending")
+        .map((invite) => Number(invite.fantasy_team_id))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    );
 
-    if (activeTeams.length >= maxTeams) {
+    const filledCount = teams.filter(
+      (team) =>
+        team.active &&
+        (Boolean(team.owner_id) ||
+          Boolean(team.is_cpu) ||
+          pendingTeamIds.has(team.id))
+    ).length;
+
+    if (filledCount >= maxTeams) {
       setError(`This league is already at its ${maxTeams}-team limit.`);
       return;
     }
@@ -1053,9 +1086,12 @@ export default function TraditionalCommissioner({
     setSuccess(null);
 
     try {
-      const { error: cpuError } = await supabase.rpc("add_cpu_team", {
-        p_league_id: leagueId,
-      });
+      const { error: cpuError } = await supabase.rpc(
+        "commissioner_add_cpu_to_vacant_slot",
+        {
+          p_league_id: leagueId,
+        }
+      );
 
       if (cpuError) {
         throw new Error(cpuError.message);
@@ -1082,17 +1118,32 @@ export default function TraditionalCommissioner({
     if (cpuBusy) return;
 
     const maxTeams = leagueSettings?.max_teams ?? 12;
-    const activeCount = teams.filter((team) => team.active).length;
+    const pendingTeamIds = new Set(
+      invitations
+        .filter((invite) => invite.status === "pending")
+        .map((invite) => Number(invite.fantasy_team_id))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    );
 
-    if (activeCount >= maxTeams) {
+    const filledCount = teams.filter(
+      (team) =>
+        team.active &&
+        (Boolean(team.owner_id) ||
+          Boolean(team.is_cpu) ||
+          pendingTeamIds.has(team.id))
+    ).length;
+
+    const remaining = Math.max(0, maxTeams - filledCount);
+
+    if (remaining <= 0) {
       setError(`This league is already at its ${maxTeams}-team limit.`);
       return;
     }
 
     if (
       !window.confirm(
-        `Fill the remaining ${maxTeams - activeCount} team slot${
-          maxTeams - activeCount === 1 ? "" : "s"
+        `Fill the remaining ${remaining} team slot${
+          remaining === 1 ? "" : "s"
         } with CPU teams?`
       )
     ) {
@@ -1105,7 +1156,7 @@ export default function TraditionalCommissioner({
 
     try {
       const { data, error: fillError } = await supabase.rpc(
-        "fill_cpu_teams_to_max",
+        "commissioner_fill_vacant_slots_with_cpu",
         {
           p_league_id: leagueId,
         }
@@ -1115,10 +1166,7 @@ export default function TraditionalCommissioner({
         throw new Error(fillError.message);
       }
 
-      const result = (data ?? {}) as {
-        cpu_teams_added?: number;
-        max_teams?: number;
-      };
+      const added = Number(data ?? remaining);
 
       await load({
         showLoading: false,
@@ -1126,11 +1174,7 @@ export default function TraditionalCommissioner({
       });
 
       setSuccess(
-        `${Number(result.cpu_teams_added ?? maxTeams - activeCount)} CPU team${
-          Number(result.cpu_teams_added ?? maxTeams - activeCount) === 1
-            ? ""
-            : "s"
-        } added.`
+        `${added} CPU team${added === 1 ? "" : "s"} added.`
       );
     } catch (err) {
       setError(
@@ -1187,11 +1231,6 @@ export default function TraditionalCommissioner({
 
   async function deleteLeague() {
     if (!league || deletingLeague) return;
-
-    if (deleteLeagueName.trim() !== league.name) {
-      setError(`Type "${league.name}" exactly before deleting this league.`);
-      return;
-    }
 
     if (
       !window.confirm(
@@ -1664,283 +1703,292 @@ export default function TraditionalCommissioner({
 
         {tab === "teams" ? (
           <>
-            <Section
-              title="Teams & Owners"
-              subtitle="Every configured team position is shown below. Invite a human owner to any open spot, or use CPU teams in Traditional leagues."
-            >
-              <div style={styles.teamToolbar}>
-                <div>
-                  <strong>
-                    {teams.filter((team) => team.active).length} /{" "}
-                    {leagueSettings?.max_teams ?? 12} TEAM SPOTS FILLED
-                  </strong>
-                  <div style={styles.smallMuted}>
-                    CPU controls are available only in Traditional leagues.
-                  </div>
-                </div>
+            {(() => {
+              const maxTeams = leagueSettings?.max_teams ?? 12;
+              const activeTeams = teams.filter((team) => team.active);
+              const pendingInviteByTeamId = new Map(
+                invitations
+                  .filter(
+                    (invite) =>
+                      invite.status === "pending" &&
+                      invite.fantasy_team_id !== null
+                  )
+                  .map((invite) => [
+                    Number(invite.fantasy_team_id),
+                    invite,
+                  ] as const)
+              );
 
-                <div style={styles.teamActions}>
-                  <Button
-                    disabled={
-                      cpuBusy ||
-                      teams.filter((team) => team.active).length >=
-                        (leagueSettings?.max_teams ?? 12)
-                    }
-                    onClick={() => void addCpuTeam()}
+              const isFilledTeam = (team: Team) =>
+                Boolean(team.owner_id) ||
+                Boolean(team.is_cpu) ||
+                pendingInviteByTeamId.has(team.id);
+
+              const filledCount = activeTeams.filter(isFilledTeam).length;
+              const vacantCount = Math.max(0, maxTeams - filledCount);
+
+              return (
+                <>
+                  <Section
+                    title="Teams & Owners"
+                    subtitle="Invite human owners to vacant spots, manage pending invitations, or fill open Traditional league spots with CPU teams."
                   >
-                    {cpuBusy ? "WORKING…" : "+ ADD CPU TEAM"}
-                  </Button>
-
-                  <Button
-                    disabled={
-                      cpuBusy ||
-                      teams.filter((team) => team.active).length >=
-                        (leagueSettings?.max_teams ?? 12)
-                    }
-                    onClick={() => void fillRemainingWithCpu()}
-                  >
-                    FILL REMAINING WITH CPU
-                  </Button>
-                </div>
-              </div>
-
-              <div style={styles.list}>
-                {Array.from({
-                  length: leagueSettings?.max_teams ?? 12,
-                }).map((_, index) => {
-                  const activeTeams = teams.filter((team) => team.active);
-                  const team = activeTeams[index] ?? null;
-                  const inviteKey = team?.id ?? -(index + 1);
-                  const isCpu = Boolean(team?.is_cpu);
-
-                  return (
-                    <div
-                      key={team?.id ?? `vacant-${index}`}
-                      style={styles.teamRowExpanded}
-                    >
-                      <strong style={styles.teamIndex}>{index + 1}</strong>
-
-                      {team ? (
-                        <label style={styles.field}>
-                          <span style={styles.fieldLabel}>Team Name</span>
-                          <input
-                            value={team.team_name}
-                            disabled={isCpu}
-                            onChange={(e) =>
-                              setTeams((current) =>
-                                current.map((row) =>
-                                  row.id === team.id
-                                    ? {
-                                        ...row,
-                                        team_name: e.target.value,
-                                      }
-                                    : row
-                                )
-                              )
-                            }
-                            style={styles.input}
-                          />
-                        </label>
-                      ) : (
-                        <div style={styles.vacantField}>
-                          <span style={styles.fieldLabel}>Team Name</span>
-                          <strong>Vacant Team {index + 1}</strong>
+                    <div style={styles.teamToolbar}>
+                      <div>
+                        <strong>
+                          {filledCount} / {maxTeams} TEAM SPOTS FILLED
+                        </strong>
+                        <div style={styles.smallMuted}>
+                          {vacantCount} vacant spot{vacantCount === 1 ? "" : "s"} remaining.
+                          Pending invitations count as filled; unused placeholder teams do not.
                         </div>
-                      )}
-
-                      {team && !isCpu ? (
-                        <label style={styles.field}>
-                          <span style={styles.fieldLabel}>Owner</span>
-                          <select
-                            value={team.owner_id ?? ""}
-                            onChange={(e) => {
-                              const nextOwnerId = e.target.value;
-                              setTeams((current) =>
-                                current.map((row) =>
-                                  row.id === team.id
-                                    ? {
-                                        ...row,
-                                        owner_id: nextOwnerId || null,
-                                      }
-                                    : row
-                                )
-                              );
-                            }}
-                            style={styles.input}
-                          >
-                            <option value="">NO OWNER</option>
-                            {members.map((member) => (
-                              <option
-                                key={member.id}
-                                value={member.user_id}
-                              >
-                                {shortId(member.user_id)} •{" "}
-                                {pretty(member.role)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      ) : (
-                        <div style={styles.vacantField}>
-                          <span style={styles.fieldLabel}>Owner</span>
-                          <strong>{isCpu ? "CPU" : "VACANT"}</strong>
-                        </div>
-                      )}
-
-                      {!isCpu && !team?.owner_id ? (
-                        <label style={styles.field}>
-                          <span style={styles.fieldLabel}>Email Invite</span>
-                          <input
-                            type="email"
-                            placeholder="owner@example.com"
-                            value={teamInviteEmails[inviteKey] ?? ""}
-                            onChange={(e) =>
-                              setTeamInviteEmails((current) => ({
-                                ...current,
-                                [inviteKey]: e.target.value,
-                              }))
-                            }
-                            style={styles.input}
-                          />
-                        </label>
-                      ) : (
-                        <div style={styles.vacantField}>
-                          <span style={styles.fieldLabel}>Email / Status</span>
-                          <strong>
-                            {isCpu
-                              ? "CPU TEAM"
-                              : team?.owner_id
-                                ? "OWNER ASSIGNED"
-                                : "VACANT"}
-                          </strong>
-                        </div>
-                      )}
-
-                      <div style={styles.ownerStatus}>
-                        {isCpu ? (
-                          <>
-                            <strong>CPU TEAM</strong>
-                            <span>Managed automatically by Gridiron365.</span>
-                          </>
-                        ) : team?.owner_id ? (
-                          <>
-                            <strong>OWNER ASSIGNED</strong>
-                            <span>{shortId(team.owner_id)}</span>
-                          </>
-                        ) : team ? (
-                          <>
-                            <strong>VACANT TEAM</strong>
-                            <span>Send an email invite to reserve this team.</span>
-                          </>
-                        ) : (
-                          <>
-                            <strong>OPEN SLOT</strong>
-                            <span>
-                              The fantasy team is created only when this slot is used.
-                            </span>
-                          </>
-                        )}
                       </div>
 
                       <div style={styles.teamActions}>
-                        {!isCpu && !team?.owner_id ? (
-                          <Button
-                            disabled={
-                              invitingTeamId !== null ||
-                              !(teamInviteEmails[inviteKey] ?? "").trim()
-                            }
-                            onClick={() =>
-                              void sendTeamInvite(team, index)
-                            }
-                          >
-                            {invitingTeamId === inviteKey
-                              ? "SENDING…"
-                              : "✉ INVITE"}
-                          </Button>
-                        ) : null}
+                        <Button
+                          disabled={cpuBusy || vacantCount === 0}
+                          onClick={() => void addCpuTeam()}
+                        >
+                          {cpuBusy ? "WORKING…" : "+ ADD CPU TEAM"}
+                        </Button>
 
-                        {team && !isCpu ? (
-                          <Button
-                            disabled={saving}
-                            onClick={() =>
-                              void action(
-                                () =>
-                                  supabase.rpc(
-                                    "commissioner_update_traditional_team",
-                                    {
-                                      p_league_id: leagueId,
-                                      p_fantasy_team_id: team.id,
-                                      p_team_name: team.team_name,
-                                      p_owner_id: team.owner_id,
-                                      p_active: true,
-                                    }
-                                  ),
-                                `${team.team_name} updated.`
-                              )
-                            }
-                          >
-                            SAVE
-                          </Button>
-                        ) : null}
-
-                        {team && isCpu ? (
-                          <Button
-                            danger
-                            disabled={cpuBusy}
-                            onClick={() => void removeCpuTeam(team)}
-                          >
-                            REMOVE CPU
-                          </Button>
-                        ) : null}
+                        <Button
+                          disabled={cpuBusy || vacantCount === 0}
+                          onClick={() => void fillRemainingWithCpu()}
+                        >
+                          FILL REMAINING WITH CPU
+                        </Button>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </Section>
 
-            <Section
-              title="Danger Zone"
-              subtitle="Only the primary commissioner can permanently delete the league."
-            >
-              <div style={styles.dangerZone}>
-                <div>
-                  <strong>DELETE LEAGUE</strong>
-                  <p style={styles.smallMuted}>
-                    This permanently deletes the league and all league-owned data.
-                    This action cannot be undone.
-                  </p>
-                </div>
+                    <div style={styles.list}>
+                      {Array.from({
+                        length: maxTeams,
+                      }).map((_, index) => {
+                        const team = activeTeams[index] ?? null;
+                        const inviteKey = team?.id ?? -(index + 1);
+                        const isCpu = Boolean(team?.is_cpu);
+                        const pendingInvite =
+                          team ? pendingInviteByTeamId.get(team.id) ?? null : null;
+                        const hasOwner = Boolean(team?.owner_id);
+                        const isVacant =
+                          !team || (!hasOwner && !isCpu && !pendingInvite);
 
-                <label style={styles.field}>
-                  <span style={styles.fieldLabel}>
-                    Type {league?.name ?? "the league name"} to confirm
-                  </span>
-                  <input
-                    value={deleteLeagueName}
-                    onChange={(event) =>
-                      setDeleteLeagueName(event.target.value)
-                    }
-                    placeholder={league?.name ?? ""}
-                    style={styles.input}
-                  />
-                </label>
+                        return (
+                          <div
+                            key={team?.id ?? `vacant-${index}`}
+                            style={styles.teamRowExpanded}
+                          >
+                            <strong style={styles.teamIndex}>{index + 1}</strong>
 
-                <Button
-                  danger
-                  disabled={
-                    deletingLeague ||
-                    !league ||
-                    deleteLeagueName.trim() !== league.name
-                  }
-                  onClick={() => void deleteLeague()}
-                >
-                  {deletingLeague
-                    ? "DELETING…"
-                    : "PERMANENTLY DELETE LEAGUE"}
-                </Button>
-              </div>
-            </Section>
+                            {team ? (
+                              <label style={styles.field}>
+                                <span style={styles.fieldLabel}>Team Name</span>
+                                <input
+                                  value={team.team_name}
+                                  disabled={isCpu}
+                                  onChange={(e) =>
+                                    setTeams((current) =>
+                                      current.map((row) =>
+                                        row.id === team.id
+                                          ? {
+                                              ...row,
+                                              team_name: e.target.value,
+                                            }
+                                          : row
+                                      )
+                                    )
+                                  }
+                                  style={styles.input}
+                                />
+                              </label>
+                            ) : (
+                              <div style={styles.vacantField}>
+                                <span style={styles.fieldLabel}>Team Name</span>
+                                <strong>Vacant Team {index + 1}</strong>
+                              </div>
+                            )}
+
+                            {team && !isCpu ? (
+                              <label style={styles.field}>
+                                <span style={styles.fieldLabel}>Owner</span>
+                                <select
+                                  value={team.owner_id ?? ""}
+                                  onChange={(e) => {
+                                    const nextOwnerId = e.target.value;
+                                    setTeams((current) =>
+                                      current.map((row) =>
+                                        row.id === team.id
+                                          ? {
+                                              ...row,
+                                              owner_id: nextOwnerId || null,
+                                            }
+                                          : row
+                                      )
+                                    );
+                                  }}
+                                  style={styles.input}
+                                >
+                                  <option value="">NO OWNER</option>
+                                  {members.map((member) => (
+                                    <option
+                                      key={member.id}
+                                      value={member.user_id}
+                                    >
+                                      {shortId(member.user_id)} •{" "}
+                                      {pretty(member.role)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ) : (
+                              <div style={styles.vacantField}>
+                                <span style={styles.fieldLabel}>Owner</span>
+                                <strong>{isCpu ? "CPU" : "VACANT"}</strong>
+                              </div>
+                            )}
+
+                            {!isCpu && !hasOwner && !pendingInvite ? (
+                              <label style={styles.field}>
+                                <span style={styles.fieldLabel}>Email Invite</span>
+                                <input
+                                  type="email"
+                                  placeholder="owner@example.com"
+                                  value={teamInviteEmails[inviteKey] ?? ""}
+                                  onChange={(e) =>
+                                    setTeamInviteEmails((current) => ({
+                                      ...current,
+                                      [inviteKey]: e.target.value,
+                                    }))
+                                  }
+                                  style={styles.input}
+                                />
+                              </label>
+                            ) : (
+                              <div style={styles.vacantField}>
+                                <span style={styles.fieldLabel}>Email / Status</span>
+                                <strong>
+                                  {isCpu
+                                    ? "CPU TEAM"
+                                    : hasOwner
+                                      ? "OWNER ASSIGNED"
+                                      : pendingInvite
+                                        ? `${pendingInvite.email} • PENDING`
+                                        : "VACANT"}
+                                </strong>
+                              </div>
+                            )}
+
+                            <div style={styles.ownerStatus}>
+                              {isCpu ? (
+                                <>
+                                  <strong>CPU TEAM</strong>
+                                  <span>Managed automatically by Gridiron365.</span>
+                                </>
+                              ) : hasOwner ? (
+                                <>
+                                  <strong>OWNER ASSIGNED</strong>
+                                  <span>{shortId(team!.owner_id!)}</span>
+                                </>
+                              ) : pendingInvite ? (
+                                <>
+                                  <strong>INVITE PENDING</strong>
+                                  <span>{pendingInvite.email}</span>
+                                </>
+                              ) : isVacant ? (
+                                <>
+                                  <strong>VACANT</strong>
+                                  <span>
+                                    Send an invitation or replace this spot with a CPU team.
+                                  </span>
+                                </>
+                              ) : null}
+                            </div>
+
+                            <div style={styles.teamActions}>
+                              {!isCpu && !hasOwner && !pendingInvite ? (
+                                <Button
+                                  disabled={
+                                    invitingTeamId !== null ||
+                                    !(teamInviteEmails[inviteKey] ?? "").trim()
+                                  }
+                                  onClick={() =>
+                                    void sendTeamInvite(team, index)
+                                  }
+                                >
+                                  {invitingTeamId === inviteKey
+                                    ? "SENDING…"
+                                    : "✉ INVITE"}
+                                </Button>
+                              ) : null}
+
+                              {team && !isCpu ? (
+                                <Button
+                                  disabled={saving}
+                                  onClick={() =>
+                                    void action(
+                                      () =>
+                                        supabase.rpc(
+                                          "commissioner_update_traditional_team",
+                                          {
+                                            p_league_id: leagueId,
+                                            p_fantasy_team_id: team.id,
+                                            p_team_name: team.team_name,
+                                            p_owner_id: team.owner_id,
+                                            p_active: true,
+                                          }
+                                        ),
+                                      `${team.team_name} updated.`
+                                    )
+                                  }
+                                >
+                                  SAVE
+                                </Button>
+                              ) : null}
+
+                              {team && isCpu ? (
+                                <Button
+                                  danger
+                                  disabled={cpuBusy}
+                                  onClick={() => void removeCpuTeam(team)}
+                                >
+                                  REMOVE CPU
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Section>
+
+                  <Section
+                    title="Danger Zone"
+                    subtitle="Only the primary commissioner can permanently delete the league."
+                  >
+                    <div style={styles.dangerZone}>
+                      <div>
+                        <strong>DELETE LEAGUE</strong>
+                        <p style={styles.smallMuted}>
+                          This permanently deletes the league and all league-owned data.
+                          This action cannot be undone.
+                        </p>
+                      </div>
+
+                      <Button
+                        danger
+                        disabled={deletingLeague || !league}
+                        onClick={() => void deleteLeague()}
+                      >
+                        {deletingLeague
+                          ? "DELETING…"
+                          : "PERMANENTLY DELETE LEAGUE"}
+                      </Button>
+                    </div>
+                  </Section>
+                </>
+              );
+            })()}
           </>
         ) : null}
 
