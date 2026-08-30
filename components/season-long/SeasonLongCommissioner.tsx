@@ -761,6 +761,37 @@ export default function SeasonLongCommissioner({
         styles.page
       }
     >
+      <style>{`
+        .season-long-team-row {
+          grid-template-columns: 48px minmax(0, 1.5fr) minmax(130px, .75fr) minmax(190px, 1fr) minmax(190px, .9fr) !important;
+        }
+
+        @media (max-width: 1100px) {
+          .season-long-team-row {
+            grid-template-columns: 44px minmax(0, 1.35fr) minmax(120px, .8fr) minmax(170px, 1fr) !important;
+          }
+
+          .season-long-team-row > :nth-child(5) {
+            grid-column: 2 / -1;
+            justify-content: flex-end;
+          }
+        }
+
+        @media (max-width: 760px) {
+          .season-long-team-row {
+            grid-template-columns: 38px minmax(0, 1fr) !important;
+          }
+
+          .season-long-team-row > :nth-child(n + 3) {
+            grid-column: 2;
+          }
+
+          .season-long-team-row > :nth-child(5) {
+            justify-content: flex-start;
+          }
+        }
+      `}</style>
+
       <div
         style={
           styles.shell
@@ -1224,6 +1255,7 @@ export default function SeasonLongCommissioner({
                         key={
                           team.id
                         }
+                        className="season-long-team-row"
                         style={
                           styles.teamRow
                         }
@@ -1325,7 +1357,7 @@ export default function SeasonLongCommissioner({
 
                         <div
                           style={
-                            styles.row
+                            styles.teamActions
                           }
                         >
                           {!hasOwner ? (
@@ -2032,6 +2064,8 @@ const styles:
     input: {
       width:
         "100%",
+      minWidth:
+        0,
       minHeight:
         "38px",
       boxSizing:
@@ -2167,24 +2201,34 @@ const styles:
       display:
         "grid",
       gap:
-        "8px",
+        "10px",
+      width:
+        "100%",
+      minWidth:
+        0,
     },
 
     teamRow: {
       display:
         "grid",
-      gridTemplateColumns:
-        "54px minmax(180px,1fr) minmax(130px,.7fr) minmax(130px,.7fr) 85px",
       gap:
-        "8px",
+        "12px",
       alignItems:
         "center",
+      width:
+        "100%",
+      minWidth:
+        0,
+      boxSizing:
+        "border-box",
       padding:
-        "9px",
+        "12px 14px",
       border:
         "1px solid rgba(255,255,255,.07)",
       borderRadius:
-        "9px",
+        "10px",
+      background:
+        "rgba(255,255,255,.01)",
     },
 
     rank: {
@@ -2194,6 +2238,8 @@ const styles:
         950,
       textAlign:
         "center",
+      minWidth:
+        0,
     },
 
     teamMeta: {
@@ -2201,10 +2247,29 @@ const styles:
         "grid",
       gap:
         "3px",
+      minWidth:
+        0,
       color:
         "#8f96a0",
       fontSize:
         "11px",
+    },
+
+    teamActions: {
+      display:
+        "flex",
+      alignItems:
+        "center",
+      justifyContent:
+        "flex-end",
+      gap:
+        "8px",
+      minWidth:
+        0,
+      width:
+        "100%",
+      flexWrap:
+        "wrap",
     },
 
     error: {
