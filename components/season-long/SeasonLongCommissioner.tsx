@@ -8,6 +8,8 @@ import {
 } from "react";
 
 import Link from "next/link";
+import { createBrowserClient } from "@supabase/ssr";
+import { useRouter } from "next/navigation";
 
 import SeasonLongScoring from "@/components/season-long/SeasonLongScoring";
 
@@ -51,6 +53,12 @@ type Team = {
   owner_id: string | null;
   team_name: string;
   active: boolean;
+};
+
+type InviteApiResponse = {
+  success?: boolean;
+  error?: string;
+  message?: string;
 };
 
 
@@ -126,9 +134,17 @@ function pretty(
 }
 
 
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+
 export default function SeasonLongCommissioner({
   leagueId,
 }: SeasonLongCommissionerProps) {
+  const router = useRouter();
   const [tab, setTab] =
     useState<Tab>(
       "overview"
@@ -166,6 +182,20 @@ export default function SeasonLongCommissioner({
     useState<Record<number, string>>(
       {}
     );
+
+  const [teamInviteEmails, setTeamInviteEmails] =
+    useState<Record<number, string>>({});
+  const [invitingTeamId, setInvitingTeamId] =
+    useState<number | null>(null);
+
+  const [addingInviteSlots, setAddingInviteSlots] =
+    useState(false);
+
+  const [deleteLeagueName, setDeleteLeagueName] =
+    useState("");
+
+  const [deletingLeague, setDeletingLeague] =
+    useState(false);
 
 
   const load =
@@ -320,6 +350,210 @@ export default function SeasonLongCommissioner({
       );
     } finally {
       setSaving(
+        false
+      );
+    }
+  }
+
+
+  async function addInviteSlots(count = 1) {
+    if (addingInviteSlots) return;
+
+    setAddingInviteSlots(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      for (let index = 0; index < count; index += 1) {
+        const { error: slotError } = await supabase.rpc(
+          "commissioner_add_open_team_slot",
+          {
+            p_league_id: leagueId,
+            p_team_name: `Open Entry ${(data?.teams.length ?? 0) + index + 1}`,
+          }
+        );
+
+        if (slotError) {
+          throw new Error(slotError.message);
+        }
+      }
+
+      await load();
+      setSuccess(
+        `${count} human invite slot${count === 1 ? "" : "s"} added.`
+      );
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "The invite slot could not be added."
+      );
+    } finally {
+      setAddingInviteSlots(false);
+    }
+  }
+
+
+  async function sendSeasonLongInvite(team: Team) {
+    if (invitingTeamId !== null) return;
+
+    const email =
+      (teamInviteEmails[team.id] ?? "")
+        .trim()
+        .toLowerCase();
+
+    if (!email || !email.includes("@")) {
+      setError(`Enter a valid email address for ${team.team_name}.`);
+      return;
+    }
+
+    setInvitingTeamId(team.id);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const sessionResult =
+        await supabase.auth.getSession();
+
+      if (sessionResult.error) {
+        throw new Error(sessionResult.error.message);
+      }
+
+      const token =
+        sessionResult.data.session?.access_token;
+
+      if (!token) {
+        throw new Error(
+          "Your login session is missing. Sign in again and retry."
+        );
+      }
+
+      const response =
+        await fetch(
+          `/api/leagues/${leagueId}/invite`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              email,
+              firstName: team.team_name,
+              lastName: "Owner",
+              fantasyTeamId: team.id,
+            }),
+          }
+        );
+
+      let result: InviteApiResponse = {};
+
+      try {
+        result =
+          (await response.json()) as InviteApiResponse;
+      } catch {
+        result = {};
+      }
+
+      if (
+        !response.ok ||
+        result.success === false
+      ) {
+        throw new Error(
+          result.error ??
+            result.message ??
+            "The invitation could not be sent."
+        );
+      }
+
+      setTeamInviteEmails(
+        (current) => ({
+          ...current,
+          [team.id]: "",
+        })
+      );
+
+      setSuccess(
+        `Invitation sent to ${email} for ${team.team_name}.`
+      );
+
+      await load();
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "The invitation could not be sent."
+      );
+    } finally {
+      setInvitingTeamId(null);
+    }
+  }
+
+
+  async function deleteLeague() {
+    if (
+      !data?.league ||
+      deletingLeague
+    ) {
+      return;
+    }
+
+    if (
+      deleteLeagueName.trim() !==
+      data.league.name
+    ) {
+      setError(
+        `Type "${data.league.name}" exactly before deleting this league.`
+      );
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Permanently delete ${data.league.name}? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingLeague(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const {
+        error:
+          deleteError,
+      } =
+        await supabase.rpc(
+          "commissioner_delete_league",
+          {
+            p_league_id:
+              leagueId,
+          }
+        );
+
+      if (deleteError) {
+        throw new Error(
+          deleteError.message
+        );
+      }
+
+      router.replace(
+        "/my-leagues"
+      );
+
+      router.refresh();
+    } catch (
+      actionError
+    ) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "The league could not be deleted."
+      );
+
+      setDeletingLeague(
         false
       );
     }
@@ -822,135 +1056,326 @@ export default function SeasonLongCommissioner({
 
         {tab ===
         "teams" ? (
-          <Section
-            title="Teams"
-            subtitle="Rename active Season-Long teams. Owner invitation controls can be added here next."
-          >
-            <div
-              style={
-                styles.list
-              }
+          <>
+            <Section
+              title="Teams & Owners"
+              subtitle="Season-Long leagues use human owners only. Add as many invitation spots as you need; CPU teams are not available in Salary or No-Salary leagues."
             >
-              {data.teams.map(
-                (
-                  team
-                ) => {
-                  const standing =
-                    standingsMap.get(
-                      team.id
-                    );
-
-                  return (
-                    <div
-                      key={
-                        team.id
-                      }
-                      style={
-                        styles.teamRow
-                      }
-                    >
-                      <div
-                        style={
-                          styles.rank
-                        }
-                      >
-                        {standing
-                          ?.current_rank
-                          ? `#${standing.current_rank}`
-                          : "—"}
-                      </div>
-
-                      <input
-                        value={
-                          teamNames[
-                            team.id
-                          ] ??
-                          team.team_name
-                        }
-                        onChange={(
-                          event
-                        ) =>
-                          setTeamNames({
-                            ...teamNames,
-                            [team.id]:
-                              event.target.value,
-                          })
-                        }
-                        style={
-                          styles.input
-                        }
-                      />
-
-                      <div
-                        style={
-                          styles.teamMeta
-                        }
-                      >
-                        <strong>
-                          {toNumber(
-                            standing
-                              ?.total_points
-                          ).toFixed(
-                            2
-                          )} pts
-                        </strong>
-
-                        <span>
-                          {standing
-                            ?.weeks_scored ??
-                            0} weeks scored
-                        </span>
-                      </div>
-
-                      <div
-                        style={
-                          styles.teamMeta
-                        }
-                      >
-                        <strong>
-                          {team.owner_id
-                            ? "OWNER ASSIGNED"
-                            : "NO OWNER"}
-                        </strong>
-
-                        <span>
-                          {team.active
-                            ? "Active"
-                            : "Inactive"}
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={() =>
-                          void runAction(
-                            {
-                              action:
-                                "rename-team",
-                              fantasyTeamId:
-                                team.id,
-                              teamName:
-                                teamNames[
-                                  team.id
-                                ] ??
-                                team.team_name,
-                            },
-                            "Team name saved."
-                          )
-                        }
-                        style={
-                          styles.button
-                        }
-                      >
-                        SAVE
-                      </button>
-                    </div>
-                  );
+              <div
+                style={
+                  styles.actions
                 }
-              )}
-            </div>
-          </Section>
+              >
+                <button
+                  type="button"
+                  disabled={
+                    addingInviteSlots ||
+                    saving
+                  }
+                  onClick={() =>
+                    void addInviteSlots(
+                      1
+                    )
+                  }
+                  style={
+                    styles.button
+                  }
+                >
+                  + ADD INVITE SPOT
+                </button>
+
+                <button
+                  type="button"
+                  disabled={
+                    addingInviteSlots ||
+                    saving
+                  }
+                  onClick={() =>
+                    void addInviteSlots(
+                      4
+                    )
+                  }
+                  style={
+                    styles.linkButton
+                  }
+                >
+                  + ADD 4 INVITE SPOTS
+                </button>
+              </div>
+
+              <div
+                style={
+                  styles.list
+                }
+              >
+                {data.teams.map(
+                  (
+                    team
+                  ) => {
+                    const standing =
+                      standingsMap.get(
+                        team.id
+                      );
+
+                    const hasOwner =
+                      Boolean(
+                        team.owner_id
+                      );
+
+                    return (
+                      <div
+                        key={
+                          team.id
+                        }
+                        style={
+                          styles.teamRow
+                        }
+                      >
+                        <div
+                          style={
+                            styles.rank
+                          }
+                        >
+                          {standing
+                            ?.current_rank
+                            ? `#${standing.current_rank}`
+                            : "—"}
+                        </div>
+
+                        <input
+                          value={
+                            teamNames[
+                              team.id
+                            ] ??
+                            team.team_name
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setTeamNames({
+                              ...teamNames,
+                              [team.id]:
+                                event.target.value,
+                            })
+                          }
+                          style={
+                            styles.input
+                          }
+                        />
+
+                        <div
+                          style={
+                            styles.teamMeta
+                          }
+                        >
+                          <strong>
+                            {hasOwner
+                              ? "OWNER ASSIGNED"
+                              : "VACANT / INVITE"}
+                          </strong>
+
+                          <span>
+                            {team.active
+                              ? "Active"
+                              : "Inactive"}
+                          </span>
+                        </div>
+
+                        {!hasOwner ? (
+                          <input
+                            type="email"
+                            placeholder="owner@example.com"
+                            value={
+                              teamInviteEmails[
+                                team.id
+                              ] ??
+                              ""
+                            }
+                            onChange={(
+                              event
+                            ) =>
+                              setTeamInviteEmails(
+                                (
+                                  current
+                                ) => ({
+                                  ...current,
+                                  [team.id]:
+                                    event
+                                      .target
+                                      .value,
+                                })
+                              )
+                            }
+                            style={
+                              styles.input
+                            }
+                          />
+                        ) : (
+                          <div
+                            style={
+                              styles.teamMeta
+                            }
+                          >
+                            <strong>
+                              HUMAN OWNER
+                            </strong>
+
+                            <span>
+                              No CPU option
+                            </span>
+                          </div>
+                        )}
+
+                        <div
+                          style={
+                            styles.row
+                          }
+                        >
+                          {!hasOwner ? (
+                            <button
+                              type="button"
+                              disabled={
+                                saving ||
+                                invitingTeamId !==
+                                  null ||
+                                !(
+                                  teamInviteEmails[
+                                    team.id
+                                  ] ??
+                                  ""
+                                ).trim()
+                              }
+                              onClick={() =>
+                                void sendSeasonLongInvite(
+                                  team
+                                )
+                              }
+                              style={
+                                styles.button
+                              }
+                            >
+                              {invitingTeamId ===
+                              team.id
+                                ? "SENDING…"
+                                : "✉ INVITE"}
+                            </button>
+                          ) : null}
+
+                          <button
+                            type="button"
+                            disabled={
+                              saving
+                            }
+                            onClick={() =>
+                              void runAction(
+                                {
+                                  action:
+                                    "rename-team",
+                                  fantasyTeamId:
+                                    team.id,
+                                  teamName:
+                                    teamNames[
+                                      team.id
+                                    ] ??
+                                    team.team_name,
+                                },
+                                "Team name saved."
+                              )
+                            }
+                            style={
+                              styles.button
+                            }
+                          >
+                            SAVE
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+            </Section>
+
+            <Section
+              title="Danger Zone"
+              subtitle="Only the primary commissioner can permanently delete the league."
+            >
+              <div
+                style={
+                  styles.dangerZone
+                }
+              >
+                <div>
+                  <strong>
+                    DELETE LEAGUE
+                  </strong>
+
+                  <p
+                    style={
+                      styles.dangerText
+                    }
+                  >
+                    Permanently deletes this league and all league-owned data.
+                    This action cannot be undone.
+                  </p>
+                </div>
+
+                <label
+                  style={
+                    styles.field
+                  }
+                >
+                  <span
+                    style={
+                      styles.fieldLabel
+                    }
+                  >
+                    Type {data.league.name} to confirm
+                  </span>
+
+                  <input
+                    type="text"
+                    value={
+                      deleteLeagueName
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setDeleteLeagueName(
+                        event.target.value
+                      )
+                    }
+                    placeholder={
+                      data.league.name
+                    }
+                    style={
+                      styles.input
+                    }
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  disabled={
+                    deletingLeague ||
+                    deleteLeagueName.trim() !==
+                      data.league.name
+                  }
+                  onClick={() =>
+                    void deleteLeague()
+                  }
+                  style={{
+                    ...styles.button,
+                    ...styles.dangerButton,
+                  }}
+                >
+                  {deletingLeague
+                    ? "DELETING…"
+                    : "PERMANENTLY DELETE LEAGUE"}
+                </button>
+              </div>
+            </Section>
+          </>
         ) : null}
 
 
@@ -1675,4 +2100,27 @@ const styles:
       background:
         "rgba(20,20,24,.94)",
     },
-  };
+  
+    dangerZone: {
+      display: "grid",
+      gap: "12px",
+      marginTop: "8px",
+      padding: "16px",
+      border: "1px solid rgba(255,75,75,.32)",
+      borderRadius: "12px",
+      background: "rgba(135,15,15,.12)",
+    },
+
+    dangerText: {
+      margin: "6px 0 0",
+      color: "#a7adb7",
+      fontSize: "12px",
+      lineHeight: 1.55,
+    },
+
+    dangerButton: {
+      border: "1px solid rgba(255,75,75,.5)",
+      background: "linear-gradient(135deg,#7d1111,#b51c14)",
+      color: "#fff",
+    },
+};
