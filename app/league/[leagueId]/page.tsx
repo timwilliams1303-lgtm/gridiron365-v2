@@ -2,14 +2,12 @@ import {
   redirect,
 } from "next/navigation";
 
-import TraditionalCommissioner from "@/components/traditional/TraditionalCommissioner";
-
-import SeasonLongCommissioner from "@/components/season-long/SeasonLongCommissioner";
+import TraditionalLeagueHome from "@/components/traditional/TraditionalLeagueHome";
+import SeasonLongLeagueHome from "@/components/season-long/SeasonLongLeagueHome";
 
 import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
-
 
 type PageProps = {
   params:
@@ -18,8 +16,7 @@ type PageProps = {
     }>;
 };
 
-
-export default async function CommissionerPage({
+export default async function LeagueHomePage({
   params,
 }: PageProps) {
   const {
@@ -32,25 +29,21 @@ export default async function CommissionerPage({
       leagueId
     );
 
-  if (
-    !access.isCommissioner
-  ) {
-    redirect(
-      `/league/${leagueId}`
-    );
-  }
-
   switch (
     access.league.leagueType
   ) {
     case "traditional":
       return (
-        <TraditionalCommissioner />
+        <TraditionalLeagueHome
+          leagueId={
+            leagueId
+          }
+        />
       );
 
     case "season_long":
       return (
-        <SeasonLongCommissioner
+        <SeasonLongLeagueHome
           leagueId={
             leagueId
           }
@@ -59,12 +52,12 @@ export default async function CommissionerPage({
 
     case "nfl_playoffs":
       redirect(
-        `/league/${leagueId}`
+        "/my-leagues"
       );
 
     default:
       redirect(
-        `/league/${leagueId}`
+        "/my-leagues"
       );
   }
 }
