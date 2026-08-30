@@ -85,12 +85,6 @@ type LineupPlayer = {
   injuryStatus:
     string | null;
 
-  injuryType:
-    string | null;
-
-  injuryDetail:
-    string | null;
-
   byeWeek:
     number | null;
 
@@ -123,9 +117,6 @@ type LineupPlayer = {
 
   homeOrAway:
     string | null;
-
-  matchupRank:
-    number | null;
 };
 
 
@@ -144,27 +135,6 @@ type PoolPlayer = {
 
   injuryStatus:
     string | null;
-
-  injuryType:
-    string | null;
-
-  injuryDetail:
-    string | null;
-
-  opponentAbbreviation:
-    string | null;
-
-  homeOrAway:
-    string | null;
-
-  matchupRank:
-    number | null;
-
-  gameStartAt:
-    string | null;
-
-  isBye:
-    boolean;
 
   byeWeek:
     number | null;
@@ -374,184 +344,6 @@ function formatStatus(
       ) =>
         character.toUpperCase()
     );
-}
-
-
-function getInjuryDisplay(
-  status:
-    string | null,
-  injuryType?:
-    string | null,
-  injuryDetail?:
-    string | null
-) {
-  if (!status) {
-    return null;
-  }
-
-  const normalized =
-    status
-      .trim()
-      .toUpperCase();
-
-  if (
-    !normalized ||
-    [
-      "ACTIVE",
-      "HEALTHY",
-      "NORMAL",
-    ].includes(normalized)
-  ) {
-    return null;
-  }
-
-  let code = normalized;
-  let label = status;
-
-  if (
-    normalized === "Q" ||
-    normalized.includes("QUESTION")
-  ) {
-    code = "Q";
-    label = "Questionable";
-  } else if (
-    normalized === "D" ||
-    normalized.includes("DOUBT")
-  ) {
-    code = "D";
-    label = "Doubtful";
-  } else if (
-    normalized === "O" ||
-    normalized.includes("OUT")
-  ) {
-    code = "O";
-    label = "Out";
-  } else if (
-    normalized === "IR" ||
-    normalized.includes("INJURED RESERVE")
-  ) {
-    code = "IR";
-    label = "Injured Reserve";
-  } else if (
-    normalized === "PUP" ||
-    normalized.includes("PHYSICALLY UNABLE")
-  ) {
-    code = "PUP";
-    label = "Physically Unable to Perform";
-  } else if (
-    normalized === "SUSP" ||
-    normalized === "SUS" ||
-    normalized.includes("SUSPEND")
-  ) {
-    code = "SUSP";
-    label = "Suspended";
-  } else if (
-    normalized === "DTD" ||
-    normalized.includes("DAY-TO-DAY") ||
-    normalized.includes("DAY TO DAY")
-  ) {
-    code = "DTD";
-    label = "Day-to-Day";
-  } else if (normalized.length > 4) {
-    code = "INJ";
-  }
-
-  const details = [
-    label,
-    injuryType,
-    injuryDetail,
-  ].filter(
-    (value): value is string =>
-      Boolean(value?.trim())
-  );
-
-  return {
-    code,
-    tooltip: details.join(" • "),
-  };
-}
-
-
-function getMatchupLabel(
-  player:
-    Pick<
-      PoolPlayer,
-      | "opponentAbbreviation"
-      | "homeOrAway"
-      | "isBye"
-      | "matchupRank"
-    >
-) {
-  if (
-    player.isBye
-  ) {
-    return "BYE";
-  }
-
-  if (
-    !player.opponentAbbreviation
-  ) {
-    return "TBD";
-  }
-
-  const base = `${
-    player.homeOrAway ===
-    "away"
-      ? "@"
-      : "vs"
-  } ${player.opponentAbbreviation}`;
-
-  return player.matchupRank
-    ? `${base} (#${player.matchupRank})`
-    : base;
-}
-
-
-function getMatchupDifficulty(
-  rank:
-    number | null
-) {
-  if (!rank) {
-    return {
-      label:
-        "Matchup rank unavailable",
-
-      style:
-        styles.matchupNeutral,
-    };
-  }
-
-  /*
-   * Rank #1 = toughest defense vs that fantasy position.
-   * Lower third = tough, middle = average, upper third = favorable.
-   */
-  if (rank <= 10) {
-    return {
-      label:
-        `Tough matchup — opponent ranks #${rank} vs position`,
-
-      style:
-        styles.matchupTough,
-    };
-  }
-
-  if (rank <= 22) {
-    return {
-      label:
-        `Average matchup — opponent ranks #${rank} vs position`,
-
-      style:
-        styles.matchupMedium,
-    };
-  }
-
-  return {
-    label:
-      `Favorable matchup — opponent ranks #${rank} vs position`,
-
-    style:
-      styles.matchupGood,
-  };
 }
 
 
@@ -781,6 +573,52 @@ export default function SeasonLongWeeklyLineup({
   const [
     isError,
     setIsError,
+  ] =
+    useState(false);
+
+
+  const [
+    teamName,
+    setTeamName,
+  ] =
+    useState(
+      fantasyTeamName
+    );
+
+
+  const [
+    teamNameDraft,
+    setTeamNameDraft,
+  ] =
+    useState(
+      fantasyTeamName
+    );
+
+
+  const [
+    editingTeamName,
+    setEditingTeamName,
+  ] =
+    useState(false);
+
+
+  const [
+    savingTeamName,
+    setSavingTeamName,
+  ] =
+    useState(false);
+
+
+  const [
+    teamNameMessage,
+    setTeamNameMessage,
+  ] =
+    useState("");
+
+
+  const [
+    teamNameError,
+    setTeamNameError,
   ] =
     useState(false);
 
@@ -1374,6 +1212,149 @@ export default function SeasonLongWeeklyLineup({
   }
 
 
+  async function saveTeamName() {
+    const nextTeamName =
+      teamNameDraft
+        .trim()
+        .replace(
+          /\s+/g,
+          " "
+        );
+
+
+    setTeamNameMessage("");
+    setTeamNameError(false);
+
+
+    if (!nextTeamName) {
+      setTeamNameError(true);
+      setTeamNameMessage(
+        "Team name cannot be blank."
+      );
+      return;
+    }
+
+
+    if (
+      nextTeamName.length >
+      40
+    ) {
+      setTeamNameError(true);
+      setTeamNameMessage(
+        "Team name must be 40 characters or fewer."
+      );
+      return;
+    }
+
+
+    if (
+      nextTeamName ===
+      teamName
+    ) {
+      setEditingTeamName(false);
+      return;
+    }
+
+
+    setSavingTeamName(true);
+
+
+    try {
+      const {
+        data: sessionData,
+        error: sessionError,
+      } =
+        await supabase.auth.getSession();
+
+
+      const accessToken =
+        sessionData.session
+          ?.access_token;
+
+
+      if (
+        sessionError ||
+        !accessToken
+      ) {
+        throw new Error(
+          sessionError?.message ??
+            "Your login session is missing. Please sign in again."
+        );
+      }
+
+
+      const response =
+        await fetch(
+          `/api/leagues/${leagueId}/team-name`,
+          {
+            method: "POST",
+            headers: {
+              "content-type":
+                "application/json",
+              authorization:
+                `Bearer ${accessToken}`,
+            },
+            body:
+              JSON.stringify({
+                fantasyTeamId,
+                teamName:
+                  nextTeamName,
+              }),
+          }
+        );
+
+
+      const payload =
+        (await response.json()) as {
+          success?: boolean;
+          teamName?: string;
+          error?: string;
+        };
+
+
+      if (
+        !response.ok ||
+        !payload.success
+      ) {
+        throw new Error(
+          payload.error ??
+            "The team name could not be changed."
+        );
+      }
+
+
+      const savedName =
+        payload.teamName ??
+        nextTeamName;
+
+
+      setTeamName(
+        savedName
+      );
+      setTeamNameDraft(
+        savedName
+      );
+      setEditingTeamName(false);
+      setTeamNameError(false);
+      setTeamNameMessage(
+        "Team name updated."
+      );
+
+
+      router.refresh();
+    } catch (error) {
+      setTeamNameError(true);
+      setTeamNameMessage(
+        error instanceof Error
+          ? error.message
+          : "The team name could not be changed."
+      );
+    } finally {
+      setSavingTeamName(false);
+    }
+  }
+
+
   return (
     <main
       style={
@@ -1407,13 +1388,170 @@ export default function SeasonLongWeeklyLineup({
               My Entry
             </h1>
 
-            <p
+            <div
               style={
-                styles.subtitle
+                styles.teamNameArea
               }
             >
-              {fantasyTeamName} • {leagueName}
-            </p>
+              <div
+                style={
+                  styles.teamNameSummary
+                }
+              >
+                <p
+                  style={
+                    styles.subtitle
+                  }
+                >
+                  <strong
+                    style={
+                      styles.teamNameText
+                    }
+                  >
+                    {teamName}
+                  </strong>
+                  {" • "}
+                  {leagueName}
+                </p>
+
+                {!editingTeamName ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTeamNameDraft(
+                        teamName
+                      );
+                      setTeamNameMessage(
+                        ""
+                      );
+                      setTeamNameError(
+                        false
+                      );
+                      setEditingTeamName(
+                        true
+                      );
+                    }}
+                    style={
+                      styles.changeTeamNameButton
+                    }
+                  >
+                    CHANGE TEAM NAME
+                  </button>
+                ) : null}
+              </div>
+
+              {editingTeamName ? (
+                <div
+                  style={
+                    styles.teamNameEditor
+                  }
+                >
+                  <input
+                    type="text"
+                    value={
+                      teamNameDraft
+                    }
+                    maxLength={40}
+                    autoFocus
+                    onChange={(event) =>
+                      setTeamNameDraft(
+                        event.target.value
+                      )
+                    }
+                    onKeyDown={(event) => {
+                      if (
+                        event.key ===
+                        "Enter"
+                      ) {
+                        event.preventDefault();
+                        void saveTeamName();
+                      }
+
+                      if (
+                        event.key ===
+                        "Escape"
+                      ) {
+                        setTeamNameDraft(
+                          teamName
+                        );
+                        setEditingTeamName(
+                          false
+                        );
+                        setTeamNameMessage(
+                          ""
+                        );
+                        setTeamNameError(
+                          false
+                        );
+                      }
+                    }}
+                    aria-label="Team name"
+                    style={
+                      styles.teamNameInput
+                    }
+                  />
+
+                  <button
+                    type="button"
+                    disabled={
+                      savingTeamName
+                    }
+                    onClick={() =>
+                      void saveTeamName()
+                    }
+                    style={{
+                      ...styles.saveTeamNameButton,
+                      ...(savingTeamName
+                        ? styles.teamNameButtonDisabled
+                        : {}),
+                    }}
+                  >
+                    {savingTeamName
+                      ? "SAVING…"
+                      : "SAVE TEAM NAME"}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      savingTeamName
+                    }
+                    onClick={() => {
+                      setTeamNameDraft(
+                        teamName
+                      );
+                      setEditingTeamName(
+                        false
+                      );
+                      setTeamNameMessage(
+                        ""
+                      );
+                      setTeamNameError(
+                        false
+                      );
+                    }}
+                    style={
+                      styles.cancelTeamNameButton
+                    }
+                  >
+                    CANCEL
+                  </button>
+                </div>
+              ) : null}
+
+              {teamNameMessage ? (
+                <div
+                  style={{
+                    ...styles.teamNameMessage,
+                    ...(teamNameError
+                      ? styles.teamNameMessageError
+                      : styles.teamNameMessageSuccess),
+                  }}
+                >
+                  {teamNameMessage}
+                </div>
+              ) : null}
+            </div>
           </div>
 
 
@@ -1645,32 +1783,12 @@ export default function SeasonLongWeeklyLineup({
                               {player.teamAbbreviation ??
                                 "FA"}
 
-                              {player.opponentAbbreviation ? (
-                                <>
-                                  {" • "}
-                                  <strong
-                                    style={
-                                      getMatchupDifficulty(
-                                        player.matchupRank
-                                      ).style
-                                    }
-                                    title={
-                                      getMatchupDifficulty(
-                                        player.matchupRank
-                                      ).label
-                                    }
-                                  >
-                                    {player.homeOrAway ===
+                              {player.opponentAbbreviation
+                                ? ` • ${player.homeOrAway ===
                                     "away"
                                       ? "@"
-                                      : "vs"}{" "}
-                                    {player.opponentAbbreviation}
-                                    {player.matchupRank
-                                      ? ` (#${player.matchupRank})`
-                                      : ""}
-                                  </strong>
-                                </>
-                              ) : null}
+                                      : "vs"} ${player.opponentAbbreviation}`
+                                : ""}
                             </span>
                           </div>
 
@@ -2014,59 +2132,11 @@ export default function SeasonLongWeeklyLineup({
                             {" • "}
                             {player.teamAbbreviation ??
                               "FA"}
-                            {" • "}
-                            <strong
-                              style={
-                                getMatchupDifficulty(
-                                  player.matchupRank
-                                ).style
-                              }
-                              title={
-                                getMatchupDifficulty(
-                                  player.matchupRank
-                                ).label
-                              }
-                            >
-                              {getMatchupLabel(
-                                player
-                              )}
-                            </strong>
+
+                            {player.injuryStatus
+                              ? ` • ${player.injuryStatus}`
+                              : ""}
                           </span>
-
-                          {(() => {
-                            const injury =
-                              getInjuryDisplay(
-                                player.injuryStatus,
-                                player.injuryType,
-                                player.injuryDetail
-                              );
-
-                            if (!injury) {
-                              return null;
-                            }
-
-                            return (
-                              <span
-                                style={
-                                  styles.injuryLine
-                                }
-                              >
-                                <strong
-                                  style={
-                                    styles.injuryBadge
-                                  }
-                                  title={
-                                    injury.tooltip
-                                  }
-                                  aria-label={
-                                    injury.tooltip
-                                  }
-                                >
-                                  {injury.code}
-                                </strong>
-                              </span>
-                            );
-                          })()}
                         </div>
 
 
@@ -2083,6 +2153,20 @@ export default function SeasonLongWeeklyLineup({
                               )}
                             </strong>
 
+                            {player.salaryChange !==
+                              null &&
+                            player.salaryChange !==
+                              0 ? (
+                              <span>
+                                {player.salaryChange >
+                                0
+                                  ? "+"
+                                  : ""}
+                                {formatMoney(
+                                  player.salaryChange
+                                )}
+                              </span>
+                            ) : null}
                           </div>
                         ) : null}
 
@@ -2272,6 +2356,207 @@ const styles = {
 
     fontSize:
       "13px",
+  },
+
+  teamNameArea: {
+    marginTop:
+      "8px",
+
+    display:
+      "grid",
+
+    gap:
+      "9px",
+  },
+
+  teamNameSummary: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "10px",
+
+    flexWrap:
+      "wrap" as const,
+  },
+
+  teamNameText: {
+    color:
+      "#ffffff",
+  },
+
+  changeTeamNameButton: {
+    minHeight:
+      "30px",
+
+    padding:
+      "6px 10px",
+
+    border:
+      "1px solid rgba(255,112,0,.34)",
+
+    borderRadius:
+      "7px",
+
+    background:
+      "rgba(255,82,0,.08)",
+
+    color:
+      "#ff8a25",
+
+    fontSize:
+      "9px",
+
+    fontWeight:
+      950,
+
+    letterSpacing:
+      ".06em",
+
+    cursor:
+      "pointer",
+  },
+
+  teamNameEditor: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "8px",
+
+    flexWrap:
+      "wrap" as const,
+  },
+
+  teamNameInput: {
+    width:
+      "min(360px,100%)",
+
+    minWidth:
+      "220px",
+
+    minHeight:
+      "38px",
+
+    padding:
+      "9px 11px",
+
+    border:
+      "1px solid rgba(255,112,0,.38)",
+
+    borderRadius:
+      "8px",
+
+    background:
+      "#0b0d10",
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "13px",
+
+    fontWeight:
+      800,
+
+    outline:
+      "none",
+
+    boxSizing:
+      "border-box" as const,
+  },
+
+  saveTeamNameButton: {
+    minHeight:
+      "38px",
+
+    padding:
+      "9px 13px",
+
+    border:
+      "1px solid rgba(255,115,35,.45)",
+
+    borderRadius:
+      "8px",
+
+    background:
+      "linear-gradient(135deg,#c51f16,#ff6a1a)",
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "10px",
+
+    fontWeight:
+      950,
+
+    letterSpacing:
+      ".05em",
+
+    cursor:
+      "pointer",
+  },
+
+  cancelTeamNameButton: {
+    minHeight:
+      "38px",
+
+    padding:
+      "9px 12px",
+
+    border:
+      "1px solid rgba(255,255,255,.11)",
+
+    borderRadius:
+      "8px",
+
+    background:
+      "rgba(255,255,255,.035)",
+
+    color:
+      "#aeb4bd",
+
+    fontSize:
+      "10px",
+
+    fontWeight:
+      900,
+
+    cursor:
+      "pointer",
+  },
+
+  teamNameButtonDisabled: {
+    opacity:
+      0.55,
+
+    cursor:
+      "not-allowed",
+  },
+
+  teamNameMessage: {
+    fontSize:
+      "11px",
+
+    fontWeight:
+      800,
+  },
+
+  teamNameMessageSuccess: {
+    color:
+      "#70e69f",
+  },
+
+  teamNameMessageError: {
+    color:
+      "#ff8d8d",
   },
 
   headerBadges: {
@@ -2959,106 +3244,13 @@ const styles = {
       "grid",
 
     gap:
-      "4px",
+      "3px",
 
     color:
       "#ffffff",
 
     fontSize:
-      "13px",
-
-    lineHeight:
-      1.35,
-  },
-
-  matchupGood: {
-    color:
-      "#55d987",
-
-    fontWeight:
-      800,
-  },
-
-  matchupMedium: {
-    color:
-      "#f6b84a",
-
-    fontWeight:
-      800,
-  },
-
-  matchupTough: {
-    color:
-      "#ff6464",
-
-    fontWeight:
-      800,
-  },
-
-  matchupNeutral: {
-    color:
-      "#a9afb8",
-
-    fontWeight:
-      700,
-  },
-
-  injuryLine: {
-    display:
-      "block",
-
-    marginTop:
-      "2px",
-
-    color:
-      "#b9bec6",
-
-    fontSize:
       "11px",
-
-    lineHeight:
-      1.3,
-  },
-
-  injuryBadge: {
-    display:
-      "inline-flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "center",
-
-    minWidth:
-      "18px",
-
-    minHeight:
-      "18px",
-
-    marginRight:
-      "4px",
-
-    padding:
-      "1px 5px",
-
-    border:
-      "1px solid rgba(255,124,0,.38)",
-
-    borderRadius:
-      "999px",
-
-    background:
-      "rgba(255,92,0,.10)",
-
-    color:
-      "#ff9a2f",
-
-    fontSize:
-      "10px",
-
-    fontWeight:
-      900,
   },
 
   poolSalary: {
@@ -3072,7 +3264,7 @@ const styles = {
       "#ffffff",
 
     fontSize:
-      "12px",
+      "10px",
   },
 
   poolProjection: {
@@ -3080,7 +3272,7 @@ const styles = {
       "#f2f3f5",
 
     fontSize:
-      "13px",
+      "11px",
 
     textAlign:
       "right" as const,
