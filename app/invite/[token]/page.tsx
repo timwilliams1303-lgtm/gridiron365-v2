@@ -4,12 +4,13 @@ import Link from "next/link";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import {
-  createBrowserClient,
-} from "@supabase/ssr";
+  createSupabaseBrowserClient,
+} from "@/lib/supabase/browser";
 import {
   useParams,
   useRouter,
@@ -56,17 +57,6 @@ type AcceptResponse = {
   } | null;
 };
 
-const supabase =
-  createBrowserClient(
-    process.env
-      .NEXT_PUBLIC_SUPABASE_URL!,
-
-    process.env
-      .NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-      process.env
-        .NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
 export default function InviteAcceptancePage() {
   const params =
     useParams<{
@@ -75,6 +65,13 @@ export default function InviteAcceptancePage() {
 
   const router =
     useRouter();
+
+  const supabase =
+    useMemo(
+      () =>
+        createSupabaseBrowserClient(),
+      []
+    );
 
   const autoAcceptStarted =
     useRef(
@@ -230,6 +227,7 @@ export default function InviteAcceptancePage() {
         }
       },
       [
+        supabase,
         token,
       ]
     );
@@ -401,6 +399,7 @@ export default function InviteAcceptancePage() {
         accepting,
         invitation,
         router,
+        supabase,
         token,
       ]
     );
@@ -902,15 +901,25 @@ export default function InviteAcceptancePage() {
               {!success ? (
                 <button
                   type="button"
-                  disabled
-                  style={{
-                    ...styles.primaryButton,
-                    ...styles.disabled,
+                  disabled={accepting}
+                  style={
+                    accepting
+                      ? {
+                          ...styles.primaryButton,
+                          ...styles.disabled,
+                        }
+                      : styles.primaryButton
+                  }
+                  onClick={() => {
+                    autoAcceptStarted.current =
+                      true;
+
+                    void acceptInvitation();
                   }}
                 >
                   {accepting
                     ? "JOINING LEAGUE…"
-                    : "PREPARING INVITATION…"}
+                    : "JOIN LEAGUE"}
                 </button>
               ) : null}
             </div>
