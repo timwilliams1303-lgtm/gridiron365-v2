@@ -149,14 +149,19 @@ type Team = {
   owner_id: string | null;
   team_name: string;
   active: boolean;
-  is_cpu?: boolean;
-  cpu_auto_draft?: boolean;
+  is_cpu: boolean;
 };
 
 type Member = {
   id: number;
   user_id: string;
   role: string;
+};
+
+type Profile = {
+  id: string;
+  display_name: string | null;
+  email: string | null;
 };
 
 type RosterRow = {
@@ -533,6 +538,7 @@ export default function TraditionalCommissioner({
   const [season, setSeason] = useState<SeasonState | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [rosters, setRosters] = useState<RosterRow[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [claims, setClaims] = useState<WaiverClaim[]>([]);
@@ -654,8 +660,33 @@ export default function TraditionalCommissioner({
       setPlayoffs(loadedPlayoffs);
     }
     setSeason(results[8].data as SeasonState | null);
-    setTeams((results[9].data ?? []) as Team[]);
-    setMembers((results[10].data ?? []) as Member[]);
+
+    const loadedTeams = (results[9].data ?? []) as Team[];
+    const loadedMembers = (results[10].data ?? []) as Member[];
+    const memberUserIds = Array.from(
+      new Set(loadedMembers.map((member) => member.user_id).filter(Boolean))
+    );
+
+    let loadedProfiles: Profile[] = [];
+
+    if (memberUserIds.length > 0) {
+      const profileResult = await supabase
+        .from("profiles")
+        .select("id,display_name,email")
+        .in("id", memberUserIds);
+
+      if (profileResult.error) {
+        setError(profileResult.error.message);
+        if (showLoading) setLoading(false);
+        return;
+      }
+
+      loadedProfiles = (profileResult.data ?? []) as Profile[];
+    }
+
+    setTeams(loadedTeams);
+    setMembers(loadedMembers);
+    setProfiles(loadedProfiles);
     setRosters((results[11].data ?? []) as RosterRow[]);
     setPlayers((results[12].data ?? []) as Player[]);
     setScoringRules((results[13].data ?? []) as ScoringRule[]);
@@ -769,6 +800,11 @@ export default function TraditionalCommissioner({
   const teamMap = useMemo(
     () => new Map(teams.map((t) => [t.id, t] as const)),
     [teams]
+  );
+
+  const profileByUserId = useMemo(
+    () => new Map(profiles.map((profile) => [profile.id, profile] as const)),
+    [profiles]
   );
 
   const rostered = useMemo(
@@ -1469,8 +1505,26 @@ export default function TraditionalCommissioner({
                 <Stat label="Season" value={league?.season ?? "—"} />
                 <Stat label="Active Week" value={season?.active_week ?? "—"} />
                 <Stat label="Phase" value={pretty(season?.phase)} />
-                <Stat label="Active Teams" value={teams.filter((t) => t.active).length} />
-                <Stat label="Open Teams" value={teams.filter((t) => !t.owner_id).length} />
+                <Stat
+                  label="Owners Joined"
+                  value={teams.filter((t) => t.active && Boolean(t.owner_id)).length}
+                />
+                <Stat
+                  label="CPU Teams"
+                  value={teams.filter((t) => t.active && t.is_cpu).length}
+                />
+                <Stat
+                  label="Open Spots"
+                  value={Math.max(
+                    0,
+                    (leagueSettings?.max_teams ?? 12) -
+                      teams.filter(
+                        (t) =>
+                          t.active &&
+                          (Boolean(t.owner_id) || t.is_cpu)
+                      ).length
+                  )}
+                />
                 <Stat label="Rostered Players" value={rosters.length} />
                 <Stat label="Draft Status" value={pretty(draft?.status)} />
                 <Stat label="Pending Waivers" value={claims.filter((c) => c.status === "pending").length} />
@@ -1794,13 +1848,20 @@ export default function TraditionalCommissioner({
                   ] as const)
               );
 
-              const isFilledTeam = (team: Team) =>
-                Boolean(team.owner_id) ||
-                Boolean(team.is_cpu) ||
-                pendingInviteByTeamId.has(team.id);
-
-              const filledCount = activeTeams.filter(isFilledTeam).length;
-              const vacantCount = Math.max(0, maxTeams - filledCount);
+              const humanOwnerCount = activeTeams.filter(
+                (team) => Boolean(team.owner_id)
+              ).length;
+              const cpuCount = activeTeams.filter(
+                (team) => team.is_cpu
+              ).length;
+              const pendingCount = activeTeams.filter(
+                (team) =>
+                  !team.owner_id &&
+                  !team.is_cpu &&
+                  pendingInviteByTeamId.has(team.id)
+              ).length;
+              const reservedCount = humanOwnerCount + cpuCount + pendingCount;
+              const vacantCount = Math.max(0, maxTeams - reservedCount);
 
               return (
                 <>
@@ -1811,11 +1872,10 @@ export default function TraditionalCommissioner({
                     <div style={styles.teamToolbar}>
                       <div>
                         <strong>
-                          {filledCount} / {maxTeams} TEAM SPOTS FILLED
+                          {humanOwnerCount} / {maxTeams} OWNERS JOINED
                         </strong>
                         <div style={styles.smallMuted}>
-                          {vacantCount} vacant spot{vacantCount === 1 ? "" : "s"} remaining.
-                          Pending invitations count as filled; unused placeholder teams do not.
+                          {cpuCount} CPU • {pendingCount} pending invitation{pendingCount === 1 ? "" : "s"} • {vacantCount} open spot{vacantCount === 1 ? "" : "s"}.
                         </div>
                       </div>
 
@@ -1910,8 +1970,13 @@ export default function TraditionalCommissioner({
                                       key={member.id}
                                       value={member.user_id}
                                     >
-                                      {shortId(member.user_id)} •{" "}
-                                      {pretty(member.role)}
+                                      {profileByUserId.get(member.user_id)?.display_name?.trim() ||
+                                        profileByUserId.get(member.user_id)?.email?.trim() ||
+                                        shortId(member.user_id)}
+                                      {profileByUserId.get(member.user_id)?.email?.trim()
+                                        ? ` • ${profileByUserId.get(member.user_id)?.email}`
+                                        : ""}
+                                      {` • ${pretty(member.role)}`}
                                     </option>
                                   ))}
                                 </select>
@@ -1946,7 +2011,8 @@ export default function TraditionalCommissioner({
                                   {isCpu
                                     ? "CPU TEAM"
                                     : hasOwner
-                                      ? "OWNER ASSIGNED"
+                                      ? profileByUserId.get(team!.owner_id!)?.email?.trim() ||
+                                        "OWNER ASSIGNED"
                                       : pendingInvite
                                         ? `${pendingInvite.email} • PENDING`
                                         : "VACANT"}
@@ -1963,7 +2029,15 @@ export default function TraditionalCommissioner({
                               ) : hasOwner ? (
                                 <>
                                   <strong>OWNER ASSIGNED</strong>
-                                  <span>{shortId(team!.owner_id!)}</span>
+                                  <span>
+                                    {profileByUserId.get(team!.owner_id!)?.display_name?.trim() ||
+                                      profileByUserId.get(team!.owner_id!)?.email?.trim() ||
+                                      shortId(team!.owner_id!)}
+                                    {profileByUserId.get(team!.owner_id!)?.email?.trim() &&
+                                    profileByUserId.get(team!.owner_id!)?.display_name?.trim()
+                                      ? ` • ${profileByUserId.get(team!.owner_id!)?.email}`
+                                      : ""}
+                                  </span>
                                 </>
                               ) : pendingInvite ? (
                                 <>
