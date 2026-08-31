@@ -12,6 +12,8 @@ export const maxDuration = 300;
 
 type RequestBody = {
   leagueId?: string;
+  week?: number;
+  preview?: boolean;
 };
 
 
@@ -215,7 +217,7 @@ function tokenSimilarity(
 }
 
 
-function findMatchingOddsEvent(
+function findMatchingOddsEventDetailed(
   game: PickemGameRow,
   events: OddsEvent[]
 ) {
@@ -283,9 +285,157 @@ function findMatchingOddsEvent(
     }
   }
 
-  return bestScore >= 1.15
-    ? best
-    : null;
+  if (
+    bestScore < 1.15 ||
+    !best
+  ) {
+    return null;
+  }
+
+  const providerKickoff =
+    new Date(
+      best.commence_time ??
+        ""
+    ).getTime();
+
+  return {
+    event: best,
+    score: bestScore,
+    homeSimilarity:
+      tokenSimilarity(
+        game.home_team_name,
+        best.home_team ??
+          ""
+      ),
+    awaySimilarity:
+      tokenSimilarity(
+        game.away_team_name,
+        best.away_team ??
+          ""
+      ),
+    kickoffDifferenceMinutes:
+      Number.isFinite(
+        providerKickoff
+      )
+        ? Math.round(
+            Math.abs(
+              providerKickoff -
+                kickoff
+            ) /
+              60000
+          )
+        : null,
+  };
+}
+
+
+function getBookmakerSpreads(
+  event: OddsEvent
+) {
+  const spreads:
+    Array<{
+      sportsbookKey: string;
+      sportsbookName: string;
+      homeSpread: number;
+      awaySpread: number | null;
+    }> = [];
+
+  for (
+    const bookmaker of
+    event.bookmakers ?? []
+  ) {
+    const spreadMarket =
+      (
+        bookmaker.markets ??
+        []
+      ).find(
+        (market) =>
+          market.key ===
+          "spreads"
+      );
+
+    if (!spreadMarket) {
+      continue;
+    }
+
+    const homeOutcome =
+      (
+        spreadMarket.outcomes ??
+        []
+      ).find(
+        (outcome) =>
+          outcome.name ===
+          event.home_team
+      );
+
+    const awayOutcome =
+      (
+        spreadMarket.outcomes ??
+        []
+      ).find(
+        (outcome) =>
+          outcome.name ===
+          event.away_team
+      );
+
+    if (
+      !bookmaker.key ||
+      typeof homeOutcome?.point !==
+        "number" ||
+      !Number.isFinite(
+        homeOutcome.point
+      )
+    ) {
+      continue;
+    }
+
+    spreads.push({
+      sportsbookKey:
+        bookmaker.key,
+      sportsbookName:
+        bookmaker.title ??
+        bookmaker.key,
+      homeSpread:
+        homeOutcome.point,
+      awaySpread:
+        typeof awayOutcome?.point ===
+          "number"
+          ? awayOutcome.point
+          : -homeOutcome.point,
+    });
+  }
+
+  return spreads;
+}
+
+
+function median(
+  values: number[]
+) {
+  if (values.length === 0) {
+    return null;
+  }
+
+  const sorted =
+    [...values].sort(
+      (a, b) => a - b
+    );
+
+  const middle =
+    Math.floor(
+      sorted.length / 2
+    );
+
+  if (
+    sorted.length % 2 === 1
+  ) {
+    return sorted[middle];
+  }
+
+  return (
+    sorted[middle - 1] +
+    sorted[middle]
+  ) / 2;
 }
 
 
@@ -420,6 +570,34 @@ export async function POST(
       body = {};
     }
 
+    const preview =
+      body.preview === true;
+
+    const requestedWeek =
+      typeof body.week ===
+        "number" &&
+      Number.isInteger(
+        body.week
+      )
+        ? body.week
+        : null;
+
+    if (
+      preview &&
+      !body.leagueId
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Preview mode requires leagueId so an accidental global sportsbook preview cannot consume unnecessary API credits.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
     const supabase =
       createClient(
         supabaseUrl,
@@ -449,23 +627,28 @@ export async function POST(
         .select(
           "id,league_id,season,week,line_day_at,slate_starts_at,slate_ends_at,line_sync_completed_at"
         )
-        .not(
-          "line_day_at",
-          "is",
-          null
-        )
-        .lte(
-          "line_day_at",
-          nowIso
-        )
-        .is(
-          "line_sync_completed_at",
-          null
-        )
         .neq(
           "status",
           "final"
         );
+
+    if (!preview) {
+      weeksQuery =
+        weeksQuery
+          .not(
+            "line_day_at",
+            "is",
+            null
+          )
+          .lte(
+            "line_day_at",
+            nowIso
+          )
+          .is(
+            "line_sync_completed_at",
+            null
+          );
+    }
 
     if (body.leagueId) {
       weeksQuery =
@@ -473,6 +656,32 @@ export async function POST(
           "league_id",
           body.leagueId
         );
+    }
+
+    if (
+      preview &&
+      requestedWeek !== null
+    ) {
+      weeksQuery =
+        weeksQuery.eq(
+          "week",
+          requestedWeek
+        );
+    }
+
+    if (
+      preview &&
+      requestedWeek === null
+    ) {
+      weeksQuery =
+        weeksQuery
+          .order(
+            "week",
+            {
+              ascending: true,
+            }
+          )
+          .limit(1);
     }
 
     const {
@@ -501,7 +710,10 @@ export async function POST(
           provider:
             "the-odds-api",
           message:
-            "No Pick'em weeks are due for G365 Line Day processing.",
+            preview
+              ? "No Pick'em week was available for sportsbook matching preview."
+              : "No Pick'em weeks are due for G365 Line Day processing.",
+          preview,
           weeksDue: 0,
         }
       );
@@ -593,20 +805,22 @@ export async function POST(
       );
     }
 
-    await supabase
-      .from(
-        "pickem_weeks"
-      )
-      .update({
-        line_sync_started_at:
-          nowIso,
-        line_sync_provider:
-          "the-odds-api",
-      })
-      .in(
-        "id",
-        weekIds
-      );
+    if (!preview) {
+      await supabase
+        .from(
+          "pickem_weeks"
+        )
+        .update({
+          line_sync_started_at:
+            nowIso,
+          line_sync_provider:
+            "the-odds-api",
+        })
+        .in(
+          "id",
+          weekIds
+        );
+    }
 
     const kickoffTimes =
       games
@@ -694,6 +908,179 @@ export async function POST(
       }
     }
 
+    if (preview) {
+      const previewGames =
+        games.map(
+          (game) => {
+            const match =
+              findMatchingOddsEventDetailed(
+                game,
+                oddsBySport[
+                  game.sport
+                ]
+              );
+
+            if (!match) {
+              return {
+                gameId:
+                  game.id,
+                weekId:
+                  game.pickem_week_id,
+                sport:
+                  game.sport,
+                status:
+                  "UNMATCHED",
+                espnAwayTeam:
+                  game.away_team_name,
+                espnHomeTeam:
+                  game.home_team_name,
+                espnKickoff:
+                  game.kickoff_at,
+                providerAwayTeam:
+                  null,
+                providerHomeTeam:
+                  null,
+                providerKickoff:
+                  null,
+                kickoffDifferenceMinutes:
+                  null,
+                homeSimilarity:
+                  null,
+                awaySimilarity:
+                  null,
+                matchScore:
+                  null,
+                sportsbookCount:
+                  0,
+                proposedG365HomeSpread:
+                  null,
+              };
+            }
+
+            const spreads =
+              getBookmakerSpreads(
+                match.event
+              );
+
+            return {
+              gameId:
+                game.id,
+              weekId:
+                game.pickem_week_id,
+              sport:
+                game.sport,
+              status:
+                "MATCHED",
+              espnAwayTeam:
+                game.away_team_name,
+              espnHomeTeam:
+                game.home_team_name,
+              espnKickoff:
+                game.kickoff_at,
+              providerAwayTeam:
+                match.event
+                  .away_team ??
+                null,
+              providerHomeTeam:
+                match.event
+                  .home_team ??
+                null,
+              providerKickoff:
+                match.event
+                  .commence_time ??
+                null,
+              kickoffDifferenceMinutes:
+                match
+                  .kickoffDifferenceMinutes,
+              homeSimilarity:
+                Number(
+                  match.homeSimilarity
+                    .toFixed(3)
+                ),
+              awaySimilarity:
+                Number(
+                  match.awaySimilarity
+                    .toFixed(3)
+                ),
+              matchScore:
+                Number(
+                  match.score.toFixed(
+                    3
+                  )
+                ),
+              sportsbookCount:
+                spreads.length,
+              proposedG365HomeSpread:
+                median(
+                  spreads.map(
+                    (spread) =>
+                      spread.homeSpread
+                  )
+                ),
+            };
+          }
+        );
+
+      const matched =
+        previewGames.filter(
+          (game) =>
+            game.status ===
+            "MATCHED"
+        ).length;
+
+      return NextResponse.json(
+        {
+          success: true,
+          preview: true,
+          readOnly: true,
+          provider:
+            "the-odds-api",
+          leagueId:
+            body.leagueId,
+          requestedWeek,
+          weeksReviewed:
+            weeks.map(
+              (week) => ({
+                id: week.id,
+                season:
+                  week.season,
+                week: week.week,
+                lineDayAt:
+                  week.line_day_at,
+                slateStartsAt:
+                  week.slate_starts_at,
+                slateEndsAt:
+                  week.slate_ends_at,
+              })
+            ),
+          gamesReviewed:
+            previewGames.length,
+          gamesMatched:
+            matched,
+          gamesUnmatched:
+            previewGames.length -
+            matched,
+          matchRate:
+            previewGames.length > 0
+              ? Number(
+                  (
+                    matched /
+                    previewGames.length
+                  ).toFixed(4)
+                )
+              : 0,
+          providerRequests:
+            result.providerRequests,
+          requestCreditsUsed:
+            result.requestCreditsUsed,
+          requestCreditsRemaining:
+            result.requestCreditsRemaining,
+          games:
+            previewGames,
+        }
+      );
+    }
+
     const weekFailures =
       new Set<number>();
 
@@ -707,13 +1094,17 @@ export async function POST(
         continue;
       }
 
-      const event =
-        findMatchingOddsEvent(
+      const match =
+        findMatchingOddsEventDetailed(
           game,
           oddsBySport[
             game.sport
           ]
         );
+
+      const event =
+        match?.event ??
+        null;
 
       if (!event) {
         result.unmatchedGames +=
