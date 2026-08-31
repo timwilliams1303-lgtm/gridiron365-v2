@@ -31,10 +31,19 @@ type FootballScope =
   | "nfl_only";
 
 
+type ScoringMode =
+  | "record_only"
+  | "standard"
+  | "three_one_zero"
+  | "custom"
+  | "confidence";
+
+
 type SettingsRow = {
   football_scope: FootballScope;
   picks_per_week: number;
   pick_lock_mode: PickLockMode;
+  scoring_mode: ScoringMode;
 };
 
 
@@ -46,6 +55,12 @@ type WeekRow = {
   required_picks: number;
   line_day_at: string | null;
   finalize_not_before: string | null;
+  scoring_mode: ScoringMode;
+  win_points: number | string;
+  push_points: number | string;
+  loss_points: number | string;
+  confidence_points: number[] | string[] | null;
+  confidence_push_multiplier: number | string;
 };
 
 
@@ -92,6 +107,7 @@ type PickRow = {
     | "push"
     | "void";
   points_awarded: number | string | null;
+  confidence_value: number | string | null;
 };
 
 
@@ -465,7 +481,7 @@ export default function PickemMyPicks({
                 "pickem_settings"
               )
               .select(
-                "football_scope,picks_per_week,pick_lock_mode"
+                "football_scope,picks_per_week,pick_lock_mode,scoring_mode"
               )
               .eq(
                 "league_id",
@@ -478,7 +494,7 @@ export default function PickemMyPicks({
                 "pickem_weeks"
               )
               .select(
-                "id,season,week,status,required_picks,line_day_at,finalize_not_before"
+                "id,season,week,status,required_picks,line_day_at,finalize_not_before,scoring_mode,win_points,push_points,loss_points,confidence_points,confidence_push_multiplier"
               )
               .eq(
                 "league_id",
@@ -649,7 +665,7 @@ export default function PickemMyPicks({
                 "pickem_picks"
               )
               .select(
-                "id,pickem_week_id,fantasy_team_id,pickem_game_id,selected_side,frozen_home_spread,submitted_at,updated_at,result,points_awarded"
+                "id,pickem_week_id,fantasy_team_id,pickem_game_id,selected_side,frozen_home_spread,submitted_at,updated_at,result,points_awarded,confidence_value"
               )
               .eq(
                 "league_id",
@@ -972,6 +988,61 @@ export default function PickemMyPicks({
   }
 
 
+
+  async function setConfidenceValue(
+    gameId: number,
+    confidenceValue: number
+  ) {
+    if (
+      !selectedWeek ||
+      workingGameId !== null
+    ) {
+      return;
+    }
+
+    setWorkingGameId(gameId);
+    setMessage("");
+    setIsError(false);
+
+    try {
+      const { error } =
+        await supabase.rpc(
+          "set_pickem_confidence_value",
+          {
+            p_league_id: leagueId,
+            p_season: season,
+            p_week: selectedWeek.week,
+            p_pickem_game_id: gameId,
+            p_confidence_value: confidenceValue,
+          }
+        );
+
+      if (error) {
+        throw new Error(
+          error.message
+        );
+      }
+
+      await loadWeek(
+        selectedWeek
+      );
+
+      setMessage(
+        "Confidence value saved."
+      );
+    } catch (error) {
+      setIsError(true);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "The confidence value could not be saved."
+      );
+    } finally {
+      setWorkingGameId(null);
+    }
+  }
+
+
   if (loading) {
     return (
       <main
@@ -1114,6 +1185,29 @@ export default function PickemMyPicks({
               "full_card"
                 ? "FULL CARD"
                 : "PER GAME"
+            }
+          />
+
+          <SummaryBox
+            label="Scoring"
+            value={
+              selectedWeek
+                ?.scoring_mode ===
+              "record_only"
+                ? "RECORD ONLY"
+                : selectedWeek
+                    ?.scoring_mode ===
+                  "confidence"
+                  ? "CONFIDENCE"
+                  : selectedWeek
+                      ?.scoring_mode ===
+                    "three_one_zero"
+                    ? "3 / 1 / 0"
+                    : selectedWeek
+                        ?.scoring_mode ===
+                      "custom"
+                      ? "CUSTOM"
+                      : "1 / .5 / 0"
             }
           />
         </div>
@@ -1628,6 +1722,26 @@ export default function PickemMyPicks({
                                   0
                                 )
                               )}
+                          {selectedWeek.scoring_mode ===
+                            "confidence" &&
+                          numericValue(
+                            pick.confidence_value
+                          ) !== null ? (
+                            <>
+                              {" "}
+                              · Confidence{" "}
+                              <strong
+                                style={{
+                                  color:
+                                    "#ffbd5f",
+                                }}
+                              >
+                                {numericValue(
+                                  pick.confidence_value
+                                )}
+                              </strong>
+                            </>
+                          ) : null}
                           {pick.result !==
                           "pending" ? (
                             <>
@@ -1657,6 +1771,67 @@ export default function PickemMyPicks({
                         "This game is not currently selectable."
                       )}
                     </div>
+
+                    {pick &&
+                    selectedWeek.scoring_mode ===
+                      "confidence" ? (
+                      <label
+                        style={{
+                          display: "inline-flex",
+                          gap: 8,
+                          alignItems: "center",
+                          color: "#c9c9cf",
+                          fontSize: 12,
+                          fontWeight: 900,
+                        }}
+                      >
+                        Confidence
+                        <select
+                          value={
+                            numericValue(
+                              pick.confidence_value
+                            ) ?? ""
+                          }
+                          disabled={
+                            locked ||
+                            working
+                          }
+                          onChange={(event) =>
+                            void setConfidenceValue(
+                              game.id,
+                              Number(
+                                event.target.value
+                              )
+                            )
+                          }
+                          style={{
+                            minWidth: 90,
+                            padding: "8px 9px",
+                            borderRadius: 9,
+                            border:
+                              "1px solid rgba(255,118,39,0.35)",
+                            background: "#09090c",
+                            color: "#fff",
+                            fontWeight: 900,
+                          }}
+                        >
+                          <option value="" disabled>
+                            Select
+                          </option>
+                          {(
+                            selectedWeek.confidence_points ??
+                            []
+                          ).map((value) => (
+                            <option
+                              key={String(value)}
+                              value={Number(value)}
+                            >
+                              {Number(value)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
 
                     {pick &&
                     !locked ? (

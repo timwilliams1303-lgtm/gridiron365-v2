@@ -26,12 +26,21 @@ type TeamRow = {
 };
 
 
+type ScoringMode =
+  | "record_only"
+  | "standard"
+  | "three_one_zero"
+  | "custom"
+  | "confidence";
+
+
 type WeekRow = {
   id: number;
   week: number;
   status: string;
   finalized_at:
     string | null;
+  scoring_mode: ScoringMode;
 };
 
 
@@ -423,7 +432,7 @@ export default function PickemRecap({
                 "pickem_weeks"
               )
               .select(
-                "id,week,status,finalized_at"
+                "id,week,status,finalized_at,scoring_mode"
               )
               .eq(
                 "league_id",

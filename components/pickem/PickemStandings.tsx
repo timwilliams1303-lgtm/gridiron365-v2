@@ -26,12 +26,21 @@ type TeamRow = {
 };
 
 
+type ScoringMode =
+  | "record_only"
+  | "standard"
+  | "three_one_zero"
+  | "custom"
+  | "confidence";
+
+
 type WeekRow = {
   id: number;
   week: number;
   status: string;
   finalized_at:
     string | null;
+  scoring_mode: ScoringMode;
 };
 
 
@@ -152,6 +161,15 @@ export default function PickemStandings({
     >([]);
 
 
+  const [
+    scoringMode,
+    setScoringMode,
+  ] =
+    useState<ScoringMode>(
+      "record_only"
+    );
+
+
   const finalWeekIds =
     useMemo(
       () =>
@@ -266,20 +284,32 @@ export default function PickemStandings({
           a,
           b
         ) =>
-          b.points -
-            a.points ||
-          b.wins -
-            a.wins ||
-          a.losses -
-            b.losses ||
-          a.teamName.localeCompare(
-            b.teamName
-          )
+          scoringMode ===
+          "record_only"
+            ? b.wins -
+                a.wins ||
+              a.losses -
+                b.losses ||
+              b.pushes -
+                a.pushes ||
+              a.teamName.localeCompare(
+                b.teamName
+              )
+            : b.points -
+                a.points ||
+              b.wins -
+                a.wins ||
+              a.losses -
+                b.losses ||
+              a.teamName.localeCompare(
+                b.teamName
+              )
       );
     }, [
       finalWeekIds,
       results,
       teams,
+      scoringMode,
     ]);
 
 
@@ -322,19 +352,30 @@ export default function PickemStandings({
             a,
             b
           ) =>
-            numericValue(
-              b.points
-            ) -
-              numericValue(
-                a.points
-              ) ||
-            b.wins -
-              a.wins ||
-            a.losses -
-              b.losses ||
-            a.teamName.localeCompare(
-              b.teamName
-            )
+            activeWeek.scoring_mode ===
+            "record_only"
+              ? b.wins -
+                  a.wins ||
+                a.losses -
+                  b.losses ||
+                b.pushes -
+                  a.pushes ||
+                a.teamName.localeCompare(
+                  b.teamName
+                )
+              : numericValue(
+                    b.points
+                  ) -
+                    numericValue(
+                      a.points
+                    ) ||
+                b.wins -
+                  a.wins ||
+                a.losses -
+                  b.losses ||
+                a.teamName.localeCompare(
+                  b.teamName
+                )
         );
     }, [
       activeWeek,
@@ -350,6 +391,7 @@ export default function PickemStandings({
           teamResult,
           weekResult,
           resultResult,
+          settingsResult,
         ] =
           await Promise.all([
             supabase
@@ -373,7 +415,7 @@ export default function PickemStandings({
                 "pickem_weeks"
               )
               .select(
-                "id,week,status,finalized_at"
+                "id,week,status,finalized_at,scoring_mode"
               )
               .eq(
                 "league_id",
@@ -402,6 +444,19 @@ export default function PickemStandings({
                 "league_id",
                 leagueId
               ),
+
+            supabase
+              .from(
+                "pickem_settings"
+              )
+              .select(
+                "scoring_mode"
+              )
+              .eq(
+                "league_id",
+                leagueId
+              )
+              .maybeSingle(),
           ]);
 
         if (
@@ -430,6 +485,23 @@ export default function PickemStandings({
               .error.message
           );
         }
+
+        if (
+          settingsResult.error
+        ) {
+          throw new Error(
+            settingsResult
+              .error.message
+          );
+        }
+
+        setScoringMode(
+          (
+            settingsResult.data
+              ?.scoring_mode ??
+            "record_only"
+          ) as ScoringMode
+        );
 
         setTeams(
           (

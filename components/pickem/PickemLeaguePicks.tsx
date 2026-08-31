@@ -467,6 +467,50 @@ export default function PickemLeaguePicks({
     >([]);
 
 
+  const [
+    collapsedTeamIds,
+    setCollapsedTeamIds,
+  ] =
+    useState<Set<number>>(
+      () => new Set()
+    );
+
+
+  const toggleTeamCollapsed =
+    useCallback(
+      (
+        fantasyTeamId:
+          number
+      ) => {
+        setCollapsedTeamIds(
+          (current) => {
+            const next =
+              new Set(
+                current
+              );
+
+            if (
+              next.has(
+                fantasyTeamId
+              )
+            ) {
+              next.delete(
+                fantasyTeamId
+              );
+            } else {
+              next.add(
+                fantasyTeamId
+              );
+            }
+
+            return next;
+          }
+        );
+      },
+      []
+    );
+
+
   const selectedWeek =
     useMemo(
       () =>
@@ -1140,6 +1184,11 @@ export default function PickemLeaguePicks({
                 viewerFantasyTeamId ===
                 group.fantasyTeamId;
 
+              const isCollapsed =
+                collapsedTeamIds.has(
+                  group.fantasyTeamId
+                );
+
               return (
                 <article
                   key={
@@ -1165,7 +1214,7 @@ export default function PickemLeaguePicks({
                       display:
                         "grid",
                       gridTemplateColumns:
-                        "minmax(0,1fr) auto",
+                        "minmax(0,1fr) auto auto",
                       gap:
                         14,
                       alignItems:
@@ -1268,60 +1317,120 @@ export default function PickemLeaguePicks({
                         submittedCount
                       }
                     />
-                  </div>
 
-
-                  <div
-                    style={{
-                      display:
-                        "grid",
-                      gap:
-                        9,
-                      padding:
-                        13,
-                    }}
-                  >
-                    {group.rows.length ===
-                    0 ? (
-                      <div
-                        style={{
-                          padding:
-                            "13px 14px",
-                          borderRadius:
-                            11,
-                          background:
-                            "rgba(255,255,255,0.025)",
-                          color:
-                            "#85858e",
-                          fontSize:
-                            13,
-                        }}
-                      >
-                        No picks submitted yet.
-                      </div>
-                    ) : (
-                      group.rows.map(
-                        (
-                          row,
-                          index
-                        ) => (
-                          <PickRow
-                            key={
-                              row.pick_id ??
-                              `${group.fantasyTeamId}-${index}`
-                            }
-                            row={
-                              row
-                            }
-                            pickNumber={
-                              index +
-                              1
-                            }
-                          />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleTeamCollapsed(
+                          group.fantasyTeamId
                         )
-                      )
-                    )}
+                      }
+                      aria-expanded={
+                        !isCollapsed
+                      }
+                      aria-label={
+                        isCollapsed
+                          ? `Expand ${group.teamName}`
+                          : `Minimize ${group.teamName}`
+                      }
+                      title={
+                        isCollapsed
+                          ? "Open team picks"
+                          : "Minimize team picks"
+                      }
+                      style={{
+                        width:
+                          38,
+                        height:
+                          38,
+                        display:
+                          "inline-flex",
+                        alignItems:
+                          "center",
+                        justifyContent:
+                          "center",
+                        borderRadius:
+                          10,
+                        border:
+                          "1px solid rgba(255,118,39,0.28)",
+                        background:
+                          isCollapsed
+                            ? "rgba(255,108,33,0.12)"
+                            : "rgba(255,255,255,0.035)",
+                        color:
+                          isCollapsed
+                            ? "#ff9b59"
+                            : "#d4d4d8",
+                        fontSize:
+                          20,
+                        fontWeight:
+                          1000,
+                        lineHeight:
+                          1,
+                        cursor:
+                          "pointer",
+                      }}
+                    >
+                      {isCollapsed
+                        ? "+"
+                        : "−"}
+                    </button>
                   </div>
+
+
+                  {!isCollapsed ? (
+                    <div
+                      style={{
+                        display:
+                          "grid",
+                        gap:
+                          9,
+                        padding:
+                          13,
+                      }}
+                    >
+                      {group.rows.length ===
+                      0 ? (
+                        <div
+                          style={{
+                            padding:
+                              "13px 14px",
+                            borderRadius:
+                              11,
+                            background:
+                              "rgba(255,255,255,0.025)",
+                            color:
+                              "#85858e",
+                            fontSize:
+                              13,
+                          }}
+                        >
+                          No picks submitted yet.
+                        </div>
+                      ) : (
+                        group.rows.map(
+                          (
+                            row,
+                            index
+                          ) => (
+                            <PickRow
+                              key={
+                                row.pick_id ??
+                                `${group.fantasyTeamId}-${index}`
+                              }
+                              row={
+                                row
+                              }
+                              pickNumber={
+                                index +
+                                1
+                              }
+                            />
+                          )
+                        )
+                      )}
+                    </div>
+                  ) : null}
                 </article>
               );
             }

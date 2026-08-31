@@ -31,6 +31,14 @@ type PickLockMode =
   | "full_card";
 
 
+type ScoringMode =
+  | "record_only"
+  | "standard"
+  | "three_one_zero"
+  | "custom"
+  | "confidence";
+
+
 type SettingsRow = {
   season: number;
   football_scope:
@@ -41,6 +49,18 @@ type SettingsRow = {
     PickLockMode;
   minimum_source_books:
     number;
+  scoring_mode:
+    ScoringMode;
+  win_points:
+    number | string;
+  push_points:
+    number | string;
+  loss_points:
+    number | string;
+  confidence_points:
+    number[] | null;
+  confidence_push_multiplier:
+    number | string;
 };
 
 
@@ -53,18 +73,6 @@ type WeekRow = {
   line_day_at:
     string | null;
   finalize_not_before:
-    string | null;
-  slate_starts_at:
-    string | null;
-  slate_ends_at:
-    string | null;
-  schedule_synced_at:
-    string | null;
-  line_sync_started_at:
-    string | null;
-  line_sync_completed_at:
-    string | null;
-  line_sync_provider:
     string | null;
 };
 
@@ -98,8 +106,6 @@ type GameRow = {
     boolean;
   is_final:
     boolean;
-  last_score_sync_at:
-    string | null;
 };
 
 
@@ -158,43 +164,32 @@ function formatSpread(
 }
 
 
-function formatDateTime(
+function datetimeLocalToIso(
   value:
-    string | null
+    string
 ) {
   if (!value) {
-    return "Not available yet";
+    return null;
   }
 
   const date =
-    new Date(value);
+    new Date(
+      value
+    );
 
   if (
     Number.isNaN(
       date.getTime()
     )
   ) {
-    return "Not available yet";
+    throw new Error(
+      "One of the lifecycle dates is invalid."
+    );
   }
 
-  return date.toLocaleString(
-    undefined,
-    {
-      weekday:
-        "short",
-      month:
-        "short",
-      day:
-        "numeric",
-      hour:
-        "numeric",
-      minute:
-        "2-digit",
-      timeZoneName:
-        "short",
-    }
-  );
+  return date.toISOString();
 }
+
 
 export default function PickemCommissioner({
   leagueId,
@@ -267,6 +262,65 @@ export default function PickemCommissioner({
   ] =
     useState(3);
 
+
+  const [
+    scoringMode,
+    setScoringMode,
+  ] =
+    useState<ScoringMode>(
+      "record_only"
+    );
+
+  const [
+    winPoints,
+    setWinPoints,
+  ] =
+    useState(1);
+
+  const [
+    pushPoints,
+    setPushPoints,
+  ] =
+    useState(0.5);
+
+  const [
+    lossPoints,
+    setLossPoints,
+  ] =
+    useState(0);
+
+  const [
+    confidencePointsText,
+    setConfidencePointsText,
+  ] =
+    useState(
+      "50, 40, 30, 20, 10"
+    );
+
+  const [
+    confidencePushMultiplier,
+    setConfidencePushMultiplier,
+  ] =
+    useState(0.5);
+
+  const [
+    weekNumber,
+    setWeekNumber,
+  ] =
+    useState(1);
+
+  const [
+    lineDayAt,
+    setLineDayAt,
+  ] =
+    useState("");
+
+  const [
+    finalizeNotBefore,
+    setFinalizeNotBefore,
+  ] =
+    useState("");
+
   const [
     weeks,
     setWeeks,
@@ -300,6 +354,40 @@ export default function PickemCommissioner({
       LineRow[]
     >([]);
 
+  const [
+    sourceProvider,
+    setSourceProvider,
+  ] =
+    useState(
+      "manual"
+    );
+
+  const [
+    sportsbookKey,
+    setSportsbookKey,
+  ] =
+    useState("");
+
+  const [
+    sportsbookName,
+    setSportsbookName,
+  ] =
+    useState("");
+
+  const [
+    homeSpread,
+    setHomeSpread,
+  ] =
+    useState("");
+
+  const [
+    lineGameId,
+    setLineGameId,
+  ] =
+    useState<
+      number |
+      null
+    >(null);
 
 
   const selectedWeek =
@@ -331,7 +419,7 @@ export default function PickemCommissioner({
                 "pickem_settings"
               )
               .select(
-                "season,football_scope,picks_per_week,pick_lock_mode,minimum_source_books"
+                "season,football_scope,picks_per_week,pick_lock_mode,minimum_source_books,scoring_mode,win_points,push_points,loss_points,confidence_points,confidence_push_multiplier"
               )
               .eq(
                 "league_id",
@@ -344,7 +432,7 @@ export default function PickemCommissioner({
                 "pickem_weeks"
               )
               .select(
-                "id,season,week,status,required_picks,line_day_at,finalize_not_before,slate_starts_at,slate_ends_at,schedule_synced_at,line_sync_started_at,line_sync_completed_at,line_sync_provider"
+                "id,season,week,status,required_picks,line_day_at,finalize_not_before"
               )
               .eq(
                 "league_id",
@@ -445,6 +533,14 @@ export default function PickemCommissioner({
           }
         );
 
+        setWeekNumber(
+          (
+            nextWeeks.at(-1)
+              ?.week ??
+            0
+          ) +
+            1
+        );
       },
       [
         leagueId,
@@ -466,6 +562,9 @@ export default function PickemCommissioner({
         ) {
           setGames([]);
           setLines([]);
+          setLineGameId(
+            null
+          );
           return;
         }
 
@@ -480,7 +579,7 @@ export default function PickemCommissioner({
               "pickem_games"
             )
             .select(
-              "id,pickem_week_id,sport,kickoff_at,away_team_name,home_team_name,g365_home_spread,spread_status,consensus_source_count,exclusion_reason,is_started,is_final,last_score_sync_at"
+              "id,pickem_week_id,sport,kickoff_at,away_team_name,home_team_name,g365_home_spread,spread_status,consensus_source_count,exclusion_reason,is_started,is_final"
             )
             .eq(
               "league_id",
@@ -514,6 +613,22 @@ export default function PickemCommissioner({
 
         setGames(
           nextGames
+        );
+
+        setLineGameId(
+          (
+            current
+          ) =>
+            current &&
+            nextGames.some(
+              (game) =>
+                game.id ===
+                current
+            )
+              ? current
+              : nextGames[0]
+                  ?.id ??
+                null
         );
 
         const ids =
@@ -675,11 +790,47 @@ export default function PickemCommissioner({
         );
       }
 
+      const confidencePoints =
+        confidencePointsText
+          .split(",")
+          .map((value) =>
+            Number(
+              value.trim()
+            )
+          )
+          .filter((value) =>
+            Number.isFinite(value)
+          );
+
+      if (
+        scoringMode ===
+          "confidence" &&
+        confidencePoints.length !==
+          picksPerWeek
+      ) {
+        throw new Error(
+          `Confidence scoring needs exactly ${picksPerWeek} unique point values — one for each required pick.`
+        );
+      }
+
+      if (
+        scoringMode ===
+          "confidence" &&
+        new Set(
+          confidencePoints
+        ).size !==
+          confidencePoints.length
+      ) {
+        throw new Error(
+          "Each confidence point value must be unique."
+        );
+      }
+
       const {
         error,
       } =
         await supabase.rpc(
-          "save_pickem_settings",
+          "save_pickem_settings_v2",
           {
             p_league_id:
               leagueId,
@@ -691,6 +842,18 @@ export default function PickemCommissioner({
               pickLockMode,
             p_minimum_source_books:
               minimumSourceBooks,
+            p_scoring_mode:
+              scoringMode,
+            p_win_points:
+              winPoints,
+            p_push_points:
+              pushPoints,
+            p_loss_points:
+              lossPoints,
+            p_confidence_points:
+              confidencePoints,
+            p_confidence_push_multiplier:
+              confidencePushMultiplier,
           }
         );
 
@@ -724,7 +887,16 @@ export default function PickemCommissioner({
   }
 
 
-  async function syncLifecycleNow() {
+  async function initializeWeek(
+    event:
+      FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (!settings) {
+      return;
+    }
+
     setSaving(
       true
     );
@@ -737,71 +909,38 @@ export default function PickemCommissioner({
 
     try {
       const {
-        data: sessionData,
+        error,
       } =
-        await supabase.auth
-          .getSession();
-
-      const token =
-        sessionData.session
-          ?.access_token;
-
-      if (!token) {
-        throw new Error(
-          "Your login session is missing."
-        );
-      }
-
-      const response =
-        await fetch(
-          "/api/pickem/commissioner-sync",
+        await supabase.rpc(
+          "initialize_pickem_week",
           {
-            method:
-              "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-              Authorization:
-                `Bearer ${token}`,
-            },
-            body:
-              JSON.stringify({
-                leagueId,
-              }),
+            p_league_id:
+              leagueId,
+            p_season:
+              settings.season,
+            p_week:
+              weekNumber,
+            p_line_day_at:
+              datetimeLocalToIso(
+                lineDayAt
+              ),
+            p_finalize_not_before:
+              datetimeLocalToIso(
+                finalizeNotBefore
+              ),
           }
         );
 
-      const payload =
-        (
-          await response.json()
-        ) as {
-          success?:
-            boolean;
-          error?:
-            string;
-          sync?: {
-            gamesUpserted?:
-              number;
-            weeksProcessed?:
-              number;
-          };
-        };
-
-      if (
-        !response.ok ||
-        payload.success !==
-          true
-      ) {
+      if (error) {
         throw new Error(
-          payload.error ??
-          "Automatic Pick'em sync failed."
+          error.message
         );
       }
 
       await load();
 
       setMessage(
-        `Automatic lifecycle refreshed. ESPN games were synced and G365 Line Day processing was checked automatically.`
+        `Pick'em Week ${weekNumber} initialized with the current required-pick setting.`
       );
     } catch (
       error
@@ -812,7 +951,198 @@ export default function PickemCommissioner({
       setMessage(
         error instanceof Error
           ? error.message
-          : "Automatic Pick'em lifecycle sync failed."
+          : "The Pick'em week could not be initialized."
+      );
+    } finally {
+      setSaving(
+        false
+      );
+    }
+  }
+
+
+  async function addSourceLine(
+    event:
+      FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (
+      lineGameId ===
+      null
+    ) {
+      return;
+    }
+
+    const spread =
+      Number(
+        homeSpread
+      );
+
+    setSaving(
+      true
+    );
+    setMessage(
+      ""
+    );
+    setIsError(
+      false
+    );
+
+    try {
+      if (
+        !sportsbookKey.trim()
+      ) {
+        throw new Error(
+          "Sportsbook key is required."
+        );
+      }
+
+      if (
+        !Number.isFinite(
+          spread
+        )
+      ) {
+        throw new Error(
+          "A valid home-team spread is required."
+        );
+      }
+
+      const {
+        error,
+      } =
+        await supabase.rpc(
+          "add_pickem_line_source",
+          {
+            p_pickem_game_id:
+              lineGameId,
+            p_source_provider:
+              sourceProvider,
+            p_sportsbook_key:
+              sportsbookKey,
+            p_sportsbook_name:
+              sportsbookName ||
+              null,
+            p_home_spread:
+              spread,
+            p_away_spread:
+              -spread,
+            p_source_event_id:
+              null,
+            p_source_market_key:
+              "spread",
+            p_raw_audit:
+              {
+                entryMode:
+                  "commissioner_manual",
+              },
+          }
+        );
+
+      if (error) {
+        throw new Error(
+          error.message
+        );
+      }
+
+      setSportsbookKey(
+        ""
+      );
+      setSportsbookName(
+        ""
+      );
+      setHomeSpread(
+        ""
+      );
+
+      await loadWeekLines(
+        selectedWeekId
+      );
+
+      setMessage(
+        "Source line added to the audit trail."
+      );
+    } catch (
+      error
+    ) {
+      setIsError(
+        true
+      );
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "The source line could not be added."
+      );
+    } finally {
+      setSaving(
+        false
+      );
+    }
+  }
+
+
+  async function freezeGame(
+    gameId:
+      number
+  ) {
+    setSaving(
+      true
+    );
+    setMessage(
+      ""
+    );
+    setIsError(
+      false
+    );
+
+    try {
+      const {
+        data,
+        error,
+      } =
+        await supabase.rpc(
+          "freeze_pickem_g365_spread",
+          {
+            p_pickem_game_id:
+              gameId,
+          }
+        );
+
+      if (error) {
+        throw new Error(
+          error.message
+        );
+      }
+
+      await loadWeekLines(
+        selectedWeekId
+      );
+
+      const response =
+        data as {
+          success?:
+            boolean;
+          excluded?:
+            boolean;
+          sourceCount?:
+            number;
+        };
+
+      setMessage(
+        response.excluded
+          ? `Game excluded because only ${response.sourceCount ?? 0} trustworthy source lines were available.`
+          : "G365 Spread frozen successfully."
+      );
+    } catch (
+      error
+    ) {
+      setIsError(
+        true
+      );
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "The G365 Spread could not be frozen."
       );
     } finally {
       setSaving(
@@ -894,7 +1224,7 @@ export default function PickemCommissioner({
               1.6,
           }}
         >
-          Configure the contest and monitor the automatic weekly lifecycle. ESPN supplies the game slate; The Odds API supplies sportsbook spreads; G365 freezes the official consensus automatically on Line Day.
+          Configure the contest, initialize weekly cards, review source sportsbook lines, and freeze the official G365 Spread.
         </p>
       </section>
 
@@ -1040,6 +1370,172 @@ export default function PickemCommissioner({
             </select>
           </label>
 
+          <div
+            style={{
+              display: "grid",
+              gap: 12,
+              padding: 14,
+              borderRadius: 12,
+              border: "1px solid rgba(255,108,33,0.18)",
+              background: "rgba(255,82,20,0.04)",
+            }}
+          >
+            <label style={styles.label}>
+              Pick&apos;em Scoring System
+              <select
+                value={scoringMode}
+                onChange={(event) => {
+                  const mode =
+                    event.target.value as ScoringMode;
+                  setScoringMode(mode);
+
+                  if (mode === "standard") {
+                    setWinPoints(1);
+                    setPushPoints(0.5);
+                    setLossPoints(0);
+                  } else if (mode === "three_one_zero") {
+                    setWinPoints(3);
+                    setPushPoints(1);
+                    setLossPoints(0);
+                  }
+                }}
+                style={styles.input}
+              >
+                <option value="record_only">
+                  Record Only — no points
+                </option>
+                <option value="standard">
+                  Standard — Win 1 / Push 0.5 / Loss 0
+                </option>
+                <option value="three_one_zero">
+                  3 / 1 / 0 — Win 3 / Push 1 / Loss 0
+                </option>
+                <option value="custom">
+                  Custom Win / Push / Loss Points
+                </option>
+                <option value="confidence">
+                  Confidence Points
+                </option>
+              </select>
+            </label>
+
+            {scoringMode === "record_only" ? (
+              <Info>
+                Standings are determined by ATS record. No pick points are awarded.
+              </Info>
+            ) : null}
+
+            {scoringMode === "standard" ||
+            scoringMode === "three_one_zero" ? (
+              <Info>
+                Current scoring: Win {winPoints} · Push {pushPoints} · Loss {lossPoints}.
+              </Info>
+            ) : null}
+
+            {scoringMode === "custom" ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(3,minmax(0,1fr))",
+                  gap: 10,
+                }}
+              >
+                <label style={styles.label}>
+                  Win Points
+                  <input
+                    type="number"
+                    step="0.25"
+                    value={winPoints}
+                    onChange={(event) =>
+                      setWinPoints(
+                        Number(event.target.value)
+                      )
+                    }
+                    style={styles.input}
+                  />
+                </label>
+                <label style={styles.label}>
+                  Push Points
+                  <input
+                    type="number"
+                    step="0.25"
+                    value={pushPoints}
+                    onChange={(event) =>
+                      setPushPoints(
+                        Number(event.target.value)
+                      )
+                    }
+                    style={styles.input}
+                  />
+                </label>
+                <label style={styles.label}>
+                  Loss Points
+                  <input
+                    type="number"
+                    step="0.25"
+                    value={lossPoints}
+                    onChange={(event) =>
+                      setLossPoints(
+                        Number(event.target.value)
+                      )
+                    }
+                    style={styles.input}
+                  />
+                </label>
+              </div>
+            ) : null}
+
+            {scoringMode === "confidence" ? (
+              <>
+                <label style={styles.label}>
+                  Confidence Values
+                  <input
+                    type="text"
+                    value={confidencePointsText}
+                    onChange={(event) =>
+                      setConfidencePointsText(
+                        event.target.value
+                      )
+                    }
+                    placeholder="50, 40, 30, 20, 10"
+                    style={styles.input}
+                  />
+                  <span style={styles.help}>
+                    Enter exactly one unique value for every required weekly pick. For 5 picks, the default is 50, 40, 30, 20, 10.
+                  </span>
+                </label>
+
+                <label style={styles.label}>
+                  Push Credit
+                  <select
+                    value={confidencePushMultiplier}
+                    onChange={(event) =>
+                      setConfidencePushMultiplier(
+                        Number(event.target.value)
+                      )
+                    }
+                    style={styles.input}
+                  >
+                    <option value={0}>
+                      0% of confidence value
+                    </option>
+                    <option value={0.5}>
+                      50% of confidence value
+                    </option>
+                    <option value={1}>
+                      100% of confidence value
+                    </option>
+                  </select>
+                </label>
+
+                <Info>
+                  Members assign each confidence value once per weekly card. A winning ATS pick earns its assigned confidence value.
+                </Info>
+              </>
+            ) : null}
+          </div>
+
           <label
             style={
               styles.label
@@ -1089,179 +1585,120 @@ export default function PickemCommissioner({
 
 
       <Panel
-        title="Automatic Weekly Lifecycle"
-        description="G365 contest weeks and ESPN game slates are created and maintained automatically. The commissioner only needs to intervene for an unusual schedule correction."
+        title="Weekly Lifecycle"
+        description="Initialize the weekly card before ESPN game sync. Set the Line Day timestamp and the earliest official finalization time."
       >
-        {weeks.length ===
-        0 ? (
-          <Info>
-            The automatic lifecycle has not prepared the season yet. Use Sync Now once; the scheduled worker will maintain it after that.
-          </Info>
-        ) : (
-          <>
-            <div
-              style={{
-                display:
-                  "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit,minmax(185px,1fr))",
-                gap:
-                  10,
-              }}
-            >
-              <LifecycleStat
-                label="Current G365 Week"
-                value={
-                  selectedWeek
-                    ? `Week ${selectedWeek.week}`
-                    : "—"
-                }
-              />
-
-              <LifecycleStat
-                label="Game Slate"
-                value={`${games.length} ESPN games`}
-              />
-
-              <LifecycleStat
-                label="G365 Line Day"
-                value={
-                  formatDateTime(
-                    selectedWeek
-                      ?.line_day_at ??
-                    null
-                  )
-                }
-              />
-
-              <LifecycleStat
-                label="Finalize Gate"
-                value={
-                  formatDateTime(
-                    selectedWeek
-                      ?.finalize_not_before ??
-                    null
-                  )
-                }
-              />
-            </div>
-
-            {selectedWeek ? (
-              <div
-                style={{
-                  display:
-                    "grid",
-                  gap:
-                    8,
-                  marginTop:
-                    14,
-                  padding:
-                    13,
-                  borderRadius:
-                    12,
-                  border:
-                    "1px solid rgba(255,255,255,0.08)",
-                  background:
-                    "rgba(255,255,255,0.025)",
-                  color:
-                    "#a8a8b1",
-                  lineHeight:
-                    1.55,
-                  fontSize:
-                    13,
-                }}
-              >
-                <div>
-                  <strong
-                    style={{
-                      color:
-                        "#fff",
-                    }}
-                  >
-                    Slate Window:
-                  </strong>{" "}
-                  {formatDateTime(
-                    selectedWeek
-                      .slate_starts_at
-                  )}{" "}
-                  →{" "}
-                  {formatDateTime(
-                    selectedWeek
-                      .slate_ends_at
-                  )}
-                </div>
-
-                <div>
-                  <strong
-                    style={{
-                      color:
-                        "#fff",
-                    }}
-                  >
-                    Schedule Sync:
-                  </strong>{" "}
-                  {formatDateTime(
-                    selectedWeek
-                      .schedule_synced_at
-                  )}
-                </div>
-
-                <div>
-                  Games are grouped by the G365 Tuesday-through-Monday contest window, so College and NFL provider week numbers do not need to match.
-                </div>
-              </div>
-            ) : null}
-          </>
-        )}
-
-        <div
+        <form
+          onSubmit={
+            initializeWeek
+          }
           style={{
-            marginTop:
-              14,
             display:
-              "flex",
+              "grid",
             gap:
-              10,
-            flexWrap:
-              "wrap",
+              14,
           }}
         >
-          <button
-            type="button"
-            disabled={
-              saving
+          <label
+            style={
+              styles.label
             }
-            onClick={() =>
-              void syncLifecycleNow()
-            }
-            style={{
-              border:
-                "1px solid rgba(255,112,34,0.65)",
-              borderRadius:
-                10,
-              padding:
-                "11px 16px",
-              color:
-                "#fff",
-              fontWeight:
-                950,
-              cursor:
-                saving
-                  ? "not-allowed"
-                  : "pointer",
-              background:
-                "linear-gradient(135deg,#d60000,#ff5c00)",
-              opacity:
-                saving
-                  ? 0.65
-                  : 1,
-            }}
           >
-            {saving
-              ? "SYNCING…"
-              : "SYNC NOW"}
-          </button>
-        </div>
+            Pick&apos;em Week
+            <input
+              type="number"
+              min={
+                1
+              }
+              max={
+                25
+              }
+              value={
+                weekNumber
+              }
+              onChange={(
+                event
+              ) =>
+                setWeekNumber(
+                  Number(
+                    event.target
+                      .value
+                  )
+                )
+              }
+              style={
+                styles.input
+              }
+            />
+          </label>
+
+          <label
+            style={
+              styles.label
+            }
+          >
+            G365 Line Day
+            <input
+              type="datetime-local"
+              value={
+                lineDayAt
+              }
+              onChange={(
+                event
+              ) =>
+                setLineDayAt(
+                  event.target
+                    .value
+                )
+              }
+              style={
+                styles.input
+              }
+            />
+          </label>
+
+          <label
+            style={
+              styles.label
+            }
+          >
+            Finalize Not Before
+            <input
+              type="datetime-local"
+              value={
+                finalizeNotBefore
+              }
+              onChange={(
+                event
+              ) =>
+                setFinalizeNotBefore(
+                  event.target
+                    .value
+                )
+              }
+              style={
+                styles.input
+              }
+            />
+
+            <span
+              style={
+                styles.help
+              }
+            >
+              This is the Monday-night/weekly finalization gate. The database will still refuse finalization until every eligible game is final.
+            </span>
+          </label>
+
+          <ActionButton
+            disabled={
+              saving ||
+              !settings
+            }
+          >
+            INITIALIZE WEEK
+          </ActionButton>
+        </form>
 
         {weeks.length >
         0 ? (
@@ -1349,67 +1786,20 @@ export default function PickemCommissioner({
 
 
       <Panel
-        title="Automatic G365 Line Day & Audit"
-        description="Sportsbook spreads are captured automatically from The Odds API on G365 Line Day. The official G365 Spread is frozen as the median of the latest trustworthy sportsbook lines."
+        title="G365 Line Day & Audit"
+        description="The official G365 Spread is the median of the latest line from each sportsbook. The normalized ingestion contract is provider-neutral."
       >
         {!selectedWeek ? (
           <Info>
-            Select a week to review its automatic sportsbook line capture and G365 Spread audit.
+            Initialize and select a week to manage source lines.
           </Info>
         ) : games.length ===
           0 ? (
           <Info>
-            Week {selectedWeek.week} has no ESPN games loaded yet. The automatic lifecycle sync will populate the slate when ESPN publishes it.
+            Week {selectedWeek.week} has no ESPN games loaded yet. Run the Pick&apos;em game sync after initializing the week.
           </Info>
         ) : (
           <>
-            <div
-              style={{
-                display:
-                  "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(190px, 1fr))",
-                gap:
-                  10,
-                marginBottom:
-                  14,
-              }}
-            >
-              <LifecycleStat
-                label="Line Day"
-                value={
-                  formatDateTime(
-                    selectedWeek.line_day_at
-                  )
-                }
-              />
-
-              <LifecycleStat
-                label="Odds Provider"
-                value={
-                  selectedWeek.line_sync_provider ===
-                  "the-odds-api"
-                    ? "The Odds API"
-                    : "The Odds API (automatic)"
-                }
-              />
-
-              <LifecycleStat
-                label="Line Sync"
-                value={
-                  selectedWeek.line_sync_completed_at
-                    ? `Complete · ${formatDateTime(
-                        selectedWeek.line_sync_completed_at
-                      )}`
-                    : selectedWeek.line_sync_started_at
-                      ? `Last attempt · ${formatDateTime(
-                          selectedWeek.line_sync_started_at
-                        )}`
-                      : "Waiting for G365 Line Day"
-                }
-              />
-            </div>
-
             <div
               style={{
                 display:
@@ -1574,26 +1964,54 @@ export default function PickemCommissioner({
 
                       <div
                         style={{
-                          color:
-                            game.spread_status ===
-                            "frozen"
-                              ? "#86efac"
-                              : "#fbbf24",
-                          fontSize:
-                            12,
-                          fontWeight:
-                            800,
+                          display:
+                            "flex",
+                          gap:
+                            8,
+                          flexWrap:
+                            "wrap",
                         }}
                       >
-                        {game.spread_status ===
-                        "frozen"
-                          ? "Automatic G365 Line Day complete — official spread frozen."
-                          : game.spread_status ===
-                              "excluded"
-                            ? "Automatic Line Day processed — game excluded from the contest slate."
-                            : `Automatic sportsbook capture scheduled for ${formatDateTime(
-                                selectedWeek.line_day_at
-                              )}.`}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setLineGameId(
+                              game.id
+                            )
+                          }
+                          disabled={
+                            game.spread_status ===
+                              "frozen" ||
+                            game.is_started ||
+                            game.is_final
+                          }
+                          style={
+                            styles.secondaryButton
+                          }
+                        >
+                          ADD SOURCE LINE
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void freezeGame(
+                              game.id
+                            )
+                          }
+                          disabled={
+                            saving ||
+                            game.spread_status ===
+                              "frozen" ||
+                            game.is_started ||
+                            game.is_final
+                          }
+                          style={
+                            styles.freezeButton
+                          }
+                        >
+                          FREEZE G365 SPREAD
+                        </button>
                       </div>
 
                       {game.exclusion_reason ? (
@@ -1615,6 +2033,206 @@ export default function PickemCommissioner({
                 }
               )}
             </div>
+
+            {lineGameId !==
+            null ? (
+              <form
+                onSubmit={
+                  addSourceLine
+                }
+                style={{
+                  display:
+                    "grid",
+                  gap:
+                    12,
+                  marginTop:
+                    16,
+                  padding:
+                    15,
+                  borderRadius:
+                    12,
+                  border:
+                    "1px solid rgba(255,108,33,0.20)",
+                  background:
+                    "rgba(100,8,12,0.13)",
+                }}
+              >
+                <strong
+                  style={{
+                    color:
+                      "#fff",
+                  }}
+                >
+                  Add normalized sportsbook source line
+                </strong>
+
+                <label
+                  style={
+                    styles.label
+                  }
+                >
+                  Game
+                  <select
+                    value={
+                      lineGameId
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setLineGameId(
+                        Number(
+                          event.target
+                            .value
+                        )
+                      )
+                    }
+                    style={
+                      styles.input
+                    }
+                  >
+                    {games.map(
+                      (
+                        game
+                      ) => (
+                        <option
+                          key={
+                            game.id
+                          }
+                          value={
+                            game.id
+                          }
+                        >
+                          {
+                            game.away_team_name
+                          }{" "}
+                          @{" "}
+                          {
+                            game.home_team_name
+                          }
+                        </option>
+                      )
+                    )}
+                  </select>
+                </label>
+
+                <label
+                  style={
+                    styles.label
+                  }
+                >
+                  Source Provider
+                  <input
+                    value={
+                      sourceProvider
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setSourceProvider(
+                        event.target
+                          .value
+                      )
+                    }
+                    style={
+                      styles.input
+                    }
+                  />
+                </label>
+
+                <label
+                  style={
+                    styles.label
+                  }
+                >
+                  Sportsbook Key
+                  <input
+                    value={
+                      sportsbookKey
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setSportsbookKey(
+                        event.target
+                          .value
+                      )
+                    }
+                    placeholder="example-book-key"
+                    style={
+                      styles.input
+                    }
+                  />
+                </label>
+
+                <label
+                  style={
+                    styles.label
+                  }
+                >
+                  Sportsbook Name
+                  <input
+                    value={
+                      sportsbookName
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setSportsbookName(
+                        event.target
+                          .value
+                      )
+                    }
+                    placeholder="Optional display name"
+                    style={
+                      styles.input
+                    }
+                  />
+                </label>
+
+                <label
+                  style={
+                    styles.label
+                  }
+                >
+                  Home Team Spread
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={
+                      homeSpread
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setHomeSpread(
+                        event.target
+                          .value
+                      )
+                    }
+                    placeholder="-3.5"
+                    style={
+                      styles.input
+                    }
+                  />
+
+                  <span
+                    style={
+                      styles.help
+                    }
+                  >
+                    Always enter the line from the HOME team&apos;s perspective. HOME -7.5 is entered as -7.5; HOME +3 is entered as +3.
+                  </span>
+                </label>
+
+                <ActionButton
+                  disabled={
+                    saving
+                  }
+                >
+                  SAVE SOURCE LINE
+                </ActionButton>
+              </form>
+            ) : null}
           </>
         )}
       </Panel>
@@ -1625,64 +2243,6 @@ export default function PickemCommissioner({
         }
       />
     </main>
-  );
-}
-
-
-function LifecycleStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div
-      style={{
-        padding:
-          13,
-        borderRadius:
-          12,
-        border:
-          "1px solid rgba(255,255,255,0.08)",
-        background:
-          "#0b0b0e",
-      }}
-    >
-      <div
-        style={{
-          color:
-            "#858590",
-          fontSize:
-            10,
-          fontWeight:
-            950,
-          letterSpacing:
-            "0.08em",
-          textTransform:
-            "uppercase",
-        }}
-      >
-        {label}
-      </div>
-
-      <div
-        style={{
-          marginTop:
-            6,
-          color:
-            "#fff",
-          fontSize:
-            14,
-          fontWeight:
-            900,
-          lineHeight:
-            1.35,
-        }}
-      >
-        {value}
-      </div>
-    </div>
   );
 }
 

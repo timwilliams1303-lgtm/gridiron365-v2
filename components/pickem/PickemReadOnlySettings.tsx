@@ -25,7 +25,7 @@ export default async function PickemReadOnlySettings({
     await supabase
       .from("pickem_settings")
       .select(
-        "football_scope,picks_per_week,pick_lock_mode,reveal_mode,minimum_source_books,win_points,push_points,loss_points"
+        "football_scope,picks_per_week,pick_lock_mode,reveal_mode,minimum_source_books,scoring_mode,win_points,push_points,loss_points,confidence_points,confidence_push_multiplier"
       )
       .eq("league_id", leagueId)
       .single();
@@ -35,6 +35,19 @@ export default async function PickemReadOnlySettings({
       error.message
     );
   }
+
+
+  const scoringLabel =
+    data.scoring_mode === "record_only"
+      ? "Record Only — ATS record, no points"
+      : data.scoring_mode === "confidence"
+        ? `Confidence Points — ${(data.confidence_points ?? []).join(", ")}`
+        : data.scoring_mode === "three_one_zero"
+          ? "3 / 1 / 0 Points"
+          : data.scoring_mode === "custom"
+            ? `Custom — ${data.win_points} / ${data.push_points} / ${data.loss_points}`
+            : "Standard — 1 / 0.5 / 0";
+
 
   const rows = [
     ["Football", scopeLabel(data.football_scope)],
@@ -47,7 +60,12 @@ export default async function PickemReadOnlySettings({
     ],
     ["Pick Reveal", "Each individual pick becomes visible at that game's kickoff"],
     ["G365 Line", `Median consensus; minimum ${data.minimum_source_books} trustworthy sportsbook sources`],
-    ["Win / Push / Loss", `${data.win_points} / ${data.push_points} / ${data.loss_points} points`],
+    ["Scoring", scoringLabel],
+    ...(data.scoring_mode === "confidence"
+      ? [["Confidence Push Credit", `${Number(data.confidence_push_multiplier) * 100}% of confidence value`]]
+      : data.scoring_mode === "record_only"
+        ? []
+        : [["Win / Push / Loss", `${data.win_points} / ${data.push_points} / ${data.loss_points} points`]]),
     ["Week Finalization", "After the final game of the week is complete and the Monday-night finalization gate is satisfied"],
   ];
 
