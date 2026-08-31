@@ -668,6 +668,65 @@ export default async function SeasonLongLeagueTeamsPage({
 
   /*
    * ============================================================
+   * LIVE LINEUP DATA
+   * ============================================================
+   *
+   * League Teams must use the SAME current lineup rows that My Entry
+   * writes to season_long_weekly_lineups.  The weekly entry/score
+   * summary tables can legitimately lag behind an owner making a
+   * lineup change, so they are not the source of truth for the
+   * current lineup, salary used, projections, or player count.
+   */
+
+  const teamLineupResults =
+    await Promise.all(
+      teams.map(
+        async (team) => {
+          const lineup =
+            await getSeasonLongTeamLiveLineupData(
+              supabase,
+              {
+                leagueId,
+
+                fantasyTeamId:
+                  team.id,
+
+                viewerFantasyTeamId:
+                  access.fantasyTeam
+                    ?.id ?? null,
+
+                season,
+
+                week:
+                  selectedWeek,
+
+                selectionMode:
+                  isSalaryLeague
+                    ? "salary"
+                    : "no_salary",
+
+                activeWeek:
+                  resolvedActiveWeek,
+              }
+            );
+
+          return [
+            team.id,
+            lineup,
+          ] as const;
+        }
+      )
+    );
+
+
+  const teamLineupMap =
+    new Map(
+      teamLineupResults
+    );
+
+
+  /*
+   * ============================================================
    * BUILD WEEKLY LEADERBOARD
    * ============================================================
    */
@@ -695,6 +754,12 @@ export default async function SeasonLongLeagueTeamsPage({
           );
 
 
+        const liveLineup =
+          teamLineupMap.get(
+            team.id
+          );
+
+
         return {
           teamId:
             team.id,
@@ -704,12 +769,16 @@ export default async function SeasonLongLeagueTeamsPage({
 
           weeklyPoints:
             toNumber(
+              liveLineup
+                ?.weekPoints ??
               score
                 ?.fantasy_points
             ),
 
           projectedPoints:
             toNumber(
+              liveLineup
+                ?.projectedPoints ??
               entry
                 ?.projected_points
             ),
@@ -722,35 +791,45 @@ export default async function SeasonLongLeagueTeamsPage({
 
           salaryUsed:
             isSalaryLeague
-              ? score
-                  ?.salary_used !=
-                null
-                ? toNumber(
-                    score
-                      .salary_used
-                  )
-                : entry
+              ? liveLineup
+                  ?.salaryUsed ??
+                (
+                  score
                     ?.salary_used !=
                   null
-                  ? toNumber(
-                      entry
-                        .salary_used
-                    )
-                  : null
+                    ? toNumber(
+                        score
+                          .salary_used
+                      )
+                    : entry
+                        ?.salary_used !=
+                      null
+                      ? toNumber(
+                          entry
+                            .salary_used
+                        )
+                      : null
+                )
               : null,
 
           lineupPlayerCount:
+            liveLineup
+              ?.lineupPlayerCount ??
             score
               ?.lineup_player_count ??
             0,
 
           entryStatus:
             formatStatus(
+              liveLineup
+                ?.entryStatus ??
               entry
                 ?.status
             ),
 
           isFinal:
+            liveLineup
+              ?.isFinal ??
             Boolean(
               score
                 ?.is_final
@@ -873,59 +952,6 @@ export default async function SeasonLongLeagueTeamsPage({
       ) =>
         row.isFinal
     ).length;
-
-
-  /*
-   * Load each team's Week lineup on this page so League Teams can
-   * expand/collapse in place instead of navigating to a team page.
-   * The existing live-lineup service keeps the same reveal/privacy
-   * behavior used by the dedicated team view.
-   */
-  const teamLineupResults =
-    await Promise.all(
-      rankedRows.map(
-        async (row) => {
-          const lineup =
-            await getSeasonLongTeamLiveLineupData(
-              supabase,
-              {
-                leagueId,
-
-                fantasyTeamId:
-                  row.teamId,
-
-                viewerFantasyTeamId:
-                  access.fantasyTeam
-                    ?.id ?? null,
-
-                season,
-
-                week:
-                  selectedWeek,
-
-                selectionMode:
-                  isSalaryLeague
-                    ? "salary"
-                    : "no_salary",
-
-                activeWeek:
-                  resolvedActiveWeek,
-              }
-            );
-
-          return [
-            row.teamId,
-            lineup,
-          ] as const;
-        }
-      )
-    );
-
-
-  const teamLineupMap =
-    new Map(
-      teamLineupResults
-    );
 
 
   return (
