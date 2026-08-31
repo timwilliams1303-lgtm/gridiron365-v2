@@ -420,8 +420,8 @@ export default function PickemLeaguePicks({
     >([]);
 
   const [
-    collapsedTeamIds,
-    setCollapsedTeamIds,
+    expandedTeamIds,
+    setExpandedTeamIds,
   ] =
     useState<Set<number>>(
       () => new Set()
@@ -505,12 +505,30 @@ export default function PickemLeaguePicks({
 
         return [
           ...map.values(),
-        ].sort(
-          (a, b) =>
+        ]
+          .map((group) => ({
+            ...group,
+            rows: [...group.rows].sort((a, b) => {
+              const aTime = a.kickoff_at
+                ? new Date(a.kickoff_at).getTime()
+                : Number.POSITIVE_INFINITY;
+              const bTime = b.kickoff_at
+                ? new Date(b.kickoff_at).getTime()
+                : Number.POSITIVE_INFINITY;
+
+              if (aTime !== bTime) {
+                return aTime - bTime;
+              }
+
+              return (a.game_id ?? Number.MAX_SAFE_INTEGER) -
+                (b.game_id ?? Number.MAX_SAFE_INTEGER);
+            }),
+          }))
+          .sort((a, b) =>
             a.teamName.localeCompare(
               b.teamName
             )
-        );
+          );
       },
       [rows]
     );
@@ -1029,8 +1047,8 @@ export default function PickemLeaguePicks({
                 viewerFantasyTeamId ===
                 group.fantasyTeamId;
 
-              const isCollapsed =
-                collapsedTeamIds.has(
+              const isExpanded =
+                expandedTeamIds.has(
                   group.fantasyTeamId
                 );
 
@@ -1067,7 +1085,7 @@ export default function PickemLeaguePicks({
                       padding:
                         15,
                       borderBottom:
-                        isCollapsed
+                        !isExpanded
                           ? "none"
                           : "1px solid rgba(255,255,255,0.06)",
                       background:
@@ -1160,7 +1178,7 @@ export default function PickemLeaguePicks({
                     <button
                       type="button"
                       onClick={() => {
-                        setCollapsedTeamIds(
+                        setExpandedTeamIds(
                           (current) => {
                             const next =
                               new Set(
@@ -1186,7 +1204,7 @@ export default function PickemLeaguePicks({
                         );
                       }}
                       aria-expanded={
-                        !isCollapsed
+                        isExpanded
                       }
                       style={{
                         width: 38,
@@ -1202,11 +1220,11 @@ export default function PickemLeaguePicks({
                         border:
                           "1px solid rgba(255,118,39,0.28)",
                         background:
-                          isCollapsed
+                          !isExpanded
                             ? "rgba(255,108,33,0.12)"
                             : "rgba(255,255,255,0.035)",
                         color:
-                          isCollapsed
+                          !isExpanded
                             ? "#ff9b59"
                             : "#d4d4d8",
                         fontSize:
@@ -1217,13 +1235,13 @@ export default function PickemLeaguePicks({
                           "pointer",
                       }}
                     >
-                      {isCollapsed
-                        ? "+"
-                        : "−"}
+                      {isExpanded
+                        ? "−"
+                        : "+"}
                     </button>
                   </div>
 
-                  {!isCollapsed ? (
+                  {isExpanded ? (
                     <div
                       style={{
                         display:

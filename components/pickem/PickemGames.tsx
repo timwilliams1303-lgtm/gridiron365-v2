@@ -313,6 +313,52 @@ export default function PickemGames({
   ] =
     useState<GameRow[]>([]);
 
+  const orderedGames =
+    useMemo(
+      () =>
+        [...games].sort((a, b) => {
+          const aKickoff =
+            new Date(a.kickoff_at).getTime();
+          const bKickoff =
+            new Date(b.kickoff_at).getTime();
+
+          const aValid =
+            Number.isFinite(aKickoff);
+          const bValid =
+            Number.isFinite(bKickoff);
+
+          if (aValid && bValid && aKickoff !== bKickoff) {
+            return aKickoff - bKickoff;
+          }
+
+          if (aValid !== bValid) {
+            return aValid ? -1 : 1;
+          }
+
+          const sportCompare =
+            (a.sport ?? "").localeCompare(b.sport ?? "");
+
+          if (sportCompare !== 0) {
+            return sportCompare;
+          }
+
+          const awayCompare =
+            (a.away_team_name ?? "").localeCompare(
+              b.away_team_name ?? ""
+            );
+
+          if (awayCompare !== 0) {
+            return awayCompare;
+          }
+
+          return (a.home_team_name ?? "").localeCompare(
+            b.home_team_name ?? ""
+          );
+        }),
+      [games]
+    );
+
+
   const selectedWeek =
     useMemo(
       () =>
@@ -753,7 +799,7 @@ export default function PickemGames({
             gap: 12,
           }}
         >
-          {games.map(
+          {orderedGames.map(
             (game) => {
               const homeSpread =
                 numberValue(
