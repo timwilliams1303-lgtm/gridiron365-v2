@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -15,45 +16,57 @@ import {
 type Props = {
   leagueId: string;
   season: number;
-  viewerFantasyTeamId: number | null;
+  viewerFantasyTeamId:
+    number | null;
 };
 
-type ScoringMode =
-  | "record_only"
-  | "standard"
-  | "three_one_zero"
-  | "custom"
-  | "confidence";
 
 type WeekRow = {
   id: number;
   week: number;
   status: string;
   required_picks: number;
-  scoring_mode: ScoringMode;
 };
+
 
 type LeaguePickRow = {
   fantasy_team_id: number;
   team_name: string;
   pick_id: number | null;
   game_id: number | null;
-  sport: "ncaaf" | "nfl" | null;
+  sport:
+    | "ncaaf"
+    | "nfl"
+    | null;
   kickoff_at: string | null;
-  away_team_name: string | null;
-  home_team_name: string | null;
-  away_score: number | null;
-  home_score: number | null;
-  status_type: string | null;
-  status_name: string | null;
-  status_detail: string | null;
-  period: number | null;
-  display_clock: string | null;
+  away_team_name:
+    string | null;
+  home_team_name:
+    string | null;
+  away_score:
+    number | null;
+  home_score:
+    number | null;
+  status_type:
+    string | null;
+  status_name:
+    string | null;
+  status_detail:
+    string | null;
+  period:
+    number | null;
+  display_clock:
+    string | null;
   is_final: boolean;
   pick_visible: boolean;
-  selected_side: "home" | "away" | null;
-  frozen_home_spread: number | string | null;
-  confidence_value: number | string | null;
+  selected_side:
+    | "home"
+    | "away"
+    | null;
+  frozen_home_spread:
+    number |
+    string |
+    null;
   pick_result:
     | "pending"
     | "win"
@@ -61,17 +74,12 @@ type LeaguePickRow = {
     | "push"
     | "void"
     | null;
-  points_awarded: number | string | null;
-  possession_team_abbreviation: string | null;
-  down: number | null;
-  distance: number | null;
-  yard_line: number | null;
-  yards_to_endzone: number | null;
-  down_distance_text: string | null;
-  possession_text: string | null;
-  is_red_zone: boolean | null;
-  last_play_text: string | null;
+  points_awarded:
+    number |
+    string |
+    null;
 };
+
 
 type WeeklyResultRow = {
   fantasy_team_id: number;
@@ -79,10 +87,14 @@ type WeeklyResultRow = {
   losses: number;
   pushes: number;
   pending: number;
-  points: number | string;
+  points:
+    number |
+    string;
   is_final: boolean;
-  weekly_rank: number | null;
+  weekly_rank:
+    number | null;
 };
+
 
 type TeamGroup = {
   fantasyTeamId: number;
@@ -92,126 +104,167 @@ type TeamGroup = {
 
 
 function numberValue(
-  value: number | string | null
+  value:
+    number |
+    string |
+    null
 ) {
-  if (value === null) {
+  if (
+    value === null
+  ) {
     return null;
   }
 
-  const parsed = Number(value);
+  const parsed =
+    Number(value);
 
-  return Number.isFinite(parsed)
+  return Number.isFinite(
+    parsed
+  )
     ? parsed
     : null;
 }
 
 
-function formatNumber(
-  value: number
-) {
-  return Number.isInteger(value)
-    ? String(value)
-    : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-}
-
-
 function formatSpread(
-  value: number
+  value:
+    number
 ) {
-  if (Math.abs(value) < 0.0001) {
+  if (
+    Math.abs(
+      value
+    ) <
+    0.0001
+  ) {
     return "PK";
   }
 
   return value > 0
-    ? `+${formatNumber(value)}`
-    : formatNumber(value);
+    ? `+${value}`
+    : String(value);
+}
+
+
+function formatKickoff(
+  value:
+    string
+) {
+  return new Date(
+    value
+  ).toLocaleString(
+    undefined,
+    {
+      weekday:
+        "short",
+      month:
+        "short",
+      day:
+        "numeric",
+      hour:
+        "numeric",
+      minute:
+        "2-digit",
+    }
+  );
 }
 
 
 function sportLabel(
-  sport: "ncaaf" | "nfl"
+  sport:
+    "ncaaf" |
+    "nfl"
 ) {
-  return sport === "nfl"
+  return sport ===
+    "nfl"
     ? "NFL"
     : "COLLEGE";
 }
 
 
-function scoringLabel(
-  mode: ScoringMode
-) {
-  switch (mode) {
-    case "standard":
-      return "STANDARD POINTS";
-    case "three_one_zero":
-      return "3–1–0 POINTS";
-    case "custom":
-      return "CUSTOM POINTS";
-    case "confidence":
-      return "CONFIDENCE POINTS";
-    default:
-      return "RECORD ONLY";
-  }
-}
-
-
-function usesPoints(
-  mode: ScoringMode
-) {
-  return mode !== "record_only";
-}
-
-
 function liveLabel(
-  row: LeaguePickRow
+  row:
+    LeaguePickRow
 ) {
-  if (row.is_final) {
+  if (
+    row.is_final
+  ) {
     return "FINAL";
   }
 
-  const parts = ["LIVE"];
+  const parts =
+    [
+      "LIVE",
+    ];
 
-  if (row.period) {
-    parts.push(`Q${row.period}`);
+  if (
+    row.period
+  ) {
+    parts.push(
+      `Q${row.period}`
+    );
   }
 
-  if (row.display_clock) {
-    parts.push(row.display_clock);
+  if (
+    row.display_clock
+  ) {
+    parts.push(
+      row.display_clock
+    );
   }
 
-  return parts.join(" · ");
+  return parts.join(
+    " · "
+  );
 }
 
 
 function pickTeamName(
-  row: LeaguePickRow
+  row:
+    LeaguePickRow
 ) {
-  return row.selected_side === "home"
-    ? row.home_team_name ?? "Home"
-    : row.away_team_name ?? "Away";
+  if (
+    row.selected_side ===
+    "home"
+  ) {
+    return (
+      row.home_team_name ??
+      "Home"
+    );
+  }
+
+  return (
+    row.away_team_name ??
+    "Away"
+  );
 }
 
 
 function pickSpread(
-  row: LeaguePickRow
+  row:
+    LeaguePickRow
 ) {
   const homeSpread =
     numberValue(
       row.frozen_home_spread
     );
 
-  if (homeSpread === null) {
+  if (
+    homeSpread ===
+    null
+  ) {
     return null;
   }
 
-  return row.selected_side === "home"
+  return row.selected_side ===
+    "home"
     ? homeSpread
     : -homeSpread;
 }
 
 
 function currentAtsState(
-  row: LeaguePickRow
+  row:
+    LeaguePickRow
 ) {
   if (
     !row.pick_visible ||
@@ -220,31 +273,51 @@ function currentAtsState(
     return null;
   }
 
-  if (row.pick_result === "win") {
+  if (
+    row.pick_result ===
+      "win"
+  ) {
     return {
-      text: "WIN",
-      tone: "win" as const,
+      text:
+        "WIN",
+      tone:
+        "win" as const,
     };
   }
 
-  if (row.pick_result === "loss") {
+  if (
+    row.pick_result ===
+      "loss"
+  ) {
     return {
-      text: "LOSS",
-      tone: "loss" as const,
+      text:
+        "LOSS",
+      tone:
+        "loss" as const,
     };
   }
 
-  if (row.pick_result === "push") {
+  if (
+    row.pick_result ===
+      "push"
+  ) {
     return {
-      text: "PUSH",
-      tone: "push" as const,
+      text:
+        "PUSH",
+      tone:
+        "push" as const,
     };
   }
 
-  if (row.pick_result === "void") {
+  if (
+    row.pick_result ===
+      "void"
+  ) {
     return {
-      text: "VOID",
-      tone: "neutral" as const,
+      text:
+        "VOID",
+      tone:
+        "neutral" as const,
     };
   }
 
@@ -254,13 +327,18 @@ function currentAtsState(
     );
 
   if (
-    homeSpread === null ||
-    row.home_score === null ||
-    row.away_score === null
+    homeSpread ===
+      null ||
+    row.home_score ===
+      null ||
+    row.away_score ===
+      null
   ) {
     return {
-      text: "PENDING",
-      tone: "neutral" as const,
+      text:
+        "PENDING",
+      tone:
+        "neutral" as const,
     };
   }
 
@@ -269,32 +347,44 @@ function currentAtsState(
     homeSpread;
 
   const margin =
-    row.selected_side === "home"
+    row.selected_side ===
+    "home"
       ? adjustedHome -
         row.away_score
       : row.away_score -
         adjustedHome;
 
-  if (Math.abs(margin) < 0.0001) {
+  if (
+    Math.abs(
+      margin
+    ) <
+    0.0001
+  ) {
     return {
-      text: "CURRENTLY PUSH",
-      tone: "push" as const,
+      text:
+        "CURRENTLY PUSH",
+      tone:
+        "push" as const,
     };
   }
 
-  return margin > 0
-    ? {
-        text:
-          "CURRENTLY WINNING ATS",
-        tone:
-          "win" as const,
-      }
-    : {
-        text:
-          "CURRENTLY LOSING ATS",
-        tone:
-          "loss" as const,
-      };
+  if (
+    margin > 0
+  ) {
+    return {
+      text:
+        "CURRENTLY WINNING ATS",
+      tone:
+        "win" as const,
+    };
+  }
+
+  return {
+    text:
+      "CURRENTLY LOSING ATS",
+    tone:
+      "loss" as const,
+  };
 }
 
 
@@ -305,7 +395,9 @@ function toneColor(
     | "push"
     | "neutral"
 ) {
-  switch (tone) {
+  switch (
+    tone
+  ) {
     case "win":
       return "#55df8a";
     case "loss":
@@ -315,53 +407,6 @@ function toneColor(
     default:
       return "#aaaab2";
   }
-}
-
-
-function liveSituationText(
-  row: LeaguePickRow
-) {
-  if (
-    row.is_final ||
-    !row.pick_visible
-  ) {
-    return null;
-  }
-
-  const possession =
-    row.possession_team_abbreviation;
-
-  const downText =
-    row.down_distance_text;
-
-  const fieldText =
-    row.possession_text;
-
-  if (
-    possession &&
-    downText
-  ) {
-    if (
-      fieldText &&
-      !downText.includes(
-        fieldText
-      )
-    ) {
-      return `${possession} BALL · ${downText} · ${fieldText}`;
-    }
-
-    return `${possession} BALL · ${downText}`;
-  }
-
-  if (possession && fieldText) {
-    return `${possession} BALL · ${fieldText}`;
-  }
-
-  if (possession) {
-    return `${possession} BALL`;
-  }
-
-  return downText ?? fieldText ?? null;
 }
 
 
@@ -376,6 +421,18 @@ export default function PickemLeaguePicks({
         createSupabaseBrowserClient(),
       []
     );
+
+
+  const realtimeRefreshTimerRef =
+    useRef<number | null>(
+      null
+    );
+
+  const realtimeRefreshBlockedRef =
+    useRef(false);
+
+  const realtimeRefreshPendingRef =
+    useRef(false);
 
   const [
     loading,
@@ -393,23 +450,26 @@ export default function PickemLeaguePicks({
     weeks,
     setWeeks,
   ] =
-    useState<WeekRow[]>([]);
+    useState<
+      WeekRow[]
+    >([]);
 
   const [
     selectedWeekId,
     setSelectedWeekId,
   ] =
-    useState<number | null>(
+    useState<
+      number |
       null
-    );
+    >(null);
 
   const [
     rows,
     setRows,
   ] =
-    useState<LeaguePickRow[]>(
-      []
-    );
+    useState<
+      LeaguePickRow[]
+    >([]);
 
   const [
     results,
@@ -419,13 +479,50 @@ export default function PickemLeaguePicks({
       WeeklyResultRow[]
     >([]);
 
+
   const [
-    expandedTeamIds,
-    setExpandedTeamIds,
+    collapsedTeamIds,
+    setCollapsedTeamIds,
   ] =
     useState<Set<number>>(
       () => new Set()
     );
+
+
+  const toggleTeamCollapsed =
+    useCallback(
+      (
+        fantasyTeamId:
+          number
+      ) => {
+        setCollapsedTeamIds(
+          (current) => {
+            const next =
+              new Set(
+                current
+              );
+
+            if (
+              next.has(
+                fantasyTeamId
+              )
+            ) {
+              next.delete(
+                fantasyTeamId
+              );
+            } else {
+              next.add(
+                fantasyTeamId
+              );
+            }
+
+            return next;
+          }
+        );
+      },
+      []
+    );
+
 
   const selectedWeek =
     useMemo(
@@ -434,12 +531,14 @@ export default function PickemLeaguePicks({
           (week) =>
             week.id ===
             selectedWeekId
-        ) ?? null,
+        ) ??
+        null,
       [
         selectedWeekId,
         weeks,
       ]
     );
+
 
   const resultsByTeam =
     useMemo(() => {
@@ -460,78 +559,73 @@ export default function PickemLeaguePicks({
       }
 
       return map;
-    }, [results]);
+    }, [
+      results,
+    ]);
+
 
   const teamGroups =
-    useMemo<TeamGroup[]>(
-      () => {
-        const map =
-          new Map<
-            number,
-            TeamGroup
-          >();
+    useMemo<
+      TeamGroup[]
+    >(() => {
+      const map =
+        new Map<
+          number,
+          TeamGroup
+        >();
 
-        for (const row of rows) {
-          let group =
-            map.get(
-              row.fantasy_team_id
-            );
+      for (
+        const row
+        of rows
+      ) {
+        let group =
+          map.get(
+            row.fantasy_team_id
+          );
 
-          if (!group) {
-            group = {
-              fantasyTeamId:
-                row.fantasy_team_id,
-              teamName:
-                row.team_name,
-              rows:
-                [],
-            };
-
-            map.set(
+        if (
+          !group
+        ) {
+          group = {
+            fantasyTeamId:
               row.fantasy_team_id,
-              group
-            );
-          }
+            teamName:
+              row.team_name,
+            rows:
+              [],
+          };
 
-          if (
-            row.pick_id !==
-            null
-          ) {
-            group.rows.push(
-              row
-            );
-          }
+          map.set(
+            row.fantasy_team_id,
+            group
+          );
         }
 
-        return [
-          ...map.values(),
-        ]
-          .map((group) => ({
-            ...group,
-            rows: [...group.rows].sort((a, b) => {
-              const aTime = a.kickoff_at
-                ? new Date(a.kickoff_at).getTime()
-                : Number.POSITIVE_INFINITY;
-              const bTime = b.kickoff_at
-                ? new Date(b.kickoff_at).getTime()
-                : Number.POSITIVE_INFINITY;
-
-              if (aTime !== bTime) {
-                return aTime - bTime;
-              }
-
-              return (a.game_id ?? Number.MAX_SAFE_INTEGER) -
-                (b.game_id ?? Number.MAX_SAFE_INTEGER);
-            }),
-          }))
-          .sort((a, b) =>
-            a.teamName.localeCompare(
-              b.teamName
-            )
+        if (
+          row.pick_id !==
+          null
+        ) {
+          group.rows.push(
+            row
           );
-      },
-      [rows]
-    );
+        }
+      }
+
+      return [
+        ...map.values(),
+      ].sort(
+        (
+          a,
+          b
+        ) =>
+          a.teamName.localeCompare(
+            b.teamName
+          )
+      );
+    }, [
+      rows,
+    ]);
+
 
   const loadWeeks =
     useCallback(
@@ -545,7 +639,7 @@ export default function PickemLeaguePicks({
               "pickem_weeks"
             )
             .select(
-              "id,week,status,required_picks,scoring_mode"
+              "id,week,status,required_picks"
             )
             .eq(
               "league_id",
@@ -563,17 +657,23 @@ export default function PickemLeaguePicks({
               }
             );
 
-        if (error) {
+        if (
+          error
+        ) {
           throw new Error(
             error.message
           );
         }
 
         const next =
-          (data ??
-            []) as WeekRow[];
+          (
+            data ??
+            []
+          ) as WeekRow[];
 
-        setWeeks(next);
+        setWeeks(
+          next
+        );
 
         setSelectedWeekId(
           (current) => {
@@ -612,13 +712,17 @@ export default function PickemLeaguePicks({
       ]
     );
 
+
   const loadWeekData =
     useCallback(
       async (
         week:
-          WeekRow | null
+          WeekRow |
+          null
       ) => {
-        if (!week) {
+        if (
+          !week
+        ) {
           setRows([]);
           setResults([]);
           return;
@@ -630,7 +734,7 @@ export default function PickemLeaguePicks({
         ] =
           await Promise.all([
             supabase.rpc(
-              "get_pickem_league_picks_v2",
+              "get_pickem_league_picks",
               {
                 p_league_id:
                   leagueId,
@@ -677,13 +781,17 @@ export default function PickemLeaguePicks({
         }
 
         setRows(
-          (picksResult.data ??
-            []) as LeaguePickRow[]
+          (
+            picksResult.data ??
+            []
+          ) as LeaguePickRow[]
         );
 
         setResults(
-          (resultsResult.data ??
-            []) as WeeklyResultRow[]
+          (
+            resultsResult.data ??
+            []
+          ) as WeeklyResultRow[]
         );
       },
       [
@@ -693,17 +801,27 @@ export default function PickemLeaguePicks({
       ]
     );
 
+
   useEffect(() => {
-    let active = true;
+    let active =
+      true;
 
     async function run() {
-      setLoading(true);
-      setMessage("");
+      setLoading(
+        true
+      );
+      setMessage(
+        ""
+      );
 
       try {
         await loadWeeks();
-      } catch (error) {
-        if (!active) {
+      } catch (
+        error
+      ) {
+        if (
+          !active
+        ) {
           return;
         }
 
@@ -713,8 +831,12 @@ export default function PickemLeaguePicks({
             : "League Picks could not be loaded."
         );
       } finally {
-        if (active) {
-          setLoading(false);
+        if (
+          active
+        ) {
+          setLoading(
+            false
+          );
         }
       }
     }
@@ -722,24 +844,36 @@ export default function PickemLeaguePicks({
     void run();
 
     return () => {
-      active = false;
+      active =
+        false;
     };
-  }, [loadWeeks]);
+  }, [
+    loadWeeks,
+  ]);
+
 
   useEffect(() => {
-    if (loading) {
+    if (
+      loading
+    ) {
       return;
     }
 
-    let active = true;
+    let active =
+      true;
+
 
     async function run() {
       try {
         await loadWeekData(
           selectedWeek
         );
-      } catch (error) {
-        if (!active) {
+      } catch (
+        error
+      ) {
+        if (
+          !active
+        ) {
           return;
         }
 
@@ -751,29 +885,290 @@ export default function PickemLeaguePicks({
       }
     }
 
+
+    function performRefresh() {
+      if (
+        !active ||
+        document.visibilityState ===
+          "hidden"
+      ) {
+        return;
+      }
+
+
+      if (
+        realtimeRefreshBlockedRef.current
+      ) {
+        realtimeRefreshPendingRef.current =
+          true;
+
+        return;
+      }
+
+
+      realtimeRefreshBlockedRef.current =
+        true;
+
+      realtimeRefreshPendingRef.current =
+        false;
+
+      void run().finally(
+        () => {
+          window.setTimeout(
+            () => {
+              if (!active) {
+                return;
+              }
+
+              realtimeRefreshBlockedRef.current =
+                false;
+
+              if (
+                realtimeRefreshPendingRef.current
+              ) {
+                realtimeRefreshPendingRef.current =
+                  false;
+
+                performRefresh();
+              }
+            },
+            750
+          );
+        }
+      );
+    }
+
+
+    function scheduleRefresh() {
+      if (
+        !active ||
+        document.visibilityState ===
+          "hidden"
+      ) {
+        return;
+      }
+
+
+      if (
+        realtimeRefreshTimerRef.current !==
+        null
+      ) {
+        window.clearTimeout(
+          realtimeRefreshTimerRef.current
+        );
+      }
+
+
+      realtimeRefreshTimerRef.current =
+        window.setTimeout(
+          () => {
+            realtimeRefreshTimerRef.current =
+              null;
+
+            performRefresh();
+          },
+          200
+        );
+    }
+
+
     void run();
 
-    const timer =
+
+    /*
+     * Realtime keeps League Picks synchronized with My Picks:
+     *
+     * - a participant adds/removes/changes a pick
+     * - a game's live/final state changes
+     * - grading updates the weekly result
+     * - the week's lifecycle/status changes
+     *
+     * The privacy-safe RPC is re-read after each event, so hidden picks
+     * remain hidden until their individual game reaches kickoff.
+     */
+    const channel =
+      supabase
+        .channel(
+          `pickem-league-picks-${leagueId}-${season}-${selectedWeek?.id ?? "none"}`
+        )
+        .on(
+          "postgres_changes",
+          {
+            event:
+              "*",
+            schema:
+              "public",
+            table:
+              "pickem_picks",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          () => {
+            scheduleRefresh();
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event:
+              "*",
+            schema:
+              "public",
+            table:
+              "pickem_games",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          () => {
+            scheduleRefresh();
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event:
+              "*",
+            schema:
+              "public",
+            table:
+              "pickem_weekly_results",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          () => {
+            scheduleRefresh();
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event:
+              "*",
+            schema:
+              "public",
+            table:
+              "pickem_weeks",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          () => {
+            scheduleRefresh();
+          }
+        )
+        .subscribe(
+          (
+            status
+          ) => {
+            if (
+              status ===
+                "CHANNEL_ERROR"
+            ) {
+              console.error(
+                "Pick'em League Picks Realtime channel error:",
+                leagueId
+              );
+            }
+
+            if (
+              status ===
+                "TIMED_OUT"
+            ) {
+              console.error(
+                "Pick'em League Picks Realtime connection timed out:",
+                leagueId
+              );
+            }
+          }
+        );
+
+
+    /*
+     * Realtime is the fast path. A one-second visible-page sync is also
+     * intentional here so League Picks never depends on Realtime publication
+     * configuration to reflect another owner's newly submitted/changed pick.
+     */
+    const fallbackTimer =
       window.setInterval(
         () => {
-          void run();
+          performRefresh();
         },
-        10000
+        1_000
       );
 
+
+    function handleFocus() {
+      performRefresh();
+    }
+
+
+    function handleVisibilityChange() {
+      if (
+        document.visibilityState ===
+          "visible"
+      ) {
+        performRefresh();
+      }
+    }
+
+
+    window.addEventListener(
+      "focus",
+      handleFocus
+    );
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
+
+
     return () => {
-      active = false;
+      active =
+        false;
+
+      if (
+        realtimeRefreshTimerRef.current !==
+        null
+      ) {
+        window.clearTimeout(
+          realtimeRefreshTimerRef.current
+        );
+
+        realtimeRefreshTimerRef.current =
+          null;
+      }
+
       window.clearInterval(
-        timer
+        fallbackTimer
+      );
+
+      window.removeEventListener(
+        "focus",
+        handleFocus
+      );
+
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+
+      void supabase.removeChannel(
+        channel
       );
     };
   }, [
+    leagueId,
     loadWeekData,
     loading,
+    season,
     selectedWeek,
+    supabase,
   ]);
 
-  if (loading) {
+
+  if (
+    loading
+  ) {
     return (
       <main
         style={{
@@ -787,6 +1182,7 @@ export default function PickemLeaguePicks({
       </main>
     );
   }
+
 
   return (
     <main
@@ -836,7 +1232,8 @@ export default function PickemLeaguePicks({
 
         <h1
           style={{
-            margin: 0,
+            margin:
+              0,
             color:
               "#fff",
             fontSize:
@@ -848,18 +1245,20 @@ export default function PickemLeaguePicks({
 
         <p
           style={{
-            margin: 0,
+            margin:
+              0,
             maxWidth:
-              900,
+              850,
             color:
               "#a6a6ae",
             lineHeight:
               1.6,
           }}
         >
-          Picks stay hidden until their individual games kick off. Revealed picks show the frozen G365 Spread, live ATS position, scoring value, and live football situation.
+          Every participant&apos;s selections stay hidden until each individual game kicks off. As games begin, those specific picks reveal automatically with the frozen G365 Spread and live ATS position.
         </p>
       </section>
+
 
       <section
         style={{
@@ -906,7 +1305,8 @@ export default function PickemLeaguePicks({
           ) => {
             const value =
               Number(
-                event.target.value
+                event.target
+                  .value
               );
 
             setSelectedWeekId(
@@ -917,9 +1317,13 @@ export default function PickemLeaguePicks({
                 : null
             );
           }}
+          disabled={
+            weeks.length ===
+            0
+          }
           style={{
             minWidth:
-              150,
+              155,
             padding:
               "10px 12px",
             borderRadius:
@@ -934,64 +1338,58 @@ export default function PickemLeaguePicks({
               900,
           }}
         >
-          {weeks.map(
-            (week) => (
-              <option
-                key={week.id}
-                value={week.id}
-              >
-                Week {week.week}
-              </option>
+          {weeks.length ===
+          0 ? (
+            <option value="">
+              No week ready
+            </option>
+          ) : (
+            weeks.map(
+              (week) => (
+                <option
+                  key={
+                    week.id
+                  }
+                  value={
+                    week.id
+                  }
+                >
+                  Week{" "}
+                  {week.week}
+                </option>
+              )
             )
           )}
         </select>
 
         {selectedWeek ? (
-          <>
-            <span
-              style={{
-                marginLeft:
-                  "auto",
-                color:
-                  "#ff9b59",
-                fontSize:
-                  11,
-                fontWeight:
-                  1000,
-                letterSpacing:
-                  "0.06em",
-              }}
-            >
-              {scoringLabel(
-                selectedWeek.scoring_mode
-              )}
-            </span>
-
-            <span
+          <div
+            style={{
+              marginLeft:
+                "auto",
+              color:
+                "#92929b",
+              fontSize:
+                12,
+              fontWeight:
+                800,
+            }}
+          >
+            Required picks:{" "}
+            <strong
               style={{
                 color:
-                  "#92929b",
-                fontSize:
-                  12,
-                fontWeight:
-                  800,
+                  "#fff",
               }}
             >
-              Required:{" "}
-              <strong
-                style={{
-                  color:
-                    "#fff",
-                }}
-              >
-                {
-                  selectedWeek.required_picks
-                }
-              </strong>
-            </span>
-          </>
+              {
+                selectedWeek.required_picks
+              }
+            </strong>
+          </div>
         ) : null}
       </section>
+
 
       {message ? (
         <div
@@ -1012,10 +1410,17 @@ export default function PickemLeaguePicks({
         </div>
       ) : null}
 
+
       {!selectedWeek ? (
         <EmptyState
           title="The weekly card is not ready yet."
           description="League Picks will appear after a Pick'em week has been initialized."
+        />
+      ) : teamGroups.length ===
+        0 ? (
+        <EmptyState
+          title={`No Week ${selectedWeek.week} entries are available yet.`}
+          description="League participants will appear here as soon as the week and entry data are ready."
         />
       ) : (
         <section
@@ -1027,7 +1432,9 @@ export default function PickemLeaguePicks({
           }}
         >
           {teamGroups.map(
-            (group) => {
+            (
+              group
+            ) => {
               const result =
                 resultsByTeam.get(
                   group.fantasyTeamId
@@ -1047,8 +1454,8 @@ export default function PickemLeaguePicks({
                 viewerFantasyTeamId ===
                 group.fantasyTeamId;
 
-              const isExpanded =
-                expandedTeamIds.has(
+              const isCollapsed =
+                collapsedTeamIds.has(
                   group.fantasyTeamId
                 );
 
@@ -1085,23 +1492,23 @@ export default function PickemLeaguePicks({
                       padding:
                         15,
                       borderBottom:
-                        !isExpanded
-                          ? "none"
-                          : "1px solid rgba(255,255,255,0.06)",
+                        "1px solid rgba(255,255,255,0.06)",
                       background:
                         "rgba(0,0,0,0.22)",
                     }}
                   >
                     <div
                       style={{
-                        minWidth: 0,
+                        minWidth:
+                          0,
                       }}
                     >
                       <div
                         style={{
                           display:
                             "flex",
-                          gap: 8,
+                          gap:
+                            8,
                           alignItems:
                             "center",
                           flexWrap:
@@ -1110,7 +1517,8 @@ export default function PickemLeaguePicks({
                       >
                         <h2
                           style={{
-                            margin: 0,
+                            margin:
+                              0,
                             overflow:
                               "hidden",
                             textOverflow:
@@ -1123,7 +1531,9 @@ export default function PickemLeaguePicks({
                               "nowrap",
                           }}
                         >
-                          {group.teamName}
+                          {
+                            group.teamName
+                          }
                         </h2>
 
                         {isViewer ? (
@@ -1141,6 +1551,8 @@ export default function PickemLeaguePicks({
                                 10,
                               fontWeight:
                                 1000,
+                              letterSpacing:
+                                "0.08em",
                             }}
                           >
                             YOU
@@ -1150,7 +1562,8 @@ export default function PickemLeaguePicks({
 
                       <div
                         style={{
-                          marginTop: 5,
+                          marginTop:
+                            5,
                           color:
                             "#909099",
                           fontSize:
@@ -1159,56 +1572,47 @@ export default function PickemLeaguePicks({
                       >
                         {submittedCount} /{" "}
                         {selectedWeek.required_picks} picks submitted
-                        {remaining > 0
+                        {remaining >
+                        0
                           ? ` · ${remaining} remaining`
                           : " · Card complete"}
                       </div>
                     </div>
 
                     <RecordBox
-                      result={result}
+                      result={
+                        result
+                      }
                       submittedCount={
                         submittedCount
-                      }
-                      scoringMode={
-                        selectedWeek.scoring_mode
                       }
                     />
 
                     <button
                       type="button"
-                      onClick={() => {
-                        setExpandedTeamIds(
-                          (current) => {
-                            const next =
-                              new Set(
-                                current
-                              );
-
-                            if (
-                              next.has(
-                                group.fantasyTeamId
-                              )
-                            ) {
-                              next.delete(
-                                group.fantasyTeamId
-                              );
-                            } else {
-                              next.add(
-                                group.fantasyTeamId
-                              );
-                            }
-
-                            return next;
-                          }
-                        );
-                      }}
+                      onClick={() =>
+                        toggleTeamCollapsed(
+                          group.fantasyTeamId
+                        )
+                      }
                       aria-expanded={
-                        isExpanded
+                        !isCollapsed
+                      }
+                      aria-label={
+                        isCollapsed
+                          ? `Expand ${group.teamName}`
+                          : `Minimize ${group.teamName}`
+                      }
+                      title={
+                        isCollapsed
+                          ? "Open team picks"
+                          : "Minimize team picks"
                       }
                       style={{
-                        width: 38,
-                        height: 38,
+                        width:
+                          38,
+                        height:
+                          38,
                         display:
                           "inline-flex",
                         alignItems:
@@ -1220,34 +1624,39 @@ export default function PickemLeaguePicks({
                         border:
                           "1px solid rgba(255,118,39,0.28)",
                         background:
-                          !isExpanded
+                          isCollapsed
                             ? "rgba(255,108,33,0.12)"
                             : "rgba(255,255,255,0.035)",
                         color:
-                          !isExpanded
+                          isCollapsed
                             ? "#ff9b59"
                             : "#d4d4d8",
                         fontSize:
                           20,
                         fontWeight:
                           1000,
+                        lineHeight:
+                          1,
                         cursor:
                           "pointer",
                       }}
                     >
-                      {isExpanded
-                        ? "−"
-                        : "+"}
+                      {isCollapsed
+                        ? "+"
+                        : "−"}
                     </button>
                   </div>
 
-                  {isExpanded ? (
+
+                  {!isCollapsed ? (
                     <div
                       style={{
                         display:
                           "grid",
-                        gap: 9,
-                        padding: 13,
+                        gap:
+                          9,
+                        padding:
+                          13,
                       }}
                     >
                       {group.rows.length ===
@@ -1279,12 +1688,12 @@ export default function PickemLeaguePicks({
                                 row.pick_id ??
                                 `${group.fantasyTeamId}-${index}`
                               }
-                              row={row}
-                              pickNumber={
-                                index + 1
+                              row={
+                                row
                               }
-                              scoringMode={
-                                selectedWeek.scoring_mode
+                              pickNumber={
+                                index +
+                                1
                               }
                             />
                           )
@@ -1306,80 +1715,119 @@ export default function PickemLeaguePicks({
 function RecordBox({
   result,
   submittedCount,
-  scoringMode,
 }: {
   result:
-    WeeklyResultRow | undefined;
-  submittedCount: number;
-  scoringMode: ScoringMode;
+    WeeklyResultRow |
+    undefined;
+  submittedCount:
+    number;
 }) {
-  const record =
-    result
-      ? `${result.wins}-${result.losses}${result.pushes ? `-${result.pushes}` : ""}`
-      : "0-0";
+  if (
+    !result
+  ) {
+    return (
+      <div
+        style={{
+          textAlign:
+            "right",
+        }}
+      >
+        <div
+          style={{
+            color:
+              "#fff",
+            fontSize:
+              18,
+            fontWeight:
+              1000,
+          }}
+        >
+          0-0
+        </div>
 
-  const points =
-    result
-      ? numberValue(
-          result.points
-        ) ?? 0
-      : 0;
+        <div
+          style={{
+            marginTop:
+              3,
+            color:
+              "#777780",
+            fontSize:
+              10,
+            fontWeight:
+              900,
+            letterSpacing:
+              "0.06em",
+          }}
+        >
+          {submittedCount >
+          0
+            ? "PENDING"
+            : "NO PICKS"}
+        </div>
+      </div>
+    );
+  }
+
+  const remaining =
+    Math.max(
+      result.pending,
+      0
+    );
 
   return (
     <div
       style={{
         textAlign:
           "right",
-        minWidth: 92,
       }}
     >
       <div
         style={{
-          color: "#fff",
-          fontSize: 18,
-          fontWeight: 1000,
+          color:
+            "#fff",
+          fontSize:
+            18,
+          fontWeight:
+            1000,
+          whiteSpace:
+            "nowrap",
         }}
       >
-        {record}
+        {result.wins}-
+        {result.losses}
+        {result.pushes >
+        0
+          ? `-${result.pushes}`
+          : ""}
       </div>
 
       <div
         style={{
-          marginTop: 3,
+          marginTop:
+            3,
           color:
-            result?.is_final
+            result.is_final
               ? "#55df8a"
-              : "#8d8d96",
-          fontSize: 10,
-          fontWeight: 900,
+              : "#92929b",
+          fontSize:
+            10,
+          fontWeight:
+            900,
           letterSpacing:
             "0.05em",
+          whiteSpace:
+            "nowrap",
         }}
       >
-        {result?.is_final
-          ? "FINAL"
-          : submittedCount > 0
-            ? "AWAITING WEEK FINAL"
-            : "NO PICKS"}
+        {result.is_final
+          ? result.weekly_rank
+            ? `FINAL · #${result.weekly_rank}`
+            : "FINAL"
+          : remaining >
+              0
+            ? `${remaining} REMAINING`
+            : "AWAITING WEEK FINAL"}
       </div>
-
-      {usesPoints(
-        scoringMode
-      ) ? (
-        <div
-          style={{
-            marginTop: 5,
-            color:
-              "#ffb16f",
-            fontSize: 12,
-            fontWeight: 1000,
-          }}
-        >
-          {formatNumber(
-            points
-          )} PTS
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -1388,13 +1836,15 @@ function RecordBox({
 function PickRow({
   row,
   pickNumber,
-  scoringMode,
 }: {
-  row: LeaguePickRow;
-  pickNumber: number;
-  scoringMode: ScoringMode;
+  row:
+    LeaguePickRow;
+  pickNumber:
+    number;
 }) {
-  if (!row.pick_visible) {
+  if (
+    !row.pick_visible
+  ) {
     return (
       <div
         style={{
@@ -1402,13 +1852,16 @@ function PickRow({
             "grid",
           gridTemplateColumns:
             "32px minmax(0,1fr)",
-          gap: 10,
+          gap:
+            10,
           alignItems:
             "center",
-          minHeight: 58,
+          minHeight:
+            58,
           padding:
             "10px 12px",
-          borderRadius: 11,
+          borderRadius:
+            11,
           border:
             "1px solid rgba(255,255,255,0.06)",
           background:
@@ -1416,15 +1869,19 @@ function PickRow({
         }}
       >
         <PickNumber
-          value={pickNumber}
+          value={
+            pickNumber
+          }
         />
 
         <div
           style={{
             color:
               "#a0a0a9",
-            fontSize: 13,
-            fontWeight: 800,
+            fontSize:
+              13,
+            fontWeight:
+              800,
           }}
         >
           🔒 Pick Hidden Until Kickoff
@@ -1434,23 +1891,14 @@ function PickRow({
   }
 
   const spread =
-    pickSpread(row);
+    pickSpread(
+      row
+    );
 
   const ats =
-    currentAtsState(row);
-
-  const confidence =
-    numberValue(
-      row.confidence_value
+    currentAtsState(
+      row
     );
-
-  const points =
-    numberValue(
-      row.points_awarded
-    );
-
-  const situation =
-    liveSituationText(row);
 
   return (
     <div
@@ -1459,13 +1907,16 @@ function PickRow({
           "grid",
         gridTemplateColumns:
           "32px minmax(0,1fr) auto",
-        gap: 10,
+        gap:
+          10,
         alignItems:
           "center",
-        minHeight: 72,
+        minHeight:
+          68,
         padding:
           "10px 12px",
-        borderRadius: 11,
+        borderRadius:
+          11,
         border:
           "1px solid rgba(255,108,33,0.13)",
         background:
@@ -1473,19 +1924,23 @@ function PickRow({
       }}
     >
       <PickNumber
-        value={pickNumber}
+        value={
+          pickNumber
+        }
       />
 
       <div
         style={{
-          minWidth: 0,
+          minWidth:
+            0,
         }}
       >
         <div
           style={{
             display:
               "flex",
-            gap: 7,
+            gap:
+              7,
             alignItems:
               "center",
             flexWrap:
@@ -1497,8 +1952,10 @@ function PickRow({
               style={{
                 color:
                   "#ff9b59",
-                fontSize: 9,
-                fontWeight: 1000,
+                fontSize:
+                  9,
+                fontWeight:
+                  1000,
                 letterSpacing:
                   "0.08em",
               }}
@@ -1509,41 +1966,36 @@ function PickRow({
             </span>
           ) : null}
 
-          <span
-            style={{
-              color:
-                row.is_final
-                  ? "#b6b6be"
-                  : "#fff",
-              fontSize: 10,
-              fontWeight: 900,
-            }}
-          >
-            {row.is_final
-              ? "FINAL"
-              : liveLabel(row)}
-          </span>
-
-          {scoringMode ===
-            "confidence" &&
-          confidence !==
-            null ? (
+          {row.is_final ? (
             <span
               style={{
-                padding:
-                  "2px 6px",
-                borderRadius: 999,
-                background:
-                  "rgba(255,160,65,0.12)",
                 color:
-                  "#ffc06f",
-                fontSize: 9,
-                fontWeight: 1000,
+                  "#b6b6be",
+                fontSize:
+                  10,
+                fontWeight:
+                  900,
               }}
             >
-              CONF{" "}
-              {formatNumber(
-                confidence
+              FINAL
+            </span>
+          ) : row.kickoff_at &&
+            new Date(
+              row.kickoff_at
+            ).getTime() <=
+              Date.now() ? (
+            <span
+              style={{
+                color:
+                  "#fff",
+                fontSize:
+                  10,
+                fontWeight:
+                  900,
+              }}
+            >
+              {liveLabel(
+                row
               )}
             </span>
           ) : null}
@@ -1551,14 +2003,18 @@ function PickRow({
 
         <div
           style={{
-            marginTop: 4,
+            marginTop:
+              4,
             overflow:
               "hidden",
             textOverflow:
               "ellipsis",
-            color: "#fff",
-            fontSize: 14,
-            fontWeight: 950,
+            color:
+              "#fff",
+            fontSize:
+              14,
+            fontWeight:
+              950,
             whiteSpace:
               "nowrap",
           }}
@@ -1566,99 +2022,77 @@ function PickRow({
           {pickTeamName(
             row
           )}{" "}
-          {spread !== null
+          {spread !==
+          null
             ? formatSpread(
                 spread
               )
             : ""}
         </div>
 
-        {row.away_score !==
-          null &&
-        row.home_score !==
-          null ? (
-          <div
-            style={{
-              marginTop: 4,
-              color:
-                "#aaaab2",
-              fontSize: 11,
-              fontWeight: 800,
-            }}
-          >
-            {row.away_team_name}{" "}
-            {row.away_score} @{" "}
-            {row.home_team_name}{" "}
-            {row.home_score}
-          </div>
-        ) : null}
-
-        {situation ? (
-          <div
-            style={{
-              marginTop: 5,
-              color:
-                row.is_red_zone
-                  ? "#ffb45f"
-                  : "#d7d7dd",
-              fontSize: 11,
-              fontWeight: 900,
-            }}
-          >
-            {situation}
-            {row.is_red_zone
-              ? " · RED ZONE"
-              : ""}
-          </div>
-        ) : null}
+        <div
+          style={{
+            marginTop:
+              3,
+            color:
+              "#85858e",
+            fontSize:
+              11,
+          }}
+        >
+          {row.away_team_name ??
+          "Away"}{" "}
+          {row.away_score !==
+          null
+            ? row.away_score
+            : ""}
+          {" @ "}
+          {row.home_team_name ??
+          "Home"}{" "}
+          {row.home_score !==
+          null
+            ? row.home_score
+            : ""}
+          {row.kickoff_at &&
+          !row.is_final &&
+          new Date(
+            row.kickoff_at
+          ).getTime() >
+            Date.now()
+            ? ` · ${formatKickoff(
+                row.kickoff_at
+              )}`
+            : ""}
+        </div>
       </div>
 
       <div
         style={{
-          display: "grid",
-          gap: 5,
-          justifyItems:
-            "end",
+          minWidth:
+            96,
+          textAlign:
+            "right",
         }}
       >
-        {ats ? (
-          <div
-            style={{
-              color:
-                toneColor(
-                  ats.tone
-                ),
-              fontSize: 11,
-              fontWeight: 1000,
-              textAlign: "right",
-            }}
-          >
-            {ats.text}
-          </div>
-        ) : null}
-
-        {usesPoints(
-          scoringMode
-        ) &&
-        points !== null ? (
-          <div
-            style={{
-              color:
-                points > 0
-                  ? "#55df8a"
-                  : "#aaaab2",
-              fontSize: 11,
-              fontWeight: 1000,
-            }}
-          >
-            {points > 0
-              ? "+"
-              : ""}
-            {formatNumber(
-              points
-            )} PTS
-          </div>
-        ) : null}
+        <div
+          style={{
+            color:
+              ats
+                ? toneColor(
+                    ats.tone
+                  )
+                : "#9999a2",
+            fontSize:
+              11,
+            fontWeight:
+              1000,
+            lineHeight:
+              1.3,
+          }}
+        >
+          {ats?.text ??
+            "PENDING"}
+        </div>
       </div>
     </div>
   );
@@ -1668,24 +2102,30 @@ function PickRow({
 function PickNumber({
   value,
 }: {
-  value: number;
+  value:
+    number;
 }) {
   return (
     <div
       style={{
-        width: 28,
-        height: 28,
         display:
           "grid",
         placeItems:
           "center",
-        borderRadius: 8,
+        width:
+          30,
+        height:
+          30,
+        borderRadius:
+          9,
         background:
-          "rgba(255,108,33,0.12)",
+          "linear-gradient(135deg, #9d1119, #f26722)",
         color:
-          "#ff9b59",
-        fontSize: 11,
-        fontWeight: 1000,
+          "#fff",
+        fontSize:
+          12,
+        fontWeight:
+          1000,
       }}
     >
       {value}
@@ -1698,39 +2138,49 @@ function EmptyState({
   title,
   description,
 }: {
-  title: string;
-  description: string;
+  title:
+    string;
+  description:
+    string;
 }) {
   return (
     <section
       style={{
-        padding: 24,
-        borderRadius: 16,
+        padding:
+          22,
+        borderRadius:
+          16,
         border:
-          "1px solid rgba(255,255,255,0.08)",
+          "1px solid rgba(255,102,0,0.20)",
         background:
-          "#101014",
+          "linear-gradient(135deg, rgba(88,8,12,0.25), #111115 55%)",
       }}
     >
-      <div
+      <h2
         style={{
-          color: "#fff",
-          fontWeight: 1000,
+          margin:
+            "0 0 8px",
+          color:
+            "#fff",
+          fontSize:
+            22,
         }}
       >
         {title}
-      </div>
+      </h2>
 
-      <div
+      <p
         style={{
-          marginTop: 6,
+          margin:
+            0,
           color:
-            "#92929b",
-          lineHeight: 1.5,
+            "#9b9ba4",
+          lineHeight:
+            1.6,
         }}
       >
         {description}
-      </div>
+      </p>
     </section>
   );
 }

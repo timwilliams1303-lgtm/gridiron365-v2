@@ -17,6 +17,8 @@ import {
   type SeasonLongLiveLineupPlayer,
 } from "@/lib/season-long/team-live-lineup.service";
 
+import SeasonLongLeagueTeamsRealtime from "@/components/season-long/SeasonLongLeagueTeamsRealtime";
+
 
 type PageProps = {
   params:
@@ -960,6 +962,12 @@ export default async function SeasonLongLeagueTeamsPage({
         styles.page
       }
     >
+      <SeasonLongLeagueTeamsRealtime
+        leagueId={leagueId}
+        season={season}
+        week={selectedWeek}
+        enabled={selectedWeekIsActive}
+      />
       <section
         style={
           styles.hero
