@@ -137,65 +137,23 @@ type NflPlayerRow = {
   primary_position:
     string | null;
 
-  team_abbreviation:
+  position:
     string | null;
-
-  status:
-    string | null;
-
-  is_active:
-    boolean | null;
-};
-
-
-type WeeklyProjectionRow = {
-  player_id:
-    number;
 
   team_abbreviation:
     string | null;
 
-  opponent_abbreviation:
+  injury_status:
     string | null;
 
-  home_or_away:
-    string | null;
-
-  kickoff_at:
-    string | null;
-
-  is_bye:
-    boolean | null;
+  bye_week:
+    number | null;
 
   projected_points:
     number | string | null;
 
-  matchup_multiplier:
-    number | string | null;
-
-  calculation_details:
-    Record<string, unknown> | null;
-};
-
-
-type InjuryRow = {
-  nfl_player_id:
-    number;
-
-  status:
-    string | null;
-
-  injury_type:
-    string | null;
-
-  injury_location:
-    string | null;
-
-  injury_detail:
-    string | null;
-
-  return_date:
-    string | null;
+  is_active:
+    boolean | null;
 };
 
 
@@ -237,6 +195,23 @@ export default async function SeasonLongEntryPage({
   if (
     access.league.leagueType !==
     "season_long"
+  ) {
+    redirect(
+      `/league/${leagueId}`
+    );
+  }
+
+
+  const playerSelectionMode =
+    access.league
+      .playerSelectionMode;
+
+
+  if (
+    playerSelectionMode !==
+      "salary" &&
+    playerSelectionMode !==
+      "no_salary"
   ) {
     redirect(
       `/league/${leagueId}`
@@ -313,61 +288,13 @@ export default async function SeasonLongEntryPage({
 
 
   /*
-   * ============================================================
-   * ACTIVE SEASON-LONG WEEK
-   * ============================================================
+   * The lifecycle creates one entry row per team/week.
    *
-   * Future weeks can be prepared ahead of time by the lifecycle.
-   * The entry page must therefore NOT use the latest prepared
-   * season_long_weekly_entries row as the active week.
-   *
-   * get_active_season_long_week() resolves the earliest unfinished
-   * NFL regular-season week, which keeps Salary and No-Salary leagues
-   * on Week 1 until the real Week 1 schedule is complete.
+   * Until the lifecycle is connected to the page, the latest
+   * prepared entry is the safest source for the active week.
+   * New leagues fall back to Week 1.
    */
-  const activeWeekResult =
-    await supabase.rpc(
-      "get_active_season_long_week",
-      {
-        p_season:
-          season,
-      }
-    );
-
-
-  if (
-    activeWeekResult.error
-  ) {
-    throw new Error(
-      activeWeekResult
-        .error
-        .message
-    );
-  }
-
-
-  const resolvedActiveWeek =
-    Number(
-      activeWeekResult.data
-    );
-
-
-  const currentWeek =
-    Number.isFinite(
-      resolvedActiveWeek
-    ) &&
-    resolvedActiveWeek >= 1 &&
-    resolvedActiveWeek <= 18
-      ? resolvedActiveWeek
-      : 1;
-
-
-  /*
-   * Load this team's entry for the resolved active week.
-   * Future prepared entry rows remain in the database but cannot
-   * advance the page early.
-   */
-  const currentEntryResult =
+  const latestEntryResult =
     await supabase
       .from(
         "season_long_weekly_entries"
@@ -391,18 +318,24 @@ export default async function SeasonLongEntryPage({
         "season",
         season
       )
-      .eq(
+      .order(
         "week",
-        currentWeek
+        {
+          ascending:
+            false,
+        }
+      )
+      .limit(
+        1
       )
       .maybeSingle();
 
 
   if (
-    currentEntryResult.error
+    latestEntryResult.error
   ) {
     throw new Error(
-      currentEntryResult
+      latestEntryResult
         .error
         .message
     );
@@ -410,8 +343,14 @@ export default async function SeasonLongEntryPage({
 
 
   const currentEntry =
-    currentEntryResult
+    latestEntryResult
       .data as WeeklyEntryRow | null;
+
+
+  const currentWeek =
+    currentEntry
+      ?.week ??
+    1;
 
 
   /*
@@ -513,8 +452,7 @@ export default async function SeasonLongEntryPage({
 
 
   const isSalary =
-    access.league
-      .playerSelectionMode ===
+    playerSelectionMode ===
     "salary";
 
 
@@ -633,8 +571,11 @@ export default async function SeasonLongEntryPage({
           id,
           full_name,
           primary_position,
+          position,
           team_abbreviation,
-          status,
+          injury_status,
+          bye_week,
+          projected_points,
           is_active
         `)
         .in(
@@ -674,8 +615,11 @@ export default async function SeasonLongEntryPage({
           id,
           full_name,
           primary_position,
+          position,
           team_abbreviation,
-          status,
+          injury_status,
+          bye_week,
+          projected_points,
           is_active
         `)
         .eq(
@@ -695,10 +639,12 @@ export default async function SeasonLongEntryPage({
           ]
         )
         .order(
-          "full_name",
+          "projected_points",
           {
             ascending:
-              true,
+              false,
+            nullsFirst:
+              false,
           }
         )
         .limit(
@@ -776,8 +722,11 @@ export default async function SeasonLongEntryPage({
           id,
           full_name,
           primary_position,
+          position,
           team_abbreviation,
-          status,
+          injury_status,
+          bye_week,
+          projected_points,
           is_active
         `)
         .in(
@@ -816,388 +765,6 @@ export default async function SeasonLongEntryPage({
   }
 
 
-  /*
-   * ============================================================
-   * WEEK-SPECIFIC PLAYER CONTEXT
-   * ============================================================
-   *
-   * Season-Long should show the matchup for the CURRENT fantasy
-   * week, not a generic team label.  The weekly projection table
-   * already carries opponent, home/away, kickoff and bye context.
-   */
-  const weeklyProjectionResult =
-    await supabase
-      .from(
-        "weekly_player_projections"
-      )
-      .select(`
-        player_id,
-        team_abbreviation,
-        opponent_abbreviation,
-        home_or_away,
-        kickoff_at,
-        is_bye,
-        projected_points,
-        matchup_multiplier,
-        calculation_details
-      `)
-      .eq(
-        "league_id",
-        leagueId
-      )
-      .eq(
-        "season",
-        season
-      )
-      .eq(
-        "season_type",
-        2
-      )
-      .eq(
-        "week",
-        currentWeek
-      );
-
-
-  if (
-    weeklyProjectionResult.error
-  ) {
-    throw new Error(
-      weeklyProjectionResult
-        .error
-        .message
-    );
-  }
-
-
-  const weeklyProjectionRows =
-    (
-      weeklyProjectionResult.data ??
-      []
-    ) as WeeklyProjectionRow[];
-
-
-  const weeklyProjectionMap =
-    new Map<
-      number,
-      WeeklyProjectionRow
-    >(
-      weeklyProjectionRows.map(
-        (
-          row
-        ) => [
-          row.player_id,
-          row,
-        ]
-      )
-    );
-
-
-
-
-  /*
-   * ============================================================
-   * POSITION-SPECIFIC MATCHUP RANKS
-   * ============================================================
-   *
-   * weekly_player_projections already stores the opponent-strength
-   * matchup multiplier.  Lower multipliers are tougher defenses;
-   * higher multipliers are friendlier matchups.  Rank #1 therefore
-   * means the toughest opponent for that fantasy position.
-   *
-   * If the projection engine has only neutral 1.0000 multipliers,
-   * we deliberately return no rank instead of inventing one.
-   */
-  const normalizeMatchupPosition = (
-    value: string | null | undefined
-  ) => {
-    const normalized =
-      (value ?? "").toUpperCase();
-
-    return normalized === "PK"
-      ? "K"
-      : normalized;
-  };
-
-
-  const playerPositionMap =
-    new Map<number, string>(
-      players.map((player) => [
-        player.id,
-        normalizeMatchupPosition(
-          player.primary_position
-        ),
-      ])
-    );
-
-
-  const matchupBuckets =
-    new Map<
-      string,
-      Map<
-        string,
-        number[]
-      >
-    >();
-
-
-  for (const row of weeklyProjectionRows) {
-    const position =
-      playerPositionMap.get(
-        row.player_id
-      ) ?? "";
-
-    const opponent =
-      (row.opponent_abbreviation ?? "")
-        .toUpperCase();
-
-    const multiplier =
-      toNumber(
-        row.matchup_multiplier
-      );
-
-    if (
-      !position ||
-      !opponent ||
-      row.is_bye
-    ) {
-      continue;
-    }
-
-    if (!matchupBuckets.has(position)) {
-      matchupBuckets.set(
-        position,
-        new Map()
-      );
-    }
-
-    const opponentMap =
-      matchupBuckets.get(position)!;
-
-    const values =
-      opponentMap.get(opponent) ?? [];
-
-    values.push(multiplier);
-    opponentMap.set(
-      opponent,
-      values
-    );
-  }
-
-
-  const matchupRankMap =
-    new Map<string, number>();
-
-
-  for (const [
-    position,
-    opponentMap,
-  ] of matchupBuckets) {
-    const scored =
-      Array.from(
-        opponentMap.entries()
-      ).map(([opponent, values]) => ({
-        opponent,
-        value:
-          values.reduce(
-            (sum, current) =>
-              sum + current,
-            0
-          ) / values.length,
-      }));
-
-    if (scored.length < 2) {
-      continue;
-    }
-
-    const minValue =
-      Math.min(
-        ...scored.map(
-          (item) => item.value
-        )
-      );
-
-    const maxValue =
-      Math.max(
-        ...scored.map(
-          (item) => item.value
-        )
-      );
-
-    // All-neutral multipliers do not contain real matchup information.
-    if (
-      Math.abs(
-        maxValue - minValue
-      ) < 0.0001
-    ) {
-      continue;
-    }
-
-    scored
-      .sort(
-        (a, b) =>
-          a.value - b.value ||
-          a.opponent.localeCompare(
-            b.opponent
-          )
-      )
-      .forEach((item, index) => {
-        matchupRankMap.set(
-          `${position}:${item.opponent}`,
-          index + 1
-        );
-      });
-  }
-
-
-  const getStoredMatchupRank = (
-    playerId: number
-  ) => {
-    const row =
-      weeklyProjectionMap.get(
-        playerId
-      );
-
-    const details =
-      row?.calculation_details;
-
-    if (
-      !details ||
-      typeof details !== "object"
-    ) {
-      return null;
-    }
-
-    const rawRank =
-      (details as Record<string, unknown>)[
-        "matchupRank"
-      ];
-
-    const rank = Number(rawRank);
-
-    return Number.isFinite(rank) &&
-      rank >= 1 &&
-      rank <= 32
-      ? Math.trunc(rank)
-      : null;
-  };
-
-
-  const getMatchupRank = (
-    playerId: number,
-    opponent: string | null | undefined
-  ) => {
-    const storedRank =
-      getStoredMatchupRank(
-        playerId
-      );
-
-    if (storedRank !== null) {
-      return storedRank;
-    }
-    if (!opponent) {
-      return null;
-    }
-
-    const position =
-      playerPositionMap.get(
-        playerId
-      ) ?? "";
-
-    return matchupRankMap.get(
-      `${position}:${opponent.toUpperCase()}`
-    ) ?? null;
-  };
-
-
-  /*
-   * ESPN-synced injury designations live in nfl_player_injuries.
-   * This is more useful than the generic nfl_players.status value
-   * because it includes the actual designation and injury detail.
-   */
-  const injuryPlayerIds =
-    Array.from(
-      new Set(
-        players.map(
-          (
-            player
-          ) =>
-            player.id
-        )
-      )
-    );
-
-
-  let injuryRows:
-    InjuryRow[] = [];
-
-
-  if (
-    injuryPlayerIds.length >
-      0
-  ) {
-    const injuryResult =
-      await supabase
-        .from(
-          "nfl_player_injuries"
-        )
-        .select(`
-          nfl_player_id,
-          status,
-          injury_type,
-          injury_location,
-          injury_detail,
-          return_date
-        `)
-        .eq(
-          "season",
-          season
-        )
-        .eq(
-          "is_active",
-          true
-        )
-        .in(
-          "nfl_player_id",
-          injuryPlayerIds
-        );
-
-
-    if (
-      injuryResult.error
-    ) {
-      throw new Error(
-        injuryResult
-          .error
-          .message
-      );
-    }
-
-
-    injuryRows =
-      (
-        injuryResult.data ??
-        []
-      ) as InjuryRow[];
-  }
-
-
-  const injuryMap =
-    new Map<
-      number,
-      InjuryRow
-    >(
-      injuryRows.map(
-        (
-          row
-        ) => [
-          row.nfl_player_id,
-          row,
-        ]
-      )
-    );
-
-
   const lineupForClient =
     lineup.map(
       (
@@ -1205,16 +772,6 @@ export default async function SeasonLongEntryPage({
       ) => {
         const player =
           playerMap.get(
-            row.player_id
-          );
-
-        const weeklyProjection =
-          weeklyProjectionMap.get(
-            row.player_id
-          );
-
-        const injury =
-          injuryMap.get(
             row.player_id
           );
 
@@ -1232,6 +789,8 @@ export default async function SeasonLongEntryPage({
             (
               player
                 ?.primary_position ??
+              player
+                ?.position ??
               ""
             ).toUpperCase(),
 
@@ -1241,29 +800,14 @@ export default async function SeasonLongEntryPage({
             null,
 
           injuryStatus:
-            injury
-              ?.status ??
             player
-              ?.status ??
-            null,
-
-          injuryType:
-            injury
-              ?.injury_type ??
-            injury
-              ?.injury_location ??
-            null,
-
-          injuryDetail:
-            injury
-              ?.injury_detail ??
+              ?.injury_status ??
             null,
 
           byeWeek:
-            weeklyProjection
-              ?.is_bye
-              ? currentWeek
-              : null,
+            player
+              ?.bye_week ??
+            null,
 
           lineupSlot:
             row.lineup_slot,
@@ -1296,30 +840,13 @@ export default async function SeasonLongEntryPage({
             row.nfl_game_id,
 
           gameStartAt:
-            row.game_start_at ??
-            weeklyProjection
-              ?.kickoff_at ??
-            null,
+            row.game_start_at,
 
           opponentAbbreviation:
-            row.opponent_abbreviation ??
-            weeklyProjection
-              ?.opponent_abbreviation ??
-            null,
+            row.opponent_abbreviation,
 
           homeOrAway:
-            row.home_or_away ??
-            weeklyProjection
-              ?.home_or_away ??
-            null,
-
-          matchupRank:
-            getMatchupRank(
-              row.player_id,
-              row.opponent_abbreviation ??
-              weeklyProjection
-                ?.opponent_abbreviation
-            ),
+            row.home_or_away,
         };
       }
     );
@@ -1334,6 +861,7 @@ export default async function SeasonLongEntryPage({
           const position =
             (
               player.primary_position ??
+              player.position ??
               ""
             ).toUpperCase();
 
@@ -1359,16 +887,6 @@ export default async function SeasonLongEntryPage({
               player.id
             );
 
-          const weeklyProjection =
-            weeklyProjectionMap.get(
-              player.id
-            );
-
-          const injury =
-            injuryMap.get(
-              player.id
-            );
-
           return {
             id:
               player.id,
@@ -1379,6 +897,7 @@ export default async function SeasonLongEntryPage({
             position:
               (
                 player.primary_position ??
+                player.position ??
                 ""
               ).toUpperCase(),
 
@@ -1386,55 +905,10 @@ export default async function SeasonLongEntryPage({
               player.team_abbreviation,
 
             injuryStatus:
-              injury
-                ?.status ??
-              player.status,
-
-            injuryType:
-              injury
-                ?.injury_type ??
-              injury
-                ?.injury_location ??
-              null,
-
-            injuryDetail:
-              injury
-                ?.injury_detail ??
-              null,
-
-            opponentAbbreviation:
-              weeklyProjection
-                ?.opponent_abbreviation ??
-              null,
-
-            homeOrAway:
-              weeklyProjection
-                ?.home_or_away ??
-              null,
-
-            matchupRank:
-              getMatchupRank(
-                player.id,
-                weeklyProjection
-                  ?.opponent_abbreviation
-              ),
-
-            gameStartAt:
-              weeklyProjection
-                ?.kickoff_at ??
-              null,
-
-            isBye:
-              Boolean(
-                weeklyProjection
-                  ?.is_bye
-              ),
+              player.injury_status,
 
             byeWeek:
-              weeklyProjection
-                ?.is_bye
-                ? currentWeek
-                : null,
+              player.bye_week,
 
             salary:
               isSalary
@@ -1445,12 +919,14 @@ export default async function SeasonLongEntryPage({
                 : null,
 
             projectedPoints:
-              toNumber(
-                weeklyProjection
-                  ?.projected_points ??
-                salary
-                  ?.projected_points
-              ),
+              isSalary
+                ? toNumber(
+                    salary
+                      ?.projected_points
+                  )
+                : toNumber(
+                    player.projected_points
+                  ),
 
             salaryChange:
               isSalary
@@ -1518,8 +994,7 @@ export default async function SeasonLongEntryPage({
         currentWeek
       }
       playerSelectionMode={
-        access.league
-          .playerSelectionMode
+        playerSelectionMode
       }
       settings={{
         weeklySalaryCap:
