@@ -23,6 +23,18 @@ type Props = {
 type TeamRow = {
   id: number;
   team_name: string;
+  pickem_franchise_id:
+    string | null;
+};
+
+
+type HistoryLeagueRow = {
+  id: string;
+  season: number;
+  name: string;
+  status: string;
+  pickem_history_id:
+    string | null;
 };
 
 
@@ -81,6 +93,15 @@ type BadgeRow = {
     null;
   created_at: string;
 };
+
+type HistoryBadgeRow =
+  BadgeRow & {
+    league_id: string;
+    franchise_id:
+      string | null;
+    team_name: string;
+  };
+
 
 
 function n(
@@ -237,6 +258,40 @@ export default function PickemRecap({
       BadgeRow[]
     >([]);
 
+
+  const [
+    historyBadges,
+    setHistoryBadges,
+  ] =
+    useState<
+      HistoryBadgeRow[]
+    >([]);
+
+  const [
+    historyLeagues,
+    setHistoryLeagues,
+  ] =
+    useState<
+      HistoryLeagueRow[]
+    >([]);
+
+  const [
+    selectedSeason,
+    setSelectedSeason,
+  ] =
+    useState(
+      season
+    );
+
+  const [
+    viewerFranchiseId,
+    setViewerFranchiseId,
+  ] =
+    useState<
+      string |
+      null
+    >(null);
+
   const [
     selectedWeekId,
     setSelectedWeekId,
@@ -245,6 +300,58 @@ export default function PickemRecap({
       number |
       null
     >(null);
+
+
+  const selectedHistoryLeague =
+    useMemo(
+      () =>
+        historyLeagues.find(
+          (
+            item
+          ) =>
+            item.season ===
+            selectedSeason
+        ) ??
+        historyLeagues.find(
+          (
+            item
+          ) =>
+            item.id ===
+            leagueId
+        ) ??
+        null,
+      [
+        historyLeagues,
+        leagueId,
+        selectedSeason,
+      ]
+    );
+
+
+  const historicalViewerTeamId =
+    useMemo(
+      () =>
+        viewerFranchiseId
+          ? teams.find(
+              (
+                team
+              ) =>
+                team.pickem_franchise_id ===
+                viewerFranchiseId
+            )?.id ??
+            null
+          : selectedSeason ===
+              season
+            ? viewerFantasyTeamId
+            : null,
+      [
+        season,
+        selectedSeason,
+        teams,
+        viewerFantasyTeamId,
+        viewerFranchiseId,
+      ]
+    );
 
 
   const teamMap =
@@ -362,49 +469,83 @@ export default function PickemRecap({
 
   const trophyTeams =
     useMemo(
-      () =>
-        teams
-          .map(
-            (
-              team
-            ) => {
-              const earned =
-                badges.filter(
-                  (
-                    badge
-                  ) =>
-                    badge.fantasy_team_id ===
-                    team.id
-                );
-
-              return {
-                team,
-                badges:
-                  earned,
-              };
+      () => {
+        const grouped =
+          new Map<
+            string,
+            {
+              franchiseId:
+                string;
+              teamName:
+                string;
+              badges:
+                HistoryBadgeRow[];
             }
-          )
-          .filter(
-            (
-              row
-            ) =>
-              row.badges.length >
-              0
-          )
-          .sort(
-            (
-              a,
-              b
-            ) =>
-              b.badges.length -
-                a.badges.length ||
-              a.team.team_name.localeCompare(
-                b.team.team_name
+          >();
+
+        for (
+          const badge
+          of historyBadges
+        ) {
+          const franchiseId =
+            badge.franchise_id ??
+            `legacy-team-${badge.fantasy_team_id}`;
+
+          const existing =
+            grouped.get(
+              franchiseId
+            );
+
+          if (
+            existing
+          ) {
+            existing.badges.push(
+              badge
+            );
+
+            if (
+              badge.season ===
+              Math.max(
+                ...existing.badges.map(
+                  (row) =>
+                    row.season
+                )
               )
-          ),
+            ) {
+              existing.teamName =
+                badge.team_name;
+            }
+          } else {
+            grouped.set(
+              franchiseId,
+              {
+                franchiseId,
+                teamName:
+                  badge.team_name,
+                badges: [
+                  badge,
+                ],
+              }
+            );
+          }
+        }
+
+        return Array.from(
+          grouped.values()
+        ).sort(
+          (
+            a,
+            b
+          ) =>
+            b.badges.length -
+              a.badges.length ||
+            a.teamName.localeCompare(
+              b.teamName
+            )
+        );
+      },
       [
-        badges,
-        teams,
+        historyBadges,
       ]
     );
 
@@ -412,11 +553,185 @@ export default function PickemRecap({
   const load =
     useCallback(
       async () => {
+        const currentLeagueResult =
+          await supabase
+            .from(
+              "leagues"
+            )
+            .select(
+              "id,name,season,status,pickem_history_id"
+            )
+            .eq(
+              "id",
+              leagueId
+            )
+            .single();
+
+        if (
+          currentLeagueResult.error
+        ) {
+          throw new Error(
+            currentLeagueResult
+              .error.message
+          );
+        }
+
+        const currentLeague =
+          currentLeagueResult.data as HistoryLeagueRow;
+
+        let nextHistoryLeagues:
+          HistoryLeagueRow[];
+
+        if (
+          currentLeague.pickem_history_id
+        ) {
+          const historyResult =
+            await supabase
+              .from(
+                "leagues"
+              )
+              .select(
+                "id,name,season,status,pickem_history_id"
+              )
+              .eq(
+                "league_type",
+                "pickem"
+              )
+              .eq(
+                "pickem_history_id",
+                currentLeague.pickem_history_id
+              )
+              .order(
+                "season",
+                {
+                  ascending:
+                    false,
+                }
+              );
+
+          if (
+            historyResult.error
+          ) {
+            throw new Error(
+              historyResult
+                .error.message
+            );
+          }
+
+          nextHistoryLeagues =
+            (
+              historyResult.data ??
+              []
+            ) as HistoryLeagueRow[];
+        } else {
+          nextHistoryLeagues = [
+            currentLeague,
+          ];
+        }
+
+        if (
+          !nextHistoryLeagues.some(
+            (
+              item
+            ) =>
+              item.id ===
+              currentLeague.id
+          )
+        ) {
+          nextHistoryLeagues.push(
+            currentLeague
+          );
+        }
+
+        nextHistoryLeagues.sort(
+          (
+            a,
+            b
+          ) =>
+            b.season -
+            a.season
+        );
+
+        setHistoryLeagues(
+          nextHistoryLeagues
+        );
+
+        const targetLeague =
+          nextHistoryLeagues.find(
+            (
+              item
+            ) =>
+              item.season ===
+              selectedSeason
+          ) ??
+          nextHistoryLeagues.find(
+            (
+              item
+            ) =>
+              item.id ===
+              leagueId
+          ) ??
+          currentLeague;
+
+        if (
+          targetLeague.season !==
+          selectedSeason
+        ) {
+          setSelectedSeason(
+            targetLeague.season
+          );
+        }
+
+        let nextViewerFranchiseId =
+          viewerFranchiseId;
+
+        if (
+          !nextViewerFranchiseId &&
+          viewerFantasyTeamId
+        ) {
+          const viewerTeamResult =
+            await supabase
+              .from(
+                "fantasy_teams"
+              )
+              .select(
+                "pickem_franchise_id"
+              )
+              .eq(
+                "id",
+                viewerFantasyTeamId
+              )
+              .eq(
+                "league_id",
+                leagueId
+              )
+              .maybeSingle();
+
+          if (
+            viewerTeamResult.error
+          ) {
+            throw new Error(
+              viewerTeamResult
+                .error.message
+            );
+          }
+
+          nextViewerFranchiseId =
+            viewerTeamResult.data
+              ?.pickem_franchise_id ??
+            null;
+
+          setViewerFranchiseId(
+            nextViewerFranchiseId
+          );
+        }
+
         const [
           teamResult,
           weekResult,
           resultResult,
           badgeResult,
+          historyBadgeResult,
         ] =
           await Promise.all([
             supabase
@@ -424,11 +739,11 @@ export default function PickemRecap({
                 "fantasy_teams"
               )
               .select(
-                "id,team_name"
+                "id,team_name,pickem_franchise_id"
               )
               .eq(
                 "league_id",
-                leagueId
+                targetLeague.id
               ),
 
             supabase
@@ -440,11 +755,11 @@ export default function PickemRecap({
               )
               .eq(
                 "league_id",
-                leagueId
+                targetLeague.id
               )
               .eq(
                 "season",
-                season
+                targetLeague.season
               )
               .order(
                 "week",
@@ -463,7 +778,7 @@ export default function PickemRecap({
               )
               .eq(
                 "league_id",
-                leagueId
+                targetLeague.id
               ),
 
             supabase
@@ -475,11 +790,11 @@ export default function PickemRecap({
               )
               .eq(
                 "league_id",
-                leagueId
+                targetLeague.id
               )
               .eq(
                 "season",
-                season
+                targetLeague.season
               )
               .order(
                 "week",
@@ -488,6 +803,14 @@ export default function PickemRecap({
                     false,
                 }
               ),
+
+            supabase.rpc(
+              "get_pickem_history_trophy_case",
+              {
+                p_league_id:
+                  leagueId,
+              }
+            ),
           ]);
 
         if (
@@ -526,6 +849,15 @@ export default function PickemRecap({
           );
         }
 
+        if (
+          historyBadgeResult.error
+        ) {
+          throw new Error(
+            historyBadgeResult
+              .error.message
+          );
+        }
+
         const nextWeeks =
           (
             weekResult.data ??
@@ -557,6 +889,13 @@ export default function PickemRecap({
           ) as BadgeRow[]
         );
 
+        setHistoryBadges(
+          (
+            historyBadgeResult.data ??
+            []
+          ) as HistoryBadgeRow[]
+        );
+
         const finals =
           nextWeeks.filter(
             (
@@ -567,27 +906,18 @@ export default function PickemRecap({
           );
 
         setSelectedWeekId(
-          (
-            current
-          ) =>
-            current &&
-            finals.some(
-              (
-                week
-              ) =>
-                week.id ===
-                current
-            )
-              ? current
-              : finals.at(-1)
-                  ?.id ??
-                null
+          finals.at(-1)
+            ?.id ??
+          null
         );
       },
       [
         leagueId,
         season,
+        selectedSeason,
         supabase,
+        viewerFantasyTeamId,
+        viewerFranchiseId,
       ]
     );
 
@@ -727,7 +1057,7 @@ export default function PickemRecap({
               850,
           }}
         >
-          Official weekly winners, ATS records, permanent badges, achievements, weekly honors, and the infamous side of the Pick&apos;em season.
+          Official weekly winners and ATS records with prior-season lookback, plus a continuous Trophy Case that keeps permanent badges across every renewed Pick&apos;em season.
         </p>
       </section>
 
@@ -752,10 +1082,153 @@ export default function PickemRecap({
       ) : null}
 
 
+      <section
+        style={{
+          ...styles.card,
+          padding:
+            "14px 16px",
+        }}
+      >
+        <div
+          style={{
+            display:
+              "flex",
+            gap:
+              14,
+            alignItems:
+              "center",
+            justifyContent:
+              "space-between",
+            flexWrap:
+              "wrap",
+          }}
+        >
+          <div>
+            <div
+              style={
+                styles.eyebrow
+              }
+            >
+              LEAGUE HISTORY
+            </div>
+
+            <strong
+              style={{
+                display:
+                  "block",
+                marginTop:
+                  3,
+                color:
+                  "#fff",
+                fontSize:
+                  17,
+              }}
+            >
+              Season Recap
+            </strong>
+
+            <div
+              style={{
+                marginTop:
+                  4,
+                color:
+                  "#8f8f98",
+                fontSize:
+                  12,
+              }}
+            >
+              View finalized weekly results and awards from any renewed Pick&apos;em season.
+            </div>
+          </div>
+
+          <label
+            style={{
+              display:
+                "grid",
+              gap:
+                5,
+              color:
+                "#a7a7af",
+              fontSize:
+                10,
+              fontWeight:
+                1000,
+              letterSpacing:
+                "0.08em",
+            }}
+          >
+            SEASON
+            <select
+              value={
+                selectedSeason
+              }
+              onChange={(
+                event
+              ) => {
+                setSelectedSeason(
+                  Number(
+                    event.target
+                      .value
+                  )
+                );
+                setSelectedWeekId(
+                  null
+                );
+              }}
+              style={{
+                minWidth:
+                  130,
+                minHeight:
+                  42,
+                padding:
+                  "8px 11px",
+                borderRadius:
+                  9,
+                border:
+                  "1px solid rgba(255,118,39,0.35)",
+                background:
+                  "#09090c",
+                color:
+                  "#fff",
+                fontWeight:
+                  900,
+              }}
+            >
+              {historyLeagues.map(
+                (
+                  item
+                ) => (
+                  <option
+                    key={
+                      item.id
+                    }
+                    value={
+                      item.season
+                    }
+                  >
+                    {item.season}
+                    {item.id ===
+                    leagueId
+                      ? " · Current"
+                      : ""}
+                  </option>
+                )
+              )}
+            </select>
+          </label>
+        </div>
+      </section>
+
+
       {finalWeeks.length ===
       0 ? (
         <EmptyState
-          text="Recaps unlock after the first Pick'em week is officially finalized."
+          text={
+            selectedHistoryLeague?.season ===
+            season
+              ? "Recaps unlock after the first Pick'em week is officially finalized."
+              : `No finalized weekly recaps are available for the ${selectedSeason} season.`
+          }
         />
       ) : (
         <>
@@ -775,7 +1248,7 @@ export default function PickemRecap({
                     styles.eyebrow
                   }
                 >
-                  WEEKLY RECAP
+                  {selectedSeason} WEEKLY RECAP
                 </div>
 
                 <h2
@@ -847,7 +1320,7 @@ export default function PickemRecap({
                 index
               ) => {
                 const isViewer =
-                  viewerFantasyTeamId ===
+                  historicalViewerTeamId ===
                   row.fantasy_team_id;
 
                 return (
@@ -1016,7 +1489,7 @@ export default function PickemRecap({
                     styles.eyebrow
                   }
                 >
-                  WEEK{" "}
+                  {selectedSeason} · WEEK{" "}
                   {selectedWeek?.week ??
                     "—"}
                 </div>
@@ -1165,7 +1638,7 @@ export default function PickemRecap({
                     styles.eyebrow
                   }
                 >
-                  SEASON TROPHY CASE
+                  CONTINUOUS TROPHY CASE
                 </div>
 
                 <h2
@@ -1173,7 +1646,7 @@ export default function PickemRecap({
                     styles.title
                   }
                 >
-                  Earned Badges
+                  Career League Badges
                 </h2>
               </div>
 
@@ -1183,9 +1656,9 @@ export default function PickemRecap({
                 }
               >
                 {
-                  badges.length
+                  historyBadges.length
                 }{" "}
-                TOTAL AWARDS
+                CAREER AWARDS
               </div>
             </div>
 
@@ -1230,7 +1703,7 @@ export default function PickemRecap({
                     return (
                       <article
                         key={
-                          row.team.id
+                          row.franchiseId
                         }
                         style={
                           styles.trophyCard
@@ -1259,7 +1732,7 @@ export default function PickemRecap({
                             }}
                           >
                             {
-                              row.team.team_name
+                              row.teamName
                             }
                           </strong>
 
@@ -1322,7 +1795,7 @@ function TrophyGroup({
   title:
     string;
   badges:
-    BadgeRow[];
+    HistoryBadgeRow[];
   infamy?:
     boolean;
 }) {
@@ -1427,7 +1900,10 @@ function TrophyGroup({
                       10,
                   }}
                 >
-                  W
+                  {
+                    badge.season
+                  }{" "}
+                  · W
                   {
                     badge.week
                   }

@@ -13,6 +13,7 @@ import {
 } from "@/lib/supabase/browser";
 
 import PickemParticipantManager from "@/components/pickem/PickemParticipantManager";
+import PickemRenewButton from "@/components/pickem/PickemRenewButton";
 
 
 type Props = {
@@ -2471,6 +2472,82 @@ export default function PickemCommissioner({
             ) : null}
           </div>
         )}
+      </Panel>
+
+
+      <Panel
+        title="Renew League"
+        description="Create the next Pick'em season after every current-season week is officially final. Members, entries, rules, scoring, and franchise identities carry forward. Picks, games, weekly standings, and G365 lines start fresh. Trophy Case badges remain permanent across seasons."
+      >
+        {settings ? (
+          <div
+            style={{
+              display:
+                "grid",
+              gap:
+                12,
+            }}
+          >
+            <div
+              style={{
+                display:
+                  "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(160px,1fr))",
+                gap:
+                  10,
+              }}
+            >
+              <StatusCard
+                label="CURRENT SEASON"
+                value={
+                  String(
+                    settings.season
+                  )
+                }
+              />
+
+              <StatusCard
+                label="NEXT SEASON"
+                value={
+                  String(
+                    settings.season +
+                      1
+                  )
+                }
+              />
+
+              <StatusCard
+                label="TROPHY CASE"
+                value="CONTINUOUS"
+                good
+              />
+            </div>
+
+            <PickemRenewButton
+              leagueId={
+                leagueId
+              }
+              nextSeason={
+                settings.season +
+                1
+              }
+            />
+
+            <div
+              style={{
+                color:
+                  "#81818a",
+                fontSize:
+                  11,
+                lineHeight:
+                  1.6,
+              }}
+            >
+              Renewal is protected on the server and will not create the next season until all prepared Pick&apos;em weeks are final. Repeated clicks are idempotent and reopen the already-created next season instead of creating a duplicate.
+            </div>
+          </div>
+        ) : null}
       </Panel>
 
 
