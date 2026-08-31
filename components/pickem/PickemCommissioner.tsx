@@ -390,6 +390,26 @@ export default function PickemCommissioner({
     >(null);
 
 
+  const [
+    lifecycleAdvancedOpen,
+    setLifecycleAdvancedOpen,
+  ] = useState(false);
+
+  const [
+    gamesOpen,
+    setGamesOpen,
+  ] = useState(false);
+
+  const [
+    auditOpen,
+    setAuditOpen,
+  ] = useState(false);
+
+  const [
+    manualLineOpen,
+    setManualLineOpen,
+  ] = useState(false);
+
   const selectedWeek =
     useMemo(
       () =>
@@ -403,6 +423,38 @@ export default function PickemCommissioner({
         selectedWeekId,
         weeks,
       ]
+    );
+
+
+  const lineSummary =
+    useMemo(() => {
+      const frozen = games.filter(
+        (game) => game.spread_status === "frozen"
+      ).length;
+      const pending = games.filter(
+        (game) =>
+          game.spread_status === "pending" ||
+          game.spread_status === "published"
+      ).length;
+      const excluded = games.filter(
+        (game) => game.spread_status === "excluded"
+      ).length;
+
+      return {
+        total: games.length,
+        frozen,
+        pending,
+        excluded,
+      };
+    }, [games]);
+
+  const activeWeek =
+    useMemo(
+      () =>
+        weeks.find((week) => week.status !== "final") ??
+        weeks.at(-1) ??
+        null,
+      [weeks]
     );
 
 
@@ -494,6 +546,27 @@ export default function PickemCommissioner({
           );
           setMinimumSourceBooks(
             nextSettings.minimum_source_books
+          );
+          setScoringMode(
+            nextSettings.scoring_mode ?? "record_only"
+          );
+          setWinPoints(
+            Number(nextSettings.win_points ?? 1)
+          );
+          setPushPoints(
+            Number(nextSettings.push_points ?? 0.5)
+          );
+          setLossPoints(
+            Number(nextSettings.loss_points ?? 0)
+          );
+          setConfidencePointsText(
+            Array.isArray(nextSettings.confidence_points) &&
+            nextSettings.confidence_points.length > 0
+              ? nextSettings.confidence_points.join(", ")
+              : "50, 40, 30, 20, 10"
+          );
+          setConfidencePushMultiplier(
+            Number(nextSettings.confidence_push_multiplier ?? 0.5)
           );
         }
 
@@ -1586,656 +1659,601 @@ export default function PickemCommissioner({
 
       <Panel
         title="Weekly Lifecycle"
-        description="Initialize the weekly card before ESPN game sync. Set the Line Day timestamp and the earliest official finalization time."
+        description="Pick'em weeks are prepared automatically. Use this panel to review the current lifecycle; manual initialization is reserved for commissioner exceptions."
       >
-        <form
-          onSubmit={
-            initializeWeek
-          }
-          style={{
-            display:
-              "grid",
-            gap:
-              14,
-          }}
-        >
-          <label
-            style={
-              styles.label
-            }
-          >
-            Pick&apos;em Week
-            <input
-              type="number"
-              min={
-                1
-              }
-              max={
-                25
-              }
-              value={
-                weekNumber
-              }
-              onChange={(
-                event
-              ) =>
-                setWeekNumber(
-                  Number(
-                    event.target
-                      .value
-                  )
-                )
-              }
-              style={
-                styles.input
-              }
-            />
-          </label>
-
-          <label
-            style={
-              styles.label
-            }
-          >
-            G365 Line Day
-            <input
-              type="datetime-local"
-              value={
-                lineDayAt
-              }
-              onChange={(
-                event
-              ) =>
-                setLineDayAt(
-                  event.target
-                    .value
-                )
-              }
-              style={
-                styles.input
-              }
-            />
-          </label>
-
-          <label
-            style={
-              styles.label
-            }
-          >
-            Finalize Not Before
-            <input
-              type="datetime-local"
-              value={
-                finalizeNotBefore
-              }
-              onChange={(
-                event
-              ) =>
-                setFinalizeNotBefore(
-                  event.target
-                    .value
-                )
-              }
-              style={
-                styles.input
-              }
-            />
-
-            <span
-              style={
-                styles.help
-              }
-            >
-              This is the Monday-night/weekly finalization gate. The database will still refuse finalization until every eligible game is final.
-            </span>
-          </label>
-
-          <ActionButton
-            disabled={
-              saving ||
-              !settings
-            }
-          >
-            INITIALIZE WEEK
-          </ActionButton>
-        </form>
-
-        {weeks.length >
-        0 ? (
+        {activeWeek ? (
           <div
             style={{
-              display:
-                "grid",
-              gap:
-                8,
-              marginTop:
-                16,
+              display: "grid",
+              gap: 12,
             }}
           >
-            {weeks.map(
-              (
-                week
-              ) => (
-                <button
-                  key={
-                    week.id
-                  }
-                  type="button"
-                  onClick={() =>
-                    setSelectedWeekId(
-                      week.id
-                    )
-                  }
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(150px,1fr))",
+                gap: 10,
+              }}
+            >
+              <StatusCard
+                label="Current Week"
+                value={`Week ${activeWeek.week}`}
+              />
+              <StatusCard
+                label="Status"
+                value={activeWeek.status.toUpperCase()}
+              />
+              <StatusCard
+                label="Required Picks"
+                value={String(activeWeek.required_picks)}
+              />
+              <StatusCard
+                label="Lifecycle"
+                value="AUTOMATIC"
+                good
+              />
+            </div>
+
+            <div
+              style={{
+                padding: 13,
+                borderRadius: 11,
+                border:
+                  "1px solid rgba(255,255,255,0.08)",
+                background:
+                  "rgba(255,255,255,0.025)",
+                color: "#b7b7c0",
+                fontSize: 13,
+                lineHeight: 1.65,
+              }}
+            >
+              <div>
+                <strong style={{ color: "#fff" }}>
+                  G365 line windows:
+                </strong>{" "}
+                Tuesday 10:00 AM ET for Tuesday–Thursday games,
+                then Thursday 10:00 AM ET for Friday–Monday games.
+              </div>
+              <div>
+                <strong style={{ color: "#fff" }}>
+                  Finalization gate:
+                </strong>{" "}
+                {activeWeek.finalize_not_before
+                  ? new Date(
+                      activeWeek.finalize_not_before
+                    ).toLocaleString()
+                  : "Automatically assigned by the weekly lifecycle."}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                setLifecycleAdvancedOpen(
+                  (current) => !current
+                )
+              }
+              style={styles.secondaryButton}
+            >
+              {lifecycleAdvancedOpen
+                ? "HIDE COMMISSIONER OVERRIDE"
+                : "ADVANCED / COMMISSIONER OVERRIDE"}
+            </button>
+
+            {lifecycleAdvancedOpen ? (
+              <>
+                <Info>
+                  Normal weeks do not need manual initialization.
+                  Use this only to repair or create a week when the
+                  automatic lifecycle requires an exception.
+                </Info>
+
+                <form
+                  onSubmit={initializeWeek}
                   style={{
-                    display:
-                      "flex",
-                    justifyContent:
-                      "space-between",
-                    gap:
-                      10,
-                    padding:
-                      "11px 12px",
-                    borderRadius:
-                      10,
+                    display: "grid",
+                    gap: 14,
+                    padding: 14,
+                    borderRadius: 12,
                     border:
-                      selectedWeekId ===
-                      week.id
-                        ? "1px solid rgba(255,107,31,0.55)"
-                        : "1px solid rgba(255,255,255,0.08)",
+                      "1px solid rgba(255,107,31,0.22)",
                     background:
-                      selectedWeekId ===
-                      week.id
-                        ? "rgba(255,93,20,0.09)"
-                        : "rgba(255,255,255,0.02)",
-                    color:
-                      "#fff",
-                    cursor:
-                      "pointer",
+                      "rgba(255,82,20,0.035)",
                   }}
                 >
-                  <strong>
-                    Week{" "}
-                    {
-                      week.week
-                    }
-                  </strong>
+                  <label style={styles.label}>
+                    Pick&apos;em Week
+                    <input
+                      type="number"
+                      min={1}
+                      max={25}
+                      value={weekNumber}
+                      onChange={(event) =>
+                        setWeekNumber(
+                          Number(event.target.value)
+                        )
+                      }
+                      style={styles.input}
+                    />
+                  </label>
 
-                  <span
+                  <label style={styles.label}>
+                    G365 Line Day Override
+                    <input
+                      type="datetime-local"
+                      value={lineDayAt}
+                      onChange={(event) =>
+                        setLineDayAt(event.target.value)
+                      }
+                      style={styles.input}
+                    />
+                  </label>
+
+                  <label style={styles.label}>
+                    Finalize Not Before Override
+                    <input
+                      type="datetime-local"
+                      value={finalizeNotBefore}
+                      onChange={(event) =>
+                        setFinalizeNotBefore(
+                          event.target.value
+                        )
+                      }
+                      style={styles.input}
+                    />
+                  </label>
+
+                  <ActionButton
+                    disabled={saving || !settings}
+                  >
+                    INITIALIZE / REPAIR WEEK
+                  </ActionButton>
+                </form>
+              </>
+            ) : null}
+
+            {weeks.length > 0 ? (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  overflowX: "auto",
+                  paddingBottom: 4,
+                }}
+              >
+                {weeks.map((week) => (
+                  <button
+                    key={week.id}
+                    type="button"
+                    onClick={() =>
+                      setSelectedWeekId(week.id)
+                    }
                     style={{
-                      color:
-                        "#9999a2",
-                      fontSize:
-                        12,
+                      ...styles.secondaryButton,
+                      whiteSpace: "nowrap",
+                      border:
+                        selectedWeekId === week.id
+                          ? "1px solid rgba(255,107,31,0.65)"
+                          : styles.secondaryButton.border,
+                      background:
+                        selectedWeekId === week.id
+                          ? "rgba(255,93,20,0.10)"
+                          : styles.secondaryButton.background,
                     }}
                   >
-                    {
-                      week.status
-                    }{" "}
-                    ·{" "}
-                    {
-                      week.required_picks
-                    }{" "}
-                    picks
-                  </span>
-                </button>
-              )
-            )}
+                    Week {week.week} · {week.status} ·{" "}
+                    {week.required_picks} picks
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        ) : (
+          <Info>
+            No Pick&apos;em week is available yet. The automatic
+            lifecycle will prepare the contest week.
+          </Info>
+        )}
       </Panel>
 
 
       <Panel
-        title="G365 Line Day & Audit"
-        description="The official G365 Spread is the median of the latest line from each sportsbook. The normalized ingestion contract is provider-neutral."
+        title="G365 Lines & Audit"
+        description="Official G365 spreads are populated automatically from sportsbook sources and frozen by the scheduled Tuesday/Thursday line windows."
       >
         {!selectedWeek ? (
           <Info>
-            Initialize and select a week to manage source lines.
+            Select a week to review its G365 line status.
           </Info>
-        ) : games.length ===
-          0 ? (
+        ) : games.length === 0 ? (
           <Info>
-            Week {selectedWeek.week} has no ESPN games loaded yet. Run the Pick&apos;em game sync after initializing the week.
+            Week {selectedWeek.week} currently has no games loaded.
+            ESPN game synchronization and weekly preparation run
+            automatically.
           </Info>
         ) : (
-          <>
+          <div style={{ display: "grid", gap: 12 }}>
             <div
               style={{
-                display:
-                  "grid",
-                gap:
-                  10,
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(140px,1fr))",
+                gap: 10,
               }}
             >
-              {games.map(
-                (
-                  game
-                ) => {
-                  const gameLines =
-                    lines.filter(
-                      (
-                        line
-                      ) =>
-                        line.pickem_game_id ===
-                        game.id
-                    );
+              <StatusCard
+                label="Week"
+                value={`Week ${selectedWeek.week}`}
+              />
+              <StatusCard
+                label="Games"
+                value={String(lineSummary.total)}
+              />
+              <StatusCard
+                label="Frozen"
+                value={String(lineSummary.frozen)}
+                good={lineSummary.frozen > 0}
+              />
+              <StatusCard
+                label="Pending"
+                value={String(lineSummary.pending)}
+              />
+              <StatusCard
+                label="Excluded"
+                value={String(lineSummary.excluded)}
+              />
+            </div>
+
+            <div
+              style={{
+                color: "#aaaab3",
+                fontSize: 13,
+                lineHeight: 1.6,
+              }}
+            >
+              Week {selectedWeek.week} · {lineSummary.total} games
+              {" · "}
+              {lineSummary.frozen} frozen
+              {" · "}
+              {lineSummary.pending} pending
+              {" · "}
+              {lineSummary.excluded} excluded
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setGamesOpen((current) => !current)
+                }
+                style={styles.secondaryButton}
+              >
+                {gamesOpen ? "HIDE GAMES" : "VIEW GAMES"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setAuditOpen((current) => !current)
+                }
+                style={styles.secondaryButton}
+              >
+                {auditOpen
+                  ? "HIDE LINE AUDIT"
+                  : "VIEW LINE AUDIT"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setManualLineOpen(
+                    (current) => !current
+                  );
+                  if (lineGameId === null && games[0]) {
+                    setLineGameId(games[0].id);
+                  }
+                }}
+                style={styles.secondaryButton}
+              >
+                {manualLineOpen
+                  ? "HIDE MANUAL OVERRIDE"
+                  : "ADVANCED LINE OVERRIDE"}
+              </button>
+            </div>
+
+            {gamesOpen ? (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                {games.map((game) => (
+                  <div
+                    key={game.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 12,
+                      flexWrap: "wrap",
+                      padding: "11px 12px",
+                      borderRadius: 10,
+                      border:
+                        "1px solid rgba(255,255,255,0.08)",
+                      background:
+                        "rgba(255,255,255,0.02)",
+                    }}
+                  >
+                    <div>
+                      <strong style={{ color: "#fff" }}>
+                        {game.away_team_name} @{" "}
+                        {game.home_team_name}
+                      </strong>
+                      <div
+                        style={{
+                          marginTop: 4,
+                          color: "#888891",
+                          fontSize: 12,
+                        }}
+                      >
+                        {game.sport.toUpperCase()} ·{" "}
+                        {new Date(
+                          game.kickoff_at
+                        ).toLocaleString()}{" "}
+                        · {game.consensus_source_count ?? 0}{" "}
+                        consensus sources
+                      </div>
+                    </div>
+
+                    <strong
+                      style={{
+                        color:
+                          game.spread_status === "frozen"
+                            ? "#55df8a"
+                            : game.spread_status ===
+                              "excluded"
+                            ? "#ff8b7d"
+                            : "#ff9b59",
+                        fontSize: 12,
+                      }}
+                    >
+                      {game.spread_status === "frozen"
+                        ? `G365 ${formatSpread(
+                            game.g365_home_spread
+                          )}`
+                        : game.spread_status.toUpperCase()}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {auditOpen ? (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 10,
+                  padding: 14,
+                  borderRadius: 12,
+                  border:
+                    "1px solid rgba(255,255,255,0.08)",
+                  background:
+                    "rgba(255,255,255,0.02)",
+                }}
+              >
+                {games.map((game) => {
+                  const gameLines = lines.filter(
+                    (line) =>
+                      line.pickem_game_id === game.id
+                  );
 
                   return (
                     <div
-                      key={
-                        game.id
-                      }
+                      key={game.id}
                       style={{
-                        display:
-                          "grid",
-                        gap:
-                          9,
-                        padding:
-                          13,
-                        borderRadius:
-                          12,
-                        border:
-                          "1px solid rgba(255,255,255,0.08)",
-                        background:
-                          "rgba(255,255,255,0.02)",
+                        display: "grid",
+                        gap: 6,
+                        paddingBottom: 10,
+                        borderBottom:
+                          "1px solid rgba(255,255,255,0.06)",
                       }}
                     >
+                      <strong style={{ color: "#fff" }}>
+                        {game.away_team_name} @{" "}
+                        {game.home_team_name}
+                      </strong>
                       <div
                         style={{
-                          display:
-                            "flex",
-                          justifyContent:
-                            "space-between",
-                          gap:
-                            12,
-                          flexWrap:
-                            "wrap",
-                        }}
-                      >
-                        <strong
-                          style={{
-                            color:
-                              "#fff",
-                          }}
-                        >
-                          {
-                            game.away_team_name
-                          }{" "}
-                          @{" "}
-                          {
-                            game.home_team_name
-                          }
-                        </strong>
-
-                        <span
-                          style={{
-                            color:
-                              game.spread_status ===
-                              "frozen"
-                                ? "#55df8a"
-                                : "#ff9b59",
-                            fontSize:
-                              12,
-                            fontWeight:
-                              900,
-                          }}
-                        >
-                          {game.spread_status ===
-                          "frozen"
-                            ? `G365 ${formatSpread(
-                                game.g365_home_spread
-                              )}`
-                            : game.spread_status.toUpperCase()}
-                        </span>
-                      </div>
-
-                      <div
-                        style={{
-                          color:
-                            "#888891",
-                          fontSize:
-                            12,
+                          color: "#8f8f98",
+                          fontSize: 12,
                         }}
                       >
                         {gameLines.length} audit line
-                        {gameLines.length ===
-                        1
-                          ? ""
-                          : "s"}{" "}
-                        · consensus sources{" "}
-                        {
-                          game.consensus_source_count ??
-                          0
-                        }
+                        {gameLines.length === 1 ? "" : "s"} ·{" "}
+                        {game.consensus_source_count ?? 0}{" "}
+                        consensus sources ·{" "}
+                        {game.spread_status}
                       </div>
 
-                      {gameLines
-                        .slice(
-                          0,
-                          5
-                        )
-                        .map(
-                          (
-                            line
-                          ) => (
-                            <div
-                              key={
-                                line.id
-                              }
-                              style={{
-                                display:
-                                  "flex",
-                                justifyContent:
-                                  "space-between",
-                                gap:
-                                  10,
-                                color:
-                                  "#b9b9c1",
-                                fontSize:
-                                  12,
-                              }}
-                            >
-                              <span>
-                                {
-                                  line.sportsbook_name ??
-                                  line.sportsbook_key
-                                }{" "}
-                                ·{" "}
-                                {
-                                  line.source_provider
-                                }
-                              </span>
-
-                              <strong
-                                style={{
-                                  color:
-                                    "#fff",
-                                }}
-                              >
-                                HOME{" "}
-                                {formatSpread(
-                                  line.home_spread
-                                )}
-                              </strong>
-                            </div>
-                          )
-                        )}
-
-                      <div
-                        style={{
-                          display:
-                            "flex",
-                          gap:
-                            8,
-                          flexWrap:
-                            "wrap",
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setLineGameId(
-                              game.id
-                            )
-                          }
-                          disabled={
-                            game.spread_status ===
-                              "frozen" ||
-                            game.is_started ||
-                            game.is_final
-                          }
-                          style={
-                            styles.secondaryButton
-                          }
+                      {gameLines.slice(0, 5).map((line) => (
+                        <div
+                          key={line.id}
+                          style={{
+                            display: "flex",
+                            justifyContent:
+                              "space-between",
+                            gap: 10,
+                            color: "#b9b9c1",
+                            fontSize: 12,
+                          }}
                         >
-                          ADD SOURCE LINE
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void freezeGame(
-                              game.id
-                            )
-                          }
-                          disabled={
-                            saving ||
-                            game.spread_status ===
-                              "frozen" ||
-                            game.is_started ||
-                            game.is_final
-                          }
-                          style={
-                            styles.freezeButton
-                          }
-                        >
-                          FREEZE G365 SPREAD
-                        </button>
-                      </div>
+                          <span>
+                            {line.sportsbook_name ??
+                              line.sportsbook_key}{" "}
+                            · {line.source_provider}
+                          </span>
+                          <strong
+                            style={{ color: "#fff" }}
+                          >
+                            HOME{" "}
+                            {formatSpread(
+                              line.home_spread
+                            )}
+                          </strong>
+                        </div>
+                      ))}
 
                       {game.exclusion_reason ? (
                         <div
                           style={{
-                            color:
-                              "#ffb4a8",
-                            fontSize:
-                              12,
+                            color: "#ffb4a8",
+                            fontSize: 12,
                           }}
                         >
-                          {
-                            game.exclusion_reason
-                          }
+                          {game.exclusion_reason}
                         </div>
                       ) : null}
                     </div>
                   );
-                }
-              )}
-            </div>
+                })}
+              </div>
+            ) : null}
 
-            {lineGameId !==
-            null ? (
+            {manualLineOpen && lineGameId !== null ? (
               <form
-                onSubmit={
-                  addSourceLine
-                }
+                onSubmit={addSourceLine}
                 style={{
-                  display:
-                    "grid",
-                  gap:
-                    12,
-                  marginTop:
-                    16,
-                  padding:
-                    15,
-                  borderRadius:
-                    12,
+                  display: "grid",
+                  gap: 12,
+                  padding: 15,
+                  borderRadius: 12,
                   border:
                     "1px solid rgba(255,108,33,0.20)",
                   background:
                     "rgba(100,8,12,0.13)",
                 }}
               >
-                <strong
-                  style={{
-                    color:
-                      "#fff",
-                  }}
-                >
-                  Add normalized sportsbook source line
+                <strong style={{ color: "#fff" }}>
+                  Commissioner Line Override
                 </strong>
 
-                <label
-                  style={
-                    styles.label
-                  }
-                >
+                <Info>
+                  Automatic sportsbook ingestion and freezing are
+                  the normal path. These controls are only for an
+                  unusual line exception or audit repair.
+                </Info>
+
+                <label style={styles.label}>
                   Game
                   <select
-                    value={
-                      lineGameId
-                    }
-                    onChange={(
-                      event
-                    ) =>
+                    value={lineGameId}
+                    onChange={(event) =>
                       setLineGameId(
-                        Number(
-                          event.target
-                            .value
-                        )
+                        Number(event.target.value)
                       )
                     }
-                    style={
-                      styles.input
-                    }
+                    style={styles.input}
                   >
-                    {games.map(
-                      (
-                        game
-                      ) => (
-                        <option
-                          key={
-                            game.id
-                          }
-                          value={
-                            game.id
-                          }
-                        >
-                          {
-                            game.away_team_name
-                          }{" "}
-                          @{" "}
-                          {
-                            game.home_team_name
-                          }
-                        </option>
-                      )
-                    )}
+                    {games.map((game) => (
+                      <option
+                        key={game.id}
+                        value={game.id}
+                      >
+                        {game.away_team_name} @{" "}
+                        {game.home_team_name}
+                      </option>
+                    ))}
                   </select>
                 </label>
 
-                <label
-                  style={
-                    styles.label
-                  }
-                >
+                <label style={styles.label}>
                   Source Provider
                   <input
-                    value={
-                      sourceProvider
-                    }
-                    onChange={(
-                      event
-                    ) =>
+                    value={sourceProvider}
+                    onChange={(event) =>
                       setSourceProvider(
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
-                    style={
-                      styles.input
-                    }
+                    style={styles.input}
                   />
                 </label>
 
-                <label
-                  style={
-                    styles.label
-                  }
-                >
+                <label style={styles.label}>
                   Sportsbook Key
                   <input
-                    value={
-                      sportsbookKey
-                    }
-                    onChange={(
-                      event
-                    ) =>
+                    value={sportsbookKey}
+                    onChange={(event) =>
                       setSportsbookKey(
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
                     placeholder="example-book-key"
-                    style={
-                      styles.input
-                    }
+                    style={styles.input}
                   />
                 </label>
 
-                <label
-                  style={
-                    styles.label
-                  }
-                >
+                <label style={styles.label}>
                   Sportsbook Name
                   <input
-                    value={
-                      sportsbookName
-                    }
-                    onChange={(
-                      event
-                    ) =>
+                    value={sportsbookName}
+                    onChange={(event) =>
                       setSportsbookName(
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
                     placeholder="Optional display name"
-                    style={
-                      styles.input
-                    }
+                    style={styles.input}
                   />
                 </label>
 
-                <label
-                  style={
-                    styles.label
-                  }
-                >
+                <label style={styles.label}>
                   Home Team Spread
                   <input
                     type="number"
                     step="0.5"
-                    value={
-                      homeSpread
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setHomeSpread(
-                        event.target
-                          .value
-                      )
+                    value={homeSpread}
+                    onChange={(event) =>
+                      setHomeSpread(event.target.value)
                     }
                     placeholder="-3.5"
-                    style={
-                      styles.input
-                    }
+                    style={styles.input}
                   />
-
-                  <span
-                    style={
-                      styles.help
-                    }
-                  >
-                    Always enter the line from the HOME team&apos;s perspective. HOME -7.5 is entered as -7.5; HOME +3 is entered as +3.
-                  </span>
                 </label>
 
-                <ActionButton
-                  disabled={
-                    saving
-                  }
-                >
+                <ActionButton disabled={saving}>
                   SAVE SOURCE LINE
                 </ActionButton>
+
+                <button
+                  type="button"
+                  disabled={
+                    saving ||
+                    games.find(
+                      (game) => game.id === lineGameId
+                    )?.spread_status === "frozen"
+                  }
+                  onClick={() =>
+                    void freezeGame(lineGameId)
+                  }
+                  style={styles.freezeButton}
+                >
+                  MANUALLY FREEZE SELECTED GAME
+                </button>
               </form>
             ) : null}
-          </>
+          </div>
         )}
       </Panel>
+
 
       <PickemParticipantManager
         leagueId={
@@ -2302,6 +2320,52 @@ function Panel({
 
       {children}
     </section>
+  );
+}
+
+
+function StatusCard({
+  label,
+  value,
+  good = false,
+}: {
+  label: string;
+  value: string;
+  good?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        padding: "12px 13px",
+        borderRadius: 11,
+        border:
+          "1px solid rgba(255,255,255,0.08)",
+        background:
+          "rgba(255,255,255,0.025)",
+      }}
+    >
+      <div
+        style={{
+          color: "#85858f",
+          fontSize: 11,
+          fontWeight: 900,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          marginTop: 5,
+          color: good ? "#55df8a" : "#fff",
+          fontSize: 16,
+          fontWeight: 1000,
+        }}
+      >
+        {value}
+      </div>
+    </div>
   );
 }
 
