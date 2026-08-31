@@ -349,8 +349,8 @@ export default async function SeasonLongEntryPage({
     await supabase.rpc(
       "get_active_season_long_week",
       {
-        p_league_id:
-          leagueId,
+        p_season:
+          season,
       }
     );
 
