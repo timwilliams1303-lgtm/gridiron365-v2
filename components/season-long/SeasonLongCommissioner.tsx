@@ -435,7 +435,7 @@ export default function SeasonLongCommissioner({
 
       const response =
         await fetch(
-          `/api/leagues/${leagueId}/invite`,
+          `/api/league/${leagueId}/invite`,
           {
             method: "POST",
             headers: {
