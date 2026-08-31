@@ -273,6 +273,90 @@ function validateLeagueCombination(
 }
 
 
+async function initializeNewPickemLeagueImmediately(
+  supabase:
+    SupabaseClient,
+  leagueId:
+    string
+) {
+  /*
+   * A brand-new Pick'em league should be usable immediately.
+   *
+   * The global lifecycle cron remains the permanent maintenance
+   * and fallback system for every Pick'em league. This call simply
+   * avoids making the commissioner wait for the next scheduled run.
+   *
+   * IMPORTANT:
+   * League creation itself must remain successful even if ESPN or
+   * the lifecycle endpoint is temporarily unavailable. In that case
+   * the global cron will repair/prepare the league automatically.
+   */
+  if (
+    typeof window ===
+    "undefined"
+  ) {
+    return;
+  }
+
+  try {
+    const {
+      data:
+        sessionData,
+    } =
+      await supabase.auth
+        .getSession();
+
+    const accessToken =
+      sessionData.session
+        ?.access_token;
+
+    if (!accessToken) {
+      console.warn(
+        "Pick'em league was created, but immediate lifecycle preparation was skipped because the session token was unavailable."
+      );
+      return;
+    }
+
+    const response =
+      await fetch(
+        "/api/pickem/commissioner-sync",
+        {
+          method:
+            "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+            Authorization:
+              `Bearer ${accessToken}`,
+          },
+          body:
+            JSON.stringify({
+              leagueId,
+            }),
+        }
+      );
+
+    if (!response.ok) {
+      const body =
+        await response
+          .text()
+          .catch(
+            () => ""
+          );
+
+      console.warn(
+        `Pick'em league ${leagueId} was created, but immediate lifecycle preparation returned HTTP ${response.status}. The global lifecycle cron will retry automatically.${body ? ` Response: ${body.slice(0, 300)}` : ""}`
+      );
+    }
+  } catch (error) {
+    console.warn(
+      `Pick'em league ${leagueId} was created, but immediate lifecycle preparation failed. The global lifecycle cron will retry automatically.`,
+      error
+    );
+  }
+}
+
+
 export async function createLeague(
   supabase:
     SupabaseClient,
@@ -521,6 +605,19 @@ export async function createLeague(
       fantasyTeamId =
         parsed;
     }
+  }
+
+
+  if (
+    returnedLeagueType ===
+      "pickem" &&
+    result.success ===
+      true
+  ) {
+    await initializeNewPickemLeagueImmediately(
+      supabase,
+      leagueId
+    );
   }
 
 

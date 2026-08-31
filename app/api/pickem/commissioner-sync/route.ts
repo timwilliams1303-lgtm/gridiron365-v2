@@ -278,18 +278,69 @@ export async function POST(
       // keep text
     }
 
+    if (
+      !syncResponse.ok
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          stage:
+            "sync-games",
+          prepare,
+          sync,
+        },
+        {
+          status:
+            syncResponse.status,
+        }
+      );
+    }
+
+    const lineResponse =
+      await fetch(
+        `${origin}/api/pickem/sync-lines`,
+        {
+          method: "POST",
+          headers,
+          body:
+            JSON.stringify({
+              leagueId:
+                body.leagueId,
+            }),
+          cache: "no-store",
+        }
+      );
+
+    const lineText =
+      await lineResponse.text();
+
+    let lines:
+      unknown =
+        lineText;
+
+    try {
+      lines =
+        JSON.parse(
+          lineText
+        );
+    } catch {
+      // keep text
+    }
+
+    /*
+     * Before G365 Line Day the line route normally returns success
+     * with weeksDue = 0. If the odds provider is temporarily down,
+     * the ESPN/lifecycle sync still succeeds and the global line-sync
+     * cron will retry automatically.
+     */
     return NextResponse.json(
       {
-        success:
-          syncResponse.ok,
+        success: true,
         prepare,
         sync,
-      },
-      {
-        status:
-          syncResponse.ok
-            ? 200
-            : syncResponse.status,
+        lines,
+        lineSyncOk:
+          lineResponse.ok,
       }
     );
   } catch (error) {

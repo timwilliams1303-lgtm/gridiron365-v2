@@ -60,6 +60,12 @@ type WeekRow = {
     string | null;
   schedule_synced_at:
     string | null;
+  line_sync_started_at:
+    string | null;
+  line_sync_completed_at:
+    string | null;
+  line_sync_provider:
+    string | null;
 };
 
 
@@ -294,40 +300,6 @@ export default function PickemCommissioner({
       LineRow[]
     >([]);
 
-  const [
-    sourceProvider,
-    setSourceProvider,
-  ] =
-    useState(
-      "manual"
-    );
-
-  const [
-    sportsbookKey,
-    setSportsbookKey,
-  ] =
-    useState("");
-
-  const [
-    sportsbookName,
-    setSportsbookName,
-  ] =
-    useState("");
-
-  const [
-    homeSpread,
-    setHomeSpread,
-  ] =
-    useState("");
-
-  const [
-    lineGameId,
-    setLineGameId,
-  ] =
-    useState<
-      number |
-      null
-    >(null);
 
 
   const selectedWeek =
@@ -372,7 +344,7 @@ export default function PickemCommissioner({
                 "pickem_weeks"
               )
               .select(
-                "id,season,week,status,required_picks,line_day_at,finalize_not_before,slate_starts_at,slate_ends_at,schedule_synced_at"
+                "id,season,week,status,required_picks,line_day_at,finalize_not_before,slate_starts_at,slate_ends_at,schedule_synced_at,line_sync_started_at,line_sync_completed_at,line_sync_provider"
               )
               .eq(
                 "league_id",
@@ -494,9 +466,6 @@ export default function PickemCommissioner({
         ) {
           setGames([]);
           setLines([]);
-          setLineGameId(
-            null
-          );
           return;
         }
 
@@ -545,22 +514,6 @@ export default function PickemCommissioner({
 
         setGames(
           nextGames
-        );
-
-        setLineGameId(
-          (
-            current
-          ) =>
-            current &&
-            nextGames.some(
-              (game) =>
-                game.id ===
-                current
-            )
-              ? current
-              : nextGames[0]
-                  ?.id ??
-                null
         );
 
         const ids =
@@ -848,7 +801,7 @@ export default function PickemCommissioner({
       await load();
 
       setMessage(
-        `Automatic lifecycle refreshed. ESPN game slate sync completed.`
+        `Automatic lifecycle refreshed. ESPN games were synced and G365 Line Day processing was checked automatically.`
       );
     } catch (
       error
@@ -860,196 +813,6 @@ export default function PickemCommissioner({
         error instanceof Error
           ? error.message
           : "Automatic Pick'em lifecycle sync failed."
-      );
-    } finally {
-      setSaving(
-        false
-      );
-    }
-  }
-
-  async function addSourceLine(
-    event:
-      FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
-
-    if (
-      lineGameId ===
-      null
-    ) {
-      return;
-    }
-
-    const spread =
-      Number(
-        homeSpread
-      );
-
-    setSaving(
-      true
-    );
-    setMessage(
-      ""
-    );
-    setIsError(
-      false
-    );
-
-    try {
-      if (
-        !sportsbookKey.trim()
-      ) {
-        throw new Error(
-          "Sportsbook key is required."
-        );
-      }
-
-      if (
-        !Number.isFinite(
-          spread
-        )
-      ) {
-        throw new Error(
-          "A valid home-team spread is required."
-        );
-      }
-
-      const {
-        error,
-      } =
-        await supabase.rpc(
-          "add_pickem_line_source",
-          {
-            p_pickem_game_id:
-              lineGameId,
-            p_source_provider:
-              sourceProvider,
-            p_sportsbook_key:
-              sportsbookKey,
-            p_sportsbook_name:
-              sportsbookName ||
-              null,
-            p_home_spread:
-              spread,
-            p_away_spread:
-              -spread,
-            p_source_event_id:
-              null,
-            p_source_market_key:
-              "spread",
-            p_raw_audit:
-              {
-                entryMode:
-                  "commissioner_manual",
-              },
-          }
-        );
-
-      if (error) {
-        throw new Error(
-          error.message
-        );
-      }
-
-      setSportsbookKey(
-        ""
-      );
-      setSportsbookName(
-        ""
-      );
-      setHomeSpread(
-        ""
-      );
-
-      await loadWeekLines(
-        selectedWeekId
-      );
-
-      setMessage(
-        "Source line added to the audit trail."
-      );
-    } catch (
-      error
-    ) {
-      setIsError(
-        true
-      );
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "The source line could not be added."
-      );
-    } finally {
-      setSaving(
-        false
-      );
-    }
-  }
-
-
-  async function freezeGame(
-    gameId:
-      number
-  ) {
-    setSaving(
-      true
-    );
-    setMessage(
-      ""
-    );
-    setIsError(
-      false
-    );
-
-    try {
-      const {
-        data,
-        error,
-      } =
-        await supabase.rpc(
-          "freeze_pickem_g365_spread",
-          {
-            p_pickem_game_id:
-              gameId,
-          }
-        );
-
-      if (error) {
-        throw new Error(
-          error.message
-        );
-      }
-
-      await loadWeekLines(
-        selectedWeekId
-      );
-
-      const response =
-        data as {
-          success?:
-            boolean;
-          excluded?:
-            boolean;
-          sourceCount?:
-            number;
-        };
-
-      setMessage(
-        response.excluded
-          ? `Game excluded because only ${response.sourceCount ?? 0} trustworthy source lines were available.`
-          : "G365 Spread frozen successfully."
-      );
-    } catch (
-      error
-    ) {
-      setIsError(
-        true
-      );
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "The G365 Spread could not be frozen."
       );
     } finally {
       setSaving(
@@ -1131,7 +894,7 @@ export default function PickemCommissioner({
               1.6,
           }}
         >
-          Configure the contest, monitor the automatic weekly lifecycle, review source sportsbook lines, and freeze the official G365 Spread.
+          Configure the contest and monitor the automatic weekly lifecycle. ESPN supplies the game slate; The Odds API supplies sportsbook spreads; G365 freezes the official consensus automatically on Line Day.
         </p>
       </section>
 
@@ -1586,20 +1349,67 @@ export default function PickemCommissioner({
 
 
       <Panel
-        title="G365 Line Day & Audit"
-        description="The official G365 Spread is the median of the latest line from each sportsbook. The normalized ingestion contract is provider-neutral."
+        title="Automatic G365 Line Day & Audit"
+        description="Sportsbook spreads are captured automatically from The Odds API on G365 Line Day. The official G365 Spread is frozen as the median of the latest trustworthy sportsbook lines."
       >
         {!selectedWeek ? (
           <Info>
-            Initialize and select a week to manage source lines.
+            Select a week to review its automatic sportsbook line capture and G365 Spread audit.
           </Info>
         ) : games.length ===
           0 ? (
           <Info>
-            Week {selectedWeek.week} has no ESPN games loaded yet. Run the Pick&apos;em game sync after initializing the week.
+            Week {selectedWeek.week} has no ESPN games loaded yet. The automatic lifecycle sync will populate the slate when ESPN publishes it.
           </Info>
         ) : (
           <>
+            <div
+              style={{
+                display:
+                  "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(190px, 1fr))",
+                gap:
+                  10,
+                marginBottom:
+                  14,
+              }}
+            >
+              <LifecycleStat
+                label="Line Day"
+                value={
+                  formatDateTime(
+                    selectedWeek.line_day_at
+                  )
+                }
+              />
+
+              <LifecycleStat
+                label="Odds Provider"
+                value={
+                  selectedWeek.line_sync_provider ===
+                  "the-odds-api"
+                    ? "The Odds API"
+                    : "The Odds API (automatic)"
+                }
+              />
+
+              <LifecycleStat
+                label="Line Sync"
+                value={
+                  selectedWeek.line_sync_completed_at
+                    ? `Complete · ${formatDateTime(
+                        selectedWeek.line_sync_completed_at
+                      )}`
+                    : selectedWeek.line_sync_started_at
+                      ? `Last attempt · ${formatDateTime(
+                          selectedWeek.line_sync_started_at
+                        )}`
+                      : "Waiting for G365 Line Day"
+                }
+              />
+            </div>
+
             <div
               style={{
                 display:
@@ -1764,54 +1574,26 @@ export default function PickemCommissioner({
 
                       <div
                         style={{
-                          display:
-                            "flex",
-                          gap:
-                            8,
-                          flexWrap:
-                            "wrap",
+                          color:
+                            game.spread_status ===
+                            "frozen"
+                              ? "#86efac"
+                              : "#fbbf24",
+                          fontSize:
+                            12,
+                          fontWeight:
+                            800,
                         }}
                       >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setLineGameId(
-                              game.id
-                            )
-                          }
-                          disabled={
-                            game.spread_status ===
-                              "frozen" ||
-                            game.is_started ||
-                            game.is_final
-                          }
-                          style={
-                            styles.secondaryButton
-                          }
-                        >
-                          ADD SOURCE LINE
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void freezeGame(
-                              game.id
-                            )
-                          }
-                          disabled={
-                            saving ||
-                            game.spread_status ===
-                              "frozen" ||
-                            game.is_started ||
-                            game.is_final
-                          }
-                          style={
-                            styles.freezeButton
-                          }
-                        >
-                          FREEZE G365 SPREAD
-                        </button>
+                        {game.spread_status ===
+                        "frozen"
+                          ? "Automatic G365 Line Day complete — official spread frozen."
+                          : game.spread_status ===
+                              "excluded"
+                            ? "Automatic Line Day processed — game excluded from the contest slate."
+                            : `Automatic sportsbook capture scheduled for ${formatDateTime(
+                                selectedWeek.line_day_at
+                              )}.`}
                       </div>
 
                       {game.exclusion_reason ? (
@@ -1833,206 +1615,6 @@ export default function PickemCommissioner({
                 }
               )}
             </div>
-
-            {lineGameId !==
-            null ? (
-              <form
-                onSubmit={
-                  addSourceLine
-                }
-                style={{
-                  display:
-                    "grid",
-                  gap:
-                    12,
-                  marginTop:
-                    16,
-                  padding:
-                    15,
-                  borderRadius:
-                    12,
-                  border:
-                    "1px solid rgba(255,108,33,0.20)",
-                  background:
-                    "rgba(100,8,12,0.13)",
-                }}
-              >
-                <strong
-                  style={{
-                    color:
-                      "#fff",
-                  }}
-                >
-                  Add normalized sportsbook source line
-                </strong>
-
-                <label
-                  style={
-                    styles.label
-                  }
-                >
-                  Game
-                  <select
-                    value={
-                      lineGameId
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setLineGameId(
-                        Number(
-                          event.target
-                            .value
-                        )
-                      )
-                    }
-                    style={
-                      styles.input
-                    }
-                  >
-                    {games.map(
-                      (
-                        game
-                      ) => (
-                        <option
-                          key={
-                            game.id
-                          }
-                          value={
-                            game.id
-                          }
-                        >
-                          {
-                            game.away_team_name
-                          }{" "}
-                          @{" "}
-                          {
-                            game.home_team_name
-                          }
-                        </option>
-                      )
-                    )}
-                  </select>
-                </label>
-
-                <label
-                  style={
-                    styles.label
-                  }
-                >
-                  Source Provider
-                  <input
-                    value={
-                      sourceProvider
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setSourceProvider(
-                        event.target
-                          .value
-                      )
-                    }
-                    style={
-                      styles.input
-                    }
-                  />
-                </label>
-
-                <label
-                  style={
-                    styles.label
-                  }
-                >
-                  Sportsbook Key
-                  <input
-                    value={
-                      sportsbookKey
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setSportsbookKey(
-                        event.target
-                          .value
-                      )
-                    }
-                    placeholder="example-book-key"
-                    style={
-                      styles.input
-                    }
-                  />
-                </label>
-
-                <label
-                  style={
-                    styles.label
-                  }
-                >
-                  Sportsbook Name
-                  <input
-                    value={
-                      sportsbookName
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setSportsbookName(
-                        event.target
-                          .value
-                      )
-                    }
-                    placeholder="Optional display name"
-                    style={
-                      styles.input
-                    }
-                  />
-                </label>
-
-                <label
-                  style={
-                    styles.label
-                  }
-                >
-                  Home Team Spread
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={
-                      homeSpread
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setHomeSpread(
-                        event.target
-                          .value
-                      )
-                    }
-                    placeholder="-3.5"
-                    style={
-                      styles.input
-                    }
-                  />
-
-                  <span
-                    style={
-                      styles.help
-                    }
-                  >
-                    Always enter the line from the HOME team&apos;s perspective. HOME -7.5 is entered as -7.5; HOME +3 is entered as +3.
-                  </span>
-                </label>
-
-                <ActionButton
-                  disabled={
-                    saving
-                  }
-                >
-                  SAVE SOURCE LINE
-                </ActionButton>
-              </form>
-            ) : null}
           </>
         )}
       </Panel>
