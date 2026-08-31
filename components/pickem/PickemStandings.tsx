@@ -57,6 +57,8 @@ type WeeklyResultRow = {
   is_final: boolean;
   weekly_rank:
     number | null;
+  missing_picks: number;
+  is_disqualified: boolean;
 };
 
 
@@ -438,7 +440,7 @@ export default function PickemStandings({
                 "pickem_weekly_results"
               )
               .select(
-                "pickem_week_id,fantasy_team_id,wins,losses,pushes,pending,points,is_final,weekly_rank"
+                "pickem_week_id,fantasy_team_id,wins,losses,pushes,pending,points,is_final,weekly_rank,missing_picks,is_disqualified"
               )
               .eq(
                 "league_id",
@@ -920,10 +922,13 @@ export default function PickemStandings({
                   )
                 )}
                 note={
-                  row.pending >
-                  0
-                    ? `${row.pending} remaining`
-                    : "Awaiting weekly finalization"
+                  row.is_disqualified
+                    ? `DQ — incomplete card (${row.missing_picks} missed)`
+                    : row.pending > 0
+                      ? `${row.pending} remaining`
+                      : row.missing_picks > 0
+                        ? `${row.missing_picks} pick${row.missing_picks === 1 ? "" : "s"} currently missing`
+                        : "Awaiting weekly finalization"
                 }
                 isViewer={
                   viewerFantasyTeamId ===

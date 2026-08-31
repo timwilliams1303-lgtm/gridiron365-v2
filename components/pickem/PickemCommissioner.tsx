@@ -39,6 +39,12 @@ type ScoringMode =
   | "confidence";
 
 
+type MissingPickPolicy =
+  | "count_as_losses"
+  | "no_penalty"
+  | "disqualify_week";
+
+
 type SettingsRow = {
   season: number;
   football_scope:
@@ -61,6 +67,8 @@ type SettingsRow = {
     number[] | null;
   confidence_push_multiplier:
     number | string;
+  missing_pick_policy:
+    MissingPickPolicy;
 };
 
 
@@ -76,6 +84,8 @@ type WeekRow = {
     string | null;
   scoring_mode:
     ScoringMode;
+  missing_pick_policy:
+    MissingPickPolicy;
 };
 
 
@@ -306,6 +316,13 @@ export default function PickemCommissioner({
     useState(0.5);
 
   const [
+    missingPickPolicy,
+    setMissingPickPolicy,
+  ] = useState<MissingPickPolicy>(
+    "count_as_losses"
+  );
+
+  const [
     weekNumber,
     setWeekNumber,
   ] =
@@ -478,7 +495,7 @@ export default function PickemCommissioner({
                 "pickem_settings"
               )
               .select(
-                "season,football_scope,picks_per_week,pick_lock_mode,minimum_source_books,scoring_mode,win_points,push_points,loss_points,confidence_points,confidence_push_multiplier"
+                "season,football_scope,picks_per_week,pick_lock_mode,minimum_source_books,scoring_mode,win_points,push_points,loss_points,confidence_points,confidence_push_multiplier,missing_pick_policy"
               )
               .eq(
                 "league_id",
@@ -491,7 +508,7 @@ export default function PickemCommissioner({
                 "pickem_weeks"
               )
               .select(
-                "id,season,week,status,required_picks,line_day_at,finalize_not_before,scoring_mode"
+                "id,season,week,status,required_picks,line_day_at,finalize_not_before,scoring_mode,missing_pick_policy"
               )
               .eq(
                 "league_id",
@@ -641,6 +658,9 @@ export default function PickemCommissioner({
           );
           setConfidencePushMultiplier(
             Number(nextSettings.confidence_push_multiplier ?? 0.5)
+          );
+          setMissingPickPolicy(
+            nextSettings.missing_pick_policy ?? "count_as_losses"
           );
         }
 
@@ -977,7 +997,7 @@ export default function PickemCommissioner({
         error,
       } =
         await supabase.rpc(
-          "save_pickem_settings_v2",
+          "save_pickem_settings_v3",
           {
             p_league_id:
               leagueId,
@@ -1001,6 +1021,8 @@ export default function PickemCommissioner({
               confidencePoints,
             p_confidence_push_multiplier:
               confidencePushMultiplier,
+            p_missing_pick_policy:
+              missingPickPolicy,
           }
         );
 
@@ -1014,7 +1036,7 @@ export default function PickemCommissioner({
 
       setMessage(
         activeWeekScoringLocked
-          ? "Pick'em settings saved. The current week's scoring snapshot is locked because games have begun; scoring changes apply to the next unlocked week."
+          ? "Pick'em settings saved. The current week's scoring and missing-pick policy snapshots are locked because games have begun; those changes apply to the next unlocked week."
           : "Pick'em settings saved. The active unstarted week and future weeks now use the updated scoring settings."
       );
     } catch (
@@ -1729,6 +1751,16 @@ export default function PickemCommissioner({
                   )}
                 />
                 <StatusCard
+                  label={`Week ${activeWeek.week} Missing Picks`}
+                  value={
+                    activeWeek.missing_pick_policy === "count_as_losses"
+                      ? "LOSSES"
+                      : activeWeek.missing_pick_policy === "disqualify_week"
+                        ? "DQ INCOMPLETE"
+                        : "NO PENALTY"
+                  }
+                />
+                <StatusCard
                   label={`Week ${activeWeek.week} Scoring Status`}
                   value={
                     activeWeekScoringLocked
@@ -1754,11 +1786,47 @@ export default function PickemCommissioner({
                 }}
               >
                 {activeWeekScoringLocked
-                  ? `Week ${activeWeek.week} has reached kickoff, so its scoring system cannot change. Saving a new league scoring system will apply beginning with the next unlocked week.`
-                  : `Week ${activeWeek.week} has not reached kickoff. Saving changes now will update this week's scoring snapshot and future unlocked weeks.`}
+                  ? `Week ${activeWeek.week} has reached kickoff, so its scoring and missing-pick policy snapshots cannot change. Saving new league rules will apply beginning with the next unlocked week.`
+                  : `Week ${activeWeek.week} has not reached kickoff. Saving changes now will update this week's scoring and missing-pick policy snapshots plus future unlocked weeks.`}
               </div>
             </div>
           ) : null}
+
+
+
+          <label style={styles.label}>
+            Missing Pick Policy
+            <select
+              value={missingPickPolicy}
+              onChange={(event) =>
+                setMissingPickPolicy(
+                  event.target.value as MissingPickPolicy
+                )
+              }
+              style={styles.input}
+            >
+              <option value="count_as_losses">
+                Count Missing Picks as Losses
+              </option>
+              <option value="no_penalty">
+                No Penalty — Leave Unplayed
+              </option>
+              <option value="disqualify_week">
+                Disqualify Incomplete Weekly Card
+              </option>
+            </select>
+            <span style={styles.help}>
+              This rule is snapshotted for each week and locks once that week reaches kickoff. Missing-pick penalties never create fake game selections.
+            </span>
+          </label>
+
+          <Info>
+            {missingPickPolicy === "count_as_losses"
+              ? "Each missing required pick becomes a loss at weekly finalization and earns 0 points."
+              : missingPickPolicy === "disqualify_week"
+                ? "An incomplete card keeps its actual graded picks but receives no official weekly rank or Weekly Champ eligibility."
+                : "Missing picks remain unplayed, do not change the ATS record, and earn 0 points."}
+          </Info>
 
           <label
             style={

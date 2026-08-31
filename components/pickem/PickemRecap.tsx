@@ -57,6 +57,8 @@ type ResultRow = {
   is_final: boolean;
   weekly_rank:
     number | null;
+  missing_picks: number;
+  is_disqualified: boolean;
 };
 
 
@@ -316,11 +318,13 @@ export default function PickemRecap({
                   a,
                   b
                 ) =>
+                  Number(a.is_disqualified) -
+                    Number(b.is_disqualified) ||
                   n(
-                    a.weekly_rank
+                    a.weekly_rank ?? Number.MAX_SAFE_INTEGER
                   ) -
                     n(
-                      b.weekly_rank
+                      b.weekly_rank ?? Number.MAX_SAFE_INTEGER
                     ) ||
                   n(
                     b.points
@@ -455,7 +459,7 @@ export default function PickemRecap({
                 "pickem_weekly_results"
               )
               .select(
-                "pickem_week_id,fantasy_team_id,wins,losses,pushes,pending,points,is_final,weekly_rank"
+                "pickem_week_id,fantasy_team_id,wins,losses,pushes,pending,points,is_final,weekly_rank,missing_picks,is_disqualified"
               )
               .eq(
                 "league_id",
@@ -887,10 +891,9 @@ export default function PickemRecap({
                           "center",
                       }}
                     >
-                      #
-                      {row.weekly_rank ??
-                        index +
-                          1}
+                      {row.is_disqualified
+                        ? "DQ"
+                        : `#${row.weekly_rank ?? index + 1}`}
                     </div>
 
                     <div
@@ -926,6 +929,12 @@ export default function PickemRecap({
                         >
                           YOU
                         </span>
+                      ) : null}
+
+                      {row.missing_picks > 0 ? (
+                        <div style={{ marginTop: 4, color: row.is_disqualified ? "#ff7478" : "#a7a7af", fontSize: 10, fontWeight: 800 }}>
+                          {row.is_disqualified ? "INCOMPLETE CARD — DISQUALIFIED" : `${row.missing_picks} MISSING PICK${row.missing_picks === 1 ? "" : "S"}`}
+                        </div>
                       ) : null}
                     </div>
 

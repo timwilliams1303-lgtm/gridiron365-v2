@@ -25,7 +25,7 @@ export default async function PickemReadOnlySettings({
     await supabase
       .from("pickem_settings")
       .select(
-        "football_scope,picks_per_week,pick_lock_mode,reveal_mode,minimum_source_books,scoring_mode,win_points,push_points,loss_points,confidence_points,confidence_push_multiplier"
+        "football_scope,picks_per_week,pick_lock_mode,reveal_mode,minimum_source_books,scoring_mode,win_points,push_points,loss_points,confidence_points,confidence_push_multiplier,missing_pick_policy"
       )
       .eq("league_id", leagueId)
       .single();
@@ -61,6 +61,14 @@ export default async function PickemReadOnlySettings({
     ["Pick Reveal", "Each individual pick becomes visible at that game's kickoff"],
     ["G365 Line", `Median consensus; minimum ${data.minimum_source_books} trustworthy sportsbook sources`],
     ["Scoring", scoringLabel],
+    [
+      "Missing Picks",
+      data.missing_pick_policy === "count_as_losses"
+        ? "Each missing required pick counts as a loss and earns 0 points"
+        : data.missing_pick_policy === "disqualify_week"
+          ? "Incomplete cards are disqualified from the official weekly ranking"
+          : "No penalty; missing picks remain unplayed and earn 0 points",
+    ],
     ...(data.scoring_mode === "confidence"
       ? [["Confidence Push Credit", `${Number(data.confidence_push_multiplier) * 100}% of confidence value`]]
       : data.scoring_mode === "record_only"
