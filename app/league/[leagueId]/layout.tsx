@@ -397,6 +397,9 @@ export default async function LeagueLayout({
           leagueId={
             leagueId
           }
+          isCommissioner={
+            isCommissioner
+          }
         />
       ) : null}
 
