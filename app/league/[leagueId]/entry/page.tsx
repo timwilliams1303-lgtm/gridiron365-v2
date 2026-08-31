@@ -140,14 +140,8 @@ type NflPlayerRow = {
   team_abbreviation:
     string | null;
 
-  injury_status:
+  status:
     string | null;
-
-  bye_week:
-    number | null;
-
-  projected_points:
-    number | string | null;
 
   is_active:
     boolean | null;
@@ -569,9 +563,7 @@ export default async function SeasonLongEntryPage({
           full_name,
           primary_position,
           team_abbreviation,
-          injury_status,
-          bye_week,
-          projected_points,
+          status,
           is_active
         `)
         .in(
@@ -612,9 +604,7 @@ export default async function SeasonLongEntryPage({
           full_name,
           primary_position,
           team_abbreviation,
-          injury_status,
-          bye_week,
-          projected_points,
+          status,
           is_active
         `)
         .eq(
@@ -718,9 +708,7 @@ export default async function SeasonLongEntryPage({
           full_name,
           primary_position,
           team_abbreviation,
-          injury_status,
-          bye_week,
-          projected_points,
+          status,
           is_active
         `)
         .in(
@@ -793,12 +781,10 @@ export default async function SeasonLongEntryPage({
 
           injuryStatus:
             player
-              ?.injury_status ??
+              ?.status ??
             null,
 
           byeWeek:
-            player
-              ?.bye_week ??
             null,
 
           lineupSlot:
@@ -895,10 +881,10 @@ export default async function SeasonLongEntryPage({
               player.team_abbreviation,
 
             injuryStatus:
-              player.injury_status,
+              player.status,
 
             byeWeek:
-              player.bye_week,
+              null,
 
             salary:
               isSalary
@@ -914,9 +900,7 @@ export default async function SeasonLongEntryPage({
                     salary
                       ?.projected_points
                   )
-                : toNumber(
-                    player.projected_points
-                  ),
+                : 0,
 
             salaryChange:
               isSalary
