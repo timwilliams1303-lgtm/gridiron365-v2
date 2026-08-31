@@ -335,7 +335,56 @@ export default async function SeasonLongEntryPage({
    * prepared entry is the safest source for the active week.
    * New leagues fall back to Week 1.
    */
-  const latestEntryResult =
+  /*
+   * ============================================================
+   * ACTIVE WEEK
+   * ============================================================
+   *
+   * My Entry must use the league lifecycle's active week.  Do not
+   * infer the current week from the highest prepared entry row:
+   * future weeks may already be prepared before the active week is
+   * finalized.
+   */
+  const activeWeekResult =
+    await supabase.rpc(
+      "get_active_season_long_week",
+      {
+        p_league_id:
+          leagueId,
+      }
+    );
+
+
+  if (
+    activeWeekResult.error
+  ) {
+    throw new Error(
+      activeWeekResult
+        .error
+        .message
+    );
+  }
+
+
+  const activeWeekValue =
+    Number(
+      activeWeekResult.data
+    );
+
+
+  const currentWeek =
+    Number.isInteger(
+      activeWeekValue
+    ) &&
+    activeWeekValue > 0
+      ? activeWeekValue
+      : 1;
+
+
+  /*
+   * Load only the entry for the lifecycle's active week.
+   */
+  const currentEntryResult =
     await supabase
       .from(
         "season_long_weekly_entries"
@@ -359,24 +408,18 @@ export default async function SeasonLongEntryPage({
         "season",
         season
       )
-      .order(
+      .eq(
         "week",
-        {
-          ascending:
-            false,
-        }
-      )
-      .limit(
-        1
+        currentWeek
       )
       .maybeSingle();
 
 
   if (
-    latestEntryResult.error
+    currentEntryResult.error
   ) {
     throw new Error(
-      latestEntryResult
+      currentEntryResult
         .error
         .message
     );
@@ -384,14 +427,8 @@ export default async function SeasonLongEntryPage({
 
 
   const currentEntry =
-    latestEntryResult
+    currentEntryResult
       .data as WeeklyEntryRow | null;
-
-
-  const currentWeek =
-    currentEntry
-      ?.week ??
-    1;
 
 
   /*
