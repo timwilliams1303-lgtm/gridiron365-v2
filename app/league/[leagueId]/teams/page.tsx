@@ -12,6 +12,11 @@ import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
 
+import {
+  getSeasonLongTeamLiveLineupData,
+  type SeasonLongLiveLineupPlayer,
+} from "@/lib/season-long/team-live-lineup.service";
+
 
 type PageProps = {
   params:
@@ -122,6 +127,8 @@ type TeamDisplayRow = {
 
   weeklyRank:
     number;
+
+
 };
 
 
@@ -238,6 +245,87 @@ function clampWeek(
       )
     )
   );
+}
+
+
+
+function gameLabel(
+  player: SeasonLongLiveLineupPlayer
+) {
+  const context =
+    player.gameContext;
+
+  if (
+    player.scoreIsFinal ||
+    context?.statusCompleted
+  ) {
+    return "FINAL";
+  }
+
+  if (
+    player.scoreIsLive ||
+    context?.isActuallyLive
+  ) {
+    const period =
+      context?.period ?? null;
+
+    const quarter =
+      period === 1
+        ? "Q1"
+        : period === 2
+          ? "Q2"
+          : period === 3
+            ? "Q3"
+            : period === 4
+              ? "Q4"
+              : period === 5
+                ? "OT"
+                : "";
+
+    const detail =
+      [
+        quarter,
+        context?.clock,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+    return detail
+      ? `LIVE ${detail}`
+      : "LIVE";
+  }
+
+  if (
+    !player.nflGameId &&
+    !player.opponentAbbreviation
+  ) {
+    return "BYE";
+  }
+
+  return "UPCOMING";
+}
+
+
+function playerMeta(
+  player: SeasonLongLiveLineupPlayer
+) {
+  if (!player.isRevealed) {
+    return "Selection hidden until kickoff";
+  }
+
+  const team =
+    player.teamAbbreviation ??
+    "FA";
+
+  const opponent =
+    player.opponentAbbreviation
+      ? `${
+          player.opponentPrefix ??
+          "vs"
+        } ${player.opponentAbbreviation}`
+      : "BYE";
+
+  return `${team} • ${opponent}`;
 }
 
 
@@ -787,6 +875,59 @@ export default async function SeasonLongLeagueTeamsPage({
     ).length;
 
 
+  /*
+   * Load each team's Week lineup on this page so League Teams can
+   * expand/collapse in place instead of navigating to a team page.
+   * The existing live-lineup service keeps the same reveal/privacy
+   * behavior used by the dedicated team view.
+   */
+  const teamLineupResults =
+    await Promise.all(
+      rankedRows.map(
+        async (row) => {
+          const lineup =
+            await getSeasonLongTeamLiveLineupData(
+              supabase,
+              {
+                leagueId,
+
+                fantasyTeamId:
+                  row.teamId,
+
+                viewerFantasyTeamId:
+                  access.fantasyTeam
+                    ?.id ?? null,
+
+                season,
+
+                week:
+                  selectedWeek,
+
+                selectionMode:
+                  isSalaryLeague
+                    ? "salary"
+                    : "no_salary",
+
+                activeWeek:
+                  resolvedActiveWeek,
+              }
+            );
+
+          return [
+            row.teamId,
+            lineup,
+          ] as const;
+        }
+      )
+    );
+
+
+  const teamLineupMap =
+    new Map(
+      teamLineupResults
+    );
+
+
   return (
     <main
       style={
@@ -822,8 +963,8 @@ export default async function SeasonLongLeagueTeamsPage({
           >
             Weekly team rankings and
             league entries.
-            Select a team to view
-            who they picked.
+            Use the + / − control to
+            expand or minimize a team.
           </p>
         </div>
 
@@ -1043,245 +1184,458 @@ export default async function SeasonLongLeagueTeamsPage({
         ) : (
           <div
             style={
-              styles.tableWrap
+              styles.teamList
             }
           >
-            <table
-              style={
-                styles.table
-              }
-            >
-              <thead>
-                <tr>
-                  <th
+            {rankedRows.map(
+              (
+                row
+              ) => {
+                const isMyTeam =
+                  access
+                    .fantasyTeam
+                    ?.id ===
+                  row.teamId;
+
+                const lineup =
+                  teamLineupMap.get(
+                    row.teamId
+                  );
+
+                return (
+                  <details
+                    key={
+                      row.teamId
+                    }
+                    className="g365-team-details"
                     style={{
-                      ...styles.th,
-                      ...styles.rankColumn,
+                      ...styles.teamDetails,
+
+                      ...(isMyTeam
+                        ? styles.myTeamDetails
+                        : {}),
                     }}
                   >
-                    RK
-                  </th>
-
-                  <th
-                    style={{
-                      ...styles.th,
-                      textAlign:
-                        "left",
-                    }}
-                  >
-                    TEAM
-                  </th>
-
-                  <th
-                    style={
-                      styles.th
-                    }
-                  >
-                    WEEK PTS
-                  </th>
-
-                  <th
-                    style={
-                      styles.th
-                    }
-                  >
-                    PROJECTED
-                  </th>
-
-                  <th
-                    style={
-                      styles.th
-                    }
-                  >
-                    SEASON PTS
-                  </th>
-
-                  {isSalaryLeague && (
-                    <th
+                    <summary
+                      className="g365-team-summary"
                       style={
-                        styles.th
+                        styles.teamSummary
                       }
                     >
-                      SALARY
-                    </th>
-                  )}
-
-                  <th
-                    style={
-                      styles.th
-                    }
-                  >
-                    LINEUP
-                  </th>
-
-                  <th
-                    style={
-                      styles.th
-                    }
-                  >
-                    STATUS
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {rankedRows.map(
-                  (
-                    row
-                  ) => {
-                    const isMyTeam =
-                      access
-                        .fantasyTeam
-                        ?.id ===
-                      row.teamId;
-
-
-                    return (
-                      <tr
-                        key={
-                          row.teamId
-                        }
+                      <div
                         style={
-                          isMyTeam
-                            ? styles.myTeamRow
-                            : undefined
+                          styles.teamSummaryLeft
                         }
                       >
-                        <td
+                        <div
                           style={{
-                            ...styles.td,
-                            ...styles.rankCell,
+                            ...styles.rankBadge,
+
+                            ...(row.weeklyRank ===
+                            1
+                              ? styles.rankBadgeFirst
+                              : {}),
                           }}
-                        >
-                          <div
-                            style={{
-                              ...styles.rankBadge,
-
-                              ...(row.weeklyRank ===
-                              1
-                                ? styles.rankBadgeFirst
-                                : {}),
-                            }}
-                          >
-                            {
-                              row.weeklyRank
-                            }
-                          </div>
-                        </td>
-
-                        <td
-                          style={{
-                            ...styles.td,
-                            textAlign:
-                              "left",
-                          }}
-                        >
-                          <Link
-                            href={
-                              `/league/${leagueId}/teams/${row.teamId}?week=${selectedWeek}`
-                            }
-                            style={
-                              styles.teamLink
-                            }
-                          >
-                            {
-                              row.teamName
-                            }
-                          </Link>
-
-                          {isMyTeam && (
-                            <span
-                              style={
-                                styles.myTeamBadge
-                              }
-                            >
-                              YOU
-                            </span>
-                          )}
-                        </td>
-
-                        <td
-                          style={{
-                            ...styles.td,
-                            ...styles.pointsCell,
-                          }}
-                        >
-                          {formatPoints(
-                            row.weeklyPoints
-                          )}
-                        </td>
-
-                        <td
-                          style={
-                            styles.td
-                          }
-                        >
-                          {formatPoints(
-                            row.projectedPoints
-                          )}
-                        </td>
-
-                        <td
-                          style={{
-                            ...styles.td,
-                            ...styles.seasonPointsCell,
-                          }}
-                        >
-                          {formatPoints(
-                            row.seasonPoints
-                          )}
-                        </td>
-
-                        {isSalaryLeague && (
-                          <td
-                            style={
-                              styles.td
-                            }
-                          >
-                            {row.salaryUsed ===
-                            null
-                              ? "—"
-                              : formatMoney(
-                                  row.salaryUsed
-                                )}
-                          </td>
-                        )}
-
-                        <td
-                          style={
-                            styles.td
-                          }
                         >
                           {
-                            row.lineupPlayerCount
+                            row.weeklyRank
                           }
-                        </td>
+                        </div>
 
-                        <td
+                        <div
                           style={
-                            styles.td
+                            styles.teamIdentity
                           }
                         >
-                          <span
-                            style={{
-                              ...styles.statusBadge,
+                          <div
+                            style={
+                              styles.teamNameLine
+                            }
+                          >
+                            <strong
+                              style={
+                                styles.teamName
+                              }
+                            >
+                              {
+                                row.teamName
+                              }
+                            </strong>
 
-                              ...(row.isFinal
-                                ? styles.statusFinal
-                                : {}),
-                            }}
+                            {isMyTeam && (
+                              <span
+                                style={
+                                  styles.myTeamBadge
+                                }
+                              >
+                                YOU
+                              </span>
+                            )}
+                          </div>
+
+                          <div
+                            style={
+                              styles.teamSummaryMeta
+                            }
                           >
                             {row.isFinal
                               ? "Final"
                               : row.entryStatus}
+                            {" • "}
+                            {row.lineupPlayerCount} players
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        style={
+                          styles.teamSummaryRight
+                        }
+                      >
+                        <div
+                          style={
+                            styles.summaryMetric
+                          }
+                        >
+                          <span
+                            style={
+                              styles.summaryMetricLabel
+                            }
+                          >
+                            WEEK
                           </span>
-                        </td>
-                      </tr>
-                    );
-                  }
-                )}
-              </tbody>
-            </table>
+
+                          <strong
+                            style={
+                              styles.summaryMetricValue
+                            }
+                          >
+                            {formatPoints(
+                              row.weeklyPoints
+                            )}
+                          </strong>
+                        </div>
+
+                        <div
+                          style={
+                            styles.summaryMetric
+                          }
+                        >
+                          <span
+                            style={
+                              styles.summaryMetricLabel
+                            }
+                          >
+                            PROJ
+                          </span>
+
+                          <strong
+                            style={
+                              styles.summaryMetricValue
+                            }
+                          >
+                            {formatPoints(
+                              row.projectedPoints
+                            )}
+                          </strong>
+                        </div>
+
+                        <div
+                          style={
+                            styles.summaryMetric
+                          }
+                        >
+                          <span
+                            style={
+                              styles.summaryMetricLabel
+                            }
+                          >
+                            SEASON
+                          </span>
+
+                          <strong
+                            style={
+                              styles.summaryMetricValueOrange
+                            }
+                          >
+                            {formatPoints(
+                              row.seasonPoints
+                            )}
+                          </strong>
+                        </div>
+
+                        {isSalaryLeague && (
+                          <div
+                            style={
+                              styles.summaryMetric
+                            }
+                          >
+                            <span
+                              style={
+                                styles.summaryMetricLabel
+                              }
+                            >
+                              SALARY
+                            </span>
+
+                            <strong
+                              style={
+                                styles.summaryMetricValue
+                              }
+                            >
+                              {row.salaryUsed ===
+                              null
+                                ? "—"
+                                : formatMoney(
+                                    row.salaryUsed
+                                  )}
+                            </strong>
+                          </div>
+                        )}
+
+                        <span
+                          aria-hidden="true"
+                          className="g365-team-toggle"
+                        >
+                          <span className="g365-team-plus">
+                            +
+                          </span>
+
+                          <span className="g365-team-minus">
+                            −
+                          </span>
+                        </span>
+                      </div>
+                    </summary>
+
+                    <div
+                      style={
+                        styles.expandedTeam
+                      }
+                    >
+                      <div
+                        style={
+                          styles.expandedHeader
+                        }
+                      >
+                        <div>
+                          <div
+                            style={
+                              styles.expandedEyebrow
+                            }
+                          >
+                            WEEK {selectedWeek} LINEUP
+                          </div>
+
+                          <h3
+                            style={
+                              styles.expandedTitle
+                            }
+                          >
+                            {row.teamName}
+                          </h3>
+                        </div>
+
+                        <div
+                          style={{
+                            ...styles.statusBadge,
+
+                            ...(row.isFinal
+                              ? styles.statusFinal
+                              : {}),
+                          }}
+                        >
+                          {row.isFinal
+                            ? "Final"
+                            : row.entryStatus}
+                        </div>
+                      </div>
+
+                      {!lineup ||
+                      lineup.players.length ===
+                      0 ? (
+                        <div
+                          style={
+                            styles.lineupEmpty
+                          }
+                        >
+                          No lineup has been
+                          submitted for Week{" "}
+                          {selectedWeek}.
+                        </div>
+                      ) : (
+                        <div
+                          style={
+                            styles.lineupGrid
+                          }
+                        >
+                          {lineup.players.map(
+                            (
+                              player
+                            ) => {
+                              const status =
+                                gameLabel(
+                                  player
+                                );
+
+                              const live =
+                                status.startsWith(
+                                  "LIVE"
+                                );
+
+                              return (
+                                <div
+                                  key={
+                                    `${player.lineupSlot}:` +
+                                    `${player.slotIndex}:` +
+                                    `${player.playerId}`
+                                  }
+                                  style={{
+                                    ...styles.playerCard,
+
+                                    ...(live
+                                      ? styles.playerCardLive
+                                      : {}),
+                                  }}
+                                >
+                                  <div
+                                    style={
+                                      styles.playerTop
+                                    }
+                                  >
+                                    <span
+                                      style={
+                                        styles.slotBadge
+                                      }
+                                    >
+                                      {
+                                        player.lineupSlot
+                                      }
+                                    </span>
+
+                                    <span
+                                      style={{
+                                        ...styles.gameBadge,
+
+                                        ...(live
+                                          ? styles.gameBadgeLive
+                                          : {}),
+
+                                        ...(status ===
+                                        "FINAL"
+                                          ? styles.gameBadgeFinal
+                                          : {}),
+                                      }}
+                                    >
+                                      {status}
+                                    </span>
+                                  </div>
+
+                                  <strong
+                                    style={
+                                      styles.playerName
+                                    }
+                                  >
+                                    {
+                                      player.fullName
+                                    }
+                                  </strong>
+
+                                  <div
+                                    style={
+                                      styles.playerMeta
+                                    }
+                                  >
+                                    {playerMeta(
+                                      player
+                                    )}
+                                  </div>
+
+                                  <div
+                                    style={
+                                      styles.playerNumbers
+                                    }
+                                  >
+                                    <div>
+                                      <span
+                                        style={
+                                          styles.playerNumberLabel
+                                        }
+                                      >
+                                        PROJ
+                                      </span>
+
+                                      <strong
+                                        style={
+                                          styles.playerNumber
+                                        }
+                                      >
+                                        {formatPoints(
+                                          player.projectedPoints
+                                        )}
+                                      </strong>
+                                    </div>
+
+                                    <div>
+                                      <span
+                                        style={
+                                          styles.playerNumberLabel
+                                        }
+                                      >
+                                        PTS
+                                      </span>
+
+                                      <strong
+                                        style={{
+                                          ...styles.playerNumber,
+
+                                          ...(live
+                                            ? styles.livePoints
+                                            : {}),
+                                        }}
+                                      >
+                                        {formatPoints(
+                                          player.fantasyPoints
+                                        )}
+                                      </strong>
+                                    </div>
+
+                                    {isSalaryLeague && (
+                                      <div>
+                                        <span
+                                          style={
+                                            styles.playerNumberLabel
+                                          }
+                                        >
+                                          SALARY
+                                        </span>
+
+                                        <strong
+                                          style={
+                                            styles.playerNumber
+                                          }
+                                        >
+                                          {player.salary ===
+                                          null
+                                            ? "—"
+                                            : formatMoney(
+                                                player.salary
+                                              )}
+                                        </strong>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            }
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                );
+              }
+            )}
           </div>
         )}
       </section>
@@ -1306,7 +1660,7 @@ export default async function SeasonLongLeagueTeamsPage({
               styles.helpTitle
             }
           >
-            Viewing another team
+            League team lineups
           </div>
 
           <div
@@ -1314,13 +1668,87 @@ export default async function SeasonLongLeagueTeamsPage({
               styles.helpText
             }
           >
-            Click any team name to
-            open that team&apos;s
-            lineup for Week{" "}
-            {selectedWeek}.
+            Teams start minimized.
+            Use + to view a Week{" "}
+            {selectedWeek} lineup and
+            − to minimize it again.
           </div>
         </div>
       </section>
+
+      <style>{`
+        .g365-team-summary::-webkit-details-marker {
+          display: none;
+        }
+
+        .g365-team-summary::marker {
+          display: none;
+          content: "";
+        }
+
+        .g365-team-summary {
+          list-style: none;
+        }
+
+        .g365-team-summary:hover {
+          background: rgba(255,255,255,.025);
+        }
+
+        .g365-team-toggle {
+          width: 34px;
+          height: 34px;
+          flex: 0 0 34px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(255,114,0,.42);
+          border-radius: 9px;
+          background: rgba(255,114,0,.08);
+          color: #ff8a24;
+          font-size: 22px;
+          font-weight: 900;
+          line-height: 1;
+        }
+
+        .g365-team-minus {
+          display: none;
+        }
+
+        .g365-team-details[open] .g365-team-plus {
+          display: none;
+        }
+
+        .g365-team-details[open] .g365-team-minus {
+          display: inline;
+        }
+
+        .g365-team-details[open] .g365-team-summary {
+          border-bottom: 1px solid rgba(255,255,255,.07);
+          background: linear-gradient(
+            90deg,
+            rgba(255,70,0,.045),
+            rgba(255,114,0,.012)
+          );
+        }
+
+        @media (max-width: 900px) {
+          .g365-team-summary {
+            align-items: flex-start !important;
+          }
+        }
+
+        @media (max-width: 680px) {
+          .g365-team-summary {
+            padding: 14px !important;
+          }
+
+          .g365-team-toggle {
+            width: 32px;
+            height: 32px;
+            flex-basis: 32px;
+          }
+        }
+      `}</style>
     </main>
   );
 }
@@ -2066,5 +2494,493 @@ const styles = {
 
     fontWeight:
       700,
+  },
+  teamList: {
+    display:
+      "grid",
+
+    gap:
+      "8px",
+
+    padding:
+      "10px",
+  },
+
+  teamDetails: {
+    overflow:
+      "hidden",
+
+    border:
+      "1px solid rgba(255,255,255,.075)",
+
+    borderRadius:
+      "12px",
+
+    background:
+      "linear-gradient(180deg,#0f1013,#0b0c0e)",
+  },
+
+  myTeamDetails: {
+    border:
+      "1px solid rgba(255,114,0,.22)",
+
+    boxShadow:
+      "inset 3px 0 0 rgba(255,100,0,.55)",
+  },
+
+  teamSummary: {
+    minHeight:
+      "74px",
+
+    padding:
+      "14px 16px",
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "space-between",
+
+    gap:
+      "18px",
+
+    cursor:
+      "pointer",
+
+    userSelect:
+      "none" as const,
+  },
+
+  teamSummaryLeft: {
+    minWidth:
+      0,
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "12px",
+  },
+
+  teamIdentity: {
+    minWidth:
+      0,
+  },
+
+  teamNameLine: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "7px",
+
+    flexWrap:
+      "wrap" as const,
+  },
+
+  teamName: {
+    color:
+      "#ffffff",
+
+    fontSize:
+      "14px",
+
+    fontWeight:
+      1000,
+
+    lineHeight:
+      1.2,
+  },
+
+  teamSummaryMeta: {
+    marginTop:
+      "4px",
+
+    color:
+      "#747b87",
+
+    fontSize:
+      "10px",
+
+    fontWeight:
+      800,
+  },
+
+  teamSummaryRight: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "flex-end",
+
+    gap:
+      "16px",
+
+    flexWrap:
+      "wrap" as const,
+  },
+
+  summaryMetric: {
+    minWidth:
+      "58px",
+
+    textAlign:
+      "right" as const,
+  },
+
+  summaryMetricLabel: {
+    display:
+      "block",
+
+    marginBottom:
+      "2px",
+
+    color:
+      "#656d79",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      1000,
+
+    letterSpacing:
+      ".08em",
+  },
+
+  summaryMetricValue: {
+    color:
+      "#f4f5f7",
+
+    fontSize:
+      "12px",
+
+    fontWeight:
+      1000,
+
+    fontVariantNumeric:
+      "tabular-nums",
+  },
+
+  summaryMetricValueOrange: {
+    color:
+      "#ff8a24",
+
+    fontSize:
+      "12px",
+
+    fontWeight:
+      1000,
+
+    fontVariantNumeric:
+      "tabular-nums",
+  },
+
+  expandedTeam: {
+    padding:
+      "16px",
+  },
+
+  expandedHeader: {
+    marginBottom:
+      "12px",
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "space-between",
+
+    gap:
+      "14px",
+  },
+
+  expandedEyebrow: {
+    color:
+      "#ff7200",
+
+    fontSize:
+      "9px",
+
+    fontWeight:
+      1000,
+
+    letterSpacing:
+      ".1em",
+  },
+
+  expandedTitle: {
+    margin:
+      "3px 0 0",
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "17px",
+
+    fontWeight:
+      1000,
+  },
+
+  lineupGrid: {
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(220px,1fr))",
+
+    gap:
+      "8px",
+  },
+
+  lineupEmpty: {
+    padding:
+      "26px 16px",
+
+    border:
+      "1px dashed rgba(255,255,255,.08)",
+
+    borderRadius:
+      "10px",
+
+    color:
+      "#737b87",
+
+    fontSize:
+      "11px",
+
+    fontWeight:
+      800,
+
+    textAlign:
+      "center" as const,
+  },
+
+  playerCard: {
+    minWidth:
+      0,
+
+    padding:
+      "12px",
+
+    border:
+      "1px solid rgba(255,255,255,.07)",
+
+    borderRadius:
+      "10px",
+
+    background:
+      "rgba(255,255,255,.018)",
+  },
+
+  playerCardLive: {
+    border:
+      "1px solid rgba(255,114,0,.28)",
+
+    background:
+      "linear-gradient(180deg,rgba(255,92,0,.055),rgba(255,255,255,.018))",
+  },
+
+  playerTop: {
+    marginBottom:
+      "9px",
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "space-between",
+
+    gap:
+      "8px",
+  },
+
+  slotBadge: {
+    display:
+      "inline-flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "center",
+
+    minWidth:
+      "38px",
+
+    minHeight:
+      "22px",
+
+    padding:
+      "0 7px",
+
+    border:
+      "1px solid rgba(255,114,0,.22)",
+
+    borderRadius:
+      "6px",
+
+    background:
+      "rgba(255,114,0,.07)",
+
+    color:
+      "#ff8a24",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      1000,
+  },
+
+  gameBadge: {
+    color:
+      "#7e8794",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      1000,
+
+    letterSpacing:
+      ".05em",
+  },
+
+  gameBadgeLive: {
+    color:
+      "#ff8a24",
+  },
+
+  gameBadgeFinal: {
+    color:
+      "#56dc8c",
+  },
+
+  playerName: {
+    display:
+      "block",
+
+    overflow:
+      "hidden",
+
+    color:
+      "#f4f5f7",
+
+    fontSize:
+      "13px",
+
+    fontWeight:
+      1000,
+
+    textOverflow:
+      "ellipsis",
+
+    whiteSpace:
+      "nowrap" as const,
+  },
+
+  playerMeta: {
+    minHeight:
+      "16px",
+
+    marginTop:
+      "3px",
+
+    overflow:
+      "hidden",
+
+    color:
+      "#737b87",
+
+    fontSize:
+      "9px",
+
+    fontWeight:
+      800,
+
+    textOverflow:
+      "ellipsis",
+
+    whiteSpace:
+      "nowrap" as const,
+  },
+
+  playerNumbers: {
+    marginTop:
+      "10px",
+
+    paddingTop:
+      "9px",
+
+    borderTop:
+      "1px solid rgba(255,255,255,.055)",
+
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "repeat(3,minmax(0,1fr))",
+
+    gap:
+      "8px",
+  },
+
+  playerNumberLabel: {
+    display:
+      "block",
+
+    marginBottom:
+      "2px",
+
+    color:
+      "#5f6874",
+
+    fontSize:
+      "7px",
+
+    fontWeight:
+      1000,
+
+    letterSpacing:
+      ".07em",
+  },
+
+  playerNumber: {
+    color:
+      "#dfe2e6",
+
+    fontSize:
+      "11px",
+
+    fontWeight:
+      1000,
+
+    fontVariantNumeric:
+      "tabular-nums",
+  },
+
+  livePoints: {
+    color:
+      "#ff8a24",
   },
 };
