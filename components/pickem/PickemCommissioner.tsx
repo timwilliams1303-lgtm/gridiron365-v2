@@ -74,6 +74,8 @@ type WeekRow = {
     string | null;
   finalize_not_before:
     string | null;
+  scoring_mode:
+    ScoringMode;
 };
 
 
@@ -391,6 +393,11 @@ export default function PickemCommissioner({
 
 
   const [
+    activeWeekScoringLocked,
+    setActiveWeekScoringLocked,
+  ] = useState(false);
+
+  const [
     lifecycleAdvancedOpen,
     setLifecycleAdvancedOpen,
   ] = useState(false);
@@ -484,7 +491,7 @@ export default function PickemCommissioner({
                 "pickem_weeks"
               )
               .select(
-                "id,season,week,status,required_picks,line_day_at,finalize_not_before"
+                "id,season,week,status,required_picks,line_day_at,finalize_not_before,scoring_mode"
               )
               .eq(
                 "league_id",
@@ -527,6 +534,73 @@ export default function PickemCommissioner({
             weeksResult.data ??
             []
           ) as WeekRow[];
+
+        const nextActiveWeek =
+          nextWeeks.find(
+            (row) =>
+              row.status !==
+              "final"
+          ) ??
+          nextWeeks.at(-1) ??
+          null;
+
+        if (nextActiveWeek) {
+          const {
+            data:
+              activeWeekGameData,
+            error:
+              activeWeekGameError,
+          } =
+            await supabase
+              .from(
+                "pickem_games"
+              )
+              .select(
+                "id,is_started,kickoff_at"
+              )
+              .eq(
+                "league_id",
+                leagueId
+              )
+              .eq(
+                "pickem_week_id",
+                nextActiveWeek.id
+              );
+
+          if (
+            activeWeekGameError
+          ) {
+            throw new Error(
+              activeWeekGameError.message
+            );
+          }
+
+          const now =
+            Date.now();
+
+          setActiveWeekScoringLocked(
+            (
+              activeWeekGameData ??
+              []
+            ).some(
+              (game) =>
+                game.is_started ===
+                  true ||
+                (
+                  typeof game.kickoff_at ===
+                    "string" &&
+                  new Date(
+                    game.kickoff_at
+                  ).getTime() <=
+                    now
+                )
+            )
+          );
+        } else {
+          setActiveWeekScoringLocked(
+            false
+          );
+        }
 
         setSettings(
           nextSettings
@@ -939,7 +1013,9 @@ export default function PickemCommissioner({
       await load();
 
       setMessage(
-        "Pick'em settings saved. Existing initialized weeks keep their required-pick snapshot."
+        activeWeekScoringLocked
+          ? "Pick'em settings saved. The current week's scoring snapshot is locked because games have begun; scoring changes apply to the next unlocked week."
+          : "Pick'em settings saved. The active unstarted week and future weeks now use the updated scoring settings."
       );
     } catch (
       error
@@ -1332,7 +1408,7 @@ export default function PickemCommissioner({
 
       <Panel
         title="League Rules"
-        description="Changes apply to newly initialized weeks. Existing weeks keep their required-pick snapshot."
+        description="League scoring changes update unstarted weeks immediately. Once a week reaches kickoff, that week keeps its scoring snapshot for competitive integrity."
       >
         <form
           onSubmit={
@@ -1608,6 +1684,81 @@ export default function PickemCommissioner({
               </>
             ) : null}
           </div>
+
+          {activeWeek ? (
+            <div
+              style={{
+                display:
+                  "grid",
+                gap:
+                  10,
+                padding:
+                  14,
+                borderRadius:
+                  12,
+                border:
+                  activeWeekScoringLocked
+                    ? "1px solid rgba(248,113,113,0.28)"
+                    : "1px solid rgba(74,222,128,0.24)",
+                background:
+                  activeWeekScoringLocked
+                    ? "rgba(127,29,29,0.16)"
+                    : "rgba(20,83,45,0.14)",
+              }}
+            >
+              <div
+                style={{
+                  display:
+                    "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit,minmax(170px,1fr))",
+                  gap:
+                    10,
+                }}
+              >
+                <StatusCard
+                  label="League Scoring"
+                  value={formatScoringMode(
+                    scoringMode
+                  )}
+                />
+                <StatusCard
+                  label={`Week ${activeWeek.week} Scoring`}
+                  value={formatScoringMode(
+                    activeWeek.scoring_mode
+                  )}
+                />
+                <StatusCard
+                  label={`Week ${activeWeek.week} Scoring Status`}
+                  value={
+                    activeWeekScoringLocked
+                      ? "LOCKED"
+                      : "UNLOCKED"
+                  }
+                  good={
+                    !activeWeekScoringLocked
+                  }
+                />
+              </div>
+
+              <div
+                style={{
+                  color:
+                    activeWeekScoringLocked
+                      ? "#fecaca"
+                      : "#bbf7d0",
+                  fontSize:
+                    13,
+                  lineHeight:
+                    1.6,
+                }}
+              >
+                {activeWeekScoringLocked
+                  ? `Week ${activeWeek.week} has reached kickoff, so its scoring system cannot change. Saving a new league scoring system will apply beginning with the next unlocked week.`
+                  : `Week ${activeWeek.week} has not reached kickoff. Saving changes now will update this week's scoring snapshot and future unlocked weeks.`}
+              </div>
+            </div>
+          ) : null}
 
           <label
             style={
@@ -2262,6 +2413,26 @@ export default function PickemCommissioner({
       />
     </main>
   );
+}
+
+
+function formatScoringMode(
+  mode:
+    ScoringMode
+) {
+  switch (mode) {
+    case "standard":
+      return "STANDARD 1 / 0.5 / 0";
+    case "three_one_zero":
+      return "3 / 1 / 0";
+    case "custom":
+      return "CUSTOM";
+    case "confidence":
+      return "CONFIDENCE";
+    case "record_only":
+    default:
+      return "RECORD ONLY";
+  }
 }
 
 
