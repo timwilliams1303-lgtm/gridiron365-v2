@@ -299,7 +299,7 @@ export default function PickemParticipantManager({
 
       const response =
         await fetch(
-          `/api/leagues/${leagueId}/invite`,
+          `/api/league/${leagueId}/invite`,
           {
             method: "POST",
             headers: {
