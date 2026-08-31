@@ -137,9 +137,6 @@ type NflPlayerRow = {
   primary_position:
     string | null;
 
-  position:
-    string | null;
-
   team_abbreviation:
     string | null;
 
@@ -571,7 +568,6 @@ export default async function SeasonLongEntryPage({
           id,
           full_name,
           primary_position,
-          position,
           team_abbreviation,
           injury_status,
           bye_week,
@@ -615,7 +611,6 @@ export default async function SeasonLongEntryPage({
           id,
           full_name,
           primary_position,
-          position,
           team_abbreviation,
           injury_status,
           bye_week,
@@ -722,7 +717,6 @@ export default async function SeasonLongEntryPage({
           id,
           full_name,
           primary_position,
-          position,
           team_abbreviation,
           injury_status,
           bye_week,
@@ -789,8 +783,6 @@ export default async function SeasonLongEntryPage({
             (
               player
                 ?.primary_position ??
-              player
-                ?.position ??
               ""
             ).toUpperCase(),
 
@@ -861,7 +853,6 @@ export default async function SeasonLongEntryPage({
           const position =
             (
               player.primary_position ??
-              player.position ??
               ""
             ).toUpperCase();
 
@@ -897,7 +888,6 @@ export default async function SeasonLongEntryPage({
             position:
               (
                 player.primary_position ??
-                player.position ??
                 ""
               ).toUpperCase(),
 
