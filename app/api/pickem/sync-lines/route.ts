@@ -439,6 +439,31 @@ function median(
 }
 
 
+function toOddsApiTime(
+  value: string
+) {
+  const parsed =
+    new Date(value);
+
+  if (
+    !Number.isFinite(
+      parsed.getTime()
+    )
+  ) {
+    throw new Error(
+      `Invalid Odds API time value: ${value}`
+    );
+  }
+
+  return parsed
+    .toISOString()
+    .replace(
+      /\.\d{3}Z$/,
+      "Z"
+    );
+}
+
+
 async function fetchOdds(
   apiKey: string,
   sport: "ncaaf" | "nfl",
@@ -472,11 +497,15 @@ async function fetchOdds(
   );
   url.searchParams.set(
     "commenceTimeFrom",
-    from
+    toOddsApiTime(
+      from
+    )
   );
   url.searchParams.set(
     "commenceTimeTo",
-    to
+    toOddsApiTime(
+      to
+    )
   );
 
   const response =
