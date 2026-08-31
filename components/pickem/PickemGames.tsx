@@ -17,20 +17,16 @@ type Props = {
   season: number;
 };
 
-
 type WeekRow = {
   id: number;
   week: number;
   status: string;
 };
 
-
 type GameRow = {
   id: number;
   pickem_week_id: number;
-  sport:
-    | "ncaaf"
-    | "nfl";
+  sport: "ncaaf" | "nfl";
   kickoff_at: string;
   away_team_name: string;
   away_team_abbreviation:
@@ -50,18 +46,13 @@ type GameRow = {
     number | null;
   display_clock:
     string | null;
-  is_started:
-    boolean;
-  is_final:
-    boolean;
-  is_eligible:
-    boolean;
+  is_started: boolean;
+  is_final: boolean;
+  is_eligible: boolean;
   exclusion_reason:
     string | null;
   g365_home_spread:
-    number |
-    string |
-    null;
+    number | string | null;
   spread_status:
     | "pending"
     | "published"
@@ -71,51 +62,71 @@ type GameRow = {
     number | null;
   last_score_sync_at:
     string | null;
+  possession_team_abbreviation:
+    string | null;
+  down: number | null;
+  distance: number | null;
+  yard_line: number | null;
+  yards_to_endzone:
+    number | null;
+  down_distance_text:
+    string | null;
+  possession_text:
+    string | null;
+  is_red_zone:
+    boolean | null;
+  last_play_text:
+    string | null;
 };
 
 
 function numberValue(
   value:
-    number |
-    string |
-    null
+    number | string | null
 ) {
-  if (
-    value === null
-  ) {
+  if (value === null) {
     return null;
   }
 
   const parsed =
     Number(value);
 
-  return Number.isFinite(
-    parsed
-  )
+  return Number.isFinite(parsed)
     ? parsed
     : null;
 }
 
 
+function formatNumber(
+  value: number
+) {
+  return Number.isInteger(value)
+    ? String(value)
+    : value
+        .toFixed(2)
+        .replace(/0+$/, "")
+        .replace(/\.$/, "");
+}
+
+
 function formatSpread(
-  value:
-    number
+  value: number
 ) {
   if (
-    value === 0
+    Math.abs(value) <
+    0.0001
   ) {
     return "PK";
   }
 
   return value > 0
-    ? `+${value}`
-    : String(value);
+    ? `+${formatNumber(value)}`
+    : formatNumber(value);
 }
 
 
 function formatKickoff(
-  value:
-    string
+  value: string
 ) {
   return new Date(
     value
@@ -138,8 +149,7 @@ function formatKickoff(
 
 
 function atsState(
-  game:
-    GameRow
+  game: GameRow
 ) {
   const spread =
     numberValue(
@@ -163,9 +173,7 @@ function atsState(
     game.away_score;
 
   if (
-    Math.abs(
-      margin
-    ) <
+    Math.abs(margin) <
     0.0001
   ) {
     return game.is_final
@@ -173,9 +181,7 @@ function atsState(
       : "ATS CURRENTLY PUSH";
   }
 
-  if (
-    margin > 0
-  ) {
+  if (margin > 0) {
     return game.is_final
       ? "HOME COVERED"
       : "HOME CURRENTLY COVERING";
@@ -188,26 +194,16 @@ function atsState(
 
 
 function liveStatus(
-  game:
-    GameRow
+  game: GameRow
 ) {
-  if (
-    game.is_final
-  ) {
+  if (game.is_final) {
     return "FINAL";
   }
 
-  if (
-    game.is_started
-  ) {
-    const parts =
-      [
-        "LIVE",
-      ];
+  if (game.is_started) {
+    const parts = ["LIVE"];
 
-    if (
-      game.period
-    ) {
+    if (game.period) {
       parts.push(
         `Q${game.period}`
       );
@@ -229,6 +225,48 @@ function liveStatus(
   return formatKickoff(
     game.kickoff_at
   );
+}
+
+
+function situationText(
+  game: GameRow
+) {
+  if (
+    !game.is_started ||
+    game.is_final
+  ) {
+    return null;
+  }
+
+  const possession =
+    game.possession_team_abbreviation;
+
+  const down =
+    game.down_distance_text;
+
+  const field =
+    game.possession_text;
+
+  if (possession && down) {
+    if (
+      field &&
+      !down.includes(field)
+    ) {
+      return `${possession} BALL · ${down} · ${field}`;
+    }
+
+    return `${possession} BALL · ${down}`;
+  }
+
+  if (possession && field) {
+    return `${possession} BALL · ${field}`;
+  }
+
+  if (possession) {
+    return `${possession} BALL`;
+  }
+
+  return down ?? field ?? null;
 }
 
 
@@ -259,27 +297,21 @@ export default function PickemGames({
     weeks,
     setWeeks,
   ] =
-    useState<
-      WeekRow[]
-    >([]);
+    useState<WeekRow[]>([]);
 
   const [
     selectedWeekId,
     setSelectedWeekId,
   ] =
-    useState<
-      number |
+    useState<number | null>(
       null
-    >(null);
+    );
 
   const [
     games,
     setGames,
   ] =
-    useState<
-      GameRow[]
-    >([]);
-
+    useState<GameRow[]>([]);
 
   const selectedWeek =
     useMemo(
@@ -288,14 +320,12 @@ export default function PickemGames({
           (row) =>
             row.id ===
             selectedWeekId
-        ) ??
-        null,
+        ) ?? null,
       [
         selectedWeekId,
         weeks,
       ]
     );
-
 
   const loadWeeks =
     useCallback(
@@ -334,14 +364,10 @@ export default function PickemGames({
         }
 
         const rows =
-          (
-            data ??
-            []
-          ) as WeekRow[];
+          (data ??
+            []) as WeekRow[];
 
-        setWeeks(
-          rows
-        );
+        setWeeks(rows);
 
         setSelectedWeekId(
           (current) => {
@@ -380,17 +406,14 @@ export default function PickemGames({
       ]
     );
 
-
   const loadGames =
     useCallback(
       async (
         weekId:
-          number |
-          null
+          number | null
       ) => {
         if (
-          weekId ===
-          null
+          weekId === null
         ) {
           setGames([]);
           return;
@@ -405,7 +428,7 @@ export default function PickemGames({
               "pickem_games"
             )
             .select(
-              "id,pickem_week_id,sport,kickoff_at,away_team_name,away_team_abbreviation,home_team_name,home_team_abbreviation,away_score,home_score,status_name,status_detail,period,display_clock,is_started,is_final,is_eligible,exclusion_reason,g365_home_spread,spread_status,consensus_source_count,last_score_sync_at"
+              "id,pickem_week_id,sport,kickoff_at,away_team_name,away_team_abbreviation,home_team_name,home_team_abbreviation,away_score,home_score,status_name,status_detail,period,display_clock,is_started,is_final,is_eligible,exclusion_reason,g365_home_spread,spread_status,consensus_source_count,last_score_sync_at,possession_team_abbreviation,down,distance,yard_line,yards_to_endzone,down_distance_text,possession_text,is_red_zone,last_play_text"
             )
             .eq(
               "league_id",
@@ -430,10 +453,8 @@ export default function PickemGames({
         }
 
         setGames(
-          (
-            data ??
-            []
-          ) as GameRow[]
+          (data ??
+            []) as GameRow[]
         );
       },
       [
@@ -442,18 +463,12 @@ export default function PickemGames({
       ]
     );
 
-
   useEffect(() => {
-    let active =
-      true;
+    let active = true;
 
     async function run() {
-      setLoading(
-        true
-      );
-      setMessage(
-        ""
-      );
+      setLoading(true);
+      setMessage("");
 
       try {
         await loadWeeks();
@@ -469,9 +484,7 @@ export default function PickemGames({
         );
       } finally {
         if (active) {
-          setLoading(
-            false
-          );
+          setLoading(false);
         }
       }
     }
@@ -479,23 +492,16 @@ export default function PickemGames({
     void run();
 
     return () => {
-      active =
-        false;
+      active = false;
     };
-  }, [
-    loadWeeks,
-  ]);
-
+  }, [loadWeeks]);
 
   useEffect(() => {
-    if (
-      loading
-    ) {
+    if (loading) {
       return;
     }
 
-    let active =
-      true;
+    let active = true;
 
     async function run() {
       try {
@@ -522,12 +528,11 @@ export default function PickemGames({
         () => {
           void run();
         },
-        15000
+        10000
       );
 
     return () => {
-      active =
-        false;
+      active = false;
 
       window.clearInterval(
         timer
@@ -539,10 +544,7 @@ export default function PickemGames({
     selectedWeekId,
   ]);
 
-
-  if (
-    loading
-  ) {
+  if (loading) {
     return (
       <main
         style={{
@@ -557,14 +559,12 @@ export default function PickemGames({
     );
   }
 
-
   return (
     <main
       style={{
         display:
           "grid",
-        gap:
-          18,
+        gap: 18,
         padding:
           "22px 18px 36px",
         maxWidth:
@@ -573,10 +573,8 @@ export default function PickemGames({
     >
       <section
         style={{
-          padding:
-            20,
-          borderRadius:
-            18,
+          padding: 20,
+          borderRadius: 18,
           border:
             "1px solid rgba(255,108,33,0.25)",
           background:
@@ -587,10 +585,8 @@ export default function PickemGames({
           style={{
             color:
               "#ff7627",
-            fontSize:
-              12,
-            fontWeight:
-              1000,
+            fontSize: 12,
+            fontWeight: 1000,
             letterSpacing:
               "0.12em",
             textTransform:
@@ -604,8 +600,7 @@ export default function PickemGames({
           style={{
             margin:
               "7px 0 6px",
-            color:
-              "#fff",
+            color: "#fff",
             fontSize:
               "clamp(28px, 5vw, 42px)",
           }}
@@ -615,33 +610,27 @@ export default function PickemGames({
 
         <p
           style={{
-            margin:
-              0,
+            margin: 0,
             color:
               "#a3a3ab",
-            lineHeight:
-              1.55,
+            lineHeight: 1.55,
           }}
         >
-          ESPN game state feeds the live score, quarter, clock, and final result. The G365 Spread remains frozen separately and never changes from later market movement.
+          ESPN supplies the live score, quarter, clock, possession, down-and-distance, field position, and final status. G365 spreads remain frozen independently.
         </p>
       </section>
 
-
       <section
         style={{
-          display:
-            "flex",
+          display: "flex",
           alignItems:
             "center",
-          gap:
-            10,
+          gap: 10,
           flexWrap:
             "wrap",
           padding:
             "14px 16px",
-          borderRadius:
-            14,
+          borderRadius: 14,
           border:
             "1px solid rgba(255,255,255,0.08)",
           background:
@@ -653,10 +642,8 @@ export default function PickemGames({
           style={{
             color:
               "#bcbcc3",
-            fontSize:
-              13,
-            fontWeight:
-              900,
+            fontSize: 13,
+            fontWeight: 900,
           }}
         >
           Week
@@ -673,8 +660,7 @@ export default function PickemGames({
           ) => {
             const value =
               Number(
-                event.target
-                  .value
+                event.target.value
               );
 
             setSelectedWeekId(
@@ -685,47 +671,27 @@ export default function PickemGames({
                 : null
             );
           }}
-          disabled={
-            weeks.length ===
-            0
-          }
           style={{
-            minWidth:
-              155,
+            minWidth: 155,
             padding:
               "10px 12px",
-            borderRadius:
-              10,
+            borderRadius: 10,
             border:
               "1px solid rgba(255,118,39,0.35)",
             background:
               "#09090c",
-            color:
-              "#fff",
-            fontWeight:
-              900,
+            color: "#fff",
+            fontWeight: 900,
           }}
         >
-          {weeks.length ===
-          0 ? (
-            <option value="">
-              No week ready
-            </option>
-          ) : (
-            weeks.map(
-              (week) => (
-                <option
-                  key={
-                    week.id
-                  }
-                  value={
-                    week.id
-                  }
-                >
-                  Week{" "}
-                  {week.week}
-                </option>
-              )
+          {weeks.map(
+            (week) => (
+              <option
+                key={week.id}
+                value={week.id}
+              >
+                Week {week.week}
+              </option>
             )
           )}
         </select>
@@ -737,10 +703,8 @@ export default function PickemGames({
                 "auto",
               color:
                 "#909099",
-              fontSize:
-                12,
-              fontWeight:
-                800,
+              fontSize: 12,
+              fontWeight: 800,
             }}
           >
             {selectedWeek.status
@@ -753,14 +717,12 @@ export default function PickemGames({
         ) : null}
       </section>
 
-
       {message ? (
         <div
           style={{
             padding:
               "12px 14px",
-            borderRadius:
-              12,
+            borderRadius: 12,
             border:
               "1px solid rgba(255,80,80,0.40)",
             background:
@@ -773,14 +735,12 @@ export default function PickemGames({
         </div>
       ) : null}
 
-
       {!selectedWeek ? (
         <EmptyState
           title="The weekly slate is not ready yet."
           description="A Pick'em week must be initialized before ESPN games can be attached to it."
         />
-      ) : games.length ===
-        0 ? (
+      ) : games.length === 0 ? (
         <EmptyState
           title={`No Week ${selectedWeek.week} games are loaded yet.`}
           description="The ESPN sync worker has not populated this Pick'em slate yet."
@@ -790,8 +750,7 @@ export default function PickemGames({
           style={{
             display:
               "grid",
-            gap:
-              12,
+            gap: 12,
           }}
         >
           {games.map(
@@ -802,26 +761,25 @@ export default function PickemGames({
                 );
 
               const awaySpread =
-                homeSpread ===
-                null
+                homeSpread === null
                   ? null
                   : -homeSpread;
 
               const ats =
-                atsState(
+                atsState(game);
+
+              const situation =
+                situationText(
                   game
                 );
 
               return (
                 <article
-                  key={
-                    game.id
-                  }
+                  key={game.id}
                   style={{
                     overflow:
                       "hidden",
-                    borderRadius:
-                      16,
+                    borderRadius: 16,
                     border:
                       "1px solid rgba(255,255,255,0.08)",
                     background:
@@ -830,14 +788,12 @@ export default function PickemGames({
                 >
                   <div
                     style={{
-                      display:
-                        "flex",
+                      display: "flex",
                       justifyContent:
                         "space-between",
                       alignItems:
                         "center",
-                      gap:
-                        12,
+                      gap: 12,
                       flexWrap:
                         "wrap",
                       padding:
@@ -851,14 +807,9 @@ export default function PickemGames({
                     <span
                       style={{
                         color:
-                          game.sport ===
-                          "nfl"
-                            ? "#ff9b59"
-                            : "#ffc36b",
-                        fontSize:
-                          11,
-                        fontWeight:
-                          1000,
+                          "#ff9b59",
+                        fontSize: 11,
+                        fontWeight: 1000,
                         letterSpacing:
                           "0.09em",
                       }}
@@ -875,8 +826,7 @@ export default function PickemGames({
                           game.is_started
                             ? "#fff"
                             : "#a0a0a8",
-                        fontSize:
-                          12,
+                        fontSize: 12,
                         fontWeight:
                           game.is_started
                             ? 1000
@@ -889,18 +839,15 @@ export default function PickemGames({
                     </span>
                   </div>
 
-
                   <div
                     style={{
                       display:
                         "grid",
-                      gap:
-                        10,
-                      padding:
-                        14,
+                      gap: 10,
+                      padding: 14,
                     }}
                   >
-                    <TeamRow
+                    <TeamLine
                       name={
                         game.away_team_name
                       }
@@ -913,9 +860,17 @@ export default function PickemGames({
                       spread={
                         awaySpread
                       }
+                      hasBall={
+                        !!game
+                          .possession_team_abbreviation &&
+                        game
+                          .possession_team_abbreviation ===
+                          game
+                            .away_team_abbreviation
+                      }
                     />
 
-                    <TeamRow
+                    <TeamLine
                       name={
                         game.home_team_name
                       }
@@ -928,69 +883,135 @@ export default function PickemGames({
                       spread={
                         homeSpread
                       }
+                      hasBall={
+                        !!game
+                          .possession_team_abbreviation &&
+                        game
+                          .possession_team_abbreviation ===
+                          game
+                            .home_team_abbreviation
+                      }
                     />
-                  </div>
 
+                    {situation ? (
+                      <div
+                        style={{
+                          padding:
+                            "9px 11px",
+                          borderRadius: 10,
+                          border:
+                            game.is_red_zone
+                              ? "1px solid rgba(255,143,39,0.28)"
+                              : "1px solid rgba(255,255,255,0.07)",
+                          background:
+                            game.is_red_zone
+                              ? "rgba(255,108,33,0.08)"
+                              : "rgba(255,255,255,0.025)",
+                          color:
+                            game.is_red_zone
+                              ? "#ffc06f"
+                              : "#d4d4da",
+                          fontSize: 12,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {situation}
+                        {game.is_red_zone
+                          ? " · RED ZONE"
+                          : ""}
+                      </div>
+                    ) : null}
 
-                  <div
-                    style={{
-                      display:
-                        "flex",
-                      justifyContent:
-                        "space-between",
-                      gap:
-                        10,
-                      alignItems:
-                        "center",
-                      flexWrap:
-                        "wrap",
-                      padding:
-                        "10px 14px 13px",
-                      borderTop:
-                        "1px solid rgba(255,255,255,0.05)",
-                    }}
-                  >
-                    <span
+                    {game.is_started &&
+                    !game.is_final &&
+                    game.last_play_text ? (
+                      <div
+                        style={{
+                          color:
+                            "#92929b",
+                          fontSize: 11,
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        Last play:{" "}
+                        {
+                          game.last_play_text
+                        }
+                      </div>
+                    ) : null}
+
+                    <div
                       style={{
-                        color:
-                          game.spread_status ===
-                          "frozen"
-                            ? "#ff9b59"
-                            : "#898992",
-                        fontSize:
-                          12,
-                        fontWeight:
-                          850,
+                        display: "flex",
+                        alignItems:
+                          "center",
+                        gap: 10,
+                        flexWrap:
+                          "wrap",
+                        paddingTop: 3,
                       }}
                     >
-                      {game.spread_status ===
-                      "frozen"
-                        ? `G365 Spread · ${
-                            game.consensus_source_count ??
-                            0
-                          } sources`
-                        : game.spread_status ===
-                            "excluded"
-                          ? "Excluded from Pick'em"
-                          : "G365 Spread not frozen yet"}
-                    </span>
-
-                    {ats ? (
                       <span
                         style={{
                           color:
-                            game.is_final
-                              ? "#fff"
-                              : "#ffca76",
-                          fontSize:
-                            12,
-                          fontWeight:
-                            1000,
+                            homeSpread !==
+                            null
+                              ? "#ffb16f"
+                              : "#888891",
+                          fontSize: 11,
+                          fontWeight: 900,
                         }}
                       >
-                        {ats}
+                        {homeSpread !==
+                        null
+                          ? `G365: ${game.home_team_abbreviation ?? game.home_team_name} ${formatSpread(homeSpread)}`
+                          : "G365 Spread pending"}
                       </span>
-                    ) : null}
+
+                      {ats ? (
+                        <span
+                          style={{
+                            color:
+                              ats.includes(
+                                "PUSH"
+                              )
+                                ? "#ffc46c"
+                                : "#55df8a",
+                            fontSize: 11,
+                            fontWeight: 1000,
+                          }}
+                        >
+                          {ats}
+                        </span>
+                      ) : null}
+
+                      {game.last_score_sync_at ? (
+                        <span
+                          style={{
+                            marginLeft:
+                              "auto",
+                            color:
+                              "#707078",
+                            fontSize: 10,
+                          }}
+                        >
+                          Synced{" "}
+                          {new Date(
+                            game.last_score_sync_at
+                          ).toLocaleTimeString(
+                            undefined,
+                            {
+                              hour:
+                                "numeric",
+                              minute:
+                                "2-digit",
+                              second:
+                                "2-digit",
+                            }
+                          )}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 </article>
               );
@@ -1003,125 +1024,94 @@ export default function PickemGames({
 }
 
 
-function TeamRow({
+function TeamLine({
   name,
   abbreviation,
   score,
   spread,
+  hasBall,
 }: {
   name: string;
   abbreviation:
     string | null;
-  score:
-    number | null;
-  spread:
-    number | null;
+  score: number | null;
+  spread: number | null;
+  hasBall: boolean;
 }) {
   return (
     <div
       style={{
-        display:
-          "grid",
+        display: "grid",
         gridTemplateColumns:
-          "minmax(0, 1fr) auto auto",
-        gap:
-          12,
+          "minmax(0,1fr) auto auto",
+        gap: 10,
         alignItems:
           "center",
-        minHeight:
-          58,
-        padding:
-          "10px 12px",
-        borderRadius:
-          12,
-        border:
-          "1px solid rgba(255,255,255,0.07)",
-        background:
-          "rgba(255,255,255,0.025)",
       }}
     >
       <div
         style={{
-          minWidth:
-            0,
+          minWidth: 0,
+          color: "#fff",
+          fontSize: 15,
+          fontWeight: 900,
         }}
       >
-        <div
-          style={{
-            overflow:
-              "hidden",
-            textOverflow:
-              "ellipsis",
-            whiteSpace:
-              "nowrap",
-            color:
-              "#fff",
-            fontWeight:
-              900,
-          }}
-        >
-          {name}
-        </div>
-
-        {abbreviation ? (
-          <div
+        {hasBall ? (
+          <span
+            title="Possession"
             style={{
-              marginTop:
-                3,
+              marginRight: 7,
               color:
-                "#7f7f88",
-              fontSize:
-                11,
-              fontWeight:
-                800,
+                "#ff8d3a",
+              fontSize: 12,
+            }}
+          >
+            ●
+          </span>
+        ) : null}
+        {name}
+        {abbreviation ? (
+          <span
+            style={{
+              marginLeft: 7,
+              color:
+                "#777780",
+              fontSize: 10,
+              fontWeight: 900,
             }}
           >
             {abbreviation}
-          </div>
+          </span>
         ) : null}
       </div>
 
       <div
         style={{
-          minWidth:
-            28,
-          textAlign:
-            "right",
           color:
-            "#fff",
-          fontSize:
-            19,
-          fontWeight:
-            1000,
+            "#ffb16f",
+          fontSize: 12,
+          fontWeight: 900,
         }}
       >
-        {score ??
-          ""}
-      </div>
-
-      <div
-        style={{
-          minWidth:
-            66,
-          textAlign:
-            "right",
-          color:
-            spread ===
-            null
-              ? "#777780"
-              : "#ff9b59",
-          fontSize:
-            16,
-          fontWeight:
-            1000,
-        }}
-      >
-        {spread ===
-        null
+        {spread === null
           ? "—"
           : formatSpread(
               spread
             )}
+      </div>
+
+      <div
+        style={{
+          minWidth: 28,
+          textAlign:
+            "right",
+          color: "#fff",
+          fontSize: 20,
+          fontWeight: 1000,
+        }}
+      >
+        {score ?? "—"}
       </div>
     </div>
   );
@@ -1132,49 +1122,39 @@ function EmptyState({
   title,
   description,
 }: {
-  title:
-    string;
-  description:
-    string;
+  title: string;
+  description: string;
 }) {
   return (
     <section
       style={{
-        padding:
-          22,
-        borderRadius:
-          16,
+        padding: 24,
+        borderRadius: 16,
         border:
-          "1px solid rgba(255,102,0,0.20)",
+          "1px solid rgba(255,255,255,0.08)",
         background:
-          "linear-gradient(135deg, rgba(88,8,12,0.25), #111115 55%)",
+          "#101014",
       }}
     >
-      <h2
+      <div
         style={{
-          margin:
-            "0 0 8px",
-          color:
-            "#fff",
-          fontSize:
-            22,
+          color: "#fff",
+          fontWeight: 1000,
         }}
       >
         {title}
-      </h2>
+      </div>
 
-      <p
+      <div
         style={{
-          margin:
-            0,
+          marginTop: 6,
           color:
-            "#9b9ba4",
-          lineHeight:
-            1.6,
+            "#92929b",
+          lineHeight: 1.5,
         }}
       >
         {description}
-      </p>
+      </div>
     </section>
   );
 }

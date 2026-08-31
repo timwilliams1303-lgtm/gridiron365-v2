@@ -59,6 +59,23 @@ type EspnCompetitor = {
 };
 
 
+type EspnSituation = {
+  possession?: string;
+  down?: number;
+  distance?: number;
+  yardLine?: number;
+  yardsToEndzone?: number;
+  downDistanceText?: string;
+  shortDownDistanceText?: string;
+  possessionText?: string;
+  isRedZone?: boolean;
+  lastPlay?: {
+    text?: string;
+    shortText?: string;
+  };
+};
+
+
 type EspnStatus = {
   period?: number;
   displayClock?: string;
@@ -81,6 +98,8 @@ type EspnCompetition = {
     EspnStatus;
   competitors?:
     EspnCompetitor[];
+  situation?:
+    EspnSituation;
 };
 
 
@@ -147,6 +166,26 @@ type NormalizedGame = {
     boolean;
   is_final:
     boolean;
+  possession_team_espn_id:
+    string | null;
+  possession_team_abbreviation:
+    string | null;
+  down:
+    number | null;
+  distance:
+    number | null;
+  yard_line:
+    number | null;
+  yards_to_endzone:
+    number | null;
+  down_distance_text:
+    string | null;
+  possession_text:
+    string | null;
+  is_red_zone:
+    boolean | null;
+  last_play_text:
+    string | null;
 };
 
 
@@ -252,17 +291,27 @@ function toScore(
   const parsed =
     Number(value);
 
-  if (
-    !Number.isFinite(
-      parsed
-    )
-  ) {
-    return null;
-  }
-
-  return Math.trunc(
+  return Number.isFinite(
     parsed
-  );
+  )
+    ? Math.trunc(parsed)
+    : null;
+}
+
+
+function toNullableInteger(
+  value:
+    number |
+    null |
+    undefined
+) {
+  return Number.isFinite(
+    value
+  )
+    ? Math.trunc(
+        value as number
+      )
+    : null;
 }
 
 
@@ -374,6 +423,29 @@ function normalizeEvent(
     state === "in" ||
     state === "post";
 
+  const situation =
+    competition.situation;
+
+  const possessionId =
+    situation?.possession
+      ? String(
+          situation.possession
+        )
+      : null;
+
+  const possessionCompetitor =
+    possessionId
+      ? competition.competitors
+          ?.find(
+            (row) =>
+              String(
+                row.team?.id ??
+                ""
+              ) ===
+              possessionId
+          )
+      : undefined;
+
   return {
     provider_event_id:
       String(
@@ -447,6 +519,91 @@ function normalizeEvent(
 
     is_final:
       isFinal,
+
+    possession_team_espn_id:
+      isStarted &&
+      !isFinal
+        ? possessionId
+        : null,
+
+    possession_team_abbreviation:
+      isStarted &&
+      !isFinal
+        ? possessionCompetitor
+            ?.team
+            ?.abbreviation ??
+          null
+        : null,
+
+    down:
+      isStarted &&
+      !isFinal
+        ? toNullableInteger(
+            situation?.down
+          )
+        : null,
+
+    distance:
+      isStarted &&
+      !isFinal
+        ? toNullableInteger(
+            situation?.distance
+          )
+        : null,
+
+    yard_line:
+      isStarted &&
+      !isFinal
+        ? toNullableInteger(
+            situation?.yardLine
+          )
+        : null,
+
+    yards_to_endzone:
+      isStarted &&
+      !isFinal
+        ? toNullableInteger(
+            situation?.yardsToEndzone
+          )
+        : null,
+
+    down_distance_text:
+      isStarted &&
+      !isFinal
+        ? situation
+            ?.downDistanceText ??
+          situation
+            ?.shortDownDistanceText ??
+          null
+        : null,
+
+    possession_text:
+      isStarted &&
+      !isFinal
+        ? situation
+            ?.possessionText ??
+          null
+        : null,
+
+    is_red_zone:
+      isStarted &&
+      !isFinal
+        ? situation
+            ?.isRedZone ??
+          null
+        : null,
+
+    last_play_text:
+      isStarted &&
+      !isFinal
+        ? situation
+            ?.lastPlay
+            ?.text ??
+          situation
+            ?.lastPlay
+            ?.shortText ??
+          null
+        : null,
   };
 }
 
@@ -485,10 +642,12 @@ function yyyymmdd(
 ) {
   const year =
     value.getUTCFullYear();
+
   const month =
     String(
       value.getUTCMonth() + 1
     ).padStart(2, "0");
+
   const day =
     String(
       value.getUTCDate()
@@ -522,9 +681,6 @@ function espnScoreboardUrl(
       slateEndsAt
     );
 
-  // ESPN date ranges are calendar-date based and inclusive.
-  // Include the UTC calendar day containing the end boundary,
-  // then strictly filter events back to [start,end) below.
   return (
     `https://site.api.espn.com/apis/site/v2/sports/football/${leaguePath}/scoreboard` +
     `?dates=${yyyymmdd(start)}-${yyyymmdd(endExclusive)}` +
@@ -633,6 +789,7 @@ async function fetchScoreboard(
     }
   );
 }
+
 
 export async function POST(
   request:
@@ -926,12 +1083,16 @@ export async function POST(
 
     let gamesUpserted =
       0;
+
     let gamesFinal =
       0;
+
     let gamesSkipped =
       0;
+
     let gradingCalls =
       0;
+
     let resultRefreshes =
       0;
 
@@ -1076,6 +1237,7 @@ export async function POST(
 
           gamesUpserted +=
             1;
+
           sportCount +=
             1;
 
@@ -1087,6 +1249,8 @@ export async function POST(
             gamesFinal +=
               1;
 
+            // Keep this explicit route-level call as a second safety net.
+            // The database AFTER UPDATE trigger also grades immediately.
             const {
               error:
                 gradingError,
@@ -1171,6 +1335,8 @@ export async function POST(
         true,
       source:
         "ESPN",
+      cadence:
+        "1-minute cron",
       weeksProcessed:
         weeks.length,
       scoreboardFeedsFetched:
