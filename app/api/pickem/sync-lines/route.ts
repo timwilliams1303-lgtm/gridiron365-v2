@@ -645,30 +645,61 @@ function getKickoffWindow(
 }
 
 
-function getAutomaticWindow(
+function getAutomaticWindows(
   now: Date
-): LineWindow | null {
+): LineWindow[] {
   const {
     weekday,
     hour,
   } =
     getEasternParts(now);
 
-  // The cron runs hourly. Only the 10 AM ET execution
-  // is allowed to spend sportsbook API credits.
-  if (hour !== 10) {
-    return null;
+  // The Supabase cron calls this route hourly at minute 7.
+  // To keep sportsbook usage controlled, automatic retries
+  // are allowed only every six hours at 4/10/16/22 ET.
+  //
+  // Early window:
+  //   Tuesday 10 AM ET initial pull, then retries through Thursday.
+  //
+  // Weekend window:
+  //   Thursday 10 AM ET initial pull, then retries through Monday.
+  //
+  // Once Thursday 10 AM arrives, both unresolved early games and
+  // unresolved weekend games may be processed in the same run.
+  if (
+    ![4, 10, 16, 22].includes(
+      hour
+    )
+  ) {
+    return [];
   }
 
   if (weekday === "Tue") {
-    return "early";
+    return hour >= 10
+      ? ["early"]
+      : [];
+  }
+
+  if (weekday === "Wed") {
+    return ["early"];
   }
 
   if (weekday === "Thu") {
-    return "weekend";
+    return hour >= 10
+      ? ["early", "weekend"]
+      : ["early"];
   }
 
-  return null;
+  if (
+    weekday === "Fri" ||
+    weekday === "Sat" ||
+    weekday === "Sun" ||
+    weekday === "Mon"
+  ) {
+    return ["weekend"];
+  }
+
+  return [];
 }
 
 
@@ -678,6 +709,19 @@ function getWindowLabel(
   return lineWindow === "early"
     ? "Tuesday-Thursday"
     : "Friday-Monday";
+}
+
+
+function getWindowsLabel(
+  lineWindows: LineWindow[]
+) {
+  if (lineWindows.length === 0) {
+    return "All games";
+  }
+
+  return lineWindows
+    .map(getWindowLabel)
+    .join(" + ");
 }
 
 
@@ -780,15 +824,23 @@ export async function POST(
     const nowIso =
       now.toISOString();
 
-    const automaticLineWindow =
+    const activeLineWindows:
+      LineWindow[] =
       preview
-        ? requestedLineWindow
-        : requestedLineWindow ??
-          getAutomaticWindow(now);
+        ? (
+            requestedLineWindow
+              ? [requestedLineWindow]
+              : []
+          )
+        : (
+            requestedLineWindow
+              ? [requestedLineWindow]
+              : getAutomaticWindows(now)
+          );
 
     if (
       !preview &&
-      !automaticLineWindow
+      activeLineWindows.length === 0
     ) {
       return NextResponse.json({
         success: true,
@@ -796,8 +848,9 @@ export async function POST(
           "the-odds-api",
         skipped: true,
         providerRequests: 0,
+        lineWindows: [],
         message:
-          "No G365 sportsbook line window is scheduled for this hour. Automatic Odds API requests only run Tuesday and Thursday at 10 AM ET.",
+          "No automatic G365 sportsbook retry window is scheduled for this hour. Automatic pulls run every six hours at 4/10/16/22 ET after each line window opens.",
       });
     }
 
@@ -837,7 +890,6 @@ export async function POST(
     }
 
     if (
-      preview &&
       requestedWeek !== null
     ) {
       weeksQuery =
@@ -949,17 +1001,40 @@ export async function POST(
             return false;
           }
 
+          const kickoffMs =
+            new Date(
+              game.kickoff_at
+            ).getTime();
+
           if (
-            !automaticLineWindow
+            !Number.isFinite(
+              kickoffMs
+            ) ||
+            kickoffMs <=
+              now.getTime()
+          ) {
+            return false;
+          }
+
+          // Preview with no explicit lineWindow intentionally
+          // reviews every unresolved future game in the week.
+          if (
+            activeLineWindows.length ===
+              0
           ) {
             return true;
           }
 
-          return (
+          const kickoffWindow =
             getKickoffWindow(
               game.kickoff_at
-            ) ===
-            automaticLineWindow
+            );
+
+          return (
+            kickoffWindow !== null &&
+            activeLineWindows.includes(
+              kickoffWindow
+            )
           );
         }
       );
@@ -993,23 +1068,82 @@ export async function POST(
     if (
       games.length === 0
     ) {
+      if (
+        !preview &&
+        activeLineWindows.includes(
+          "weekend"
+        )
+      ) {
+        for (
+          const week of weeks
+        ) {
+          const hasUnresolvedFutureGame =
+            allGames.some(
+              (game) =>
+                game.pickem_week_id ===
+                  week.id &&
+                (
+                  game.spread_status ===
+                    "pending" ||
+                  game.spread_status ===
+                    "published"
+                ) &&
+                new Date(
+                  game.kickoff_at
+                ).getTime() >
+                  now.getTime()
+            );
+
+          if (
+            !hasUnresolvedFutureGame
+          ) {
+            const {
+              error: completeError,
+            } =
+              await supabase
+                .from(
+                  "pickem_weeks"
+                )
+                .update({
+                  line_sync_completed_at:
+                    nowIso,
+                  line_sync_provider:
+                    "the-odds-api",
+                  updated_at:
+                    nowIso,
+                })
+                .eq(
+                  "id",
+                  week.id
+                );
+
+            if (!completeError) {
+              result.weeksCompleted +=
+                1;
+            }
+          }
+        }
+      }
+
       return NextResponse.json({
         success: true,
         provider:
           "the-odds-api",
         preview,
         lineWindow:
-          automaticLineWindow,
-        lineWindowLabel:
-          automaticLineWindow
-            ? getWindowLabel(
-                automaticLineWindow
-              )
+          activeLineWindows.length === 1
+            ? activeLineWindows[0]
             : null,
+        lineWindows:
+          activeLineWindows,
+        lineWindowLabel:
+          getWindowsLabel(
+            activeLineWindows
+          ),
         skipped: true,
         message:
-          automaticLineWindow
-            ? `No unresolved ${getWindowLabel(automaticLineWindow)} games need a sportsbook line pull.`
+          activeLineWindows.length > 0
+            ? `No unresolved ${getWindowsLabel(activeLineWindows)} games need a sportsbook line pull.`
             : "No unresolved games need a sportsbook matching preview.",
         ...result,
       });
@@ -1249,13 +1383,15 @@ export async function POST(
             body.leagueId,
           requestedWeek,
           lineWindow:
-            automaticLineWindow,
+            activeLineWindows.length === 1
+              ? activeLineWindows[0]
+              : null,
+          lineWindows:
+            activeLineWindows,
           lineWindowLabel:
-            automaticLineWindow
-              ? getWindowLabel(
-                  automaticLineWindow
-                )
-              : "All games",
+            getWindowsLabel(
+              activeLineWindows
+            ),
           weeksReviewed:
             weeks.map(
               (week) => ({
@@ -1524,6 +1660,63 @@ export async function POST(
       }
     }
 
+    const {
+      data: remainingGamesData,
+      error: remainingGamesError,
+    } =
+      await supabase
+        .from(
+          "pickem_games"
+        )
+        .select(
+          "pickem_week_id,kickoff_at,spread_status,is_started,is_final"
+        )
+        .in(
+          "pickem_week_id",
+          weekIds
+        )
+        .eq(
+          "is_started",
+          false
+        )
+        .eq(
+          "is_final",
+          false
+        );
+
+    if (remainingGamesError) {
+      throw new Error(
+        remainingGamesError.message
+      );
+    }
+
+    const unresolvedWeekIds =
+      new Set<number>(
+        (
+          remainingGamesData ??
+          []
+        )
+          .filter(
+            (game) =>
+              (
+                game.spread_status ===
+                  "pending" ||
+                game.spread_status ===
+                  "published"
+              ) &&
+              new Date(
+                game.kickoff_at
+              ).getTime() >
+                now.getTime()
+          )
+          .map(
+            (game) =>
+              Number(
+                game.pickem_week_id
+              )
+          )
+      );
+
     for (
       const week of weeks
     ) {
@@ -1543,15 +1736,30 @@ export async function POST(
             nowIso,
         };
 
-      // Thursday's Friday-Monday window is the second and
-      // final scheduled weekly sportsbook snapshot.
+      // A week can only be considered line-sync complete after
+      // the weekend window has opened AND no future pending/
+      // published game still needs a trustworthy G365 spread.
+      //
+      // If a previously completed week gains a newly unresolved
+      // game, clear the marker so automatic catch-up can continue.
       if (
-        automaticLineWindow ===
+        activeLineWindows.includes(
           "weekend"
+        )
       ) {
-        completionUpdate
-          .line_sync_completed_at =
-            nowIso;
+        if (
+          unresolvedWeekIds.has(
+            week.id
+          )
+        ) {
+          completionUpdate
+            .line_sync_completed_at =
+              null;
+        } else {
+          completionUpdate
+            .line_sync_completed_at =
+              nowIso;
+        }
       }
 
       const {
@@ -1571,8 +1779,12 @@ export async function POST(
 
       if (
         !completeError &&
-        automaticLineWindow ===
+        activeLineWindows.includes(
           "weekend"
+        ) &&
+        !unresolvedWeekIds.has(
+          week.id
+        )
       ) {
         result.weeksCompleted +=
           1;
@@ -1587,13 +1799,15 @@ export async function POST(
         provider:
           "the-odds-api",
         lineWindow:
-          automaticLineWindow,
-        lineWindowLabel:
-          automaticLineWindow
-            ? getWindowLabel(
-                automaticLineWindow
-              )
+          activeLineWindows.length === 1
+            ? activeLineWindows[0]
             : null,
+        lineWindows:
+          activeLineWindows,
+        lineWindowLabel:
+          getWindowsLabel(
+            activeLineWindows
+          ),
         ...result,
       },
       {

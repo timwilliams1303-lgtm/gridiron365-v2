@@ -416,7 +416,7 @@ function normalizeEvent(
   const isFinal =
     status?.type
       ?.completed ===
-      true;
+    true;
 
   const isStarted =
     isFinal ||
@@ -638,20 +638,28 @@ function sportsForScope(
 
 
 function yyyymmdd(
-  value: Date
+  value:
+    Date
 ) {
   const year =
     value.getUTCFullYear();
 
   const month =
     String(
-      value.getUTCMonth() + 1
-    ).padStart(2, "0");
+      value.getUTCMonth() +
+      1
+    ).padStart(
+      2,
+      "0"
+    );
 
   const day =
     String(
       value.getUTCDate()
-    ).padStart(2, "0");
+    ).padStart(
+      2,
+      "0"
+    );
 
   return `${year}${month}${day}`;
 }
@@ -763,6 +771,31 @@ async function fetchScoreboard(
     []
   ).filter(
     (event) => {
+      /*
+       * G365 Football Pick'em only
+       * accepts regular-season games.
+       *
+       * ESPN season types:
+       * 1 = preseason
+       * 2 = regular season
+       * 3 = postseason
+       *
+       * We still send seasontype=2
+       * to ESPN, but we also verify
+       * the classification returned
+       * on every individual event.
+       *
+       * This prevents preseason NFL
+       * games from entering an early
+       * College + NFL G365 slate.
+       */
+      if (
+        event.season?.type !==
+        2
+      ) {
+        return false;
+      }
+
       const raw =
         event.competitions?.[0]
           ?.date ??
@@ -1075,6 +1108,12 @@ export async function POST(
       );
     }
 
+    /*
+     * Reuse each ESPN scoreboard
+     * response across leagues that
+     * share the same sport and
+     * G365 slate window.
+     */
     const scoreboardCache =
       new Map<
         string,
@@ -1122,6 +1161,7 @@ export async function POST(
       if (!scope) {
         gamesSkipped +=
           1;
+
         continue;
       }
 
@@ -1139,6 +1179,7 @@ export async function POST(
         ) {
           gamesSkipped +=
             1;
+
           continue;
         }
 
@@ -1181,6 +1222,7 @@ export async function POST(
           ) {
             gamesSkipped +=
               1;
+
             continue;
           }
 
@@ -1202,18 +1244,26 @@ export async function POST(
                 {
                   league_id:
                     pickemWeek.league_id,
+
                   pickem_week_id:
                     pickemWeek.id,
+
                   season:
                     pickemWeek.season,
+
                   week:
                     pickemWeek.week,
+
                   sport,
+
                   provider:
                     "espn",
+
                   ...normalized,
+
                   last_score_sync_at:
                     now,
+
                   updated_at:
                     now,
                 },
@@ -1249,8 +1299,16 @@ export async function POST(
             gamesFinal +=
               1;
 
-            // Keep this explicit route-level call as a second safety net.
-            // The database AFTER UPDATE trigger also grades immediately.
+            /*
+             * Keep the explicit
+             * route-level grading
+             * call as a second
+             * safety net.
+             *
+             * The database AFTER
+             * UPDATE trigger also
+             * grades immediately.
+             */
             const {
               error:
                 gradingError,
@@ -1279,11 +1337,15 @@ export async function POST(
         details.push({
           leagueId:
             pickemWeek.league_id,
+
           season:
             pickemWeek.season,
+
           week:
             pickemWeek.week,
+
           sport,
+
           games:
             sportCount,
         });
@@ -1297,6 +1359,7 @@ export async function POST(
           schedule_synced_at:
             new Date()
               .toISOString(),
+
           updated_at:
             new Date()
               .toISOString(),
@@ -1333,22 +1396,34 @@ export async function POST(
     return NextResponse.json({
       success:
         true,
+
       source:
         "ESPN",
+
       cadence:
         "1-minute cron",
+
       weeksProcessed:
         weeks.length,
+
       scoreboardFeedsFetched:
         scoreboardCache.size,
+
       gamesUpserted,
+
       gamesFinal,
+
       gamesSkipped,
+
       gradingCalls,
+
       resultRefreshes,
+
       details,
     });
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       "Pick'em ESPN game sync failed:",
       error
@@ -1358,8 +1433,10 @@ export async function POST(
       {
         success:
           false,
+
         source:
           "ESPN",
+
         error:
           error instanceof Error
             ? error.message
