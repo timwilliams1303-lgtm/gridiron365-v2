@@ -50,6 +50,7 @@ export type SeasonLongLiveLineupPlayer = {
   teamAbbreviation: string | null;
   opponentAbbreviation: string | null;
   opponentPrefix: "vs" | "@" | null;
+  matchupRank: number | null;
   projectedPoints: number;
   fantasyPoints: number;
   salary: number | null;
@@ -121,6 +122,12 @@ type PlayerRow = {
   primary_position: string | null;
   team_abbreviation: string | null;
   jersey_number: string | null;
+};
+
+type MatchupRankingRow = {
+  position: string;
+  opponent_abbreviation: string;
+  matchup_rank: number | null;
 };
 
 type ScoreRow = {
@@ -432,6 +439,30 @@ export async function getSeasonLongTeamLiveLineupData(
     }
   }
 
+  const matchupRankMap = new Map<string, number>();
+
+  const matchupRankingResult = await supabase
+    .from("season_long_matchup_rankings")
+    .select("position, opponent_abbreviation, matchup_rank")
+    .eq("league_id", leagueId)
+    .eq("season", season)
+    .eq("week", week);
+
+  if (matchupRankingResult.error) {
+    throw new Error(
+      `Could not load Season-Long matchup rankings: ${matchupRankingResult.error.message}`
+    );
+  }
+
+  for (const row of (matchupRankingResult.data ?? []) as MatchupRankingRow[]) {
+    if (row.matchup_rank !== null) {
+      matchupRankMap.set(
+        `${normalizePosition(row.position)}:${row.opponent_abbreviation.toUpperCase()}`,
+        Number(row.matchup_rank)
+      );
+    }
+  }
+
   const scoreMap = new Map<string, ScoreRow>();
   const scoreByPlayerMap = new Map<number, ScoreRow>();
 
@@ -620,6 +651,12 @@ export async function getSeasonLongTeamLiveLineupData(
       teamAbbreviation: isRevealed ? player?.team_abbreviation ?? null : null,
       opponentAbbreviation: row.opponent_abbreviation,
       opponentPrefix,
+      matchupRank:
+        isRevealed && row.opponent_abbreviation
+          ? matchupRankMap.get(
+              `${normalizePosition(player?.primary_position)}:${row.opponent_abbreviation.toUpperCase()}`
+            ) ?? null
+          : null,
       projectedPoints: numberValue(row.projected_points_at_selection),
       fantasyPoints: numberValue(score?.fantasy_points),
       salary:

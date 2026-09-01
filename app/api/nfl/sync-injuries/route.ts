@@ -1419,9 +1419,19 @@ export async function POST(
 
 
     /* =====================================================
-       5. MATCH CURRENT FANTASY INJURIES
+       5. MATCH CURRENT FANTASY + DEFENSIVE INJURIES
     ===================================================== */
 
+    /*
+     * Keep every fantasy-relevant offensive AND defensive position.
+     *
+     * Defensive injuries are required by the G365 matchup engine so
+     * QB/RB/WR/TE matchup difficulty can react to injuries on the
+     * opposing defense instead of only seeing offensive injuries.
+     *
+     * ESPN and our player table can use either broad or specific
+     * defensive position labels, so retain all common variants.
+     */
     const fantasyPositions =
       new Set([
         "QB",
@@ -1429,6 +1439,23 @@ export async function POST(
         "WR",
         "TE",
         "K",
+
+        "DL",
+        "DE",
+        "DT",
+        "NT",
+        "EDGE",
+
+        "LB",
+        "ILB",
+        "OLB",
+        "MLB",
+
+        "DB",
+        "CB",
+        "S",
+        "FS",
+        "SS",
       ]);
 
 
@@ -1581,7 +1608,7 @@ export async function POST(
             false,
 
           error:
-            "ESPN returned records, but no current fantasy injury designations could be matched. Existing injury data was left unchanged.",
+            "ESPN returned records, but no current fantasy or defensive injury designations could be matched. Existing injury data was left unchanged.",
 
           totalEspnRecords,
 
@@ -2212,7 +2239,7 @@ export async function POST(
       latestEspnRecords:
         latestEspnRecords.length,
 
-      fantasyInjuriesMatched:
+      fantasyAndDefensiveInjuriesMatched:
         normalized.length,
 
       matchedActiveOrNews,

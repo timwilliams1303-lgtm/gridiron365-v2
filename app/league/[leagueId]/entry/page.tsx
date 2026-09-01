@@ -172,6 +172,18 @@ type WeeklyProjectionRow = {
 };
 
 
+type MatchupRankingRow = {
+  position:
+    string;
+
+  opponent_abbreviation:
+    string;
+
+  matchup_rank:
+    number | null;
+};
+
+
 type InjuryRow = {
   nfl_player_id:
     number;
@@ -908,6 +920,86 @@ export default async function SeasonLongEntryPage({
 
 
   /*
+   * Position-specific matchup difficulty board.
+   * #1 = hardest, #32 = easiest.
+   */
+  const matchupRankingResult =
+    await supabase
+      .from(
+        "season_long_matchup_rankings"
+      )
+      .select(`
+        position,
+        opponent_abbreviation,
+        matchup_rank
+      `)
+      .eq(
+        "league_id",
+        leagueId
+      )
+      .eq(
+        "season",
+        season
+      )
+      .eq(
+        "week",
+        currentWeek
+      );
+
+
+  if (matchupRankingResult.error) {
+    throw new Error(
+      matchupRankingResult.error.message
+    );
+  }
+
+
+  const matchupRankMap =
+    new Map<string, number>();
+
+
+  for (
+    const row of
+      (matchupRankingResult.data ?? []) as MatchupRankingRow[]
+  ) {
+    if (
+      row.matchup_rank !== null &&
+      Number.isFinite(
+        Number(row.matchup_rank)
+      )
+    ) {
+      matchupRankMap.set(
+        `${row.position.toUpperCase()}:${row.opponent_abbreviation.toUpperCase()}`,
+        Number(row.matchup_rank)
+      );
+    }
+  }
+
+
+  const getMatchupRank = (
+    playerId: number,
+    opponent: string | null | undefined
+  ) => {
+    if (!opponent) {
+      return null;
+    }
+
+    const rawPosition =
+      playerMap.get(playerId)
+        ?.primary_position ?? "";
+
+    const position =
+      rawPosition.toUpperCase() === "PK"
+        ? "K"
+        : rawPosition.toUpperCase();
+
+    return matchupRankMap.get(
+      `${position}:${opponent.toUpperCase()}`
+    ) ?? null;
+  };
+
+
+  /*
    * ESPN-synced injury designations live in nfl_player_injuries.
    * This is more useful than the generic nfl_players.status value
    * because it includes the actual designation and injury detail.
@@ -1109,6 +1201,14 @@ export default async function SeasonLongEntryPage({
             weeklyProjection
               ?.home_or_away ??
             null,
+
+          matchupRank:
+            getMatchupRank(
+              row.player_id,
+              row.opponent_abbreviation ??
+              weeklyProjection
+                ?.opponent_abbreviation
+            ),
         };
       }
     );
@@ -1200,6 +1300,13 @@ export default async function SeasonLongEntryPage({
               weeklyProjection
                 ?.home_or_away ??
               null,
+
+            matchupRank:
+              getMatchupRank(
+                player.id,
+                weeklyProjection
+                  ?.opponent_abbreviation
+              ),
 
             gameStartAt:
               weeklyProjection

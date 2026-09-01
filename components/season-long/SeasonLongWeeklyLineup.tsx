@@ -123,6 +123,9 @@ type LineupPlayer = {
 
   homeOrAway:
     string | null;
+
+  matchupRank:
+    number | null;
 };
 
 
@@ -153,6 +156,9 @@ type PoolPlayer = {
 
   homeOrAway:
     string | null;
+
+  matchupRank:
+    number | null;
 
   gameStartAt:
     string | null;
@@ -475,24 +481,54 @@ function getMatchupLabel(
       | "isBye"
     >
 ) {
-  if (
-    player.isBye
-  ) {
+  if (player.isBye) {
     return "BYE";
   }
 
-  if (
-    !player.opponentAbbreviation
-  ) {
+  if (!player.opponentAbbreviation) {
     return "TBD";
   }
 
   return `${
-    player.homeOrAway ===
-    "away"
+    player.homeOrAway === "away"
       ? "@"
       : "vs"
   } ${player.opponentAbbreviation}`;
+}
+
+
+function getMatchupDifficulty(
+  rank: number | null
+) {
+  if (!rank) {
+    return {
+      label: "N/A",
+      detail: "Matchup rank unavailable",
+      style: styles.matchupNeutral,
+    };
+  }
+
+  if (rank <= 10) {
+    return {
+      label: "HARD",
+      detail: `Hard matchup · #${rank} vs position`,
+      style: styles.matchupHard,
+    };
+  }
+
+  if (rank <= 22) {
+    return {
+      label: "MEDIUM",
+      detail: `Medium matchup · #${rank} vs position`,
+      style: styles.matchupMedium,
+    };
+  }
+
+  return {
+    label: "EASY",
+    detail: `Easy matchup · #${rank} vs position`,
+    style: styles.matchupEasy,
+  };
 }
 
 
@@ -1586,12 +1622,35 @@ export default function SeasonLongWeeklyLineup({
                               {player.teamAbbreviation ??
                                 "FA"}
 
-                              {player.opponentAbbreviation
-                                ? ` • ${player.homeOrAway ===
-                                    "away"
-                                      ? "@"
-                                      : "vs"} ${player.opponentAbbreviation}`
-                                : ""}
+                              {player.opponentAbbreviation ? (
+                                <>
+                                  {" • "}
+                                  {player.homeOrAway === "away"
+                                    ? "@"
+                                    : "vs"}{" "}
+                                  {player.opponentAbbreviation}
+                                  {" • "}
+                                  <strong
+                                    style={
+                                      getMatchupDifficulty(
+                                        player.matchupRank
+                                      ).style
+                                    }
+                                    title={
+                                      getMatchupDifficulty(
+                                        player.matchupRank
+                                      ).detail
+                                    }
+                                  >
+                                    {getMatchupDifficulty(
+                                      player.matchupRank
+                                    ).label}
+                                    {player.matchupRank
+                                      ? ` · #${player.matchupRank}`
+                                      : ""}
+                                  </strong>
+                                </>
+                              ) : ""}
                             </span>
                           </div>
 
@@ -1938,6 +1997,30 @@ export default function SeasonLongWeeklyLineup({
                             {" • "}
                             {getMatchupLabel(
                               player
+                            )}
+                            {player.isBye ? null : (
+                              <>
+                                {" • "}
+                                <strong
+                                  style={
+                                    getMatchupDifficulty(
+                                      player.matchupRank
+                                    ).style
+                                  }
+                                  title={
+                                    getMatchupDifficulty(
+                                      player.matchupRank
+                                    ).detail
+                                  }
+                                >
+                                  {getMatchupDifficulty(
+                                    player.matchupRank
+                                  ).label}
+                                  {player.matchupRank
+                                    ? ` · #${player.matchupRank}`
+                                    : ""}
+                                </strong>
+                              </>
                             )}
                           </span>
 
@@ -3012,4 +3095,25 @@ const styles = {
     fontSize:
       "12px",
   },
+
+  matchupHard: {
+    color: "#ff6464",
+    fontWeight: 900,
+  },
+
+  matchupMedium: {
+    color: "#ffae42",
+    fontWeight: 900,
+  },
+
+  matchupEasy: {
+    color: "#43d17a",
+    fontWeight: 900,
+  },
+
+  matchupNeutral: {
+    color: "#8f96a3",
+    fontWeight: 900,
+  },
+
 };

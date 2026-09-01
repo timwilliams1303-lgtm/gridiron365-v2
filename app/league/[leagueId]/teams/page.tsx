@@ -308,6 +308,41 @@ function gameLabel(
 }
 
 
+function getMatchupDifficulty(
+  rank: number | null
+) {
+  if (!rank) {
+    return {
+      label: "N/A",
+      detail: "Matchup rank unavailable",
+      style: styles.matchupNeutral,
+    };
+  }
+
+  if (rank <= 10) {
+    return {
+      label: "HARD",
+      detail: `Hard matchup · #${rank} vs position`,
+      style: styles.matchupHard,
+    };
+  }
+
+  if (rank <= 22) {
+    return {
+      label: "MEDIUM",
+      detail: `Medium matchup · #${rank} vs position`,
+      style: styles.matchupMedium,
+    };
+  }
+
+  return {
+    label: "EASY",
+    detail: `Easy matchup · #${rank} vs position`,
+    style: styles.matchupEasy,
+  };
+}
+
+
 function playerMeta(
   player: SeasonLongLiveLineupPlayer
 ) {
@@ -1584,6 +1619,38 @@ export default async function SeasonLongLeagueTeamsPage({
                                       player
                                     )}
                                   </div>
+
+                                  {player.isRevealed &&
+                                  player.opponentAbbreviation ? (
+                                    <div
+                                      style={
+                                        styles.matchupLine
+                                      }
+                                      title={
+                                        getMatchupDifficulty(
+                                          player.matchupRank
+                                        ).detail
+                                      }
+                                    >
+                                      <strong
+                                        style={
+                                          getMatchupDifficulty(
+                                            player.matchupRank
+                                          ).style
+                                        }
+                                      >
+                                        {getMatchupDifficulty(
+                                          player.matchupRank
+                                        ).label}
+                                        {player.matchupRank
+                                          ? ` · #${player.matchupRank}`
+                                          : ""}
+                                      </strong>
+                                      <span>
+                                        vs {player.position}
+                                      </span>
+                                    </div>
+                                  ) : null}
 
                                   <div
                                     style={
@@ -3017,4 +3084,34 @@ const styles = {
     color:
       "#ff8a24",
   },
+
+  matchupLine: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    marginTop: "5px",
+    fontSize: "10px",
+    color: "#8f96a3",
+  },
+
+  matchupHard: {
+    color: "#ff6464",
+    fontWeight: 900,
+  },
+
+  matchupMedium: {
+    color: "#ffae42",
+    fontWeight: 900,
+  },
+
+  matchupEasy: {
+    color: "#43d17a",
+    fontWeight: 900,
+  },
+
+  matchupNeutral: {
+    color: "#8f96a3",
+    fontWeight: 900,
+  },
+
 };
