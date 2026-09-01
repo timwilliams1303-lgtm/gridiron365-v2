@@ -10,6 +10,10 @@ import {
   createSupabaseAdminClient,
 } from "@/lib/supabase/admin";
 
+import {
+  createSupabaseServerClient,
+} from "@/lib/supabase/server";
+
 
 type EspnPosition = {
   abbreviation?: string;
@@ -256,6 +260,49 @@ function isActiveStatus(
 async function validateUser(
   request: Request
 ) {
+  /*
+   * First use the normal Gridiron365 SSR cookie session.
+   * This is the same authentication source used by the
+   * server side of the application.
+   */
+  try {
+    const serverSupabase =
+      await createSupabaseServerClient();
+
+    const {
+      data: {
+        user,
+      },
+      error:
+        userError,
+    } =
+      await serverSupabase.auth
+        .getUser();
+
+    if (
+      !userError &&
+      user
+    ) {
+      return {
+        userId:
+          user.id,
+
+        error:
+          null,
+      };
+    }
+  } catch {
+    /*
+     * Continue to Bearer-token fallback below.
+     * This keeps the route compatible with existing
+     * authenticated API callers.
+     */
+  }
+
+
+  /*
+   * Bearer-token fallback for existing callers.
+   */
   const authorization =
     request.headers.get(
       "authorization"
@@ -381,7 +428,6 @@ async function validateUser(
       null,
   };
 }
-
 
 export async function POST(
   request: Request

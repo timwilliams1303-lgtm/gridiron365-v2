@@ -5,8 +5,8 @@ import {
 } from "react";
 
 import {
-  createClient,
-} from "@supabase/supabase-js";
+  createSupabaseBrowserClient,
+} from "@/lib/supabase/browser";
 
 
 type SyncResult = {
@@ -27,29 +27,7 @@ type WorkingType =
 
 
 function getBrowserSupabase() {
-  const url =
-    process.env
-      .NEXT_PUBLIC_SUPABASE_URL;
-
-  const key =
-    process.env
-      .NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env
-      .NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (
-    !url ||
-    !key
-  ) {
-    throw new Error(
-      "Supabase browser environment variables are missing."
-    );
-  }
-
-  return createClient(
-    url,
-    key
-  );
+  return createSupabaseBrowserClient();
 }
 
 
@@ -179,6 +157,66 @@ export default function SyncNflPage() {
   }
 
 
+  async function postCookieSessionSync(
+    endpoint: string,
+    body?: unknown
+  ) {
+    const response =
+      await fetch(
+        endpoint,
+        {
+          method:
+            "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          credentials:
+            "same-origin",
+
+          cache:
+            "no-store",
+
+          body:
+            JSON.stringify(
+              body ??
+              {}
+            ),
+        }
+      );
+
+    let data:
+      SyncResult;
+
+    try {
+      data =
+        (
+          await response.json()
+        ) as SyncResult;
+    } catch {
+      throw new Error(
+        `The server returned HTTP ${response.status}, but no readable JSON response was returned.`
+      );
+    }
+
+    if (
+      !response.ok ||
+      !data.success
+    ) {
+      throw new Error(
+        typeof data.error ===
+          "string"
+          ? data.error
+          : `Request failed with HTTP ${response.status}.`
+      );
+    }
+
+    return data;
+  }
+
+
   async function syncTeams() {
     if (working) {
       return;
@@ -203,7 +241,7 @@ export default function SyncNflPage() {
         data.teamsSynced ??
         data.teamsProcessed ??
         data.count ??
-        32;
+        "completed";
 
       setTeamMessage(
         `Success: ${String(
@@ -239,7 +277,7 @@ export default function SyncNflPage() {
 
     try {
       const data =
-        await postAuthenticatedSync(
+        await postCookieSessionSync(
           "/api/nfl/sync-players"
         );
 
@@ -250,10 +288,50 @@ export default function SyncNflPage() {
         data.count ??
         "completed";
 
+      const received =
+        data.playersReceived;
+
+      const processed =
+        data.teamsProcessed;
+
+      const failed =
+        data.teamsFailed;
+
+      const extra =
+        [
+          received !== undefined
+            ? `${String(
+                received
+              )} received`
+            : null,
+
+          processed !== undefined
+            ? `${String(
+                processed
+              )} teams processed`
+            : null,
+
+          failed !== undefined
+            ? `${String(
+                failed
+              )} teams failed`
+            : null,
+        ]
+          .filter(
+            Boolean
+          )
+          .join(
+            " • "
+          );
+
       setPlayerMessage(
         `Success: ${String(
           count
-        )} NFL players synced.`
+        )} NFL players synced.${
+          extra
+            ? ` ${extra}.`
+            : ""
+        }`
       );
     } catch (error) {
       setPlayerMessage(
@@ -300,33 +378,14 @@ export default function SyncNflPage() {
         data.gamesUpserted ??
         data.gamesSynced ??
         data.gamesProcessed ??
-        data.games ??
         data.count ??
         "completed";
 
-      const byeWeeks =
-        data.byeWeeksUpdated ??
-        data.byeWeeks ??
-        null;
-
-      if (
-        byeWeeks !==
-        null
-      ) {
-        setScheduleMessage(
-          `Success: ${String(
-            games
-          )} games synced. ${String(
-            byeWeeks
-          )} bye weeks updated.`
-        );
-      } else {
-        setScheduleMessage(
-          `Success: NFL schedule sync ${String(
-            games
-          )}.`
-        );
-      }
+      setScheduleMessage(
+        `Success: ${String(
+          games
+        )} NFL schedule records synced.`
+      );
     } catch (error) {
       setScheduleMessage(
         error instanceof Error
@@ -351,99 +410,67 @@ export default function SyncNflPage() {
     );
 
     setInjuryMessage(
-      "Syncing current NFL injuries..."
+      "Syncing NFL injuries..."
     );
 
     try {
-      const response =
-        await fetch(
-          "/api/nfl/sync-injuries",
-          {
-            method:
-              "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify(
-                {}
-              ),
-          }
+      const data =
+        await postAuthenticatedSync(
+          "/api/nfl/sync-injuries"
         );
 
-      let data:
-        SyncResult;
-
-      try {
-        data =
-          (
-            await response.json()
-          ) as SyncResult;
-      } catch {
-        throw new Error(
-          `The injury sync returned HTTP ${response.status} without readable JSON.`
-        );
-      }
-
-      if (
-        !response.ok ||
-        !data.success
-      ) {
-        throw new Error(
-          typeof data.error ===
-            "string"
-            ? data.error
-            : `NFL injury sync failed with HTTP ${response.status}.`
-        );
-      }
-
-      const matched =
-        Number(
-          data.fantasyInjuriesMatched ??
-          0
-        );
-
-      const totalEspn =
-        Number(
-          data.totalEspnRecords ??
-          0
-        );
+      const count =
+        data.fantasyAndDefensiveInjuriesMatched ??
+        data.fantasyInjuriesMatched ??
+        data.injuriesUpserted ??
+        data.injuriesProcessed ??
+        data.count ??
+        "completed";
 
       const inserted =
-        Number(
-          data.injuriesInserted ??
-          0
-        );
+        data.injuriesInserted;
 
       const changed =
-        Number(
-          data.injuriesChanged ??
-          0
-        );
-
-      const unchanged =
-        Number(
-          data.injuriesUnchanged ??
-          0
-        );
+        data.injuriesChanged;
 
       const cleared =
-        Number(
-          data.injuriesCleared ??
-          0
-        );
+        data.injuriesCleared;
 
-      const unmatched =
-        Number(
-          data.unmatchedCount ??
-          0
-        );
+      const extra =
+        [
+          inserted !== undefined
+            ? `${String(
+                inserted
+              )} inserted`
+            : null,
+
+          changed !== undefined
+            ? `${String(
+                changed
+              )} changed`
+            : null,
+
+          cleared !== undefined
+            ? `${String(
+                cleared
+              )} cleared`
+            : null,
+        ]
+          .filter(
+            Boolean
+          )
+          .join(
+            " • "
+          );
 
       setInjuryMessage(
-        `Success: ${matched} fantasy injuries matched from ${totalEspn} ESPN records. ${inserted} new, ${changed} changed, ${unchanged} unchanged, ${cleared} cleared, ${unmatched} unmatched.`
+        `Success: ${String(
+          count
+        )} NFL injury records synced.${
+          extra
+            ? ` ${extra}.`
+            : ""
+        }`
       );
     } catch (error) {
       setInjuryMessage(
@@ -459,648 +486,469 @@ export default function SyncNflPage() {
   }
 
 
-  function messageIsError(
-    message: string
-  ) {
-    const lower =
-      message.toLowerCase();
+  const cardStyle:
+    React.CSSProperties =
+  {
+    border:
+      "1px solid rgba(255,255,255,0.10)",
 
-    return (
-      lower.includes(
-        "failed"
-      ) ||
-      lower.includes(
-        "error"
-      ) ||
-      lower.includes(
-        "missing"
-      ) ||
-      lower.includes(
-        "invalid"
-      ) ||
-      lower.includes(
-        "no usable"
-      ) ||
-      lower.includes(
-        "returned http"
-      ) ||
-      lower.includes(
-        "left unchanged"
-      ) ||
-      lower.includes(
-        "unable to"
-      )
-    );
-  }
+    borderRadius:
+      18,
+
+    padding:
+      22,
+
+    background:
+      "linear-gradient(180deg, rgba(29,29,32,0.98), rgba(17,17,19,0.98))",
+
+    boxShadow:
+      "0 18px 50px rgba(0,0,0,0.24)",
+  };
 
 
-  function renderMessage(
-    message: string
-  ) {
-    if (!message) {
-      return null;
-    }
+  const buttonStyle:
+    React.CSSProperties =
+  {
+    width:
+      "100%",
 
-    const isError =
-      messageIsError(
-        message
-      );
+    minHeight:
+      48,
 
-    return (
-      <div
-        style={
-          isError
-            ? styles.errorMessage
-            : styles.successMessage
-        }
-      >
-        {message}
-      </div>
-    );
-  }
+    border:
+      0,
+
+    borderRadius:
+      12,
+
+    padding:
+      "12px 18px",
+
+    fontWeight:
+      800,
+
+    fontSize:
+      14,
+
+    cursor:
+      working
+        ? "not-allowed"
+        : "pointer",
+
+    color:
+      "#fff",
+
+    background:
+      working
+        ? "#4a4a4f"
+        : "linear-gradient(135deg, #d71920 0%, #ff6a00 100%)",
+
+    opacity:
+      working
+        ? 0.65
+        : 1,
+  };
+
+
+  const messageStyle:
+    React.CSSProperties =
+  {
+    minHeight:
+      22,
+
+    marginTop:
+      12,
+
+    color:
+      "#c6c8cd",
+
+    fontSize:
+      13,
+
+    lineHeight:
+      1.5,
+
+    overflowWrap:
+      "anywhere",
+  };
 
 
   return (
     <main
-      style={
-        styles.page
-      }
+      style={{
+        minHeight:
+          "100vh",
+
+        background:
+          "#0b0b0d",
+
+        color:
+          "#fff",
+
+        padding:
+          "32px 18px 48px",
+      }}
     >
       <div
-        style={
-          styles.container
-        }
+        style={{
+          width:
+            "min(980px, 100%)",
+
+          margin:
+            "0 auto",
+        }}
       >
         <div
-          style={
-            styles.pageHeader
-          }
+          style={{
+            marginBottom:
+              24,
+          }}
         >
-          <p
-            style={
-              styles.eyebrow
-            }
+          <div
+            style={{
+              display:
+                "inline-flex",
+
+              alignItems:
+                "center",
+
+              gap:
+                8,
+
+              padding:
+                "6px 10px",
+
+              borderRadius:
+                999,
+
+              color:
+                "#ff9a4a",
+
+              background:
+                "rgba(255,106,0,0.10)",
+
+              border:
+                "1px solid rgba(255,106,0,0.22)",
+
+              fontSize:
+                12,
+
+              fontWeight:
+                800,
+
+              letterSpacing:
+                0.6,
+
+              textTransform:
+                "uppercase",
+            }}
           >
-            GRIDIRON365 ADMIN
-          </p>
+            Gridiron365 Admin
+          </div>
 
           <h1
-            style={
-              styles.pageTitle
-            }
+            style={{
+              margin:
+                "12px 0 8px",
+
+              fontSize:
+                "clamp(28px, 5vw, 42px)",
+
+              lineHeight:
+                1.05,
+            }}
           >
             NFL Data Sync
           </h1>
 
           <p
-            style={
-              styles.pageDescription
-            }
+            style={{
+              margin:
+                0,
+
+              color:
+                "#a9adb5",
+
+              lineHeight:
+                1.6,
+            }}
           >
-            Manage ESPN NFL data used throughout
-            Gridiron365.
+            Manually refresh ESPN-backed NFL data.
+            Run Teams before Players when rebuilding
+            the player pool, then Schedule and
+            Injuries as needed.
           </p>
         </div>
 
-
-        {/* NFL TEAMS */}
-
         <section
-          style={
-            styles.card
-          }
-        >
-          <CardHeader
-            eyebrow="ESPN TEAMS"
-            title="NFL Teams"
-            description="Sync all active NFL teams and team metadata."
-          />
+          style={{
+            display:
+              "grid",
 
-          <ActionButton
-            disabled={
-              working !==
-              null
-            }
-            onClick={
-              syncTeams
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(240px, 1fr))",
+
+            gap:
+              16,
+          }}
+        >
+          <article
+            style={
+              cardStyle
             }
           >
-            {working ===
-            "teams"
-              ? "Syncing NFL Teams..."
-              : "Sync NFL Teams"}
-          </ActionButton>
+            <h2
+              style={{
+                margin:
+                  "0 0 8px",
 
-          {renderMessage(
-            teamMessage
-          )}
-        </section>
+                fontSize:
+                  19,
+              }}
+            >
+              NFL Teams
+            </h2>
 
+            <p
+              style={{
+                margin:
+                  "0 0 16px",
 
-        {/* NFL PLAYERS */}
+                color:
+                  "#9da1a9",
 
-        <section
-          style={
-            styles.card
-          }
-        >
-          <CardHeader
-            eyebrow="ESPN PLAYERS"
-            title="NFL Players"
-            description="Sync fantasy-relevant NFL players, positions, teams, statuses, and headshots."
-          />
+                fontSize:
+                  13,
 
-          <ActionButton
-            disabled={
-              working !==
-              null
-            }
-            onClick={
-              syncPlayers
-            }
-          >
-            {working ===
-            "players"
-              ? "Syncing NFL Players..."
-              : "Sync NFL Players"}
-          </ActionButton>
+                lineHeight:
+                  1.5,
+              }}
+            >
+              Refresh the 32 NFL team records.
+            </p>
 
-          {renderMessage(
-            playerMessage
-          )}
-        </section>
+            <button
+              type="button"
+              disabled={
+                working !==
+                null
+              }
+              onClick={
+                syncTeams
+              }
+              style={
+                buttonStyle
+              }
+            >
+              {working ===
+              "teams"
+                ? "Syncing Teams..."
+                : "Sync Teams"}
+            </button>
 
+            <div
+              style={
+                messageStyle
+              }
+            >
+              {teamMessage}
+            </div>
+          </article>
 
-        {/* NFL SCHEDULE */}
-
-        <section
-          style={
-            styles.card
-          }
-        >
-          <CardHeader
-            eyebrow="ESPN SCHEDULE"
-            title="NFL Schedule"
-            description="Sync the NFL schedule, game information, and team bye weeks."
-          />
-
-          <ActionButton
-            disabled={
-              working !==
-              null
-            }
-            onClick={
-              syncSchedule
+          <article
+            style={
+              cardStyle
             }
           >
-            {working ===
-            "schedule"
-              ? "Syncing NFL Schedule..."
-              : "Sync NFL Schedule"}
-          </ActionButton>
+            <h2
+              style={{
+                margin:
+                  "0 0 8px",
 
-          {renderMessage(
-            scheduleMessage
-          )}
-        </section>
+                fontSize:
+                  19,
+              }}
+            >
+              NFL Players
+            </h2>
 
+            <p
+              style={{
+                margin:
+                  "0 0 16px",
 
-        {/* NFL INJURIES */}
+                color:
+                  "#9da1a9",
 
-        <section
-          style={
-            styles.card
-          }
-        >
-          <CardHeader
-            eyebrow="ESPN INJURIES"
-            title="NFL Injuries"
-            description="Sync current fantasy-relevant NFL player injuries, statuses, injury details, and reported changes."
-          />
+                fontSize:
+                  13,
 
-          <ActionButton
-            disabled={
-              working !==
-              null
-            }
-            onClick={
-              syncInjuries
+                lineHeight:
+                  1.5,
+              }}
+            >
+              Refresh offensive, kicking,
+              defensive, and synthetic DST
+              player records.
+            </p>
+
+            <button
+              type="button"
+              disabled={
+                working !==
+                null
+              }
+              onClick={
+                syncPlayers
+              }
+              style={
+                buttonStyle
+              }
+            >
+              {working ===
+              "players"
+                ? "Syncing Players..."
+                : "Sync Players"}
+            </button>
+
+            <div
+              style={
+                messageStyle
+              }
+            >
+              {playerMessage}
+            </div>
+          </article>
+
+          <article
+            style={
+              cardStyle
             }
           >
-            {working ===
-            "injuries"
-              ? "Syncing NFL Injuries..."
-              : "Sync NFL Injuries"}
-          </ActionButton>
+            <h2
+              style={{
+                margin:
+                  "0 0 8px",
 
-          {renderMessage(
-            injuryMessage
-          )}
+                fontSize:
+                  19,
+              }}
+            >
+              NFL Schedule
+            </h2>
+
+            <p
+              style={{
+                margin:
+                  "0 0 16px",
+
+                color:
+                  "#9da1a9",
+
+                fontSize:
+                  13,
+
+                lineHeight:
+                  1.5,
+              }}
+            >
+              Refresh the current NFL schedule
+              and bye-week information.
+            </p>
+
+            <button
+              type="button"
+              disabled={
+                working !==
+                null
+              }
+              onClick={
+                syncSchedule
+              }
+              style={
+                buttonStyle
+              }
+            >
+              {working ===
+              "schedule"
+                ? "Syncing Schedule..."
+                : "Sync Schedule"}
+            </button>
+
+            <div
+              style={
+                messageStyle
+              }
+            >
+              {scheduleMessage}
+            </div>
+          </article>
+
+          <article
+            style={
+              cardStyle
+            }
+          >
+            <h2
+              style={{
+                margin:
+                  "0 0 8px",
+
+                fontSize:
+                  19,
+              }}
+            >
+              NFL Injuries
+            </h2>
+
+            <p
+              style={{
+                margin:
+                  "0 0 16px",
+
+                color:
+                  "#9da1a9",
+
+                fontSize:
+                  13,
+
+                lineHeight:
+                  1.5,
+              }}
+            >
+              Refresh current ESPN offensive
+              and defensive injury designations.
+            </p>
+
+            <button
+              type="button"
+              disabled={
+                working !==
+                null
+              }
+              onClick={
+                syncInjuries
+              }
+              style={
+                buttonStyle
+              }
+            >
+              {working ===
+              "injuries"
+                ? "Syncing Injuries..."
+                : "Sync Injuries"}
+            </button>
+
+            <div
+              style={
+                messageStyle
+              }
+            >
+              {injuryMessage}
+            </div>
+          </article>
         </section>
       </div>
     </main>
   );
 }
-
-
-function CardHeader({
-  eyebrow,
-  title,
-  description,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div
-      style={
-        styles.cardHeader
-      }
-    >
-      <div>
-        <p
-          style={
-            styles.cardEyebrow
-          }
-        >
-          {eyebrow}
-        </p>
-
-        <h2
-          style={
-            styles.cardTitle
-          }
-        >
-          {title}
-        </h2>
-
-        <p
-          style={
-            styles.cardDescription
-          }
-        >
-          {description}
-        </p>
-      </div>
-
-      <span
-        style={
-          styles.liveBadge
-        }
-      >
-        LIVE DATA
-      </span>
-    </div>
-  );
-}
-
-
-function ActionButton({
-  children,
-  disabled,
-  onClick,
-}: {
-  children:
-    React.ReactNode;
-
-  disabled:
-    boolean;
-
-  onClick:
-    () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={
-        disabled
-      }
-      onClick={
-        onClick
-      }
-      style={{
-        ...styles.button,
-
-        opacity:
-          disabled
-            ? 0.6
-            : 1,
-
-        cursor:
-          disabled
-            ? "not-allowed"
-            : "pointer",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-
-const styles:
-  Record<
-    string,
-    React.CSSProperties
-  > =
-{
-  page: {
-    minHeight:
-      "100vh",
-
-    background:
-      "#030303",
-
-    color:
-      "#ffffff",
-
-    padding:
-      "32px 24px 80px",
-  },
-
-
-  container: {
-    width:
-      "100%",
-
-    maxWidth:
-      "900px",
-
-    margin:
-      "0 auto",
-  },
-
-
-  pageHeader: {
-    marginBottom:
-      "24px",
-  },
-
-
-  eyebrow: {
-    margin:
-      "0 0 6px",
-
-    color:
-      "#ff8a00",
-
-    fontSize:
-      "11px",
-
-    fontWeight:
-      900,
-
-    letterSpacing:
-      "1.4px",
-  },
-
-
-  pageTitle: {
-    margin:
-      "0",
-
-    fontSize:
-      "34px",
-
-    lineHeight:
-      1.1,
-
-    fontWeight:
-      900,
-  },
-
-
-  pageDescription: {
-    margin:
-      "10px 0 0",
-
-    color:
-      "#9aa7bf",
-
-    fontSize:
-      "14px",
-
-    lineHeight:
-      1.6,
-  },
-
-
-  card: {
-    position:
-      "relative",
-
-    marginBottom:
-      "20px",
-
-    padding:
-      "26px",
-
-    overflow:
-      "hidden",
-
-    border:
-      "1px solid #292929",
-
-    borderTop:
-      "3px solid #ff8a00",
-
-    borderRadius:
-      "16px",
-
-    background:
-      "linear-gradient(180deg, #121212 0%, #0b0b0b 100%)",
-
-    boxShadow:
-      "0 16px 40px rgba(0,0,0,.28)",
-  },
-
-
-  cardHeader: {
-    display:
-      "flex",
-
-    alignItems:
-      "flex-start",
-
-    justifyContent:
-      "space-between",
-
-    gap:
-      "20px",
-
-    marginBottom:
-      "22px",
-  },
-
-
-  cardEyebrow: {
-    margin:
-      "0 0 5px",
-
-    color:
-      "#ff8a00",
-
-    fontSize:
-      "10px",
-
-    fontWeight:
-      900,
-
-    letterSpacing:
-      "1px",
-  },
-
-
-  cardTitle: {
-    margin:
-      "0",
-
-    fontSize:
-      "24px",
-
-    lineHeight:
-      1.2,
-
-    fontWeight:
-      900,
-  },
-
-
-  cardDescription: {
-    margin:
-      "8px 0 0",
-
-    maxWidth:
-      "660px",
-
-    color:
-      "#9aa7bf",
-
-    fontSize:
-      "13px",
-
-    lineHeight:
-      1.55,
-  },
-
-
-  liveBadge: {
-    flexShrink:
-      0,
-
-    padding:
-      "7px 11px",
-
-    border:
-      "1px solid #754000",
-
-    borderRadius:
-      "7px",
-
-    background:
-      "#211405",
-
-    color:
-      "#ff9700",
-
-    fontSize:
-      "10px",
-
-    fontWeight:
-      900,
-
-    letterSpacing:
-      ".5px",
-  },
-
-
-  button: {
-    width:
-      "100%",
-
-    minHeight:
-      "47px",
-
-    padding:
-      "12px 18px",
-
-    border:
-      "none",
-
-    borderRadius:
-      "10px",
-
-    background:
-      "linear-gradient(90deg, #ff1010 0%, #ff7a00 100%)",
-
-    color:
-      "#ffffff",
-
-    fontSize:
-      "14px",
-
-    fontWeight:
-      900,
-  },
-
-
-  successMessage: {
-    marginTop:
-      "14px",
-
-    padding:
-      "13px 14px",
-
-    border:
-      "1px solid #075f3c",
-
-    borderRadius:
-      "9px",
-
-    background:
-      "#062b1e",
-
-    color:
-      "#7dffd0",
-
-    fontSize:
-      "13px",
-
-    fontWeight:
-      700,
-
-    lineHeight:
-      1.45,
-  },
-
-
-  errorMessage: {
-    marginTop:
-      "14px",
-
-    padding:
-      "13px 14px",
-
-    border:
-      "1px solid #8d2424",
-
-    borderRadius:
-      "9px",
-
-    background:
-      "#351111",
-
-    color:
-      "#ffb1b1",
-
-    fontSize:
-      "13px",
-
-    fontWeight:
-      700,
-
-    lineHeight:
-      1.45,
-  },
-};
