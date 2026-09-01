@@ -225,6 +225,50 @@ function toNumber(
 }
 
 
+function normalizePosition(
+  value:
+    string |
+    null |
+    undefined
+) {
+  const position =
+    (value ?? "")
+      .trim()
+      .toUpperCase();
+
+  if (
+    position === "PK"
+  ) {
+    return "K";
+  }
+
+  if (
+    position === "DEF" ||
+    position === "D/ST"
+  ) {
+    return "DST";
+  }
+
+  return position;
+}
+
+
+function normalizeTeamAbbreviation(
+  value:
+    string |
+    null |
+    undefined
+) {
+  const abbreviation =
+    (value ?? "")
+      .trim()
+      .toUpperCase();
+
+  return abbreviation ||
+    null;
+}
+
+
 export default async function SeasonLongEntryPage({
   params,
 }: PageProps) {
@@ -720,6 +764,8 @@ export default async function SeasonLongEntryPage({
             "K",
             "PK",
             "DST",
+            "DEF",
+            "D/ST",
           ]
         )
         .order(
@@ -968,10 +1014,25 @@ export default async function SeasonLongEntryPage({
         Number(row.matchup_rank)
       )
     ) {
-      matchupRankMap.set(
-        `${row.position.toUpperCase()}:${row.opponent_abbreviation.toUpperCase()}`,
-        Number(row.matchup_rank)
-      );
+      const normalizedPosition =
+        normalizePosition(
+          row.position
+        );
+
+      const normalizedOpponent =
+        normalizeTeamAbbreviation(
+          row.opponent_abbreviation
+        );
+
+      if (
+        normalizedPosition &&
+        normalizedOpponent
+      ) {
+        matchupRankMap.set(
+          `${normalizedPosition}:${normalizedOpponent}`,
+          Number(row.matchup_rank)
+        );
+      }
     }
   }
 
@@ -980,21 +1041,31 @@ export default async function SeasonLongEntryPage({
     playerId: number,
     opponent: string | null | undefined
   ) => {
-    if (!opponent) {
+    const normalizedOpponent =
+      normalizeTeamAbbreviation(
+        opponent
+      );
+
+    if (
+      !normalizedOpponent
+    ) {
       return null;
     }
 
-    const rawPosition =
-      playerMap.get(playerId)
-        ?.primary_position ?? "";
-
     const position =
-      rawPosition.toUpperCase() === "PK"
-        ? "K"
-        : rawPosition.toUpperCase();
+      normalizePosition(
+        playerMap.get(playerId)
+          ?.primary_position
+      );
+
+    if (
+      !position
+    ) {
+      return null;
+    }
 
     return matchupRankMap.get(
-      `${position}:${opponent.toUpperCase()}`
+      `${position}:${normalizedOpponent}`
     ) ?? null;
   };
 
@@ -1118,11 +1189,10 @@ export default async function SeasonLongEntryPage({
             `Player ${row.player_id}`,
 
           position:
-            (
+            normalizePosition(
               player
-                ?.primary_position ??
-              ""
-            ).toUpperCase(),
+                ?.primary_position
+            ),
 
           teamAbbreviation:
             player
@@ -1234,6 +1304,8 @@ export default async function SeasonLongEntryPage({
             "K",
             "PK",
             "DST",
+            "DEF",
+            "D/ST",
           ].includes(
             position
           );
@@ -1266,10 +1338,9 @@ export default async function SeasonLongEntryPage({
               player.full_name,
 
             position:
-              (
-                player.primary_position ??
-                ""
-              ).toUpperCase(),
+              normalizePosition(
+                player.primary_position
+              ),
 
             teamAbbreviation:
               player.team_abbreviation,

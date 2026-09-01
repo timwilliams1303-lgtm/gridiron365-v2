@@ -180,7 +180,19 @@ function numberValue(value: number | string | null | undefined): number {
 
 function normalizePosition(value: string | null | undefined): string {
   const position = (value ?? "").trim().toUpperCase();
-  return position === "PK" ? "K" : position || "—";
+
+  if (position === "PK") {
+    return "K";
+  }
+
+  if (
+    position === "DEF" ||
+    position === "D/ST"
+  ) {
+    return "DST";
+  }
+
+  return position || "—";
 }
 
 function scoreKey(playerId: number, gameId: number | null): string {
@@ -652,7 +664,7 @@ export async function getSeasonLongTeamLiveLineupData(
       opponentAbbreviation: row.opponent_abbreviation,
       opponentPrefix,
       matchupRank:
-        isRevealed && row.opponent_abbreviation
+        row.opponent_abbreviation
           ? matchupRankMap.get(
               `${normalizePosition(player?.primary_position)}:${row.opponent_abbreviation.toUpperCase()}`
             ) ?? null

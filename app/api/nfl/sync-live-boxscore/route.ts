@@ -62,6 +62,16 @@ type NormalizedPlayer = {
   defensive_total_tackles: number;
   defensive_tackles_for_loss: number;
 
+  defensive_sacks: number;
+  defensive_interceptions: number;
+  defensive_fumble_recoveries: number;
+  defensive_forced_fumbles: number;
+  defensive_touchdowns: number;
+  defensive_safeties: number;
+  defensive_blocked_kicks: number;
+  defensive_passes_defended: number;
+  defensive_qb_hits: number;
+
   field_goals_made_0_19: number;
   field_goals_made_20_29: number;
   field_goals_made_30_39: number;
@@ -282,6 +292,16 @@ function blankPlayer(
     defensive_assisted_tackles: 0,
     defensive_total_tackles: 0,
     defensive_tackles_for_loss: 0,
+
+    defensive_sacks: 0,
+    defensive_interceptions: 0,
+    defensive_fumble_recoveries: 0,
+    defensive_forced_fumbles: 0,
+    defensive_touchdowns: 0,
+    defensive_safeties: 0,
+    defensive_blocked_kicks: 0,
+    defensive_passes_defended: 0,
+    defensive_qb_hits: 0,
 
     field_goals_made_0_19: 0,
     field_goals_made_20_29: 0,
@@ -1666,6 +1686,50 @@ export async function POST(
               );
 
 
+            player
+              .defensive_sacks =
+              toNumber(
+                getStat(
+                  labels,
+                  stats,
+                  "SACKS"
+                )
+              );
+
+
+            player
+              .defensive_passes_defended =
+              toNumber(
+                getStat(
+                  labels,
+                  stats,
+                  "PD"
+                )
+              );
+
+
+            player
+              .defensive_qb_hits =
+              toNumber(
+                getStat(
+                  labels,
+                  stats,
+                  "QB HTS"
+                )
+              );
+
+
+            player
+              .defensive_touchdowns =
+              toNumber(
+                getStat(
+                  labels,
+                  stats,
+                  "TD"
+                )
+              );
+
+
             if (
               teamAbbreviation
             ) {
@@ -1686,45 +1750,60 @@ export async function POST(
                   player.defensive_tackles_for_loss;
 
                 dst.sacks +=
-                  toNumber(
-                    getStat(
-                      labels,
-                      stats,
-                      "SACKS"
-                    )
-                  );
+                  player.defensive_sacks;
               }
             }
           }
 
 
           /* ===============================================
-             DST INTERCEPTIONS
+             DEFENSIVE PLAYER + DST INTERCEPTIONS
           =============================================== */
 
           else if (
             categoryName ===
-              "interceptions" &&
-            teamAbbreviation
+              "interceptions"
           ) {
 
-            const dst =
-              dstByTeam.get(
-                teamAbbreviation
+            player
+              .defensive_interceptions =
+              toNumber(
+                getStat(
+                  labels,
+                  stats,
+                  "INT"
+                )
               );
 
 
-            if (dst) {
-              dst.interceptions +=
-                toNumber(
-                  getStat(
-                    labels,
-                    stats,
-                    "INT"
-                  )
+            player
+              .defensive_touchdowns +=
+              toNumber(
+                getStat(
+                  labels,
+                  stats,
+                  "TD"
+                )
+              );
+
+
+            if (
+              teamAbbreviation
+            ) {
+              const dst =
+                dstByTeam.get(
+                  teamAbbreviation
                 );
+
+
+              if (dst) {
+                dst.interceptions +=
+                  player
+                    .defensive_interceptions;
+              }
             }
           }
+
         }
       }
     }
@@ -2587,6 +2666,42 @@ export async function POST(
         defensive_tackles_for_loss:
           normalized
             .defensive_tackles_for_loss,
+
+        defensive_sacks:
+          normalized
+            .defensive_sacks,
+
+        defensive_interceptions:
+          normalized
+            .defensive_interceptions,
+
+        defensive_fumble_recoveries:
+          normalized
+            .defensive_fumble_recoveries,
+
+        defensive_forced_fumbles:
+          normalized
+            .defensive_forced_fumbles,
+
+        defensive_touchdowns:
+          normalized
+            .defensive_touchdowns,
+
+        defensive_safeties:
+          normalized
+            .defensive_safeties,
+
+        defensive_blocked_kicks:
+          normalized
+            .defensive_blocked_kicks,
+
+        defensive_passes_defended:
+          normalized
+            .defensive_passes_defended,
+
+        defensive_qb_hits:
+          normalized
+            .defensive_qb_hits,
 
 
         /* FG DISTANCE BUCKETS */
