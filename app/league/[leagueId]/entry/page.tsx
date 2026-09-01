@@ -899,54 +899,104 @@ export default async function SeasonLongEntryPage({
    * week, not a generic team label.  The weekly projection table
    * already carries opponent, home/away, kickoff and bye context.
    */
-  const weeklyProjectionResult =
-    await supabase
-      .from(
-        "weekly_player_projections"
-      )
-      .select(`
-        player_id,
-        team_abbreviation,
-        opponent_abbreviation,
-        home_or_away,
-        kickoff_at,
-        is_bye,
-        projected_points
-      `)
-      .eq(
-        "league_id",
-        leagueId
-      )
-      .eq(
-        "season",
-        season
-      )
-      .eq(
-        "season_type",
-        2
-      )
-      .eq(
-        "week",
-        currentWeek
-      );
+  /*
+   * Supabase/PostgREST commonly caps a single SELECT response at
+   * 1,000 rows.  Season-Long weekly projections contain far more
+   * rows than that, so a one-shot query can silently omit matchup
+   * context for otherwise valid players.
+   *
+   * Page through the entire week so every player can receive its
+   * opponent, kickoff, bye state and matchup rank.
+   */
+  const weeklyProjectionRows:
+    WeeklyProjectionRow[] = [];
 
+  const weeklyProjectionPageSize =
+    1000;
 
-  if (
-    weeklyProjectionResult.error
+  for (
+    let from = 0;
+    ;
+    from += weeklyProjectionPageSize
   ) {
-    throw new Error(
-      weeklyProjectionResult
-        .error
-        .message
+    const to =
+      from +
+      weeklyProjectionPageSize -
+      1;
+
+    const weeklyProjectionPageResult =
+      await supabase
+        .from(
+          "weekly_player_projections"
+        )
+        .select(`
+          player_id,
+          team_abbreviation,
+          opponent_abbreviation,
+          home_or_away,
+          kickoff_at,
+          is_bye,
+          projected_points
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        )
+        .eq(
+          "season_type",
+          2
+        )
+        .eq(
+          "week",
+          currentWeek
+        )
+        .order(
+          "player_id",
+          {
+            ascending:
+              true,
+          }
+        )
+        .range(
+          from,
+          to
+        );
+
+
+    if (
+      weeklyProjectionPageResult.error
+    ) {
+      throw new Error(
+        weeklyProjectionPageResult
+          .error
+          .message
+      );
+    }
+
+
+    const pageRows =
+      (
+        weeklyProjectionPageResult.data ??
+        []
+      ) as WeeklyProjectionRow[];
+
+
+    weeklyProjectionRows.push(
+      ...pageRows
     );
+
+
+    if (
+      pageRows.length <
+      weeklyProjectionPageSize
+    ) {
+      break;
+    }
   }
-
-
-  const weeklyProjectionRows =
-    (
-      weeklyProjectionResult.data ??
-      []
-    ) as WeeklyProjectionRow[];
 
 
   const weeklyProjectionMap =
