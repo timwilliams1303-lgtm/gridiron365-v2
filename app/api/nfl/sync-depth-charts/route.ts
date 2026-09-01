@@ -3,10 +3,6 @@ import {
 } from "next/server";
 
 import {
-  createClient,
-} from "@supabase/supabase-js";
-
-import {
   createSupabaseAdminClient,
 } from "@/lib/supabase/admin";
 
@@ -478,9 +474,13 @@ function chunkArray<T>(
 }
 
 
-async function validateUser(
+async function authorizeSync(
   request: Request
 ) {
+  /*
+   * Manual depth-chart sync:
+   * accept the normal Gridiron365 Supabase SSR cookie session.
+   */
   try {
     const serverSupabase =
       await createSupabaseServerClient();
@@ -489,7 +489,8 @@ async function validateUser(
       data: {
         user,
       },
-      error: userError,
+      error:
+        userError,
     } =
       await serverSupabase.auth
         .getUser();
@@ -499,134 +500,136 @@ async function validateUser(
       user
     ) {
       return {
-        userId: user.id,
-        error: null,
+        authorized:
+          true,
+
+        response:
+          null,
+
+        authMode:
+          "user_session",
+
+        userId:
+          user.id,
       };
     }
   } catch {
-    // Continue to Bearer-token fallback.
+    /*
+     * Fall through to the server-secret path.
+     * Automated Supabase cron callers do not need a browser session.
+     */
   }
 
 
-  const authorization =
-    request.headers.get(
-      "authorization"
-    );
+  /*
+   * Automated depth-chart sync:
+   * use the same trusted server secret as the NFL injury sync.
+   */
+  const configuredSecret =
+    process.env
+      .GRIDIRON_SYNC_SECRET ??
+    process.env
+      .NFL_SYNC_SECRET;
 
-  if (
-    !authorization?.startsWith(
-      "Bearer "
-    )
-  ) {
+  if (!configuredSecret) {
     return {
-      userId: null,
-      error:
+      authorized:
+        false,
+
+      response:
         NextResponse.json(
           {
-            success: false,
+            success:
+              false,
+
             error:
-              "Your login session is missing.",
+              "GRIDIRON_SYNC_SECRET / NFL_SYNC_SECRET is not configured on the server.",
           },
           {
-            status: 401,
+            status:
+              500,
           }
         ),
+
+      authMode:
+        null,
+
+      userId:
+        null,
     };
   }
 
 
-  const accessToken =
-    authorization.slice(7);
-
-  const supabaseUrl =
-    process.env
-      .NEXT_PUBLIC_SUPABASE_URL;
-
-  const supabaseKey =
-    process.env
-      .NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-
-  if (
-    !supabaseUrl ||
-    !supabaseKey
-  ) {
-    throw new Error(
-      "Supabase environment variables are missing."
-    );
-  }
-
-
-  const userClient =
-    createClient(
-      supabaseUrl,
-      supabaseKey,
-      {
-        global: {
-          headers: {
-            Authorization:
-              `Bearer ${accessToken}`,
-          },
-        },
-
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-          detectSessionInUrl: false,
-        },
-      }
+  const suppliedSecret =
+    request.headers.get(
+      "x-gridiron-sync-secret"
     );
 
 
-  const {
-    data: {
-      user,
-    },
-    error: userError,
-  } =
-    await userClient.auth
-      .getUser(
-        accessToken
-      );
-
   if (
-    userError ||
-    !user
+    suppliedSecret !==
+    configuredSecret
   ) {
     return {
-      userId: null,
-      error:
+      authorized:
+        false,
+
+      response:
         NextResponse.json(
           {
-            success: false,
+            success:
+              false,
+
             error:
-              "Your login session is invalid.",
+              "Unauthorized depth-chart sync request.",
           },
           {
-            status: 401,
+            status:
+              401,
           }
         ),
+
+      authMode:
+        null,
+
+      userId:
+        null,
     };
   }
 
 
   return {
-    userId: user.id,
-    error: null,
+    authorized:
+      true,
+
+    response:
+      null,
+
+    authMode:
+      "sync_secret",
+
+    userId:
+      null,
   };
 }
+
 
 
 export async function POST(
   request: Request
 ) {
   try {
-    const auth =
-      await validateUser(
+    const authorization =
+      await authorizeSync(
         request
       );
 
-    if (auth.error) {
-      return auth.error;
+
+    if (
+      !authorization.authorized
+    ) {
+      return authorization
+        .response!;
     }
 
 
@@ -1819,7 +1822,9 @@ export async function POST(
         success:
           teamErrors.length === 0,
         userId:
-          auth.userId,
+          authorization.userId,
+        authMode:
+          authorization.authMode,
         season,
         source:
           "ESPN Core API",
