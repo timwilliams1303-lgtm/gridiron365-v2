@@ -157,6 +157,45 @@ function cleanText(
 
 
 
+function normalizeHydratedPosition(
+  corePosition?: string | null,
+  fallbackPosition?: string | null
+) {
+  const normalizedCore =
+    cleanText(
+      corePosition ??
+        undefined
+    )?.toUpperCase();
+
+  const invalidCorePositions =
+    new Set([
+      "-",
+      "UNKNOWN",
+      "UNK",
+      "N/A",
+      "NA",
+      "NONE",
+    ]);
+
+  if (
+    normalizedCore &&
+    !invalidCorePositions.has(
+      normalizedCore
+    )
+  ) {
+    return normalizedCore;
+  }
+
+  return (
+    cleanText(
+      fallbackPosition ??
+        undefined
+    )?.toUpperCase() ??
+    null
+  );
+}
+
+
 function normalizeEspnRefUrl(
   value?: string
 ) {
@@ -639,14 +678,11 @@ export async function POST(
             );
 
           const primaryPosition =
-  cleanText(
-    athlete.position
-      ?.abbreviation
-  ) ??
-  cleanText(
-    fallbackPosition ??
-      undefined
-  );
+            normalizeHydratedPosition(
+              athlete.position
+                ?.abbreviation,
+              fallbackPosition
+            );
 
           if (!fullName) {
             throw new Error(
