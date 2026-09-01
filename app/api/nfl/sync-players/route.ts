@@ -78,6 +78,20 @@ type PlayerUpsertRow = {
     | "WR"
     | "TE"
     | "K"
+    | "DL"
+    | "DE"
+    | "DT"
+    | "NT"
+    | "EDGE"
+    | "LB"
+    | "ILB"
+    | "OLB"
+    | "MLB"
+    | "DB"
+    | "CB"
+    | "S"
+    | "FS"
+    | "SS"
     | "DST";
 
   team_abbreviation: string;
@@ -102,6 +116,20 @@ function normalizePosition(
   | "WR"
   | "TE"
   | "K"
+  | "DL"
+  | "DE"
+  | "DT"
+  | "NT"
+  | "EDGE"
+  | "LB"
+  | "ILB"
+  | "OLB"
+  | "MLB"
+  | "DB"
+  | "CB"
+  | "S"
+  | "FS"
+  | "SS"
   | null {
   const value =
     position
@@ -112,9 +140,7 @@ function normalizePosition(
     return null;
   }
 
-  if (
-    value === "QB"
-  ) {
+  if (value === "QB") {
     return "QB";
   }
 
@@ -125,15 +151,11 @@ function normalizePosition(
     return "RB";
   }
 
-  if (
-    value === "WR"
-  ) {
+  if (value === "WR") {
     return "WR";
   }
 
-  if (
-    value === "TE"
-  ) {
+  if (value === "TE") {
     return "TE";
   }
 
@@ -144,9 +166,54 @@ function normalizePosition(
     return "K";
   }
 
+  /*
+   * Defensive players are stored individually for G365's
+   * dynamic matchup/injury engine. Keep ESPN's useful
+   * position specificity rather than collapsing the entire
+   * defense into one generic position.
+   */
+  const defensivePositions =
+    new Set([
+      "DL",
+      "DE",
+      "DT",
+      "NT",
+      "EDGE",
+      "LB",
+      "ILB",
+      "OLB",
+      "MLB",
+      "DB",
+      "CB",
+      "S",
+      "FS",
+      "SS",
+    ]);
+
+  if (
+    defensivePositions.has(
+      value
+    )
+  ) {
+    return value as
+      | "DL"
+      | "DE"
+      | "DT"
+      | "NT"
+      | "EDGE"
+      | "LB"
+      | "ILB"
+      | "OLB"
+      | "MLB"
+      | "DB"
+      | "CB"
+      | "S"
+      | "FS"
+      | "SS";
+  }
+
   return null;
 }
-
 
 function normalizeStatus(
   status?: EspnStatus
@@ -484,10 +551,11 @@ export async function POST(
               );
 
             /*
-             * Only fantasy-relevant offensive/kicking players
-             * are stored here.
+             * Store fantasy-relevant offensive/kicking players
+             * plus individual defensive players needed by the
+             * G365 dynamic matchup/injury engine.
              *
-             * DST is created separately per NFL team.
+             * DST is still created separately per NFL team.
              */
             if (
               !normalizedPosition
@@ -637,7 +705,7 @@ export async function POST(
       0
     ) {
       throw new Error(
-        "ESPN returned no usable fantasy players."
+        "ESPN returned no usable NFL players."
       );
     }
 
