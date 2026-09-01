@@ -21,6 +21,7 @@ type SyncResult = {
 type WorkingType =
   | "teams"
   | "players"
+  | "depthCharts"
   | "schedule"
   | "injuries"
   | null;
@@ -49,6 +50,12 @@ export default function SyncNflPage() {
   const [
     playerMessage,
     setPlayerMessage,
+  ] =
+    useState("");
+
+  const [
+    depthChartMessage,
+    setDepthChartMessage,
   ] =
     useState("");
 
@@ -338,6 +345,102 @@ export default function SyncNflPage() {
         error instanceof Error
           ? error.message
           : "NFL player sync failed."
+      );
+    } finally {
+      setWorking(
+        null
+      );
+    }
+  }
+
+
+  async function syncDepthCharts() {
+    if (working) {
+      return;
+    }
+
+    setWorking(
+      "depthCharts"
+    );
+
+    setDepthChartMessage(
+      "Syncing NFL depth charts..."
+    );
+
+    try {
+      const data =
+        await postCookieSessionSync(
+          "/api/nfl/sync-depth-charts",
+          {
+            season: 2026,
+          }
+        );
+
+      const entries =
+        data.depthChartEntries ??
+        data.entriesUpserted ??
+        data.count ??
+        "completed";
+
+      const processed =
+        data.teamsProcessed;
+
+      const failed =
+        data.teamsFailed;
+
+      const matched =
+        data.matchedPlayers;
+
+      const unmatched =
+        data.unmatchedPlayers;
+
+      const extra =
+        [
+          processed !== undefined
+            ? `${String(
+                processed
+              )} teams processed`
+            : null,
+
+          failed !== undefined
+            ? `${String(
+                failed
+              )} teams failed`
+            : null,
+
+          matched !== undefined
+            ? `${String(
+                matched
+              )} players matched`
+            : null,
+
+          unmatched !== undefined
+            ? `${String(
+                unmatched
+              )} unmatched`
+            : null,
+        ]
+          .filter(
+            Boolean
+          )
+          .join(
+            " • "
+          );
+
+      setDepthChartMessage(
+        `Success: ${String(
+          entries
+        )} depth-chart entries synced.${
+          extra
+            ? ` ${extra}.`
+            : ""
+        }`
+      );
+    } catch (error) {
+      setDepthChartMessage(
+        error instanceof Error
+          ? error.message
+          : "NFL depth-chart sync failed."
       );
     } finally {
       setWorking(
@@ -675,8 +778,8 @@ export default function SyncNflPage() {
           >
             Manually refresh ESPN-backed NFL data.
             Run Teams before Players when rebuilding
-            the player pool, then Schedule and
-            Injuries as needed.
+            the player pool, then Depth Charts,
+            Schedule, and Injuries as needed.
           </p>
         </div>
 
@@ -817,6 +920,71 @@ export default function SyncNflPage() {
               }
             >
               {playerMessage}
+            </div>
+          </article>
+
+          <article
+            style={
+              cardStyle
+            }
+          >
+            <h2
+              style={{
+                margin:
+                  "0 0 8px",
+
+                fontSize:
+                  19,
+              }}
+            >
+              NFL Depth Charts
+            </h2>
+
+            <p
+              style={{
+                margin:
+                  "0 0 16px",
+
+                color:
+                  "#9da1a9",
+
+                fontSize:
+                  13,
+
+                lineHeight:
+                  1.5,
+              }}
+            >
+              Refresh current ESPN offensive,
+              defensive, and special-teams depth
+              charts for matchup toughness.
+            </p>
+
+            <button
+              type="button"
+              disabled={
+                working !==
+                null
+              }
+              onClick={
+                syncDepthCharts
+              }
+              style={
+                buttonStyle
+              }
+            >
+              {working ===
+              "depthCharts"
+                ? "Syncing Depth Charts..."
+                : "Sync Depth Charts"}
+            </button>
+
+            <div
+              style={
+                messageStyle
+              }
+            >
+              {depthChartMessage}
             </div>
           </article>
 
