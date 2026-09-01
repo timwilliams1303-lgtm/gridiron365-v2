@@ -365,50 +365,87 @@ export async function POST(
     }
 
 
-    const {
-      data: nflPlayerData,
-      error: nflPlayerError,
-    } =
-      await admin
-        .from(
-          "nfl_players"
-        )
-        .select(
-          "id, espn_player_id"
-        )
-        .not(
-          "espn_player_id",
-          "is",
-          null
-        );
-
-    if (nflPlayerError) {
-      throw new Error(
-        nflPlayerError.message
-      );
-    }
-
-
     const nflPlayerMap =
       new Map<string, number>();
 
-    for (
-      const player
-      of (
-        nflPlayerData ??
-        []
-      ) as NflPlayerLookupRow[]
-    ) {
-      if (
-        !player.espn_player_id
-      ) {
-        continue;
+    const playerPageSize =
+      1000;
+
+    let playerPageStart =
+      0;
+
+    while (true) {
+      const playerPageEnd =
+        playerPageStart +
+        playerPageSize -
+        1;
+
+      const {
+        data: nflPlayerData,
+        error: nflPlayerError,
+      } =
+        await admin
+          .from(
+            "nfl_players"
+          )
+          .select(
+            "id, espn_player_id"
+          )
+          .not(
+            "espn_player_id",
+            "is",
+            null
+          )
+          .order(
+            "id",
+            {
+              ascending: true,
+            }
+          )
+          .range(
+            playerPageStart,
+            playerPageEnd
+          );
+
+      if (nflPlayerError) {
+        throw new Error(
+          nflPlayerError.message
+        );
       }
 
-      nflPlayerMap.set(
-        player.espn_player_id,
-        player.id
-      );
+      const playerPage =
+        (
+          nflPlayerData ??
+          []
+        ) as NflPlayerLookupRow[];
+
+      for (
+        const player
+        of playerPage
+      ) {
+        if (
+          !player.espn_player_id
+        ) {
+          continue;
+        }
+
+        nflPlayerMap.set(
+          String(
+            player.espn_player_id
+          ),
+          player.id
+        );
+      }
+
+      if (
+        playerPage.length <
+        playerPageSize
+      ) {
+        break;
+      }
+
+      playerPageStart +=
+        playerPageSize;
     }
 
 
