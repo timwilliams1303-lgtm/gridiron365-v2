@@ -6,6 +6,10 @@ import {
   createClient,
 } from "@supabase/supabase-js";
 
+import {
+  createSupabaseServerClient,
+} from "@/lib/supabase/server";
+
 
 export const dynamic =
   "force-dynamic";
@@ -287,9 +291,54 @@ function getAdminClient() {
    AUTHORIZATION
 ========================================================= */
 
-function authorizeSync(
+async function authorizeSync(
   request: Request
 ) {
+  /*
+   * Manual admin sync:
+   * accept the normal Gridiron365 Supabase SSR cookie session.
+   */
+  try {
+    const serverSupabase =
+      await createSupabaseServerClient();
+
+    const {
+      data: {
+        user,
+      },
+      error:
+        userError,
+    } =
+      await serverSupabase.auth
+        .getUser();
+
+    if (
+      !userError &&
+      user
+    ) {
+      return {
+        authorized:
+          true,
+
+        response:
+          null,
+
+        authMode:
+          "user_session",
+      };
+    }
+  } catch {
+    /*
+     * Fall through to the server-secret path.
+     * Automated cron/server callers do not need a browser session.
+     */
+  }
+
+
+  /*
+   * Automated sync:
+   * preserve the existing x-gridiron-sync-secret authorization.
+   */
   const configuredSecret =
     process.env
       .GRIDIRON_SYNC_SECRET ??
@@ -315,6 +364,9 @@ function authorizeSync(
               500,
           }
         ),
+
+      authMode:
+        null,
     };
   }
 
@@ -347,6 +399,9 @@ function authorizeSync(
               401,
           }
         ),
+
+      authMode:
+        null,
     };
   }
 
@@ -357,9 +412,11 @@ function authorizeSync(
 
     response:
       null,
+
+    authMode:
+      "sync_secret",
   };
 }
-
 
 /* =========================================================
    ESPN PLAYER ID
@@ -820,7 +877,7 @@ export async function POST(
   request: Request
 ) {
   const authorization =
-    authorizeSync(
+    await authorizeSync(
       request
     );
 
@@ -2193,6 +2250,53 @@ export async function POST(
     }
 
 
+    /*
+     * Injury changes also affect the Season-Long dynamic
+     * matchup engine. Refresh every active Season-Long
+     * league/week after the injury feed is persisted.
+     */
+    let seasonLongMatchupRefresh:
+      unknown =
+        null;
+
+    let seasonLongMatchupRefreshError:
+      string |
+      null =
+        null;
+
+
+    try {
+      const {
+        data:
+          refreshedSeasonLongData,
+
+        error:
+          refreshedSeasonLongError,
+      } =
+        await supabase.rpc(
+          "refresh_active_season_long_dynamic_matchups"
+        );
+
+
+      if (
+        refreshedSeasonLongError
+      ) {
+        seasonLongMatchupRefreshError =
+          refreshedSeasonLongError.message;
+      } else {
+        seasonLongMatchupRefresh =
+          refreshedSeasonLongData;
+      }
+    } catch (
+      seasonLongError
+    ) {
+      seasonLongMatchupRefreshError =
+        seasonLongError instanceof Error
+          ? seasonLongError.message
+          : "Season-Long dynamic matchup refresh failed.";
+    }
+
+
     /* =====================================================
        10. SUCCESS
     ===================================================== */
@@ -2209,6 +2313,9 @@ export async function POST(
 
       automatic:
         true,
+
+      authMode:
+        authorization.authMode,
 
       espnTimestamp:
         espnData.timestamp ??
@@ -2262,6 +2369,10 @@ export async function POST(
       projectionRefresh,
 
       projectionRefreshError,
+
+      seasonLongMatchupRefresh,
+
+      seasonLongMatchupRefreshError,
 
       completedAt:
         new Date()
