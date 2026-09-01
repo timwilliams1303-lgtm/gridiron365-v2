@@ -53,6 +53,40 @@ type EspnDepthChartResponse = {
 };
 
 
+type EspnCoreAthlete = {
+  id?: string;
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  displayName?: string;
+  jersey?: string;
+  active?: boolean;
+  position?: {
+    id?: string;
+    name?: string;
+    displayName?: string;
+    abbreviation?: string;
+  };
+  status?: {
+    id?: string;
+    name?: string;
+    type?: string;
+    abbreviation?: string;
+  };
+  headshot?: {
+    href?: string;
+    alt?: string;
+  };
+};
+
+
+type HydratedPlayerResult = {
+  nflPlayerId: number | null;
+  hydrated: boolean;
+  error: string | null;
+};
+
+
 type NflTeamRow = {
   espn_team_id: string;
   abbreviation: string;
@@ -119,6 +153,61 @@ function cleanText(
     value?.trim();
 
   return cleaned || null;
+}
+
+
+
+function normalizeEspnRefUrl(
+  value?: string
+) {
+  const cleaned =
+    cleanText(value);
+
+  if (!cleaned) {
+    return null;
+  }
+
+  if (
+    cleaned.startsWith(
+      "http://"
+    )
+  ) {
+    return (
+      "https://" +
+      cleaned.slice(7)
+    );
+  }
+
+  return cleaned;
+}
+
+
+function normalizeCoreStatus(
+  athlete: EspnCoreAthlete
+) {
+  const rawStatus =
+    cleanText(
+      athlete.status?.type ??
+      athlete.status?.name ??
+      athlete.status?.abbreviation
+    );
+
+  if (!rawStatus) {
+    return athlete.active === false
+      ? "INACTIVE"
+      : "ACTIVE";
+  }
+
+  return rawStatus
+    .replace(
+      /[^a-zA-Z0-9]+/g,
+      "_"
+    )
+    .replace(
+      /^_+|_+$/g,
+      ""
+    )
+    .toUpperCase();
 }
 
 
@@ -449,6 +538,261 @@ export async function POST(
     }
 
 
+    const hydrationCache =
+      new Map<
+        string,
+        HydratedPlayerResult
+      >();
+
+
+    const hydrateMissingPlayer =
+      async ({
+        espnPlayerId,
+        athleteRef,
+        teamAbbreviation,
+        fallbackPosition,
+      }: {
+        espnPlayerId: string;
+        athleteRef?: string;
+        teamAbbreviation: string;
+        fallbackPosition?: string | null;
+      }): Promise<HydratedPlayerResult> => {
+        const existingId =
+          nflPlayerMap.get(
+            espnPlayerId
+          );
+
+        if (
+          existingId !== undefined
+        ) {
+          return {
+            nflPlayerId:
+              existingId,
+            hydrated:
+              false,
+            error:
+              null,
+          };
+        }
+
+
+        const cached =
+          hydrationCache.get(
+            espnPlayerId
+          );
+
+        if (cached) {
+          return cached;
+        }
+
+
+        try {
+          const athleteUrl =
+            normalizeEspnRefUrl(
+              athleteRef
+            ) ??
+            `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${season}/athletes/${encodeURIComponent(
+              espnPlayerId
+            )}?lang=en&region=us`;
+
+          const athleteResponse =
+            await fetch(
+              athleteUrl,
+              {
+                cache:
+                  "no-store",
+                headers: {
+                  Accept:
+                    "application/json",
+                  "User-Agent":
+                    "Gridiron365/1.0",
+                },
+              }
+            );
+
+          if (
+            !athleteResponse.ok
+          ) {
+            throw new Error(
+              `ESPN athlete HTTP ${athleteResponse.status}`
+            );
+          }
+
+
+          const athlete =
+            (
+              await athleteResponse.json()
+            ) as EspnCoreAthlete;
+
+          const fullName =
+            cleanText(
+              athlete.fullName ??
+              athlete.displayName
+            ) ??
+            cleanText(
+              [
+                athlete.firstName,
+                athlete.lastName,
+              ]
+                .filter(Boolean)
+                .join(" ")
+            );
+
+          const primaryPosition =
+  cleanText(
+    athlete.position
+      ?.abbreviation
+  ) ??
+  cleanText(
+    fallbackPosition ??
+      undefined
+  );
+
+          if (!fullName) {
+            throw new Error(
+              "ESPN athlete record did not include a usable name."
+            );
+          }
+
+          if (!primaryPosition) {
+            throw new Error(
+              "ESPN athlete record did not include a usable position."
+            );
+          }
+
+
+          const upsertPayload = {
+            espn_player_id:
+              espnPlayerId,
+            full_name:
+              fullName,
+            first_name:
+              cleanText(
+                athlete.firstName
+              ),
+            last_name:
+              cleanText(
+                athlete.lastName
+              ),
+            primary_position:
+              primaryPosition
+                .trim()
+                .toUpperCase(),
+            team_abbreviation:
+              teamAbbreviation,
+            jersey_number:
+              cleanText(
+                athlete.jersey
+              ),
+            status:
+              normalizeCoreStatus(
+                athlete
+              ),
+            is_active:
+              athlete.active !== false,
+            headshot_url:
+              cleanText(
+                athlete.headshot?.href
+              ),
+            updated_at:
+              new Date()
+                .toISOString(),
+          };
+
+
+          const {
+            data: hydratedPlayerData,
+            error: hydratedPlayerError,
+          } =
+            await admin
+              .from(
+                "nfl_players"
+              )
+              .upsert(
+                upsertPayload,
+                {
+                  onConflict:
+                    "espn_player_id",
+                }
+              )
+              .select(
+                "id, espn_player_id"
+              )
+              .single();
+
+          if (
+            hydratedPlayerError
+          ) {
+            throw new Error(
+              hydratedPlayerError.message
+            );
+          }
+
+          const hydratedId =
+            Number(
+              hydratedPlayerData?.id
+            );
+
+          if (
+            !Number.isInteger(
+              hydratedId
+            ) ||
+            hydratedId <= 0
+          ) {
+            throw new Error(
+              "Hydrated NFL player did not return a valid database ID."
+            );
+          }
+
+
+          nflPlayerMap.set(
+            espnPlayerId,
+            hydratedId
+          );
+
+          const result:
+            HydratedPlayerResult =
+            {
+              nflPlayerId:
+                hydratedId,
+              hydrated:
+                true,
+              error:
+                null,
+            };
+
+          hydrationCache.set(
+            espnPlayerId,
+            result
+          );
+
+          return result;
+        } catch (
+          error
+        ) {
+          const result:
+            HydratedPlayerResult =
+            {
+              nflPlayerId:
+                null,
+              hydrated:
+                false,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Unknown ESPN athlete hydration error",
+            };
+
+          hydrationCache.set(
+            espnPlayerId,
+            result
+          );
+
+          return result;
+        }
+      };
+
+
     const teamErrors:
       {
         team: string;
@@ -463,6 +807,8 @@ export async function POST(
         entries: number;
         matchedPlayers: number;
         unmatchedPlayers: number;
+        hydratedPlayers: number;
+        hydrationFailures: number;
         staleRowsRemoved: number;
       }[] =
       [];
@@ -473,6 +819,8 @@ export async function POST(
     let totalEntries = 0;
     let totalMatchedPlayers = 0;
     let totalUnmatchedPlayers = 0;
+    let totalHydratedPlayers = 0;
+    let totalHydrationFailures = 0;
     let totalStaleRowsRemoved = 0;
 
 
@@ -535,6 +883,8 @@ export async function POST(
 
         let matchedPlayers = 0;
         let unmatchedPlayers = 0;
+        let hydratedPlayers = 0;
+        let hydrationFailures = 0;
 
 
         for (
@@ -631,11 +981,53 @@ export async function POST(
               }
 
 
-              const nflPlayerId =
+              let nflPlayerId =
                 nflPlayerMap.get(
                   espnPlayerId
                 ) ??
                 null;
+
+              if (
+                nflPlayerId === null
+              ) {
+                const hydrationResult =
+                  await hydrateMissingPlayer({
+                    espnPlayerId,
+                    athleteRef:
+                      athleteEntry
+                        .athlete
+                        ?.$ref,
+                    teamAbbreviation:
+                      team.abbreviation,
+                    fallbackPosition:
+                      cleanText(
+                        positionMetadata
+                          ?.abbreviation
+                      ) ??
+                      positionKey
+                        .toUpperCase(),
+                  });
+
+                nflPlayerId =
+                  hydrationResult
+                    .nflPlayerId;
+
+                if (
+                  hydrationResult
+                    .hydrated
+                ) {
+                  hydratedPlayers +=
+                    1;
+                }
+
+                if (
+                  hydrationResult
+                    .error
+                ) {
+                  hydrationFailures +=
+                    1;
+                }
+              }
 
               if (
                 nflPlayerId !== null
@@ -806,6 +1198,10 @@ export async function POST(
           matchedPlayers;
         totalUnmatchedPlayers +=
           unmatchedPlayers;
+        totalHydratedPlayers +=
+          hydratedPlayers;
+        totalHydrationFailures +=
+          hydrationFailures;
         totalStaleRowsRemoved +=
           staleRowsRemoved;
 
@@ -819,6 +1215,8 @@ export async function POST(
             rows.length,
           matchedPlayers,
           unmatchedPlayers,
+          hydratedPlayers,
+          hydrationFailures,
           staleRowsRemoved,
         });
       } catch (
@@ -858,6 +1256,24 @@ export async function POST(
           totalMatchedPlayers,
         unmatchedPlayers:
           totalUnmatchedPlayers,
+        hydratedPlayers:
+          totalHydratedPlayers,
+        hydrationFailures:
+          totalHydrationFailures,
+        distinctHydratedPlayers:
+          Array.from(
+            hydrationCache.values()
+          ).filter(
+            (result) =>
+              result.hydrated
+          ).length,
+        distinctHydrationFailures:
+          Array.from(
+            hydrationCache.values()
+          ).filter(
+            (result) =>
+              result.error !== null
+          ).length,
         staleRowsRemoved:
           totalStaleRowsRemoved,
         teamResults,
