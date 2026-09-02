@@ -2205,8 +2205,31 @@ export async function POST(
 
 
     /* =====================================================
-       9. REFRESH WEEKLY PROJECTIONS
+       9. REFRESH FANTASY DATA ONLY WHEN INJURIES CHANGED
     ===================================================== */
+
+    /*
+     * The ESPN injury feed runs frequently.
+     *
+     * Do not rebuild Traditional projections and Season-Long
+     * matchup/projection data simply because the provider was
+     * checked again.
+     *
+     * A downstream fantasy refresh is required only when the
+     * canonical injury state actually changed:
+     *
+     * - a new injury was inserted
+     * - an existing injury changed
+     * - an existing injury was cleared
+     *
+     * Unchanged injuries only receive freshness timestamps and
+     * therefore must not trigger expensive fantasy recalculation.
+     */
+    const hasMeaningfulInjuryChanges =
+      injuriesInserted > 0 ||
+      injuriesChanged > 0 ||
+      injuriesCleared > 0;
+
 
     let projectionRefresh:
       unknown =
@@ -2218,43 +2241,6 @@ export async function POST(
         null;
 
 
-    try {
-      const {
-        data:
-          refreshedProjectionData,
-
-        error:
-          refreshedProjectionError,
-      } =
-        await supabase.rpc(
-          "refresh_active_traditional_weekly_projections"
-        );
-
-
-      if (
-        refreshedProjectionError
-      ) {
-        projectionRefreshError =
-          refreshedProjectionError.message;
-      } else {
-        projectionRefresh =
-          refreshedProjectionData;
-      }
-    } catch (
-      projectionError
-    ) {
-      projectionRefreshError =
-        projectionError instanceof Error
-          ? projectionError.message
-          : "Projection refresh failed.";
-    }
-
-
-    /*
-     * Injury changes also affect the Season-Long dynamic
-     * matchup engine. Refresh every active Season-Long
-     * league/week after the injury feed is persisted.
-     */
     let seasonLongMatchupRefresh:
       unknown =
         null;
@@ -2265,35 +2251,85 @@ export async function POST(
         null;
 
 
-    try {
-      const {
-        data:
-          refreshedSeasonLongData,
+    if (
+      hasMeaningfulInjuryChanges
+    ) {
+      /*
+       * Traditional projections consume the canonical
+       * nfl_player_injuries table.
+       *
+       * Refresh them only when the fantasy-relevant injury
+       * state actually changed.
+       */
+      try {
+        const {
+          data:
+            refreshedProjectionData,
 
-        error:
-          refreshedSeasonLongError,
-      } =
-        await supabase.rpc(
-          "refresh_active_season_long_dynamic_matchups"
-        );
+          error:
+            refreshedProjectionError,
+        } =
+          await supabase.rpc(
+            "refresh_active_traditional_weekly_projections"
+          );
 
 
-      if (
-        refreshedSeasonLongError
+        if (
+          refreshedProjectionError
+        ) {
+          projectionRefreshError =
+            refreshedProjectionError.message;
+        } else {
+          projectionRefresh =
+            refreshedProjectionData;
+        }
+      } catch (
+        projectionError
+      ) {
+        projectionRefreshError =
+          projectionError instanceof Error
+            ? projectionError.message
+            : "Projection refresh failed.";
+      }
+
+
+      /*
+       * Season-Long matchup/projection calculations also
+       * consume injury information.
+       *
+       * As with Traditional, only refresh when the canonical
+       * injury state actually changed.
+       */
+      try {
+        const {
+          data:
+            refreshedSeasonLongData,
+
+          error:
+            refreshedSeasonLongError,
+        } =
+          await supabase.rpc(
+            "refresh_active_season_long_dynamic_matchups"
+          );
+
+
+        if (
+          refreshedSeasonLongError
+        ) {
+          seasonLongMatchupRefreshError =
+            refreshedSeasonLongError.message;
+        } else {
+          seasonLongMatchupRefresh =
+            refreshedSeasonLongData;
+        }
+      } catch (
+        seasonLongError
       ) {
         seasonLongMatchupRefreshError =
-          refreshedSeasonLongError.message;
-      } else {
-        seasonLongMatchupRefresh =
-          refreshedSeasonLongData;
+          seasonLongError instanceof Error
+            ? seasonLongError.message
+            : "Season-Long dynamic matchup refresh failed.";
       }
-    } catch (
-      seasonLongError
-    ) {
-      seasonLongMatchupRefreshError =
-        seasonLongError instanceof Error
-          ? seasonLongError.message
-          : "Season-Long dynamic matchup refresh failed.";
     }
 
 
@@ -2365,6 +2401,11 @@ export async function POST(
       injuriesUnchanged,
 
       injuriesCleared,
+
+      hasMeaningfulInjuryChanges,
+
+      downstreamFantasyRefreshTriggered:
+        hasMeaningfulInjuryChanges,
 
       projectionRefresh,
 
