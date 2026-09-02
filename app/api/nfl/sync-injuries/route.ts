@@ -174,6 +174,12 @@ type ExistingInjury = {
 
   last_seen_at:
     string;
+
+  balldontlie_status:
+    string | null;
+
+  balldontlie_last_synced_at:
+    string | null;
 };
 
 
@@ -1724,7 +1730,9 @@ export async function POST(
           source_updated_at,
           is_active,
           first_seen_at,
-          last_seen_at
+          last_seen_at,
+          balldontlie_status,
+          balldontlie_last_synced_at
           `
         )
         .eq(
@@ -1839,6 +1847,20 @@ export async function POST(
             String(
               row.last_seen_at
             ),
+
+          balldontlie_status:
+            row.balldontlie_status
+              ? String(
+                  row.balldontlie_status
+                )
+              : null,
+
+          balldontlie_last_synced_at:
+            row.balldontlie_last_synced_at
+              ? String(
+                  row.balldontlie_last_synced_at
+                )
+              : null,
         })
       );
 
@@ -2146,6 +2168,12 @@ export async function POST(
     let injuriesCleared =
       0;
 
+    let injuriesProtectedByBalldontlie =
+      0;
+
+    const balldontlieFreshnessWindowMs =
+      24 * 60 * 60 * 1000;
+
 
     for (
       const existing
@@ -2159,6 +2187,36 @@ export async function POST(
           existing.nfl_player_id
         )
       ) {
+        continue;
+      }
+
+
+      const balldontlieLastSyncedMs =
+        existing.balldontlie_last_synced_at
+          ? new Date(
+              existing.balldontlie_last_synced_at
+            ).getTime()
+          : Number.NaN;
+
+      const balldontlieRecentlyConfirmed =
+        Boolean(
+          existing.balldontlie_status
+        ) &&
+        Number.isFinite(
+          balldontlieLastSyncedMs
+        ) &&
+        (
+          Date.now() -
+          balldontlieLastSyncedMs
+        ) <=
+          balldontlieFreshnessWindowMs;
+
+      if (
+        balldontlieRecentlyConfirmed
+      ) {
+        injuriesProtectedByBalldontlie +=
+          1;
+
         continue;
       }
 
@@ -2401,6 +2459,11 @@ export async function POST(
       injuriesUnchanged,
 
       injuriesCleared,
+
+      injuriesProtectedByBalldontlie,
+
+      balldontlieFreshnessWindowHours:
+        24,
 
       hasMeaningfulInjuryChanges,
 
