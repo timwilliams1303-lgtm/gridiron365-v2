@@ -1,5 +1,6 @@
 import type {
   Metadata,
+  Viewport,
 } from "next";
 
 import {
@@ -41,6 +42,76 @@ export const metadata:
 
   description:
     "Gridiron365 Fantasy Football",
+
+  applicationName:
+    "Gridiron365",
+
+  manifest:
+    "/manifest.webmanifest",
+
+  appleWebApp: {
+    capable: true,
+
+    title:
+      "Gridiron365",
+
+    statusBarStyle:
+      "black-translucent",
+  },
+
+  icons: {
+    icon: [
+      {
+        url:
+          "/branding/gridiron365-pwa-192.png",
+
+        sizes:
+          "192x192",
+
+        type:
+          "image/png",
+      },
+
+      {
+        url:
+          "/branding/gridiron365-pwa-512.png",
+
+        sizes:
+          "512x512",
+
+        type:
+          "image/png",
+      },
+    ],
+
+    apple: [
+      {
+        url:
+          "/branding/gridiron365-pwa-192.png",
+
+        sizes:
+          "192x192",
+
+        type:
+          "image/png",
+      },
+    ],
+  },
+};
+
+export const viewport:
+  Viewport = {
+  width:
+    "device-width",
+
+  initialScale:
+    1,
+
+  viewportFit:
+    "cover",
+
+  themeColor:
+    "#0f0f0f",
 };
 
 export default function RootLayout({

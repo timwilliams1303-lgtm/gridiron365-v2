@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import Card from "@/components/ui/Card";
 import LogoutButton from "@/components/auth/LogoutButton";
+import InstallGridiron365 from "@/components/pwa/InstallGridiron365";
 
 import {
   requireUser,
@@ -149,6 +150,9 @@ export default async function MyLeaguesPage() {
               styles.topActions
             }
           >
+            <InstallGridiron365 />
+
+
             <div
               style={
                 styles.userBox
