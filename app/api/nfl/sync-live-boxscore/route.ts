@@ -3695,6 +3695,60 @@ export async function POST(
 
 
     /* =====================================================
+       REFRESH SEASON-LONG LIVE SCORING
+
+       Shared NFL player-game stats have already been written
+       for this NFL game.
+
+       Season-Long lineups store nfl_game_id directly, so the
+       database can efficiently identify only affected
+       salary/no-salary leagues, players, teams, and weeks.
+
+       This does NOT fetch ESPN again.
+       This does NOT affect Pick'em.
+    ===================================================== */
+
+    const {
+      data:
+        seasonLongScoringResult,
+
+      error:
+        seasonLongScoringError,
+    } =
+      await supabase.rpc(
+        "refresh_season_long_live_game",
+        {
+          p_nfl_game_id:
+            nflGame.id,
+        }
+      );
+
+
+    if (
+      seasonLongScoringError
+    ) {
+      throw new Error(
+        `Unable to refresh Season-Long live scoring: ${seasonLongScoringError.message}`
+      );
+    }
+
+
+    const seasonLongPlayerScoresRefreshed =
+      Number(
+        seasonLongScoringResult
+          ?.playerScoresRefreshed ??
+        0
+      );
+
+    const seasonLongTeamWeeksRefreshed =
+      Number(
+        seasonLongScoringResult
+          ?.teamWeeksRefreshed ??
+        0
+      );
+
+
+    /* =====================================================
        REFRESH AFFECTED MATCHUPS + AUTO ADVANCE
 
        REGULAR SEASON:
@@ -4116,6 +4170,10 @@ export async function POST(
         qaOverrideContexts,
 
         fantasyScoresRefreshed,
+
+        seasonLongPlayerScoresRefreshed,
+
+        seasonLongTeamWeeksRefreshed,
 
         affectedLeagues:
           affectedLeagueIds
