@@ -38,6 +38,15 @@ function points(
 }
 
 
+function projectionPoints(
+  value: number
+) {
+  return Number(
+    value ?? 0
+  ).toFixed(1);
+}
+
+
 function kickoffLabel(
   value:
     string |
@@ -1168,7 +1177,7 @@ function ScoreTeam({
           styles.teamProjection
         }
       >
-        PROJ {points(
+        PROJ {projectionPoints(
           projectedPoints
         )}
       </span>
@@ -2106,7 +2115,7 @@ function CompactRoster({
                 styles.totalProjection
               }
             >
-              PROJ {points(
+              PROJ {projectionPoints(
                 team.expectedFinalPoints
               )}
             </span>
@@ -2414,7 +2423,7 @@ function CompactPlayerRow({
       >
         {player.projectedPoints >
         0
-          ? points(
+          ? projectionPoints(
               player.projectedPoints
             )
           : "—"}

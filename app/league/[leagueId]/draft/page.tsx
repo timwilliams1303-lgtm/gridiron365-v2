@@ -482,6 +482,7 @@ type ScoringSettingsRow = {
   extra_point_made_points: number | string | null;
   extra_point_missed_points: number | string | null;
   field_goal_missed_points: number | string | null;
+  field_goal_30_39_points: number | string | null;
   kick_return_yards_per_point: number | string | null;
   punt_return_yards_per_point: number | string | null;
   kick_return_td_points: number | string | null;
@@ -726,6 +727,28 @@ function roundProjectedPoints(
 }
 
 
+function formatProjectedPoints(
+  value:
+    number |
+    null |
+    undefined
+) {
+  if (
+    value === null ||
+    value === undefined ||
+    !Number.isFinite(
+      Number(value)
+    )
+  ) {
+    return "—";
+  }
+
+  return Number(
+    value
+  ).toFixed(1);
+}
+
+
 function calculateLeagueProjectedPoints(
   projection:
     ProjectionRow,
@@ -951,7 +974,11 @@ function calculateLeagueProjectedPoints(
    * league rule bands instead.
    */
   const standardFieldGoalMadePoints =
-    3;
+    numberValue(
+      settings
+        .field_goal_30_39_points,
+      3
+    );
 
 
   const kickingPoints =
@@ -2739,7 +2766,7 @@ export default function TraditionalDraftPage() {
                 "league_scoring_settings"
               )
               .select(
-                "passing_yards_per_point, passing_td_points, passing_interception_points, passing_two_point_points, passing_completion_points, passing_incompletion_points, rushing_yards_per_point, rushing_td_points, rushing_two_point_points, rushing_attempt_points, receiving_yards_per_point, receiving_td_points, receiving_two_point_points, reception_points, receiving_target_points, passing_first_down_points, rushing_first_down_points, receiving_first_down_points, fumble_points, fumble_lost_points, extra_point_made_points, extra_point_missed_points, field_goal_missed_points, kick_return_yards_per_point, punt_return_yards_per_point, kick_return_td_points, punt_return_td_points, offensive_fumble_recovery_td_points, fractional_scoring_enabled, decimal_places"
+                "passing_yards_per_point, passing_td_points, passing_interception_points, passing_two_point_points, passing_completion_points, passing_incompletion_points, rushing_yards_per_point, rushing_td_points, rushing_two_point_points, rushing_attempt_points, receiving_yards_per_point, receiving_td_points, receiving_two_point_points, reception_points, receiving_target_points, passing_first_down_points, rushing_first_down_points, receiving_first_down_points, fumble_points, fumble_lost_points, extra_point_made_points, extra_point_missed_points, field_goal_missed_points, field_goal_30_39_points, kick_return_yards_per_point, punt_return_yards_per_point, kick_return_td_points, punt_return_td_points, offensive_fumble_recovery_td_points, fractional_scoring_enabled, decimal_places"
               )
               .eq(
                 "league_id",
@@ -8316,8 +8343,9 @@ function PlayersPanel({
                       styles.projectionText
                     }
                   >
-                    {player.projectedPoints ??
-                      "—"}
+                    {formatProjectedPoints(
+                      player.projectedPoints
+                    )}
                   </span>
 
                   <button
@@ -8996,10 +9024,11 @@ function PlayerProfileModal({
                 </span>
 
                 <strong>
-                  {profile
-                    ?.projectedPoints ??
-                    player.projectedPoints ??
-                    "—"}
+                  {formatProjectedPoints(
+                    profile
+                      ?.projectedPoints ??
+                    player.projectedPoints
+                  )}
                 </strong>
               </div>
 
@@ -9077,7 +9106,7 @@ function QueuePanel({
           <div style={styles.queueIdentity}>
             <strong>{player.name}</strong>
             <span>
-              {player.position} • {player.team} • Proj {player.projectedPoints ?? "—"}
+              {player.position} • {player.team} • Proj {formatProjectedPoints(player.projectedPoints)}
             </span>
           </div>
           <div style={styles.queueMoveControls}>
@@ -9215,7 +9244,7 @@ function RankingsPanel({
                 {player.name}
               </button>
               <span>
-                {player.position} • {player.team} • Bye {player.byeWeek ?? "—"} • Proj {player.projectedPoints ?? "—"}
+                {player.position} • {player.team} • Bye {player.byeWeek ?? "—"} • Proj {formatProjectedPoints(player.projectedPoints)}
               </span>
             </div>
             <span style={drafted ? styles.draftedTag : styles.availableTag}>
@@ -14582,6 +14611,7 @@ const styles = {
   },
 
 } as const;
+
 
 
 

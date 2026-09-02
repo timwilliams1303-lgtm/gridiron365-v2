@@ -57,6 +57,26 @@ type LeaguePickRow = {
     number | null;
   display_clock:
     string | null;
+  possession_team_espn_id:
+    string | null;
+  possession_team_abbreviation:
+    string | null;
+  down:
+    number | null;
+  distance:
+    number | null;
+  yard_line:
+    number | null;
+  yards_to_endzone:
+    number | null;
+  down_distance_text:
+    string | null;
+  possession_text:
+    string | null;
+  is_red_zone:
+    boolean | null;
+  last_play_text:
+    string | null;
   is_final: boolean;
   pick_visible: boolean;
   selected_side:
@@ -1900,6 +1920,48 @@ function PickRow({
       row
     );
 
+  const kickoffReached =
+    row.kickoff_at
+      ? new Date(
+          row.kickoff_at
+        ).getTime() <=
+        Date.now()
+      : false;
+
+  const hasLiveGamecast =
+    !row.is_final &&
+    kickoffReached &&
+    Boolean(
+      row.possession_team_abbreviation ||
+      row.possession_text ||
+      row.down_distance_text ||
+      row.last_play_text ||
+      row.display_clock ||
+      row.period
+    );
+
+  const possessionLabel =
+    row.possession_text ??
+    (row.possession_team_abbreviation
+      ? `${row.possession_team_abbreviation} ball`
+      : null);
+
+  const downDistanceLabel =
+    row.down_distance_text ??
+    (
+      row.down !== null &&
+      row.distance !== null
+        ? `${row.down} & ${row.distance}`
+        : null
+    );
+
+  const fieldPositionLabel =
+    row.yards_to_endzone !== null
+      ? `${row.yards_to_endzone} yd to goal`
+      : row.yard_line !== null
+        ? `Yard line ${row.yard_line}`
+        : null;
+
   return (
     <div
       style={{
@@ -1912,15 +1974,21 @@ function PickRow({
         alignItems:
           "center",
         minHeight:
-          68,
+          hasLiveGamecast
+            ? 92
+            : 68,
         padding:
           "10px 12px",
         borderRadius:
           11,
         border:
-          "1px solid rgba(255,108,33,0.13)",
+          row.is_red_zone
+            ? "1px solid rgba(255,70,70,0.34)"
+            : "1px solid rgba(255,108,33,0.13)",
         background:
-          "rgba(255,82,20,0.035)",
+          row.is_red_zone
+            ? "linear-gradient(135deg, rgba(130,15,18,0.16), rgba(255,82,20,0.035))"
+            : "rgba(255,82,20,0.035)",
       }}
     >
       <PickNumber
@@ -1979,11 +2047,7 @@ function PickRow({
             >
               FINAL
             </span>
-          ) : row.kickoff_at &&
-            new Date(
-              row.kickoff_at
-            ).getTime() <=
-              Date.now() ? (
+          ) : kickoffReached ? (
             <span
               style={{
                 color:
@@ -1997,6 +2061,30 @@ function PickRow({
               {liveLabel(
                 row
               )}
+            </span>
+          ) : null}
+
+          {row.is_red_zone &&
+          !row.is_final ? (
+            <span
+              style={{
+                padding:
+                  "2px 6px",
+                borderRadius:
+                  999,
+                background:
+                  "rgba(255,72,72,0.14)",
+                color:
+                  "#ff8588",
+                fontSize:
+                  9,
+                fontWeight:
+                  1000,
+                letterSpacing:
+                  "0.05em",
+              }}
+            >
+              RED ZONE
             </span>
           ) : null}
         </div>
@@ -2055,15 +2143,90 @@ function PickRow({
             : ""}
           {row.kickoff_at &&
           !row.is_final &&
-          new Date(
-            row.kickoff_at
-          ).getTime() >
-            Date.now()
+          !kickoffReached
             ? ` · ${formatKickoff(
                 row.kickoff_at
               )}`
             : ""}
         </div>
+
+        {hasLiveGamecast ? (
+          <div
+            style={{
+              display:
+                "grid",
+              gap:
+                3,
+              marginTop:
+                6,
+            }}
+          >
+            {(possessionLabel ||
+              downDistanceLabel ||
+              fieldPositionLabel) ? (
+              <div
+                style={{
+                  display:
+                    "flex",
+                  gap:
+                    6,
+                  alignItems:
+                    "center",
+                  flexWrap:
+                    "wrap",
+                  color:
+                    "#b9b9c1",
+                  fontSize:
+                    10,
+                  fontWeight:
+                    850,
+                }}
+              >
+                {possessionLabel ? (
+                  <span>
+                    {possessionLabel}
+                  </span>
+                ) : null}
+
+                {downDistanceLabel ? (
+                  <span>
+                    · {downDistanceLabel}
+                  </span>
+                ) : null}
+
+                {fieldPositionLabel ? (
+                  <span>
+                    · {fieldPositionLabel}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+
+            {row.last_play_text ? (
+              <div
+                style={{
+                  overflow:
+                    "hidden",
+                  textOverflow:
+                    "ellipsis",
+                  color:
+                    "#8d8d96",
+                  fontSize:
+                    10,
+                  lineHeight:
+                    1.35,
+                  whiteSpace:
+                    "nowrap",
+                }}
+                title={
+                  row.last_play_text
+                }
+              >
+                Last: {row.last_play_text}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div

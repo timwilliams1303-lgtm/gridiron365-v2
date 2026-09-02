@@ -246,6 +246,26 @@ type NflGameRow = {
     string;
 };
 
+type LatestNflGamePlayRow = {
+  nfl_game_id: number;
+  espn_play_id: string | null;
+  sequence_number: number | null;
+  play_text: string | null;
+  period: number | null;
+  clock_display: string | null;
+  possession_team_espn_id: string | null;
+  start_down: number | null;
+  start_distance: number | null;
+  start_yard_line: number | null;
+  start_yards_to_endzone: number | null;
+  source_updated_at: string | null;
+  updated_at: string | null;
+  end_down: number | null;
+  end_distance: number | null;
+  end_yard_line: number | null;
+  end_yards_to_endzone: number | null;
+};
+
 type NflTeamRow = {
   id: number;
 
@@ -426,6 +446,36 @@ function normalizeTeamName(
       ?.abbreviation ??
     null
   );
+}
+
+function ordinalDown(
+  down: number | null
+) {
+  if (down === null || down <= 0) {
+    return null;
+  }
+
+  const mod100 = down % 100;
+  const mod10 = down % 10;
+
+  if (mod100 >= 11 && mod100 <= 13) return `${down}th`;
+  if (mod10 === 1) return `${down}st`;
+  if (mod10 === 2) return `${down}nd`;
+  if (mod10 === 3) return `${down}rd`;
+
+  return `${down}th`;
+}
+
+function buildDownDistanceText(
+  down: number | null,
+  distance: number | null
+) {
+  const downText = ordinalDown(down);
+
+  if (!downText) return null;
+  if (distance === null || distance < 0) return downText;
+
+  return `${downText} & ${distance}`;
 }
 
 /*
@@ -1069,6 +1119,69 @@ async function loadSharedNflGames(
     );
   }
 
+  const gameIds =
+    nflGames.map(
+      (game) => game.id
+    );
+
+  const {
+    data:
+      latestPlayData,
+    error:
+      latestPlayError,
+  } =
+    await supabase
+      .from(
+        "g365_latest_nfl_game_play"
+      )
+      .select(`
+        nfl_game_id,
+        espn_play_id,
+        sequence_number,
+        play_text,
+        period,
+        clock_display,
+        possession_team_espn_id,
+        start_down,
+        start_distance,
+        start_yard_line,
+        start_yards_to_endzone,
+        source_updated_at,
+        updated_at,
+        end_down,
+        end_distance,
+        end_yard_line,
+        end_yards_to_endzone
+      `)
+      .in(
+        "nfl_game_id",
+        gameIds
+      );
+
+  if (latestPlayError) {
+    throw new Error(
+      `Could not load shared NFL latest plays: ${latestPlayError.message}`
+    );
+  }
+
+  const latestPlayMap =
+    new Map<
+      number,
+      LatestNflGamePlayRow
+    >();
+
+  for (
+    const play of (
+      latestPlayData ??
+      []
+    ) as LatestNflGamePlayRow[]
+  ) {
+    latestPlayMap.set(
+      Number(play.nfl_game_id),
+      play
+    );
+  }
+
   const normalized:
     NormalizedGame[] =
     [];
@@ -1164,6 +1277,62 @@ async function loadSharedNflGames(
         "OVERTIME"
       );
 
+    const latestPlay =
+      latestPlayMap.get(
+        game.id
+      );
+
+    const livePossessionId =
+      isStarted &&
+      !isFinal
+        ? latestPlay
+            ?.possession_team_espn_id ??
+          null
+        : null;
+
+    const possessionTeam =
+      livePossessionId
+        ? (
+            homeTeam.espn_team_id === livePossessionId
+              ? homeTeam
+              : awayTeam.espn_team_id === livePossessionId
+                ? awayTeam
+                : null
+          )
+        : null;
+
+    const liveDown =
+      isStarted &&
+      !isFinal
+        ? latestPlay?.end_down ??
+          latestPlay?.start_down ??
+          null
+        : null;
+
+    const liveDistance =
+      isStarted &&
+      !isFinal
+        ? latestPlay?.end_distance ??
+          latestPlay?.start_distance ??
+          null
+        : null;
+
+    const liveYardLine =
+      isStarted &&
+      !isFinal
+        ? latestPlay?.end_yard_line ??
+          latestPlay?.start_yard_line ??
+          null
+        : null;
+
+    const liveYardsToEndzone =
+      isStarted &&
+      !isFinal
+        ? latestPlay?.end_yards_to_endzone ??
+          latestPlay?.start_yards_to_endzone ??
+          null
+        : null;
+
     normalized.push({
       provider_event_id:
         game.espn_event_id,
@@ -1200,18 +1369,15 @@ async function loadSharedNflGames(
       status_detail:
         game.status_detail,
 
-      /*
-       * These optional live-display fields are not part of
-       * the shared nfl_games contract.
-       *
-       * NFL Pick'em only requires the common NFL schedule,
-       * status and scores for contest synchronization.
-       */
       period:
-        null,
+        isStarted && !isFinal
+          ? latestPlay?.period ?? null
+          : null,
 
       display_clock:
-        null,
+        isStarted && !isFinal
+          ? latestPlay?.clock_display ?? null
+          : null,
 
       is_started:
         isStarted,
@@ -1220,34 +1386,43 @@ async function loadSharedNflGames(
         isFinal,
 
       possession_team_espn_id:
-        null,
+        livePossessionId,
 
       possession_team_abbreviation:
-        null,
+        possessionTeam?.abbreviation ?? null,
 
       down:
-        null,
+        liveDown,
 
       distance:
-        null,
+        liveDistance,
 
       yard_line:
-        null,
+        liveYardLine,
 
       yards_to_endzone:
-        null,
+        liveYardsToEndzone,
 
       down_distance_text:
-        null,
+        buildDownDistanceText(
+          liveDown,
+          liveDistance
+        ),
 
       possession_text:
-        null,
+        possessionTeam
+          ? `${possessionTeam.abbreviation} ball`
+          : null,
 
       is_red_zone:
-        null,
+        liveYardsToEndzone !== null
+          ? liveYardsToEndzone <= 20
+          : null,
 
       last_play_text:
-        null,
+        isStarted && !isFinal
+          ? latestPlay?.play_text ?? null
+          : null,
     });
   }
 
@@ -2297,62 +2472,55 @@ export async function POST(
           };
 
           /*
-           * NCAA still carries ESPN live situation fields.
-           *
-           * NFL intentionally does NOT overwrite any optional
-           * live situation columns with null because those
-           * fields are not part of the shared nfl_games
-           * contract.
+           * NCAA live situation comes directly from ESPN.
+           * NFL live situation comes from the existing shared
+           * G365 NFL play pipeline. No extra ESPN NFL call occurs.
            */
-          const payload =
-            sport ===
-            "ncaaf"
-              ? {
-                  ...basePayload,
+          const payload = {
+            ...basePayload,
 
-                  period:
-                    normalized.period,
+            period:
+              normalized.period,
 
-                  display_clock:
-                    normalized.display_clock,
+            display_clock:
+              normalized.display_clock,
 
-                  possession_team_espn_id:
-                    normalized
-                      .possession_team_espn_id,
+            possession_team_espn_id:
+              normalized
+                .possession_team_espn_id,
 
-                  possession_team_abbreviation:
-                    normalized
-                      .possession_team_abbreviation,
+            possession_team_abbreviation:
+              normalized
+                .possession_team_abbreviation,
 
-                  down:
-                    normalized.down,
+            down:
+              normalized.down,
 
-                  distance:
-                    normalized.distance,
+            distance:
+              normalized.distance,
 
-                  yard_line:
-                    normalized.yard_line,
+            yard_line:
+              normalized.yard_line,
 
-                  yards_to_endzone:
-                    normalized
-                      .yards_to_endzone,
+            yards_to_endzone:
+              normalized
+                .yards_to_endzone,
 
-                  down_distance_text:
-                    normalized
-                      .down_distance_text,
+            down_distance_text:
+              normalized
+                .down_distance_text,
 
-                  possession_text:
-                    normalized
-                      .possession_text,
+            possession_text:
+              normalized
+                .possession_text,
 
-                  is_red_zone:
-                    normalized.is_red_zone,
+            is_red_zone:
+              normalized.is_red_zone,
 
-                  last_play_text:
-                    normalized
-                      .last_play_text,
-                }
-              : basePayload;
+            last_play_text:
+              normalized
+                .last_play_text,
+          };
 
           const {
             data:

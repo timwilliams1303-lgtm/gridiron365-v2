@@ -38,6 +38,15 @@ function points(value: number) {
   return value.toFixed(2);
 }
 
+function projectionPoints(
+  value: number
+) {
+  return Number(
+    value ?? 0
+  ).toFixed(1);
+}
+
+
 function money(
   value: number | null
 ) {
@@ -706,7 +715,7 @@ export default async function SeasonLongTeamPage({
 
           <SummaryCard
             label="PROJECTED"
-            value={points(
+            value={projectionPoints(
               data.projectedPoints
             )}
           />
@@ -942,7 +951,7 @@ export default async function SeasonLongTeamPage({
                           styles.numericCell
                         }
                       >
-                        {points(
+                        {projectionPoints(
                           player.projectedPoints
                         )}
                       </strong>
@@ -1021,7 +1030,7 @@ export default async function SeasonLongTeamPage({
                     styles.numericCell
                   }
                 >
-                  {points(
+                  {projectionPoints(
                     data.projectedPoints
                   )}
                 </strong>

@@ -143,6 +143,8 @@ export type MatchupDetailPlayer = {
 
   fantasyPoints: number;
 
+  projectedPoints: number;
+
   basePoints: number;
 
   customRulePoints: number;
@@ -245,6 +247,10 @@ export type MatchupDetailTeam = {
   teamName: string;
 
   points: number;
+
+  projectedPoints: number;
+
+  expectedFinalPoints: number;
 
   isMyTeam: boolean;
 
@@ -398,6 +404,16 @@ type PlayerRow = {
     null;
 
   headshot_url:
+    string |
+    null;
+};
+
+
+type ProjectionRow = {
+  player_id: number;
+
+  projected_points:
+    number |
     string |
     null;
 };
@@ -1068,6 +1084,91 @@ export async function getTraditionalPlayoffMatchupDetailData(
         )
       )
     );
+
+
+  /*
+   * =====================================================
+   * WEEKLY LEAGUE-SCORED PROJECTIONS
+   * =====================================================
+   *
+   * Traditional projections are already stored by league/week
+   * using that league's scoring settings. Playoff weeks use the
+   * same Week 15/16/17 (or configured playoff-week) rows rather
+   * than a separate projection engine.
+   */
+
+  const projectionMap =
+    new Map<
+      number,
+      number
+    >();
+
+
+  if (
+    playerIds.length >
+    0
+  ) {
+    const {
+      data:
+        projectionData,
+
+      error:
+        projectionError,
+    } =
+      await supabase
+        .from(
+          "traditional_weekly_player_projections"
+        )
+        .select(`
+          player_id,
+          projected_points
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          refreshed.season
+        )
+        .eq(
+          "season_type",
+          2
+        )
+        .eq(
+          "week",
+          refreshed.week
+        )
+        .in(
+          "player_id",
+          playerIds
+        );
+
+
+    if (
+      projectionError
+    ) {
+      throw new Error(
+        `Could not load playoff weekly projections: ${projectionError.message}`
+      );
+    }
+
+
+    for (
+      const projection
+      of (
+        projectionData ??
+        []
+      ) as ProjectionRow[]
+    ) {
+      projectionMap.set(
+        projection.player_id,
+        numberValue(
+          projection.projected_points
+        )
+      );
+    }
+  }
 
 
   /*
@@ -1919,6 +2020,12 @@ export async function getTraditionalPlayoffMatchupDetailData(
             ?.fantasy_points
         ),
 
+      projectedPoints:
+        projectionMap.get(
+          lineup.player_id
+        ) ??
+        0,
+
       basePoints:
         numberValue(
           score
@@ -2197,6 +2304,78 @@ export async function getTraditionalPlayoffMatchupDetailData(
       );
 
 
+    const projectedPoints =
+      starters.reduce(
+        (
+          total,
+          player
+        ) =>
+          total +
+          player.projectedPoints,
+        0
+      );
+
+
+    /*
+     * Live expected final:
+     *
+     * - final players contribute their actual final score
+     * - live players never project below points already scored
+     * - not-started players contribute their weekly projection
+     *
+     * This replaces the old generic "8 points per remaining
+     * player" estimate with the league-scored Week projection.
+     */
+    const expectedFinalPoints =
+      starters.reduce(
+        (
+          total,
+          player
+        ) => {
+          const playerFinal =
+            player.scoreIsFinal ||
+            player.gameContext
+              ?.statusCompleted;
+
+
+          if (
+            playerFinal
+          ) {
+            return (
+              total +
+              player.fantasyPoints
+            );
+          }
+
+
+          const playerLive =
+            player.scoreIsLive ||
+            player.gameContext
+              ?.isActuallyLive;
+
+
+          if (
+            playerLive
+          ) {
+            return (
+              total +
+              Math.max(
+                player.fantasyPoints,
+                player.projectedPoints
+              )
+            );
+          }
+
+
+          return (
+            total +
+            player.projectedPoints
+          );
+        },
+        0
+      );
+
+
     return {
       fantasyTeamId,
 
@@ -2211,6 +2390,10 @@ export async function getTraditionalPlayoffMatchupDetailData(
         numberValue(
           points
         ),
+
+      projectedPoints,
+
+      expectedFinalPoints,
 
       isMyTeam:
         myFantasyTeamId !==

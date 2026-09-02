@@ -225,6 +225,19 @@ function toNumber(
 }
 
 
+function projectionNumber(
+  value:
+    number |
+    string |
+    null |
+    undefined
+) {
+  return Math.round(
+    toNumber(value) * 10
+  ) / 10;
+}
+
+
 function normalizePosition(
   value:
     string |
@@ -1289,7 +1302,7 @@ export default async function SeasonLongEntryPage({
                 ),
 
           projectedPoints:
-            toNumber(
+            projectionNumber(
               row.projected_points_at_selection
             ),
 
@@ -1455,7 +1468,7 @@ export default async function SeasonLongEntryPage({
                 : null,
 
             projectedPoints:
-              toNumber(
+              projectionNumber(
                 weeklyProjection
                   ?.projected_points ??
                 salary
@@ -1575,7 +1588,7 @@ export default async function SeasonLongEntryPage({
                     ),
 
               projectedPoints:
-                toNumber(
+                projectionNumber(
                   currentEntry.projected_points
                 ),
 

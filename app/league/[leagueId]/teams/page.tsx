@@ -169,6 +169,19 @@ function formatPoints(
 }
 
 
+function formatProjection(
+  value:
+    number |
+    string |
+    null |
+    undefined
+) {
+  return toNumber(
+    value
+  ).toFixed(1);
+}
+
+
 function formatMoney(
   value:
     number |
@@ -1403,7 +1416,7 @@ export default async function SeasonLongLeagueTeamsPage({
                               styles.summaryMetricValue
                             }
                           >
-                            {formatPoints(
+                            {formatProjection(
                               row.projectedPoints
                             )}
                           </strong>
@@ -1671,7 +1684,7 @@ export default async function SeasonLongLeagueTeamsPage({
                                           styles.playerNumber
                                         }
                                       >
-                                        {formatPoints(
+                                        {formatProjection(
                                           player.projectedPoints
                                         )}
                                       </strong>
@@ -3114,4 +3127,4 @@ const styles = {
     fontWeight: 900,
   },
 
-};
+}

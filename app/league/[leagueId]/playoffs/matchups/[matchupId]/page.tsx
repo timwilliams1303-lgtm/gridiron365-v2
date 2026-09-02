@@ -37,6 +37,13 @@ function points(
 }
 
 
+function projectionPoints(
+  value: number
+) {
+  return value.toFixed(1);
+}
+
+
 function quarter(
   period:
     number |
@@ -139,18 +146,8 @@ function calculateSimpleWinProbability(
   away:
     MatchupDetailTeam,
   home:
-    MatchupDetailTeam,
-  awayCurrent: number,
-  homeCurrent: number
+    MatchupDetailTeam
 ) {
-  /*
-   * Temporary win-probability model.
-   *
-   * Both teams must have starters. Current/displayed fantasy
-   * points are used immediately. Remaining-player expectation
-   * stays intentionally simple until true projections exist.
-   */
-
   if (
     away.starters.length ===
       0 ||
@@ -168,8 +165,8 @@ function calculateSimpleWinProbability(
       0
   ) {
     if (
-      awayCurrent ===
-      homeCurrent
+      away.points ===
+      home.points
     ) {
       return {
         away: 50,
@@ -180,43 +177,23 @@ function calculateSimpleWinProbability(
 
     return {
       away:
-        awayCurrent >
-        homeCurrent
+        away.points >
+        home.points
           ? 100
           : 0,
 
       home:
-        homeCurrent >
-        awayCurrent
+        home.points >
+        away.points
           ? 100
           : 0,
     };
   }
 
 
-  const awayExpectedRemaining =
-    away.playersRemaining *
-    8;
-
-
-  const homeExpectedRemaining =
-    home.playersRemaining *
-    8;
-
-
-  const awayExpectedFinal =
-    awayCurrent +
-    awayExpectedRemaining;
-
-
-  const homeExpectedFinal =
-    homeCurrent +
-    homeExpectedRemaining;
-
-
   const expectedDifference =
-    awayExpectedFinal -
-    homeExpectedFinal;
+    away.expectedFinalPoints -
+    home.expectedFinalPoints;
 
 
   const rawAway =
@@ -378,9 +355,7 @@ export default async function TraditionalPlayoffMatchupDetailPage({
   const winProbability =
     calculateSimpleWinProbability(
       data.away,
-      data.home,
-      awayDisplayPoints,
-      homeDisplayPoints
+      data.home
     );
 
 
@@ -1088,6 +1063,17 @@ function ScoreTeam({
           {playersRemaining} REMAINING
         </span>
       </div>
+
+
+      <span
+        style={
+          styles.teamProjection
+        }
+      >
+        {team.playersRemaining > 0
+          ? `PROJ ${projectionPoints(team.expectedFinalPoints)}`
+          : `FINAL ${points(team.points)}`}
+      </span>
     </div>
   );
 
@@ -1378,6 +1364,14 @@ function CompactRoster({
                 styles.rightText
               }
             >
+              PROJ
+            </span>
+
+            <span
+              style={
+                styles.rightText
+              }
+            >
               PTS
             </span>
           </div>
@@ -1406,11 +1400,27 @@ function CompactRoster({
               TOTAL
             </strong>
 
-            <strong>
-              {points(
-                team.points
-              )}
-            </strong>
+            <div
+              style={
+                styles.totalValues
+              }
+            >
+              <span
+                style={
+                  styles.totalProjection
+                }
+              >
+                PROJ {projectionPoints(
+                  team.expectedFinalPoints
+                )}
+              </span>
+
+              <strong>
+                {points(
+                  team.points
+                )}
+              </strong>
+            </div>
           </div>
         </>
       )}
@@ -1638,6 +1648,17 @@ function CompactPlayerRow({
           player
         )}
       </span>
+
+
+      <strong
+        style={
+          styles.playerProjection
+        }
+      >
+        {projectionPoints(
+          player.projectedPoints
+        )}
+      </strong>
 
 
       <strong
@@ -1898,6 +1919,24 @@ const styles = {
 
     fontSize:
       "6px",
+
+    direction:
+      "ltr" as const,
+  },
+
+
+  teamProjection: {
+    color:
+      "#ff9a43",
+
+    fontSize:
+      "7px",
+
+    fontWeight:
+      900,
+
+    fontVariantNumeric:
+      "tabular-nums",
 
     direction:
       "ltr" as const,
@@ -2821,7 +2860,7 @@ const styles = {
       "grid",
 
     gridTemplateColumns:
-      "36px minmax(125px,1fr) 42px 58px 42px",
+      "36px minmax(125px,1fr) 42px 58px 46px 42px",
 
     alignItems:
       "center",
@@ -2860,7 +2899,7 @@ const styles = {
       "grid",
 
     gridTemplateColumns:
-      "36px minmax(125px,1fr) 42px 58px 42px",
+      "36px minmax(125px,1fr) 42px 58px 46px 42px",
 
     alignItems:
       "center",
@@ -3107,6 +3146,24 @@ const styles = {
   },
 
 
+  playerProjection: {
+    justifySelf:
+      "end",
+
+    color:
+      "#ff9a43",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      900,
+
+    fontVariantNumeric:
+      "tabular-nums",
+  },
+
+
   playerPoints: {
     justifySelf:
       "end",
@@ -3155,6 +3212,33 @@ const styles = {
 
     fontSize:
       "8px",
+  },
+
+
+  totalValues: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "12px",
+  },
+
+
+  totalProjection: {
+    color:
+      "#ff9a43",
+
+    fontSize:
+      "7px",
+
+    fontWeight:
+      900,
+
+    fontVariantNumeric:
+      "tabular-nums",
   },
 
 
