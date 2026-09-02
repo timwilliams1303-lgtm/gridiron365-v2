@@ -522,58 +522,24 @@ async function synchronizeGame(
       status.state ===
       "in"
     ) {
-      const [
-        boxscore,
-        playByPlay,
-      ] =
-        await Promise.all([
-          callInternalSyncRoute(
-            origin,
-            "/api/nfl/sync-live-boxscore",
-            game.espn_event_id
-          ),
-
-          callInternalSyncRoute(
-            origin,
-            "/api/nfl/sync-live-playbyplay",
-            game.espn_event_id
-          ),
-        ]);
+      /*
+       * sync-live-boxscore owns the single ESPN Core plays
+       * fetch for this cycle. It now persists nfl_game_plays
+       * from that same provider response before completing
+       * fantasy scoring, so a second play-by-play route call
+       * is no longer required here.
+       */
+      const boxscore =
+        await callInternalSyncRoute(
+          origin,
+          "/api/nfl/sync-live-boxscore",
+          game.espn_event_id
+        );
 
 
       if (
-        !boxscore.ok ||
-        !playByPlay.ok
+        !boxscore.ok
       ) {
-        const errors:
-          string[] =
-            [];
-
-
-        if (
-          !boxscore.ok
-        ) {
-          errors.push(
-            `Boxscore HTTP ${boxscore.status}: ${
-              boxscore.body?.error ??
-              "sync failed"
-            }`
-          );
-        }
-
-
-        if (
-          !playByPlay.ok
-        ) {
-          errors.push(
-            `Play-by-play HTTP ${playByPlay.status}: ${
-              playByPlay.body?.error ??
-              "sync failed"
-            }`
-          );
-        }
-
-
         return {
           nflGameId:
             game.id,
@@ -615,32 +581,35 @@ async function synchronizeGame(
 
           playByPlay: {
             ok:
-              playByPlay.ok,
+              false,
 
             status:
-              playByPlay.status,
+              boxscore.status,
 
             totalPlayCount:
               Number(
-                playByPlay
+                boxscore
                   .body
+                  ?.playByPlay
                   ?.totalPlayCount ??
                 0
               ),
 
             playsUpserted:
               Number(
-                playByPlay
+                boxscore
                   .body
+                  ?.playByPlay
                   ?.playsUpserted ??
                 0
               ),
           },
 
           error:
-            errors.join(
-              " | "
-            ),
+            `Boxscore/live-data HTTP ${boxscore.status}: ${
+              boxscore.body?.error ??
+              "sync failed"
+            }`,
         };
       }
 
@@ -689,20 +658,22 @@ async function synchronizeGame(
             true,
 
           status:
-            playByPlay.status,
+            boxscore.status,
 
           totalPlayCount:
             Number(
-              playByPlay
+              boxscore
                 .body
+                ?.playByPlay
                 ?.totalPlayCount ??
               0
             ),
 
           playsUpserted:
             Number(
-              playByPlay
+              boxscore
                 .body
+                ?.playByPlay
                 ?.playsUpserted ??
               0
             ),
@@ -762,28 +733,20 @@ async function synchronizeGame(
       }
 
 
-      const [
-        boxscore,
-        playByPlay,
-      ] =
-        await Promise.all([
-          callInternalSyncRoute(
-            origin,
-            "/api/nfl/sync-live-boxscore",
-            game.espn_event_id
-          ),
-
-          callInternalSyncRoute(
-            origin,
-            "/api/nfl/sync-live-playbyplay",
-            game.espn_event_id
-          ),
-        ]);
+      /*
+       * One final combined boxscore/live-data sync. The boxscore
+       * route persists the final ESPN Core play feed itself.
+       */
+      const boxscore =
+        await callInternalSyncRoute(
+          origin,
+          "/api/nfl/sync-live-boxscore",
+          game.espn_event_id
+        );
 
 
       if (
-        !boxscore.ok ||
-        !playByPlay.ok
+        !boxscore.ok
       ) {
         return {
           nflGameId:
@@ -817,7 +780,10 @@ async function synchronizeGame(
             true,
 
           error:
-            "Final boxscore/play-by-play synchronization failed.",
+            `Final boxscore/live-data synchronization failed: ${
+              boxscore.body?.error ??
+              `HTTP ${boxscore.status}`
+            }`,
         };
       }
 
@@ -866,20 +832,22 @@ async function synchronizeGame(
             true,
 
           status:
-            playByPlay.status,
+            boxscore.status,
 
           totalPlayCount:
             Number(
-              playByPlay
+              boxscore
                 .body
+                ?.playByPlay
                 ?.totalPlayCount ??
               0
             ),
 
           playsUpserted:
             Number(
-              playByPlay
+              boxscore
                 .body
+                ?.playByPlay
                 ?.playsUpserted ??
               0
             ),

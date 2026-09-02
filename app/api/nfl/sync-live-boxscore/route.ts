@@ -422,6 +422,23 @@ function extractIdFromRef(
 }
 
 
+function numericSequence(
+  value: unknown
+): number | null {
+  const numeric =
+    Number(
+      value
+    );
+
+
+  return Number.isFinite(
+    numeric
+  )
+    ? numeric
+    : null;
+}
+
+
 function participantId(
   play: any,
   type: string
@@ -1830,6 +1847,219 @@ export async function POST(
       )
         ? playsResponse.items
         : [];
+
+
+    /* =====================================================
+       PERSIST SHARED NFL PLAY-BY-PLAY
+
+       The boxscore route already fetched the ESPN Core plays
+       above for DST, kicking, two-point conversions, and other
+       scoring normalization. Persist that same response here so
+       the central live worker does not need to fetch the identical
+       ESPN play feed a second time.
+    ===================================================== */
+
+    const playsSyncedAt =
+      new Date()
+        .toISOString();
+
+
+    const normalizedPlayRows =
+      plays
+        .filter(
+          (play: any) =>
+            Boolean(
+              play?.id
+            )
+        )
+        .map(
+          (play: any) => ({
+            nfl_game_id:
+              nflGame.id,
+
+            espn_play_id:
+              String(
+                play.id
+              ),
+
+            sequence_number:
+              numericSequence(
+                play
+                  ?.sequenceNumber
+              ),
+
+            play_type_id:
+              play
+                ?.type
+                ?.id ??
+              null,
+
+            play_type_text:
+              play
+                ?.type
+                ?.text ??
+              null,
+
+            play_type_abbreviation:
+              play
+                ?.type
+                ?.abbreviation ??
+              null,
+
+            play_text:
+              play?.text ??
+              null,
+
+            short_text:
+              play?.shortText ??
+              null,
+
+            scoring_play:
+              play?.scoringPlay ??
+              false,
+
+            score_value:
+              play?.scoreValue ??
+              null,
+
+            stat_yardage:
+              play?.statYardage ??
+              null,
+
+            period:
+              play
+                ?.period
+                ?.number ??
+              null,
+
+            clock_display:
+              play
+                ?.clock
+                ?.displayValue ??
+              null,
+
+            possession_team_espn_id:
+              extractIdFromRef(
+                play
+                  ?.team
+                  ?.$ref
+              ),
+
+            start_down:
+              play
+                ?.start
+                ?.down ??
+              null,
+
+            start_distance:
+              play
+                ?.start
+                ?.distance ??
+              null,
+
+            start_yard_line:
+              play
+                ?.start
+                ?.yardLine ??
+              null,
+
+            start_yards_to_endzone:
+              play
+                ?.start
+                ?.yardsToEndzone ??
+              null,
+
+            end_down:
+              play
+                ?.end
+                ?.down ??
+              null,
+
+            end_distance:
+              play
+                ?.end
+                ?.distance ??
+              null,
+
+            end_yard_line:
+              play
+                ?.end
+                ?.yardLine ??
+              null,
+
+            end_yards_to_endzone:
+              play
+                ?.end
+                ?.yardsToEndzone ??
+              null,
+
+            participant_espn_player_ids:
+              (
+                play
+                  ?.participants ??
+                []
+              )
+                .map(
+                  (participant: any) =>
+                    extractIdFromRef(
+                      participant
+                        ?.athlete
+                        ?.$ref
+                    )
+                )
+                .filter(
+                  (id: string | null): id is string =>
+                    Boolean(
+                      id
+                    )
+                ),
+
+            source_updated_at:
+              playsSyncedAt,
+
+            updated_at:
+              playsSyncedAt,
+          })
+        );
+
+
+    let playsUpserted =
+      0;
+
+
+    if (
+      normalizedPlayRows.length >
+      0
+    ) {
+      const {
+        error:
+          playUpsertError,
+      } =
+        await supabase
+          .from(
+            "nfl_game_plays"
+          )
+          .upsert(
+            normalizedPlayRows,
+            {
+              onConflict:
+                "nfl_game_id,espn_play_id",
+            }
+          );
+
+
+      if (
+        playUpsertError
+      ) {
+        throw new Error(
+          `Could not save NFL plays: ${playUpsertError.message}`
+        );
+      }
+
+
+      playsUpserted =
+        normalizedPlayRows.length;
+    }
 
 
     /*
@@ -4133,6 +4363,14 @@ export async function POST(
         statsUpserted,
 
         dstRowsUpserted,
+      },
+
+
+      playByPlay: {
+        totalPlayCount:
+          plays.length,
+
+        playsUpserted,
       },
 
 
