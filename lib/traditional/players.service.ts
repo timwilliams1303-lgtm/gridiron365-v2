@@ -924,7 +924,14 @@ export async function getTraditionalPlayersData(
             injuryStatus:
               injury
                 ?.status ??
-              null,
+              (
+                player.status &&
+                !["ACTIVE", "HEALTHY", "NORMAL"].includes(
+                  player.status.toUpperCase()
+                )
+                  ? player.status
+                  : null
+              ),
 
             injuryDetail:
               injury

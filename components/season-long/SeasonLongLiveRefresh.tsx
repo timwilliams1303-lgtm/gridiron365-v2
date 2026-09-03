@@ -8,30 +8,54 @@ type Props = {
   live: boolean;
 };
 
-export default function SeasonLongLiveRefresh({ enabled, live }: Props) {
+export default function SeasonLongLiveRefresh({
+  enabled,
+  live,
+}: Props) {
   const router = useRouter();
 
   useEffect(() => {
     if (!enabled) return;
 
-    // Poll faster while a game is live. Before kickoff we still refresh so
-    // UPCOMING can flip to LIVE without the user reloading the page.
-    const intervalMs = live ? 15_000 : 30_000;
+    const intervalMs =
+      live ? 15_000 : 30_000;
 
     const refresh = () => {
-      if (document.visibilityState === "visible") {
+      if (
+        document.visibilityState ===
+        "visible"
+      ) {
         router.refresh();
       }
     };
 
-    const timer = window.setInterval(refresh, intervalMs);
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
+    const timer =
+      window.setInterval(
+        refresh,
+        intervalMs
+      );
+
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState ===
+        "visible"
+      ) {
+        refresh();
+      }
+    };
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
 
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
+
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
     };
   }, [enabled, live, router]);
 

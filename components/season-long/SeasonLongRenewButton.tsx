@@ -21,67 +21,34 @@ export default function SeasonLongRenewButton({
   nextSeason: number;
   disabled?: boolean;
 }) {
-  const router =
-    useRouter();
-
-  const [
-    working,
-    setWorking,
-  ] =
-    useState(false);
-
-  const [
-    message,
-    setMessage,
-  ] =
-    useState("");
+  const router = useRouter();
+  const [working, setWorking] = useState(false);
+  const [message, setMessage] = useState("");
 
   async function renew() {
-    if (
-      working ||
-      disabled
-    ) {
-      return;
-    }
+    if (working || disabled) return;
 
     const confirmed =
       window.confirm(
         `Renew this league for ${nextSeason}? League settings, scoring, members and team names will carry forward. Weekly scores, lineups, standings, salaries and trophies will start fresh.`
       );
 
-    if (
-      !confirmed
-    ) {
-      return;
-    }
+    if (!confirmed) return;
 
-    setWorking(
-      true
-    );
-
-    setMessage(
-      ""
-    );
+    setWorking(true);
+    setMessage("");
 
     try {
       const supabase =
         createSupabaseBrowserClient();
 
-      const {
-        data:
-          sessionData,
-      } =
-        await supabase.auth
-          .getSession();
+      const { data: sessionData } =
+        await supabase.auth.getSession();
 
       const token =
-        sessionData
-          .session
-          ?.access_token;
+        sessionData.session?.access_token;
 
-      if (
-        !token
-      ) {
+      if (!token) {
         throw new Error(
           "Your login session is missing."
         );
@@ -91,12 +58,9 @@ export default function SeasonLongRenewButton({
         await fetch(
           `/api/leagues/${leagueId}/season-long/renew`,
           {
-            method:
-              "POST",
-
+            method: "POST",
             headers: {
-              Authorization:
-                `Bearer ${token}`,
+              Authorization: `Bearer ${token}`,
             },
           }
         );
@@ -123,67 +87,56 @@ export default function SeasonLongRenewButton({
       router.push(
         `/league/${result.leagueId}`
       );
-
       router.refresh();
-    } catch (
-      error
-    ) {
+    } catch (error) {
       setMessage(
-        error instanceof
-          Error
+        error instanceof Error
           ? error.message
           : "League renewal failed."
       );
-
-      setWorking(
-        false
-      );
+      setWorking(false);
     }
   }
 
   return (
-    <div>
+    <div className="g365-season-long-renew">
+      <style>{`
+        @media (max-width: 760px) {
+          .g365-season-long-renew {
+            width: 100%;
+            min-width: 0;
+          }
+
+          .g365-season-long-renew button {
+            width: 100% !important;
+          }
+
+          .g365-season-long-renew p {
+            overflow-wrap: anywhere;
+          }
+        }
+      `}</style>
+
       <button
         type="button"
-        onClick={() =>
-          void renew()
-        }
-        disabled={
-          disabled ||
-          working
-        }
+        onClick={() => void renew()}
+        disabled={disabled || working}
         style={{
-          minHeight:
-            46,
-
-          border:
-            "1px solid #e85c1b",
-
-          borderRadius:
-            12,
-
-          padding:
-            "0 18px",
-
+          minHeight: 46,
+          border: "1px solid #e85c1b",
+          borderRadius: 12,
+          padding: "0 18px",
           background:
             disabled
               ? "#242424"
               : "linear-gradient(90deg,#a61919,#f0631d)",
-
           color:
             disabled
               ? "#777"
               : "#fff",
-
-          fontWeight:
-            950,
-
-          fontSize:
-            11,
-
-          letterSpacing:
-            0.5,
-
+          fontWeight: 950,
+          fontSize: 11,
+          letterSpacing: 0.5,
           cursor:
             disabled
               ? "not-allowed"
@@ -198,14 +151,9 @@ export default function SeasonLongRenewButton({
       {message ? (
         <p
           style={{
-            margin:
-              "8px 0 0",
-
-            color:
-              "#b8b8b8",
-
-            fontSize:
-              11,
+            margin: "8px 0 0",
+            color: "#b8b8b8",
+            fontSize: 11,
           }}
         >
           {message}

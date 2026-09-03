@@ -48,6 +48,9 @@ export type SeasonLongLiveLineupPlayer = {
   position: string;
   jerseyNumber: string | null;
   teamAbbreviation: string | null;
+  injuryStatus: string | null;
+  injuryType: string | null;
+  injuryDetail: string | null;
   opponentAbbreviation: string | null;
   opponentPrefix: "vs" | "@" | null;
   matchupRank: number | null;
@@ -122,6 +125,14 @@ type PlayerRow = {
   primary_position: string | null;
   team_abbreviation: string | null;
   jersey_number: string | null;
+};
+
+type InjuryRow = {
+  nfl_player_id: number;
+  status: string | null;
+  injury_type: string | null;
+  injury_location: string | null;
+  injury_detail: string | null;
 };
 
 type MatchupRankingRow = {
@@ -451,6 +462,33 @@ export async function getSeasonLongTeamLiveLineupData(
     }
   }
 
+  const injuryMap = new Map<number, InjuryRow>();
+
+  if (playerIds.length > 0) {
+    const injuryResult = await supabase
+      .from("nfl_player_injuries")
+      .select(`
+        nfl_player_id,
+        status,
+        injury_type,
+        injury_location,
+        injury_detail
+      `)
+      .eq("season", season)
+      .eq("is_active", true)
+      .in("nfl_player_id", playerIds);
+
+    if (injuryResult.error) {
+      throw new Error(
+        `Could not load NFL player injuries: ${injuryResult.error.message}`
+      );
+    }
+
+    for (const injury of (injuryResult.data ?? []) as InjuryRow[]) {
+      injuryMap.set(injury.nfl_player_id, injury);
+    }
+  }
+
   const matchupRankMap = new Map<string, number>();
 
   const matchupRankingResult = await supabase
@@ -616,6 +654,7 @@ export async function getSeasonLongTeamLiveLineupData(
 
   const players: SeasonLongLiveLineupPlayer[] = lineup.map((row) => {
     const player = playerMap.get(row.player_id);
+    const injury = injuryMap.get(row.player_id);
     const exactScore = row.nfl_game_id
       ? scoreMap.get(scoreKey(row.player_id, row.nfl_game_id))
       : undefined;
@@ -661,6 +700,11 @@ export async function getSeasonLongTeamLiveLineupData(
       position: isRevealed ? normalizePosition(player?.primary_position) : "—",
       jerseyNumber: isRevealed ? player?.jersey_number ?? null : null,
       teamAbbreviation: isRevealed ? player?.team_abbreviation ?? null : null,
+      injuryStatus: isRevealed ? injury?.status ?? null : null,
+      injuryType: isRevealed
+        ? injury?.injury_type ?? injury?.injury_location ?? null
+        : null,
+      injuryDetail: isRevealed ? injury?.injury_detail ?? null : null,
       opponentAbbreviation: row.opponent_abbreviation,
       opponentPrefix,
       matchupRank:

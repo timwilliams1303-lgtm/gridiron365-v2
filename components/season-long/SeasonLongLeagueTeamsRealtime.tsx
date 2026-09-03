@@ -414,7 +414,7 @@ export default function SeasonLongLeagueTeamsRealtime({
        * Fallback synchronization.
        *
        * Realtime normally refreshes within a moment of a lineup submission.
-       * A one-second visible-page fallback keeps League Teams synchronized even
+       * A ten-second visible-page fallback keeps League Teams synchronized without over-refreshing mobile browsers even
        * if a browser misses a Realtime event or Realtime publication is delayed.
        */
       const fallbackTimer =
@@ -422,15 +422,8 @@ export default function SeasonLongLeagueTeamsRealtime({
           () => {
             performRefresh();
           },
-          1_000
+          10_000
         );
-
-
-      function handleFocus() {
-        performRefresh();
-      }
-
-
       function handleVisibilityChange() {
         if (
           document.visibilityState ===
@@ -439,13 +432,6 @@ export default function SeasonLongLeagueTeamsRealtime({
           performRefresh();
         }
       }
-
-
-      window.addEventListener(
-        "focus",
-        handleFocus
-      );
-
       document.addEventListener(
         "visibilitychange",
         handleVisibilityChange
@@ -484,12 +470,6 @@ export default function SeasonLongLeagueTeamsRealtime({
         window.clearInterval(
           fallbackTimer
         );
-
-        window.removeEventListener(
-          "focus",
-          handleFocus
-        );
-
         document.removeEventListener(
           "visibilitychange",
           handleVisibilityChange

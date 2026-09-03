@@ -74,6 +74,72 @@ function getInjuryStyle(
 }
 
 
+
+
+function getInjuryDisplay(
+  status:
+    string |
+    null |
+    undefined,
+  detail?:
+    string |
+    null
+) {
+  const normalized =
+    (status ?? "")
+      .trim()
+      .toUpperCase();
+
+  if (
+    !normalized ||
+    ["ACTIVE", "HEALTHY", "NORMAL"].includes(normalized)
+  ) {
+    return null;
+  }
+
+  let code: string;
+  let label: string;
+
+  if (normalized.includes("QUESTION") || normalized === "Q") {
+    code = "Q";
+    label = "Questionable";
+  } else if (normalized.includes("DOUBT") || normalized === "D") {
+    code = "D";
+    label = "Doubtful";
+  } else if (normalized === "O" || normalized.includes("OUT")) {
+    code = "OUT";
+    label = "Out";
+  } else if (normalized.includes("INJURED RESERVE") || normalized === "IR") {
+    code = "IR";
+    label = "Injured Reserve";
+  } else if (normalized.includes("PUP") || normalized.includes("PHYSICALLY UNABLE")) {
+    code = "PUP";
+    label = "Physically Unable to Perform";
+  } else if (normalized.includes("NFI") || normalized.includes("NON-FOOTBALL")) {
+    code = "NFI";
+    label = "Non-Football Injury";
+  } else if (normalized.includes("SUSPEND") || normalized === "SUS") {
+    code = "SUSP";
+    label = "Suspended";
+  } else if (normalized.includes("DAY-TO-DAY") || normalized.includes("DAY TO DAY")) {
+    code = "DTD";
+    label = "Day-to-Day";
+  } else {
+    code = normalized.length <= 6 ? normalized : "INJ";
+    label = status ?? "Injury status";
+  }
+
+  const cleanDetail = detail?.trim() || null;
+
+  return {
+    code,
+    label,
+    detail: cleanDetail,
+    text: cleanDetail ? `${code} · ${cleanDetail}` : code,
+  };
+}
+
+
 export default async function TraditionalTeamPage({
   params,
 }: PageProps) {
@@ -535,6 +601,13 @@ function PlayerRow({
       string | null;
   };
 }) {
+  const injury =
+    getInjuryDisplay(
+      player.injuryStatus,
+      player.injuryDetail
+    );
+
+
   return (
     <article
       className="g365-mobile-player-row"
@@ -636,12 +709,9 @@ function PlayerRow({
         className="g365-mobile-status-column"
         style={styles.statusColumn}
       >
-        {player.injuryStatus ? (
+        {injury ? (
           <span
-            title={
-              player.injuryDetail ??
-              player.injuryStatus
-            }
+            title={injury.detail ?? injury.label}
             style={{
               ...styles.injuryBadge,
               ...getInjuryStyle(
@@ -649,17 +719,9 @@ function PlayerRow({
               ),
             }}
           >
-            {player.injuryStatus}
+            {injury.text}
           </span>
-        ) : (
-          <span
-            style={
-              styles.healthyBadge
-            }
-          >
-            ACTIVE
-          </span>
-        )}
+        ) : null}
 
 
         {player.isLocked ? (

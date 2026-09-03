@@ -1174,7 +1174,7 @@ function getInjuryDisplay(
   ) {
     return {
       code:
-        "O",
+        "OUT",
 
       label:
         "Out",
@@ -1213,6 +1213,24 @@ function getInjuryDisplay(
 
       label:
         "Physically Unable to Perform",
+    };
+  }
+
+
+  if (
+    normalized.includes(
+      "NFI"
+    ) ||
+    normalized.includes(
+      "NON-FOOTBALL"
+    )
+  ) {
+    return {
+      code:
+        "NFI",
+
+      label:
+        "Non-Football Injury",
     };
   }
 
@@ -5510,10 +5528,10 @@ export default function TraditionalDraftPage() {
             padding: 6px 7px !important;
           }
 
+          .g365-draft-player-table-header > :nth-child(4),
           .g365-draft-player-table-header > :nth-child(5),
-          .g365-draft-player-table-header > :nth-child(6),
-          .g365-draft-player-row > :nth-child(5),
-          .g365-draft-player-row > :nth-child(6) {
+          .g365-draft-player-row > :nth-child(4),
+          .g365-draft-player-row > :nth-child(5) {
             display: none !important;
           }
 
@@ -8484,6 +8502,24 @@ function PlayersPanel({
                             ? "Available"
                             : "Available player"}
                       </span>
+
+                      {getInjuryDisplay(
+                        player.injuryStatus
+                      ) ? (
+                        <span
+                          style={styles.playerInjuryText}
+                          title={
+                            player.injuryDetail ??
+                            player.injuryType ??
+                            getInjuryDisplay(player.injuryStatus)?.label
+                          }
+                        >
+                          {getInjuryDisplay(player.injuryStatus)?.code}
+                          {(player.injuryType ?? player.injuryLocation ?? player.injuryDetail)
+                            ? ` · ${player.injuryType ?? player.injuryLocation ?? player.injuryDetail}`
+                            : ""}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
 
@@ -14437,6 +14473,14 @@ const styles = {
   },
 
 
+  playerInjuryText: {
+    color: "#ffb14a",
+    fontSize: "10px",
+    fontWeight: 900,
+    lineHeight: 1.25,
+  },
+
+
   playerNameButton: {
     width:
       "fit-content",
@@ -14805,6 +14849,7 @@ const styles = {
   },
 
 } as const;
+
 
 
 

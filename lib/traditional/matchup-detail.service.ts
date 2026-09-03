@@ -420,6 +420,10 @@ type PlayerRow = {
   headshot_url:
     string |
     null;
+
+  status:
+    string |
+    null;
 };
 
 
@@ -1216,7 +1220,8 @@ export async function getTraditionalMatchupDetailData(
           full_name,
           primary_position,
           team_abbreviation,
-          headshot_url
+          headshot_url,
+          status
         `)
         .in(
           "id",
@@ -2540,7 +2545,14 @@ export async function getTraditionalMatchupDetailData(
       injuryStatus:
         injury
           ?.status ??
-        null,
+        (
+          player?.status &&
+          !["ACTIVE", "HEALTHY", "NORMAL"].includes(
+            player.status.toUpperCase()
+          )
+            ? player.status
+            : null
+        ),
 
       injuryType:
         injury

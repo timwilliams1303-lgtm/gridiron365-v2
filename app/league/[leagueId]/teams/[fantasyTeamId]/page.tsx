@@ -411,6 +411,87 @@ function formatPlayerStatLine(
   );
 }
 
+
+function getInjuryDisplay(
+  status: string | null,
+  injuryType?: string | null,
+  injuryDetail?: string | null
+) {
+  if (!status) return null;
+
+  const normalized = status.trim().toUpperCase();
+
+  if (
+    !normalized ||
+    ["ACTIVE", "HEALTHY", "NORMAL"].includes(normalized)
+  ) {
+    return null;
+  }
+
+  let code = normalized;
+  let label = status;
+
+  if (normalized === "Q" || normalized.includes("QUESTION")) {
+    code = "Q";
+    label = "Questionable";
+  } else if (normalized === "D" || normalized.includes("DOUBT")) {
+    code = "D";
+    label = "Doubtful";
+  } else if (normalized === "O" || normalized.includes("OUT")) {
+    code = "OUT";
+    label = "Out";
+  } else if (
+    normalized === "IR" ||
+    normalized.includes("INJURED RESERVE")
+  ) {
+    code = "IR";
+    label = "Injured Reserve";
+  } else if (
+    normalized === "PUP" ||
+    normalized.includes("PHYSICALLY UNABLE")
+  ) {
+    code = "PUP";
+    label = "Physically Unable to Perform";
+  } else if (
+    normalized === "NFI" ||
+    normalized.includes("NON-FOOTBALL") ||
+    normalized.includes("NON FOOTBALL")
+  ) {
+    code = "NFI";
+    label = "Non-Football Injury";
+  } else if (
+    normalized === "SUSP" ||
+    normalized === "SUS" ||
+    normalized.includes("SUSPEND")
+  ) {
+    code = "SUSP";
+    label = "Suspended";
+  } else if (
+    normalized === "DTD" ||
+    normalized.includes("DAY-TO-DAY") ||
+    normalized.includes("DAY TO DAY")
+  ) {
+    code = "DTD";
+    label = "Day-to-Day";
+  } else if (normalized.length > 4) {
+    code = "INJ";
+  }
+
+  const details = [
+    label,
+    injuryType,
+    injuryDetail,
+  ].filter(
+    (value): value is string =>
+      Boolean(value?.trim())
+  );
+
+  return {
+    code,
+    detail: details.join(" • "),
+  };
+}
+
 function playerNameMeta(
   player: SeasonLongLiveLineupPlayer
 ) {
@@ -973,6 +1054,42 @@ export default async function SeasonLongTeamPage({
                           ) : null}
                         </div>
 
+                        {(() => {
+                          const injury =
+                            getInjuryDisplay(
+                              player.injuryStatus,
+                              player.injuryType,
+                              player.injuryDetail
+                            );
+
+                          if (
+                            !player.isRevealed ||
+                            !injury
+                          ) {
+                            return null;
+                          }
+
+                          return (
+                            <div
+                              style={
+                                styles.injuryLine
+                              }
+                            >
+                              <strong
+                                style={
+                                  styles.injuryBadge
+                                }
+                              >
+                                {injury.code}
+                              </strong>
+
+                              <span>
+                                {injury.detail}
+                              </span>
+                            </div>
+                          );
+                        })()}
+
                         <div
                           style={{
                             ...styles.statLine,
@@ -1492,6 +1609,35 @@ const styles:
   playerName: {
     color: "#fff",
     fontSize: "14px",
+  },
+
+  injuryLine: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "7px",
+    marginTop: "5px",
+    color: "#ffb08b",
+    fontSize: "11px",
+    fontWeight: 800,
+    lineHeight: 1.35,
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
+  },
+
+  injuryBadge: {
+    flex: "0 0 auto",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: "28px",
+    minHeight: "20px",
+    padding: "2px 6px",
+    borderRadius: "6px",
+    border: "1px solid rgba(255,106,0,.45)",
+    background: "rgba(255,106,0,.12)",
+    color: "#ff8a45",
+    fontSize: "10px",
+    fontWeight: 1000,
   },
 
   playerMetaInline: {
