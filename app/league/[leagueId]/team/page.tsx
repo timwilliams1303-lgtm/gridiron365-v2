@@ -20,6 +20,8 @@ import {
 } from "@/lib/traditional/requireTraditionalLeague";
 
 
+import InjuryReportButton from "@/components/ui/InjuryReportButton";
+
 type PageProps = {
   params:
     Promise<{
@@ -710,17 +712,11 @@ function PlayerRow({
         style={styles.statusColumn}
       >
         {injury ? (
-          <span
-            title={injury.detail ?? injury.label}
-            style={{
-              ...styles.injuryBadge,
-              ...getInjuryStyle(
-                player.injuryStatus
-              ),
-            }}
-          >
-            {injury.text}
-          </span>
+          <InjuryReportButton
+            status={player.injuryStatus}
+            injuryDetail={player.injuryDetail}
+            playerName={player.fullName}
+          />
         ) : null}
 
 

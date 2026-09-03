@@ -11,6 +11,8 @@ import {
   useRouter,
 } from "next/navigation";
 
+import InjuryReportButton from "@/components/ui/InjuryReportButton";
+
 
 type LineupPlayer = {
   playerId: number;
@@ -1371,17 +1373,11 @@ className="g365-playerMeta" style={styles.playerMeta}
             : ""}
         </span>
 
-        {player.injuryStatus ? (
-          <span
-            title={
-              player.injuryDetail ??
-              player.injuryStatus
-            }
-className="g365-injuryText" style={styles.injuryText}
-          >
-            {player.injuryStatus}
-          </span>
-        ) : null}
+        <InjuryReportButton
+          status={player.injuryStatus}
+          injuryDetail={player.injuryDetail}
+          playerName={player.fullName}
+        />
       </div>
     </div>
   );

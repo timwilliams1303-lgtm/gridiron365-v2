@@ -1457,53 +1457,11 @@ const PlayerRow = memo(function PlayerRow({
           </strong>
 
           {injury ? (
-            <>
-              <span
-                className="g365-injury-desktop"
-                title={
-                  injury.detail ?? injury.label
-                }
-                style={{
-                  ...styles.injuryBadge,
-                  ...getInjuryStyle(
-                    player.injuryStatus ?? player.nflStatus
-                  ),
-                }}
-              >
-                {injury.text}
-              </span>
-
-              <button
-                type="button"
-                className="g365-injury-mobile"
-                aria-expanded={showMobileInjury}
-                aria-label={`${injury.label}${injury.detail ? `: ${injury.detail}` : ""}`}
-                onClick={() =>
-                  setShowMobileInjury(
-                    (current) => !current
-                  )
-                }
-                style={{
-                  ...styles.injuryBadge,
-                  ...styles.injuryButton,
-                  ...getInjuryStyle(
-                    player.injuryStatus ?? player.nflStatus
-                  ),
-                }}
-              >
-                {injury.code}
-              </button>
-
-              {showMobileInjury ? (
-                <span
-                  className="g365-injury-mobile-detail"
-                  style={styles.injuryExpandedDetail}
-                >
-                  <strong>{injury.label}</strong>
-                  {injury.detail ? ` · ${injury.detail}` : ""}
-                </span>
-              ) : null}
-            </>
+            <InjuryReportButton
+              status={player.injuryStatus ?? player.nflStatus}
+              injuryDetail={player.injuryDetail}
+              playerName={player.fullName}
+            />
           ) : null}
         </div>
       </div>
@@ -2800,4 +2758,5 @@ const styles = {
       "14px",
   },
 };
+import InjuryReportButton from "@/components/ui/InjuryReportButton";
 

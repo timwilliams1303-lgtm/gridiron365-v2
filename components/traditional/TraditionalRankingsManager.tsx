@@ -17,6 +17,8 @@ import type {
 } from "@/lib/traditional/rankings.service";
 
 
+import InjuryReportButton from "@/components/ui/InjuryReportButton";
+
 type Props = {
   leagueId: string;
   season: number;
@@ -1190,35 +1192,13 @@ function RankingRow({
         }
       >
         {injury ? (
-          <>
-            <button
-              type="button"
-              aria-expanded={showInjuryDetail}
-              aria-label={`${injury.label}. Tap for injury details.`}
-              title={injury.detailText}
-              onClick={() =>
-                setShowInjuryDetail(
-                  (current) => !current
-                )
-              }
-              style={{
-                ...styles.injuryBadge,
-                ...styles.injuryButton,
-              }}
-            >
-              {injury.code}
-            </button>
-
-            {showInjuryDetail ? (
-              <span
-                style={
-                  styles.injuryExpandedDetail
-                }
-              >
-                {injury.detailText}
-              </span>
-            ) : null}
-          </>
+          <InjuryReportButton
+            status={player.injuryStatus}
+            injuryType={player.injuryType}
+            injuryLocation={player.injuryLocation}
+            injuryDetail={player.injuryDetail}
+            playerName={player.fullName}
+          />
         ) : (
           <span
             style={

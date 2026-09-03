@@ -17,6 +17,8 @@ import {
   type SeasonLongLiveLineupPlayer,
 } from "@/lib/season-long/team-live-lineup.service";
 
+import InjuryReportButton from "@/components/ui/InjuryReportButton";
+
 import SeasonLongLeagueTeamsRealtime from "@/components/season-long/SeasonLongLeagueTeamsRealtime";
 
 
@@ -1796,23 +1798,12 @@ export default async function SeasonLongLeagueTeamsPage({
                                     }
 
                                     return (
-                                      <div
-                                        style={
-                                          styles.injuryLine
-                                        }
-                                      >
-                                        <strong
-                                          style={
-                                            styles.injuryBadge
-                                          }
-                                        >
-                                          {injury.code}
-                                        </strong>
-
-                                        <span>
-                                          {injury.detail}
-                                        </span>
-                                      </div>
+                                      <InjuryReportButton
+                                        status={player.injuryStatus}
+                                        injuryType={player.injuryType}
+                                        injuryDetail={player.injuryDetail}
+                                        playerName={player.fullName}
+                                      />
                                     );
                                   })()}
 
@@ -3205,6 +3196,8 @@ const styles = {
     fontSize: "11px",
     fontWeight: 800,
     lineHeight: 1.35,
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
   },
 
   injuryBadge: {
@@ -3338,4 +3331,3 @@ const styles = {
   },
 
 }
-

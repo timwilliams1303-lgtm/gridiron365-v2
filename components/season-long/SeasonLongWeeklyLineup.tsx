@@ -18,6 +18,8 @@ import {
 } from "@/lib/supabase/browser";
 
 
+import InjuryReportButton from "@/components/ui/InjuryReportButton";
+
 type PlayerSelectionMode =
   "salary" |
   "no_salary" |
@@ -1760,49 +1762,13 @@ export default function SeasonLongWeeklyLineup({
                                 return null;
                               }
 
-                              const injuryKey =
-                                `lineup:${slotKey}`;
-
-                              const expanded =
-                                expandedInjuryKey ===
-                                injuryKey;
-
                               return (
-                                <span
-                                  style={
-                                    styles.injuryLine
-                                  }
-                                >
-                                  <button
-                                    type="button"
-                                    aria-expanded={expanded}
-                                    aria-label={`${injury.label}. Tap for injury details.`}
-                                    title={injury.tooltip}
-                                    onClick={() =>
-                                      setExpandedInjuryKey(
-                                        expanded
-                                          ? null
-                                          : injuryKey
-                                      )
-                                    }
-                                    style={{
-                                      ...styles.injuryBadge,
-                                      ...styles.injuryButton,
-                                    }}
-                                  >
-                                    {injury.code}
-                                  </button>
-
-                                  {expanded ? (
-                                    <span
-                                      style={
-                                        styles.injuryExpandedDetail
-                                      }
-                                    >
-                                      {injury.detailText}
-                                    </span>
-                                  ) : null}
-                                </span>
+                                <InjuryReportButton
+                                  status={player.injuryStatus}
+                                  injuryType={player.injuryType}
+                                  injuryDetail={player.injuryDetail}
+                                  playerName={player.name}
+                                />
                               );
                             })()}
                           </div>
@@ -2189,49 +2155,13 @@ export default function SeasonLongWeeklyLineup({
                               return null;
                             }
 
-                            const injuryKey =
-                              `pool:${player.id}`;
-
-                            const expanded =
-                              expandedInjuryKey ===
-                              injuryKey;
-
                             return (
-                              <span
-                                style={
-                                  styles.injuryLine
-                                }
-                              >
-                                <button
-                                  type="button"
-                                  aria-expanded={expanded}
-                                  aria-label={`${injury.label}. Tap for injury details.`}
-                                  title={injury.tooltip}
-                                  onClick={() =>
-                                    setExpandedInjuryKey(
-                                      expanded
-                                        ? null
-                                        : injuryKey
-                                    )
-                                  }
-                                  style={{
-                                    ...styles.injuryBadge,
-                                    ...styles.injuryButton,
-                                  }}
-                                >
-                                  {injury.code}
-                                </button>
-
-                                {expanded ? (
-                                  <span
-                                    style={
-                                      styles.injuryExpandedDetail
-                                    }
-                                  >
-                                    {injury.detailText}
-                                  </span>
-                                ) : null}
-                              </span>
+                              <InjuryReportButton
+                                status={player.injuryStatus}
+                                injuryType={player.injuryType}
+                                injuryDetail={player.injuryDetail}
+                                playerName={player.name}
+                              />
                             );
                           })()}
                         </div>

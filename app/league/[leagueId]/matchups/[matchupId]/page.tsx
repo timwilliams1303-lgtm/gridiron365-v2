@@ -17,6 +17,8 @@ import {
   type TraditionalMatchupDetailData,
 } from "@/lib/traditional/matchup-detail.service";
 
+import InjuryReportButton from "@/components/ui/InjuryReportButton";
+
 import {
   requireTraditionalLeague,
 } from "@/lib/traditional/requireTraditionalLeague";
@@ -2466,28 +2468,12 @@ function CompactPlayerRow({
             </span>
 
 
-            {getInjuryDisplay(
-              player.injuryStatus,
-              player.injuryDetail ?? player.injuryType
-            ) ? (
-              <span
-                title={
-                  [
-                    player.injuryStatus,
-                    player.injuryType,
-                    player.injuryDetail,
-                  ]
-                    .filter(Boolean)
-                    .join(" • ")
-                }
-                style={styles.injuryBadge}
-              >
-                {getInjuryDisplay(
-                  player.injuryStatus,
-                  player.injuryDetail ?? player.injuryType
-                )?.text}
-              </span>
-            ) : null}
+            <InjuryReportButton
+              status={player.injuryStatus}
+              injuryType={player.injuryType}
+              injuryDetail={player.injuryDetail}
+              playerName={player.fullName}
+            />
 
 
             {redZone ? (
@@ -4255,5 +4241,3 @@ const styles = {
       "center" as const,
   },
 };
-
-

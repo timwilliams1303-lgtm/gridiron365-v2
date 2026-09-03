@@ -8,6 +8,7 @@ import {
   getSeasonLongTeamLiveLineupData,
   type SeasonLongLiveLineupPlayer,
 } from "@/lib/season-long/team-live-lineup.service";
+import InjuryReportButton from "@/components/ui/InjuryReportButton";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -1070,23 +1071,12 @@ export default async function SeasonLongTeamPage({
                           }
 
                           return (
-                            <div
-                              style={
-                                styles.injuryLine
-                              }
-                            >
-                              <strong
-                                style={
-                                  styles.injuryBadge
-                                }
-                              >
-                                {injury.code}
-                              </strong>
-
-                              <span>
-                                {injury.detail}
-                              </span>
-                            </div>
+                            <InjuryReportButton
+                              status={player.injuryStatus}
+                              injuryType={player.injuryType}
+                              injuryDetail={player.injuryDetail}
+                              playerName={player.fullName}
+                            />
                           );
                         })()}
 
