@@ -357,6 +357,7 @@ export default async function TraditionalWaiversPage({
               .length >
             0 ? (
               <div
+                className="g365-waivers-results-scroll"
                 style={
                   styles.claimList
                 }
@@ -605,6 +606,16 @@ const mobileCss = `
 
   .g365-waivers-section-header {
     align-items: flex-start !important;
+  }
+
+  .g365-waivers-results-scroll {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
   }
 
   .g365-waivers-history-row {

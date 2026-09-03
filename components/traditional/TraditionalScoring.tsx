@@ -1139,6 +1139,21 @@ function makeComponent(
   .g365-scoring-page button { min-height: 42px !important; }
   .g365-scoring-page input, .g365-scoring-page select { min-width: 0 !important; max-width: 100% !important; font-size: 16px !important; }
 }
+
+@media (max-height: 500px) and (orientation: landscape) and (max-width: 950px) {
+  .g365-scoring-page { padding: 10px 10px 28px !important; overflow-x: hidden !important; }
+  .g365-scoring-page .g365-shell { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+  .g365-scoring-page .g365-tabs,
+  .g365-scoring-page .g365-categoryTabs,
+  .g365-scoring-page .g365-scoringCategoryTabs {
+    width: 100% !important; max-width: 100% !important; flex-wrap: nowrap !important;
+    overflow-x: auto !important; overflow-y: hidden !important; -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain; touch-action: pan-x pan-y;
+  }
+  .g365-scoring-page .g365-grid, .g365-scoring-page .g365-baseGrid,
+  .g365-scoring-page .g365-scoringBaseGrid, .g365-scoring-page .g365-advancedGrid,
+  .g365-scoring-page .g365-scoringAdvanced { grid-template-columns: minmax(0,1fr) !important; }
+}
 `}</style>
           <div
 className="g365-shell" style={styles.shell}
@@ -1183,6 +1198,21 @@ className="g365-loading" style={styles.loading}
   .g365-scoring-page .g365-scoringCategoryPanel { padding-left: 12px !important; padding-right: 12px !important; min-width: 0 !important; }
   .g365-scoring-page button { min-height: 42px !important; }
   .g365-scoring-page input, .g365-scoring-page select { min-width: 0 !important; max-width: 100% !important; font-size: 16px !important; }
+}
+
+@media (max-height: 500px) and (orientation: landscape) and (max-width: 950px) {
+  .g365-scoring-page { padding: 10px 10px 28px !important; overflow-x: hidden !important; }
+  .g365-scoring-page .g365-shell { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+  .g365-scoring-page .g365-tabs,
+  .g365-scoring-page .g365-categoryTabs,
+  .g365-scoring-page .g365-scoringCategoryTabs {
+    width: 100% !important; max-width: 100% !important; flex-wrap: nowrap !important;
+    overflow-x: auto !important; overflow-y: hidden !important; -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain; touch-action: pan-x pan-y;
+  }
+  .g365-scoring-page .g365-grid, .g365-scoring-page .g365-baseGrid,
+  .g365-scoring-page .g365-scoringBaseGrid, .g365-scoring-page .g365-advancedGrid,
+  .g365-scoring-page .g365-scoringAdvanced { grid-template-columns: minmax(0,1fr) !important; }
 }
 `}</style>
         <div
