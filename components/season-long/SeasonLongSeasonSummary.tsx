@@ -3,10 +3,11 @@ import type {
   CSSProperties,
 } from "react";
 
+import SeasonLongRenewButton from "@/components/season-long/SeasonLongRenewButton";
 
 import {
-  createSupabaseServerClient,
-} from "@/lib/supabase/server";
+  createSupabaseAdminClient,
+} from "@/lib/supabase/admin";
 
 import {
   requireLeagueMember,
@@ -42,6 +43,34 @@ type StandingRow = {
   current_rank:
     number |
     null;
+};
+
+type SettingsRow = {
+  competition_format: "total_points" | "head_to_head" | null;
+  regular_season_weeks: number | null;
+  playoffs_enabled: boolean | null;
+  playoff_team_count: number | null;
+};
+
+type H2HStandingRow = {
+  fantasy_team_id: number;
+  wins: number | null;
+  losses: number | null;
+  ties: number | null;
+  points_for: number | string | null;
+  points_against: number | string | null;
+  current_rank: number | null;
+};
+
+type H2HMatchupRow = {
+  week: number;
+  matchup_type: string | null;
+  is_final: boolean | null;
+};
+
+type PlayoffStateRow = {
+  status: string | null;
+  champion_fantasy_team_id: number | null;
 };
 
 type WeeklyScoreRow = {
@@ -129,6 +158,10 @@ type TeamSummary = {
     null;
   trophyAwards: number;
   weeklyKings: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  pointsAgainst: number;
 };
 
 function n(
@@ -235,7 +268,7 @@ export default async function SeasonLongSeasonSummary({
   }
 
   const supabase =
-    await createSupabaseServerClient();
+    createSupabaseAdminClient();
 
   const season =
     access.league.season;
@@ -246,8 +279,12 @@ export default async function SeasonLongSeasonSummary({
     "salary";
 
   const [
+    settingsResult,
     teamsResult,
     standingsResult,
+    h2hStandingsResult,
+    h2hMatchupsResult,
+    playoffStateResult,
     scoresResult,
     lineupResult,
     playerScoresResult,
@@ -256,6 +293,14 @@ export default async function SeasonLongSeasonSummary({
     renewalResult,
   ] =
     await Promise.all([
+      supabase
+        .from(
+          "season_long_settings"
+        )
+        .select("competition_format,regular_season_weeks,playoffs_enabled,playoff_team_count")
+        .eq("league_id", leagueId)
+        .maybeSingle(),
+
       supabase
         .from(
           "fantasy_teams"
@@ -296,6 +341,31 @@ export default async function SeasonLongSeasonSummary({
           "season",
           season
         ),
+
+      supabase
+        .from(
+          "season_long_h2h_standings"
+        )
+        .select("fantasy_team_id,wins,losses,ties,points_for,points_against,current_rank")
+        .eq("league_id", leagueId)
+        .eq("season", season),
+
+      supabase
+        .from(
+          "season_long_matchups"
+        )
+        .select("week,matchup_type,is_final")
+        .eq("league_id", leagueId)
+        .eq("season", season),
+
+      supabase
+        .from(
+          "season_long_playoff_state"
+        )
+        .select("status,champion_fantasy_team_id")
+        .eq("league_id", leagueId)
+        .eq("season", season)
+        .maybeSingle(),
 
       supabase
         .from(
@@ -393,6 +463,12 @@ export default async function SeasonLongSeasonSummary({
         .maybeSingle(),
     ]);
 
+  if (settingsResult.error) {
+    throw new Error(
+      `Could not load Season-Long settings: ${settingsResult.error.message}`
+    );
+  }
+
   if (
     teamsResult.error
   ) {
@@ -406,6 +482,24 @@ export default async function SeasonLongSeasonSummary({
   ) {
     throw new Error(
       `Could not load standings: ${standingsResult.error.message}`
+    );
+  }
+
+  if (h2hStandingsResult.error) {
+    throw new Error(
+      `Could not load H2H standings: ${h2hStandingsResult.error.message}`
+    );
+  }
+
+  if (h2hMatchupsResult.error) {
+    throw new Error(
+      `Could not load H2H matchups: ${h2hMatchupsResult.error.message}`
+    );
+  }
+
+  if (playoffStateResult.error) {
+    throw new Error(
+      `Could not load playoff state: ${playoffStateResult.error.message}`
     );
   }
 
@@ -457,6 +551,29 @@ export default async function SeasonLongSeasonSummary({
     );
   }
 
+  const leagueSettings =
+    settingsResult.data as SettingsRow | null;
+
+  const isH2H =
+    leagueSettings?.competition_format === "head_to_head";
+
+  const regularSeasonWeeks =
+    Math.max(
+      1,
+      Number(
+        leagueSettings?.regular_season_weeks ?? 18
+      )
+    );
+
+  const h2hStandings =
+    (h2hStandingsResult.data ?? []) as H2HStandingRow[];
+
+  const h2hMatchups =
+    (h2hMatchupsResult.data ?? []) as H2HMatchupRow[];
+
+  const playoffState =
+    playoffStateResult.data as PlayoffStateRow | null;
+
   const teams =
     (
       teamsResult.data ??
@@ -505,6 +622,16 @@ export default async function SeasonLongSeasonSummary({
         (
           row
         ) => [
+          row.fantasy_team_id,
+          row,
+        ]
+      )
+    );
+
+  const h2hStandingMap =
+    new Map(
+      h2hStandings.map(
+        (row) => [
           row.fantasy_team_id,
           row,
         ]
@@ -593,11 +720,19 @@ export default async function SeasonLongSeasonSummary({
               0
             );
 
-          const totalPoints =
-            n(
-              standing
-                ?.total_points
+          const h2hStanding =
+            h2hStandingMap.get(
+              team.id
             );
+
+          const totalPoints =
+            isH2H
+              ? n(
+                  h2hStanding?.points_for
+                )
+              : n(
+                  standing?.total_points
+                );
 
           const trophyRows =
             trophies.filter(
@@ -650,9 +785,9 @@ export default async function SeasonLongSeasonSummary({
               team.team_name,
 
             rank:
-              standing
-                ?.current_rank ??
-              999,
+              isH2H
+                ? h2hStanding?.current_rank ?? 999
+                : standing?.current_rank ?? 999,
 
             totalPoints,
 
@@ -701,6 +836,22 @@ export default async function SeasonLongSeasonSummary({
             trophyAwards,
 
             weeklyKings,
+
+            wins: Number(
+              h2hStanding?.wins ?? 0
+            ),
+
+            losses: Number(
+              h2hStanding?.losses ?? 0
+            ),
+
+            ties: Number(
+              h2hStanding?.ties ?? 0
+            ),
+
+            pointsAgainst: n(
+              h2hStanding?.points_against
+            ),
           };
         }
       );
@@ -736,9 +887,23 @@ export default async function SeasonLongSeasonSummary({
     }
   );
 
-  const champion =
+  const standingsLeader =
     summaries[0] ??
     null;
+
+  const playoffChampion =
+    isH2H &&
+    playoffState?.champion_fantasy_team_id
+      ? summaries.find(
+          (summary) =>
+            summary.teamId ===
+            playoffState.champion_fantasy_team_id
+        ) ?? null
+      : null;
+
+  const champion =
+    playoffChampion ??
+    standingsLeader;
 
   const biggestWeek =
     [
@@ -1157,37 +1322,49 @@ export default async function SeasonLongSeasonSummary({
         )
       : 0;
 
-  /*
-   * NFL regular season = 18 fantasy weeks.
-   * The season recap remains viewable before then, but is marked
-   * IN PROGRESS. Renew becomes active only after all active teams
-   * have a final Week 18 score.
-   */
-  const week18FinalTeams =
+  const finalWeekTeams =
     new Set(
       weeklyScores
         .filter(
-          (
-            row
-          ) =>
-            row.week ===
-              18 &&
-            row.is_final ===
-              true
+          (row) =>
+            row.week === regularSeasonWeeks &&
+            row.is_final === true
         )
         .map(
-          (
-            row
-          ) =>
+          (row) =>
             row.fantasy_team_id
         )
     );
 
+  const regularSeasonH2HMatchups =
+    h2hMatchups.filter(
+      (matchup) =>
+        matchup.matchup_type === "regular_season" &&
+        matchup.week <= regularSeasonWeeks
+    );
+
+  const h2hRegularSeasonComplete =
+    regularSeasonH2HMatchups.length > 0 &&
+    regularSeasonH2HMatchups.every(
+      (matchup) =>
+        matchup.is_final === true
+    );
+
+  const h2hPlayoffsEnabled =
+    Boolean(
+      leagueSettings?.playoffs_enabled
+    );
+
   const seasonComplete =
-    teams.length >
-      0 &&
-    week18FinalTeams.size ===
-      teams.length;
+    isH2H
+      ? h2hPlayoffsEnabled
+        ? playoffState?.status === "complete" &&
+          Boolean(
+            playoffState?.champion_fantasy_team_id
+          )
+        : h2hRegularSeasonComplete
+      : teams.length > 0 &&
+        finalWeekTeams.size === teams.length;
 
   const existingRenewal =
     renewalResult.data;
@@ -1200,93 +1377,10 @@ export default async function SeasonLongSeasonSummary({
 
   return (
     <section
-      className="g365-season-long-mobile"
       style={{
         marginTop: 18,
       }}
     >
-
-      <style>{`
-        .g365-season-long-mobile,
-        .g365-season-long-mobile * {
-          box-sizing: border-box;
-        }
-
-        @media (max-width: 760px) {
-          .g365-season-long-mobile {
-            width: 100% !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
-            padding-left: 12px !important;
-            padding-right: 12px !important;
-            overflow-x: hidden !important;
-          }
-
-          .g365-season-long-mobile section,
-          .g365-season-long-mobile article,
-          .g365-season-long-mobile header,
-          .g365-season-long-mobile form,
-          .g365-season-long-mobile div {
-            min-width: 0;
-            max-width: 100%;
-          }
-
-          .g365-season-long-mobile h1 {
-            font-size: clamp(27px, 8vw, 36px) !important;
-            line-height: 1.08 !important;
-            overflow-wrap: anywhere;
-          }
-
-          .g365-season-long-mobile h2,
-          .g365-season-long-mobile h3,
-          .g365-season-long-mobile p,
-          .g365-season-long-mobile span,
-          .g365-season-long-mobile strong {
-            overflow-wrap: anywhere;
-          }
-
-          .g365-season-long-mobile input,
-          .g365-season-long-mobile select,
-          .g365-season-long-mobile textarea {
-            width: 100% !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
-            font-size: 16px !important;
-          }
-
-          .g365-season-long-mobile button,
-          .g365-season-long-mobile a {
-            max-width: 100%;
-          }
-
-          .g365-season-long-mobile :not(button)[style*="grid-template-columns"] {
-            grid-template-columns: minmax(0, 1fr) !important;
-          }
-
-          .g365-season-long-mobile [style*="white-space: nowrap"],
-          .g365-season-long-mobile [style*="white-space:nowrap"] {
-            white-space: normal !important;
-          }
-
-          .g365-season-long-mobile [style*="overflow-x: auto"],
-          .g365-season-long-mobile [style*="overflowX: auto"] {
-            max-width: 100%;
-            -webkit-overflow-scrolling: touch;
-          }
-        }
-
-        @media (max-width: 430px) {
-          .g365-season-long-mobile {
-            padding-left: 10px !important;
-            padding-right: 10px !important;
-          }
-
-          .g365-season-long-mobile button {
-            min-height: 42px;
-          }
-        }
-      `}</style>
-
       <section
         style={
           styles.wrapCard
@@ -1578,7 +1672,9 @@ export default async function SeasonLongSeasonSummary({
                 styles.sectionTitle
               }
             >
-              Final Standings
+              {isH2H
+                ? "Final H2H Standings"
+                : "Final Standings"}
             </h2>
           </div>
         </div>
@@ -1803,6 +1899,64 @@ export default async function SeasonLongSeasonSummary({
         </div>
       </section>
 
+      {access.isCommissioner ? (
+        <section
+          style={
+            styles.wrapCard
+          }
+        >
+          <p
+            style={
+              styles.sectionEyebrow
+            }
+          >
+            COMMISSIONER
+          </p>
+
+          <h2
+            style={
+              styles.wrapTitle
+            }
+          >
+            Renew League
+          </h2>
+
+          <p
+            style={
+              styles.wrapText
+            }
+          >
+            Carry forward league settings, scoring, members and team names. Weekly lineups, scores, standings, salaries and trophies start fresh.
+          </p>
+
+          <div
+            style={
+              styles.renewBox
+            }
+          >
+            {existingRenewal ? (
+              <Link
+                href={`/league/${existingRenewal.target_league_id}`}
+                style={
+                  styles.renewLink
+                }
+              >
+                OPEN {existingRenewal.target_season} LEAGUE
+              </Link>
+            ) : (
+              <SeasonLongRenewButton
+                leagueId={
+                  leagueId
+                }
+                nextSeason={
+                  season +
+                  1
+                }
+              />
+            )}
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }

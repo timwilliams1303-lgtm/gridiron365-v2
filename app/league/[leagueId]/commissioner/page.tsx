@@ -21,7 +21,9 @@ type PageProps = {
 export default async function CommissionerPage({
   params,
 }: PageProps) {
-  const { leagueId } =
+  const {
+    leagueId,
+  } =
     await params;
 
   const access =
@@ -29,7 +31,9 @@ export default async function CommissionerPage({
       leagueId
     );
 
-  if (!access.isCommissioner) {
+  if (
+    !access.isCommissioner
+  ) {
     redirect(
       `/league/${leagueId}`
     );
@@ -40,20 +44,28 @@ export default async function CommissionerPage({
   ) {
     case "traditional":
       return (
-        <TraditionalCommissioner />
+        <TraditionalCommissioner
+          leagueId={
+            leagueId
+          }
+        />
       );
 
     case "season_long":
       return (
         <SeasonLongCommissioner
-          leagueId={leagueId}
+          leagueId={
+            leagueId
+          }
         />
       );
 
     case "pickem":
       return (
         <PickemCommissioner
-          leagueId={leagueId}
+          leagueId={
+            leagueId
+          }
         />
       );
 

@@ -396,6 +396,8 @@ export async function GET(
     scoringResult,
     teamsResult,
     standingsResult,
+    h2hStandingsResult,
+    h2hMatchupsResult,
     submittedResult,
   ] =
     await Promise.all([
@@ -464,6 +466,56 @@ export async function GET(
 
       admin
         .from(
+          "season_long_h2h_standings"
+        )
+        .select(`
+          fantasy_team_id,
+          wins,
+          losses,
+          ties,
+          points_for,
+          points_against,
+          games_played,
+          win_percentage,
+          current_rank
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          league.season
+        ),
+
+      admin
+        .from(
+          "season_long_matchups"
+        )
+        .select(
+          "id",
+          {
+            count:
+              "exact",
+            head:
+              true,
+          }
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          league.season
+        )
+        .eq(
+          "matchup_type",
+          "regular_season"
+        ),
+
+      admin
+        .from(
           "season_long_weekly_entries"
         )
         .select(
@@ -499,6 +551,8 @@ export async function GET(
     scoringResult,
     teamsResult,
     standingsResult,
+    h2hStandingsResult,
+    h2hMatchupsResult,
     submittedResult,
   ].find(
     (
@@ -532,6 +586,12 @@ export async function GET(
     standings:
       standingsResult.data ??
       [],
+    h2hStandings:
+      h2hStandingsResult.data ??
+      [],
+    h2hMatchupCount:
+      h2hMatchupsResult.count ??
+      0,
     activeWeek,
     submittedEntries:
       submittedResult.count ??
@@ -687,6 +747,37 @@ export async function POST(
           0,
           10
         ),
+      competition_format:
+        String(
+          source.competition_format ??
+          "total_points"
+        ) === "head_to_head"
+          ? "head_to_head"
+          : "total_points",
+      regular_season_weeks:
+        integer(
+          source.regular_season_weeks,
+          14,
+          1,
+          18
+        ),
+      playoffs_enabled:
+        Boolean(
+          source.playoffs_enabled ??
+          true
+        ),
+      playoff_team_count:
+        integer(
+          source.playoff_team_count,
+          6,
+          2,
+          Number.MAX_SAFE_INTEGER
+        ),
+      reseed_playoffs:
+        Boolean(
+          source.reseed_playoffs ??
+          true
+        ),
       updated_at:
         new Date()
           .toISOString(),
@@ -755,6 +846,92 @@ export async function POST(
     return NextResponse.json({
       success:
         true,
+    });
+  }
+
+
+  if (
+    action ===
+    "build-h2h-schedule"
+  ) {
+    const {
+      data:
+        settingsData,
+      error:
+        settingsError,
+    } =
+      await admin
+        .from(
+          "season_long_settings"
+        )
+        .select(`
+          competition_format,
+          regular_season_weeks
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .maybeSingle();
+
+
+    if (
+      settingsError
+    ) {
+      return jsonError(
+        settingsError.message,
+        500
+      );
+    }
+
+
+    if (
+      !settingsData ||
+      settingsData.competition_format !==
+        "head_to_head"
+    ) {
+      return jsonError(
+        "Set League Format to Head-to-Head and save the settings before building the schedule.",
+        400
+      );
+    }
+
+
+    const {
+      data:
+        result,
+      error:
+        resultError,
+    } =
+      await admin.rpc(
+        "build_season_long_h2h_schedule",
+        {
+          p_league_id:
+            leagueId,
+          p_season:
+            league.season,
+        }
+      );
+
+
+    if (
+      resultError
+    ) {
+      return jsonError(
+        resultError.message,
+        500
+      );
+    }
+
+
+    return NextResponse.json({
+      success:
+        true,
+      matchupsCreated:
+        Number(
+          result ??
+          0
+        ),
     });
   }
 
@@ -948,187 +1125,6 @@ export async function POST(
     return NextResponse.json({
       success:
         true,
-    });
-  }
-
-
-  if (
-    action ===
-    "remove-owner"
-  ) {
-    const fantasyTeamId =
-      integer(
-        body.fantasyTeamId,
-        0,
-        1,
-        Number.MAX_SAFE_INTEGER
-      );
-
-
-    if (!fantasyTeamId) {
-      return jsonError(
-        "A valid team is required.",
-        400
-      );
-    }
-
-
-    const teamResult =
-      await admin
-        .from(
-          "fantasy_teams"
-        )
-        .select(
-          "id, owner_id, team_name, active"
-        )
-        .eq(
-          "id",
-          fantasyTeamId
-        )
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .maybeSingle();
-
-
-    if (teamResult.error) {
-      return jsonError(
-        teamResult.error.message,
-        500
-      );
-    }
-
-
-    if (!teamResult.data) {
-      return jsonError(
-        "Team not found in this league.",
-        404
-      );
-    }
-
-
-    const ownerUserId =
-      teamResult.data.owner_id as
-        | string
-        | null;
-
-
-    if (!ownerUserId) {
-      return jsonError(
-        "This team is already vacant.",
-        409
-      );
-    }
-
-
-    if (
-      league.commissioner_user_id &&
-      ownerUserId ===
-        league.commissioner_user_id
-    ) {
-      return jsonError(
-        "The primary commissioner cannot be removed from their own league. Transfer commissioner ownership first.",
-        400
-      );
-    }
-
-
-    /*
-     * Preserve the fantasy-team row and every record tied to it.
-     * Only detach the current owner so a replacement invitation can
-     * claim this exact team/entry later.
-     */
-    const clearOwnerResult =
-      await admin
-        .from(
-          "fantasy_teams"
-        )
-        .update({
-          owner_id: null,
-          updated_at:
-            new Date()
-              .toISOString(),
-        })
-        .eq(
-          "id",
-          fantasyTeamId
-        )
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "owner_id",
-          ownerUserId
-        );
-
-
-    if (clearOwnerResult.error) {
-      return jsonError(
-        clearOwnerResult.error.message,
-        500
-      );
-    }
-
-
-    const membershipResult =
-      await admin
-        .from(
-          "league_members"
-        )
-        .delete()
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "user_id",
-          ownerUserId
-        );
-
-
-    if (membershipResult.error) {
-      /*
-       * Best-effort rollback so ownership and membership do not
-       * become split if the membership delete fails.
-       */
-      await admin
-        .from(
-          "fantasy_teams"
-        )
-        .update({
-          owner_id:
-            ownerUserId,
-          updated_at:
-            new Date()
-              .toISOString(),
-        })
-        .eq(
-          "id",
-          fantasyTeamId
-        )
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .is(
-          "owner_id",
-          null
-        );
-
-      return jsonError(
-        membershipResult.error.message,
-        500
-      );
-    }
-
-
-    return NextResponse.json({
-      success: true,
-      fantasyTeamId,
-      removedUserId:
-        ownerUserId,
     });
   }
 

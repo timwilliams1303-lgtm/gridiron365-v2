@@ -9,6 +9,10 @@ import {
 } from "react";
 
 import {
+  useRouter,
+} from "next/navigation";
+
+import {
   createSupabaseBrowserClient,
 } from "@/lib/supabase/browser";
 
@@ -304,6 +308,8 @@ const PICKEM_MOBILE_CSS = `
 export default function PickemCommissioner({
   leagueId,
 }: Props) {
+  const router =
+    useRouter();
   const supabase =
     useMemo(
       () =>
@@ -1131,6 +1137,13 @@ export default function PickemCommissioner({
       }
 
       await load();
+
+      /*
+       * Keep server-rendered league UI synchronized with the newly
+       * saved Pick'em commissioner configuration without requiring
+       * a manual browser refresh.
+       */
+      router.refresh();
 
       setMessage(
         activeWeekScoringLocked

@@ -1,129 +1,130 @@
+import Link from "next/link";
+
 import {
-  createSupabaseServerClient,
-} from "@/lib/supabase/server";
+  createSupabaseAdminClient,
+} from "@/lib/supabase/admin";
 
 import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
 
 
-type SeasonLongStandingsProps = {
+type Props = {
   leagueId: string;
 };
 
 
-type StandingRow = {
-  fantasy_team_id:
-    number;
+type SettingsRow = {
+  competition_format:
+    | "total_points"
+    | "head_to_head"
+    | null;
+  regular_season_weeks:
+    number |
+    null;
+  playoffs_enabled:
+    boolean |
+    null;
+  playoff_team_count:
+    number |
+    null;
+};
 
+
+type TeamRow = {
+  id: number;
+  team_name: string;
+};
+
+
+type TotalStandingRow = {
+  fantasy_team_id: number;
   total_points:
     number |
     string |
     null;
-
   weeks_scored:
     number |
     null;
-
-  highest_week_score:
-    number |
-    string |
-    null;
-
-  lowest_week_score:
-    number |
-    string |
-    null;
-
-  average_week_score:
-    number |
-    string |
-    null;
-
   current_rank:
     number |
     null;
 };
 
 
-type FantasyTeamRow = {
-  id:
-    number;
-
-  team_name:
-    string;
-};
-
-
-type WeeklyScoreRow = {
-  fantasy_team_id:
-    number;
-
-  week:
-    number;
-
-  fantasy_points:
+type H2HStandingRow = {
+  fantasy_team_id: number;
+  wins: number | null;
+  losses: number | null;
+  ties: number | null;
+  points_for:
     number |
     string |
     null;
-
-  is_final:
-    boolean |
+  points_against:
+    number |
+    string |
+    null;
+  games_played:
+    number |
+    null;
+  win_percentage:
+    number |
+    string |
+    null;
+  current_rank:
+    number |
     null;
 };
 
 
-type StandingView = {
-  rank:
-    number;
-
-  fantasyTeamId:
-    number;
-
-  teamName:
-    string;
-
-  totalPoints:
-    number;
-
-  weeksScored:
-    number;
-
-  averageWeekScore:
-    number;
-
-  highestWeekScore:
-    number;
-
-  lowestWeekScore:
-    number;
-
-  latestFinalWeek:
+type MatchupRow = {
+  home_fantasy_team_id:
     number |
     null;
-
-  latestFinalWeekPoints:
+  away_fantasy_team_id:
     number |
     null;
+  is_final:
+    boolean |
+    null;
+  matchup_type:
+    string |
+    null;
+};
 
-  isMyTeam:
-    boolean;
+
+type H2HView = {
+  rank: number;
+  fantasyTeamId: number;
+  teamName: string;
+  wins: number;
+  losses: number;
+  ties: number;
+  gamesPlayed: number;
+  totalScheduledGames: number;
+  remainingGames: number;
+  winPct: number;
+  pointsFor: number;
+  pointsAgainst: number;
+  pointDiff: number;
+  playoffPct: number;
+  isMyTeam: boolean;
 };
 
 
 function numberValue(
   value:
-    number |
-    string |
-    null |
-    undefined
+    | number
+    | string
+    | null
+    | undefined
 ) {
   const parsed =
     Number(
       value ??
       0
     );
-
 
   return Number.isFinite(
     parsed
@@ -133,24 +134,267 @@ function numberValue(
 }
 
 
-function formatPoints(
-  value:
-    number
+function calculateWinPct(
+  wins: number,
+  ties: number,
+  gamesPlayed: number
+) {
+  if (
+    gamesPlayed <= 0
+  ) {
+    return 0;
+  }
+
+  return (
+    wins +
+    ties * 0.5
+  ) /
+    gamesPlayed;
+}
+
+
+function formatPct(
+  value: number
 ) {
   return value.toFixed(
-    2
+    3
+  );
+}
+
+
+function clamp(
+  value: number,
+  min: number,
+  max: number
+) {
+  return Math.max(
+    min,
+    Math.min(
+      max,
+      value
+    )
+  );
+}
+
+
+function getMedian(
+  values: number[]
+) {
+  if (
+    values.length === 0
+  ) {
+    return 0;
+  }
+
+  const sorted =
+    [...values].sort(
+      (a, b) =>
+        a - b
+    );
+
+  const middle =
+    Math.floor(
+      sorted.length / 2
+    );
+
+  if (
+    sorted.length % 2 === 0
+  ) {
+    return (
+      sorted[middle - 1] +
+      sorted[middle]
+    ) / 2;
+  }
+
+  return sorted[middle];
+}
+
+
+/*
+ * Same estimate used by the Traditional standings experience:
+ * baseline playoff-slot chance early, increasingly influenced by
+ * current rank, record and Points For as the regular season advances.
+ */
+function calculatePlayoffPct({
+  rank,
+  teamCount,
+  playoffTeams,
+  winPct,
+  pointsFor,
+  medianPointsFor,
+  gamesPlayed,
+  totalScheduledGames,
+}: {
+  rank: number;
+  teamCount: number;
+  playoffTeams: number;
+  winPct: number;
+  pointsFor: number;
+  medianPointsFor: number;
+  gamesPlayed: number;
+  totalScheduledGames: number;
+}) {
+  if (
+    teamCount <= 0 ||
+    playoffTeams <= 0
+  ) {
+    return 0;
+  }
+
+  const baseline =
+    (
+      playoffTeams /
+      teamCount
+    ) * 100;
+
+  if (
+    gamesPlayed <= 0
+  ) {
+    return clamp(
+      baseline,
+      1,
+      99
+    );
+  }
+
+  const rankDistance =
+    playoffTeams -
+    rank;
+
+  const rankScore =
+    baseline +
+    rankDistance * 8;
+
+  const recordScore =
+    (
+      winPct -
+      0.5
+    ) * 80;
+
+  const pointsDifference =
+    pointsFor -
+    medianPointsFor;
+
+  const pointsScore =
+    clamp(
+      pointsDifference / 3,
+      -15,
+      15
+    );
+
+  const performanceEstimate =
+    clamp(
+      rankScore +
+      recordScore +
+      pointsScore,
+      1,
+      99
+    );
+
+  const seasonProgress =
+    totalScheduledGames > 0
+      ? clamp(
+          gamesPlayed /
+          totalScheduledGames,
+          0,
+          1
+        )
+      : 0;
+
+  return clamp(
+    baseline *
+      (
+        1 -
+        seasonProgress
+      ) +
+      performanceEstimate *
+        seasonProgress,
+    1,
+    99
+  );
+}
+
+
+function PictureGroup({
+  title,
+  tone,
+  teams,
+  empty,
+}: {
+  title: string;
+  tone:
+    | "green"
+    | "orange"
+    | "red";
+  teams: string[];
+  empty: string;
+}) {
+  const toneStyle =
+    tone === "green"
+      ? styles.pictureGreen
+      : tone === "orange"
+        ? styles.pictureOrange
+        : styles.pictureRed;
+
+  return (
+    <div
+      style={
+        styles.pictureGroup
+      }
+    >
+      <strong
+        style={{
+          ...styles.pictureTitle,
+          ...toneStyle,
+        }}
+      >
+        {title}
+      </strong>
+
+      {teams.length > 0 ? (
+        <div
+          style={
+            styles.pictureTeams
+          }
+        >
+          {teams.map(
+            (
+              team
+            ) => (
+              <span
+                key={
+                  team
+                }
+                style={
+                  styles.pictureTeam
+                }
+              >
+                {team}
+              </span>
+            )
+          )}
+        </div>
+      ) : (
+        <span
+          style={
+            styles.pictureEmpty
+          }
+        >
+          {empty}
+        </span>
+      )}
+    </div>
   );
 }
 
 
 export default async function SeasonLongStandings({
   leagueId,
-}: SeasonLongStandingsProps) {
+}: Props) {
   const access =
     await requireLeagueMember(
       leagueId
     );
-
 
   if (
     access.league.leagueType !==
@@ -161,45 +405,70 @@ export default async function SeasonLongStandings({
     );
   }
 
-
   const supabase =
-    await createSupabaseServerClient();
-
+    createSupabaseAdminClient();
 
   const season =
     access.league.season;
-
 
   const isSalary =
     access.league.playerSelectionMode ===
     "salary";
 
+  const {
+    data:
+      settingsData,
+    error:
+      settingsError,
+  } =
+    await supabase
+      .from(
+        "season_long_settings"
+      )
+      .select(`
+        competition_format,
+        regular_season_weeks,
+        playoffs_enabled,
+        playoff_team_count
+      `)
+      .eq(
+        "league_id",
+        leagueId
+      )
+      .maybeSingle();
 
-  /*
-   * ============================================================
-   * REBUILD STANDINGS
-   * ============================================================
-   *
-   * The backend standings function only counts finalized weekly
-   * scores, so live/current incomplete weeks do not get added to
-   * season totals.
-   */
+  if (
+    settingsError
+  ) {
+    throw new Error(
+      `Could not load Season-Long settings: ${settingsError.message}`
+    );
+  }
+
+  const settings =
+    settingsData as
+      SettingsRow |
+      null;
+
+  const isH2H =
+    settings?.competition_format ===
+    "head_to_head";
 
   const {
     error:
       rebuildError,
   } =
     await supabase.rpc(
-      "rebuild_season_long_standings",
+      isH2H
+        ? "rebuild_season_long_h2h_standings"
+        : "rebuild_season_long_standings",
       {
         p_league_id:
           leagueId,
-
         p_season:
           season,
       }
     );
-
 
   if (
     rebuildError
@@ -209,41 +478,12 @@ export default async function SeasonLongStandings({
     );
   }
 
-
-  /*
-   * ============================================================
-   * LOAD DATA
-   * ============================================================
-   */
-
   const [
-    standingsResult,
     teamsResult,
-    weeklyScoresResult,
+    standingsResult,
+    matchupsResult,
   ] =
     await Promise.all([
-      supabase
-        .from(
-          "season_long_standings"
-        )
-        .select(`
-          fantasy_team_id,
-          total_points,
-          weeks_scored,
-          highest_week_score,
-          lowest_week_score,
-          average_week_score,
-          current_rank
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "season",
-          season
-        ),
-
       supabase
         .from(
           "fantasy_teams"
@@ -260,30 +500,86 @@ export default async function SeasonLongStandings({
           true
         ),
 
-      supabase
-        .from(
-          "season_long_weekly_scores"
-        )
-        .select(`
-          fantasy_team_id,
-          week,
-          fantasy_points,
-          is_final
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "season",
-          season
-        )
-        .eq(
-          "is_final",
-          true
-        ),
+      isH2H
+        ? supabase
+            .from(
+              "season_long_h2h_standings"
+            )
+            .select(`
+              fantasy_team_id,
+              wins,
+              losses,
+              ties,
+              points_for,
+              points_against,
+              games_played,
+              win_percentage,
+              current_rank
+            `)
+            .eq(
+              "league_id",
+              leagueId
+            )
+            .eq(
+              "season",
+              season
+            )
+        : supabase
+            .from(
+              "season_long_standings"
+            )
+            .select(`
+              fantasy_team_id,
+              total_points,
+              weeks_scored,
+              current_rank
+            `)
+            .eq(
+              "league_id",
+              leagueId
+            )
+            .eq(
+              "season",
+              season
+            ),
+
+      isH2H
+        ? supabase
+            .from(
+              "season_long_matchups"
+            )
+            .select(`
+              home_fantasy_team_id,
+              away_fantasy_team_id,
+              is_final,
+              matchup_type
+            `)
+            .eq(
+              "league_id",
+              leagueId
+            )
+            .eq(
+              "season",
+              season
+            )
+            .eq(
+              "matchup_type",
+              "regular_season"
+            )
+        : Promise.resolve({
+            data:
+              [] as MatchupRow[],
+            error: null,
+          }),
     ]);
 
+  if (
+    teamsResult.error
+  ) {
+    throw new Error(
+      `Could not load Season-Long teams: ${teamsResult.error.message}`
+    );
+  }
 
   if (
     standingsResult.error
@@ -293,253 +589,266 @@ export default async function SeasonLongStandings({
     );
   }
 
-
   if (
-    teamsResult.error
+    matchupsResult.error
   ) {
     throw new Error(
-      `Could not load Season-Long fantasy teams: ${teamsResult.error.message}`
+      `Could not load Season-Long H2H schedule: ${matchupsResult.error.message}`
     );
   }
-
-
-  if (
-    weeklyScoresResult.error
-  ) {
-    throw new Error(
-      `Could not load Season-Long weekly scores: ${weeklyScoresResult.error.message}`
-    );
-  }
-
-
-  const standings =
-    (
-      standingsResult.data ??
-      []
-    ) as StandingRow[];
-
 
   const teams =
     (
       teamsResult.data ??
       []
-    ) as FantasyTeamRow[];
+    ) as TeamRow[];
 
-
-  const weeklyScores =
-    (
-      weeklyScoresResult.data ??
-      []
-    ) as WeeklyScoreRow[];
-
-
-  /*
-   * ============================================================
-   * LOOKUPS
-   * ============================================================
-   */
-
-  const standingByTeam =
-    new Map<
-      number,
-      StandingRow
-    >();
-
-
-  for (
-    const standing
-    of standings
-  ) {
-    standingByTeam.set(
-      standing.fantasy_team_id,
-      standing
+  const teamMap =
+    new Map(
+      teams.map(
+        (
+          team
+        ) => [
+          Number(
+            team.id
+          ),
+          team.team_name,
+        ]
+      )
     );
-  }
 
-
-  const latestScoreByTeam =
-    new Map<
-      number,
-      WeeklyScoreRow
-    >();
-
-
-  for (
-    const score
-    of weeklyScores
-  ) {
-    const previous =
-      latestScoreByTeam.get(
-        score.fantasy_team_id
-      );
-
-
-    if (
-      !previous ||
-      score.week >
-      previous.week
-    ) {
-      latestScoreByTeam.set(
-        score.fantasy_team_id,
-        score
-      );
-    }
-  }
-
-
-  const myFantasyTeamId =
+  const myTeamId =
     access.fantasyTeam
       ?.id ??
     null;
 
+  const rawH2HRows =
+    isH2H
+      ? (
+          standingsResult.data ??
+          []
+        ) as H2HStandingRow[]
+      : [];
 
-  /*
-   * ============================================================
-   * BUILD DISPLAY ROWS
-   * ============================================================
-   */
+  const rawTotalRows =
+    !isH2H
+      ? (
+          standingsResult.data ??
+          []
+        ) as TotalStandingRow[]
+      : [];
 
-  const rows:
-    StandingView[] =
-      teams.map(
+  const h2hByTeam =
+    new Map(
+      rawH2HRows.map(
         (
-          team
-        ) => {
-          const standing =
-            standingByTeam.get(
-              team.id
-            );
+          row
+        ) => [
+          Number(
+            row.fantasy_team_id
+          ),
+          row,
+        ]
+      )
+    );
 
+  const scheduleCounts =
+    new Map<
+      number,
+      number
+    >();
 
-          const latestScore =
-            latestScoreByTeam.get(
-              team.id
-            );
-
-
-          return {
-            rank:
-              standing
-                ?.current_rank ??
-              0,
-
-            fantasyTeamId:
-              team.id,
-
-            teamName:
-              team.team_name,
-
-            totalPoints:
-              numberValue(
-                standing
-                  ?.total_points
-              ),
-
-            weeksScored:
-              Number(
-                standing
-                  ?.weeks_scored ??
-                0
-              ),
-
-            averageWeekScore:
-              numberValue(
-                standing
-                  ?.average_week_score
-              ),
-
-            highestWeekScore:
-              numberValue(
-                standing
-                  ?.highest_week_score
-              ),
-
-            lowestWeekScore:
-              numberValue(
-                standing
-                  ?.lowest_week_score
-              ),
-
-            latestFinalWeek:
-              latestScore
-                ?.week ??
-              null,
-
-            latestFinalWeekPoints:
-              latestScore
-                ? numberValue(
-                    latestScore
-                      .fantasy_points
-                  )
-                : null,
-
-            isMyTeam:
-              myFantasyTeamId !==
-                null &&
-              team.id ===
-                myFantasyTeamId,
-          };
-        }
+  for (
+    const matchup
+    of (
+      matchupsResult.data ??
+      []
+    ) as MatchupRow[]
+  ) {
+    if (
+      matchup.home_fantasy_team_id
+    ) {
+      scheduleCounts.set(
+        Number(
+          matchup.home_fantasy_team_id
+        ),
+        (
+          scheduleCounts.get(
+            Number(
+              matchup.home_fantasy_team_id
+            )
+          ) ??
+          0
+        ) +
+          1
       );
+    }
 
+    if (
+      matchup.away_fantasy_team_id
+    ) {
+      scheduleCounts.set(
+        Number(
+          matchup.away_fantasy_team_id
+        ),
+        (
+          scheduleCounts.get(
+            Number(
+              matchup.away_fantasy_team_id
+            )
+          ) ??
+          0
+        ) +
+          1
+      );
+    }
+  }
 
-  /*
-   * ============================================================
-   * SORT
-   * ============================================================
-   */
+  const h2hBase =
+    isH2H
+      ? teams.map(
+          (
+            team
+          ) => {
+            const raw =
+              h2hByTeam.get(
+                Number(
+                  team.id
+                )
+              );
 
-  rows.sort(
+            const wins =
+              Number(
+                raw?.wins ??
+                0
+              );
+
+            const losses =
+              Number(
+                raw?.losses ??
+                0
+              );
+
+            const ties =
+              Number(
+                raw?.ties ??
+                0
+              );
+
+            const gamesPlayed =
+              Number(
+                raw?.games_played ??
+                0
+              );
+
+            const pointsFor =
+              numberValue(
+                raw?.points_for
+              );
+
+            const pointsAgainst =
+              numberValue(
+                raw?.points_against
+              );
+
+            const configuredWeeks =
+              Number(
+                settings
+                  ?.regular_season_weeks ??
+                0
+              );
+
+            const scheduledGames =
+              scheduleCounts.get(
+                Number(
+                  team.id
+                )
+              ) ??
+              0;
+
+            const totalScheduledGames =
+              Math.max(
+                scheduledGames,
+                configuredWeeks
+              );
+
+            return {
+              fantasyTeamId:
+                Number(
+                  team.id
+                ),
+              teamName:
+                team.team_name,
+              wins,
+              losses,
+              ties,
+              gamesPlayed,
+              totalScheduledGames,
+              remainingGames:
+                Math.max(
+                  0,
+                  totalScheduledGames -
+                  gamesPlayed
+                ),
+              winPct:
+                calculateWinPct(
+                  wins,
+                  ties,
+                  gamesPlayed
+                ),
+              pointsFor,
+              pointsAgainst,
+              pointDiff:
+                pointsFor -
+                pointsAgainst,
+              isMyTeam:
+                myTeamId !==
+                  null &&
+                Number(
+                  team.id
+                ) ===
+                  Number(
+                    myTeamId
+                  ),
+            };
+          }
+        )
+      : [];
+
+  h2hBase.sort(
     (
       a,
       b
     ) => {
-      const aRanked =
-        a.rank > 0;
-
-      const bRanked =
-        b.rank > 0;
-
-
       if (
-        aRanked &&
-        bRanked &&
-        a.rank !==
-          b.rank
+        b.winPct !==
+        a.winPct
       ) {
         return (
-          a.rank -
-          b.rank
+          b.winPct -
+          a.winPct
         );
       }
 
-
       if (
-        aRanked &&
-        !bRanked
-      ) {
-        return -1;
-      }
-
-
-      if (
-        !aRanked &&
-        bRanked
-      ) {
-        return 1;
-      }
-
-
-      if (
-        b.totalPoints !==
-        a.totalPoints
+        b.pointsFor !==
+        a.pointsFor
       ) {
         return (
-          b.totalPoints -
-          a.totalPoints
+          b.pointsFor -
+          a.pointsFor
         );
       }
 
+      if (
+        a.pointsAgainst !==
+        b.pointsAgainst
+      ) {
+        return (
+          a.pointsAgainst -
+          b.pointsAgainst
+        );
+      }
 
       return a.teamName.localeCompare(
         b.teamName
@@ -547,203 +856,238 @@ export default async function SeasonLongStandings({
     }
   );
 
+  const teamCount =
+    h2hBase.length;
 
-  /*
-   * No completed weeks yet:
-   * give every team a normal provisional display order.
-   */
-
-  const hasPersistedRank =
-    rows.some(
-      (
-        row
-      ) =>
-        row.rank >
-        0
+  const playoffsEnabled =
+    isH2H &&
+    Boolean(
+      settings?.playoffs_enabled
     );
 
+  const playoffTeams =
+    playoffsEnabled
+      ? Math.min(
+          Math.max(
+            2,
+            Number(
+              settings
+                ?.playoff_team_count ??
+              6
+            )
+          ),
+          Math.max(
+            0,
+            teamCount
+          )
+        )
+      : 0;
 
-  if (
-    !hasPersistedRank
-  ) {
-    rows.forEach(
-      (
-        row,
-        index
-      ) => {
-        row.rank =
-          index +
-          1;
+  const medianPointsFor =
+    getMedian(
+      h2hBase.map(
+        (
+          row
+        ) =>
+          row.pointsFor
+      )
+    );
+
+  const ranked:
+    H2HView[] =
+      h2hBase.map(
+        (
+          row,
+          index
+        ) => {
+          const rank =
+            index +
+            1;
+
+          return {
+            ...row,
+            rank,
+            playoffPct:
+              playoffsEnabled
+                ? calculatePlayoffPct({
+                    rank,
+                    teamCount,
+                    playoffTeams,
+                    winPct:
+                      row.winPct,
+                    pointsFor:
+                      row.pointsFor,
+                    medianPointsFor,
+                    gamesPlayed:
+                      row.gamesPlayed,
+                    totalScheduledGames:
+                      row.totalScheduledGames,
+                  })
+                : 0,
+          };
+        }
+      );
+
+  const clinched =
+    playoffsEnabled
+      ? ranked.filter(
+          (
+            row
+          ) =>
+            row.playoffPct >=
+            99
+        )
+      : [];
+
+  const inTheHunt =
+    playoffsEnabled
+      ? ranked.filter(
+          (
+            row
+          ) =>
+            row.rank >
+              playoffTeams &&
+            row.playoffPct >=
+              25
+        )
+      : [];
+
+  const outside =
+    playoffsEnabled
+      ? ranked.filter(
+          (
+            row
+          ) =>
+            row.rank >
+              playoffTeams &&
+            row.playoffPct <
+              25
+        )
+      : [];
+
+  const currentField =
+    playoffsEnabled
+      ? ranked.filter(
+          (
+            row
+          ) =>
+            row.rank <=
+            playoffTeams
+        )
+      : [];
+
+  const totalByTeam =
+    new Map(
+      rawTotalRows.map(
+        (
+          row
+        ) => [
+          Number(
+            row.fantasy_team_id
+          ),
+          row,
+        ]
+      )
+    );
+
+  const totalRows:
+    TotalStandingRow[] =
+      !isH2H
+        ? teams.map(
+            (
+              team
+            ) =>
+              totalByTeam.get(
+                Number(
+                  team.id
+                )
+              ) ?? {
+                fantasy_team_id:
+                  Number(
+                    team.id
+                  ),
+                total_points: 0,
+                weeks_scored: 0,
+                current_rank:
+                  null,
+              }
+          )
+        : [];
+
+  totalRows.sort(
+    (
+      a,
+      b
+    ) => {
+      const pointDiff =
+        numberValue(
+          b.total_points
+        ) -
+        numberValue(
+          a.total_points
+        );
+
+      if (
+        pointDiff !== 0
+      ) {
+        return pointDiff;
       }
-    );
-  }
 
-
-  const leader =
-    rows[
-      0
-    ] ??
-    null;
-
-
-  const secondPlace =
-    rows[
-      1
-    ] ??
-    null;
-
-
-  const thirdPlace =
-    rows[
-      2
-    ] ??
-    null;
-
-
-  const completedWeeks =
-    rows.reduce(
-      (
-        highest,
-        row
-      ) =>
-        Math.max(
-          highest,
-          row.weeksScored
-        ),
-      0
-    );
-
+      return (
+        Number(
+          a.fantasy_team_id
+        ) -
+        Number(
+          b.fantasy_team_id
+        )
+      );
+    }
+  );
 
   return (
     <main
-      className="g365-season-long-mobile"
+      className="g365-sl-standings"
       style={
         styles.page
       }
     >
-
       <style>{`
-        .g365-season-long-mobile,
-        .g365-season-long-mobile * {
+        .g365-sl-standings,
+        .g365-sl-standings * {
           box-sizing: border-box;
         }
 
-        @media (max-width: 760px) {
-          .g365-season-long-mobile {
-            width: 100% !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
-            padding-left: 12px !important;
-            padding-right: 12px !important;
-            overflow-x: hidden !important;
-          }
-
-          .g365-season-long-mobile section,
-          .g365-season-long-mobile article,
-          .g365-season-long-mobile header,
-          .g365-season-long-mobile form,
-          .g365-season-long-mobile div {
-            min-width: 0;
-            max-width: 100%;
-          }
-
-          .g365-season-long-mobile h1 {
-            font-size: clamp(27px, 8vw, 36px) !important;
-            line-height: 1.08 !important;
-            overflow-wrap: anywhere;
-          }
-
-          .g365-season-long-mobile h2,
-          .g365-season-long-mobile h3,
-          .g365-season-long-mobile p,
-          .g365-season-long-mobile span,
-          .g365-season-long-mobile strong {
-            overflow-wrap: anywhere;
-          }
-
-          .g365-season-long-mobile input,
-          .g365-season-long-mobile select,
-          .g365-season-long-mobile textarea {
-            width: 100% !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
-            font-size: 16px !important;
-          }
-
-          .g365-season-long-mobile button,
-          .g365-season-long-mobile a {
-            max-width: 100%;
-          }
-
-          .g365-season-long-mobile :not(button)[style*="grid-template-columns"] {
-            grid-template-columns: minmax(0, 1fr) !important;
-          }
-
-          .g365-season-long-mobile [style*="white-space: nowrap"],
-          .g365-season-long-mobile [style*="white-space:nowrap"] {
-            white-space: normal !important;
-          }
-
-          .g365-season-long-mobile [style*="overflow-x: auto"],
-          .g365-season-long-mobile [style*="overflowX: auto"] {
-            max-width: 100%;
-            -webkit-overflow-scrolling: touch;
-          }
-
-          .g365-standings-table-card {
-            overflow: hidden !important;
-          }
-
-          .g365-standings-table-header,
-          .g365-standings-table-row {
-            min-width: 0 !important;
-            width: 100% !important;
-            grid-template-columns: minmax(0,1fr) 92px 92px !important;
-            gap: 8px !important;
-            padding: 7px 9px !important;
-          }
-
-          .g365-standings-table-row {
-            min-height: 46px !important;
-          }
-
-          .g365-standings-hide-mobile {
-            display: none !important;
-          }
-
-          .g365-standings-team-cell {
-            gap: 7px !important;
-          }
-
-          .g365-standings-team-circle {
-            width: 27px !important;
-            height: 27px !important;
-            font-size: 12px !important;
-          }
-
-          .g365-standings-team-name {
-            font-size: 12px !important;
-            line-height: 1.15 !important;
-          }
-
-          .g365-standings-team-meta {
-            display: none !important;
-          }
-
-          .g365-standings-mobile-stat {
-            font-size: 12px !important;
-            text-align: right !important;
+        @media (max-width: 900px) {
+          .g365-sl-standings .h2h-layout {
+            grid-template-columns: 1fr !important;
           }
         }
 
-        @media (max-width: 430px) {
-          .g365-season-long-mobile {
-            padding-left: 10px !important;
-            padding-right: 10px !important;
+        @media (max-width: 760px) {
+          .g365-sl-standings {
+            padding: 12px 10px !important;
+            overflow-x: hidden;
           }
 
-          .g365-season-long-mobile button {
-            min-height: 42px;
+          .g365-sl-standings .desktop-only {
+            display: none !important;
+          }
+
+          .g365-sl-standings .h2h-head,
+          .g365-sl-standings .h2h-row {
+            grid-template-columns:
+              38px minmax(0,1fr) 72px 78px !important;
+          }
+
+          .g365-sl-standings .total-head,
+          .g365-sl-standings .total-row {
+            grid-template-columns:
+              38px minmax(0,1fr) 84px 58px !important;
+          }
+
+          .g365-sl-standings .summary-grid {
+            grid-template-columns:
+              repeat(2,minmax(0,1fr)) !important;
           }
         }
       `}</style>
@@ -755,535 +1099,536 @@ export default async function SeasonLongStandings({
       >
         <header
           style={
-            styles.pageHeader
+            styles.hero
           }
         >
           <div>
-            <p
+            <div
               style={
                 styles.eyebrow
               }
             >
-              {isSalary
-                ? "SEASON-LONG • SALARY"
-                : "SEASON-LONG • NO SALARY"}
-            </p>
+              SEASON-LONG • {isSalary
+                ? "SALARY"
+                : "NO SALARY"}
+            </div>
 
-            <h2
+            <h1
               style={
                 styles.title
               }
             >
-              Standings
-            </h2>
+              {isH2H
+                ? "Head-to-Head Standings"
+                : "Standings"}
+            </h1>
 
             <p
               style={
                 styles.subtitle
               }
             >
-              {
-                access.league.name
-              }
+              {access.league.name}
               {" • "}
-              {
-                season
-              }
-              {" Season"}
+              {season}
+              {" • "}
+              {isH2H
+                ? "Weekly H2H results"
+                : "Full-season cumulative points"}
             </p>
           </div>
 
-
-          <div
-            style={
-              styles.headerCards
-            }
-          >
-            <div
+          {isH2H ? (
+            <Link
+              href={`/league/${leagueId}/season-long/matchups`}
               style={
-                styles.headerSummary
+                styles.button
               }
             >
-              <span
-                style={
-                  styles.headerSummaryLabel
-                }
-              >
-                LEAGUE LEADER
-              </span>
-
-              <strong
-                style={
-                  styles.headerSummaryValue
-                }
-              >
-                {leader
-                  ? leader.teamName
-                  : "—"}
-              </strong>
-
-              <span
-                style={
-                  styles.headerSummarySub
-                }
-              >
-                {leader
-                  ? `${formatPoints(
-                      leader.totalPoints
-                    )} pts`
-                  : "No scores yet"}
-              </span>
-            </div>
-
-
-            <div
-              style={
-                styles.headerSummary
-              }
-            >
-              <span
-                style={
-                  styles.headerSummaryLabel
-                }
-              >
-                COMPLETED WEEKS
-              </span>
-
-              <strong
-                style={
-                  styles.headerSummaryGreen
-                }
-              >
-                {
-                  completedWeeks
-                }
-              </strong>
-
-              <span
-                style={
-                  styles.headerSummarySub
-                }
-              >
-                Finalized scoring
-              </span>
-            </div>
-          </div>
+              VIEW MATCHUPS
+            </Link>
+          ) : null}
         </header>
 
-
-        <section
-          style={
-            styles.contentGrid
-          }
-        >
-          <div
-            className="g365-standings-table-card"
-            style={
-              styles.tableCard
-            }
-          >
+        {isH2H ? (
+          <>
             <div
-              className="g365-standings-table-header"
+              className="summary-grid"
               style={
-                styles.tableHeader
+                styles.summaryGrid
               }
             >
-              <span className="g365-standings-hide-mobile">
-                RK
-              </span>
-
-              <span>
-                TEAM
-              </span>
-
-              <span
-                style={
-                  styles.numberHeader
+              <Summary
+                label="LEADER"
+                value={
+                  ranked[0]
+                    ?.teamName ??
+                  "—"
                 }
-              >
-                TOTAL PTS
-              </span>
+              />
 
-              <span className="g365-standings-hide-mobile" style={styles.numberHeader}>
-                WEEKS
-              </span>
-
-              <span className="g365-standings-hide-mobile" style={styles.numberHeader}>
-                AVG
-              </span>
-
-              <span className="g365-standings-hide-mobile" style={styles.numberHeader}>
-                HIGH
-              </span>
-
-              <span className="g365-standings-hide-mobile" style={styles.numberHeader}>
-                LOW
-              </span>
-
-              <span
-                style={
-                  styles.numberHeader
+              <Summary
+                label="BEST RECORD"
+                value={
+                  ranked[0]
+                    ? `${ranked[0].wins}-${ranked[0].losses}-${ranked[0].ties}`
+                    : "—"
                 }
-              >
-                CURRENT WK
-              </span>
+              />
+
+              <Summary
+                label="PLAYOFF TEAMS"
+                value={
+                  playoffsEnabled
+                    ? String(
+                        playoffTeams
+                      )
+                    : "OFF"
+                }
+              />
+
+              <Summary
+                label="REGULAR SEASON"
+                value={`${Number(settings?.regular_season_weeks ?? 0)} WKS`}
+              />
             </div>
 
-
-            {rows.length ===
-            0 ? (
+            <section
+              className="h2h-layout"
+              style={
+                styles.h2hLayout
+              }
+            >
               <div
                 style={
-                  styles.emptyState
+                  styles.card
                 }
               >
-                Standings are not
-                available yet.
-              </div>
-            ) : (
-              rows.map(
-                (
-                  row
-                ) => (
-                  <div
-                    key={
-                      row.fantasyTeamId
-                    }
-                    className="g365-standings-table-row"
-                    style={{
-                      ...styles.tableRow,
-
-                      ...(row.isMyTeam
-                        ? styles.myTeamRow
-                        : {}),
-
-                      ...(row.rank ===
-                      1
-                        ? styles.firstPlaceRow
-                        : {}),
-                    }}
+                <div
+                  className="h2h-head"
+                  style={
+                    styles.h2hGrid
+                  }
+                >
+                  <span>RK</span>
+                  <span>TEAM</span>
+                  <span>RECORD</span>
+                  <span>PCT</span>
+                  <span
+                    className="desktop-only"
                   >
+                    PF
+                  </span>
+                  <span
+                    className="desktop-only"
+                  >
+                    PA
+                  </span>
+                  <span
+                    className="desktop-only"
+                  >
+                    DIFF
+                  </span>
+                  <span
+                    className="desktop-only"
+                  >
+                    PLAYOFF %
+                  </span>
+                </div>
+
+                {ranked.map(
+                  (
+                    row,
+                    index
+                  ) => (
                     <div
-                      className="g365-standings-hide-mobile"
-                      style={
-                        styles.rankCell
-                      }
-                    >
-                      <strong
-                        style={{
-                          ...styles.rankNumber,
-
-                          ...(row.rank ===
-                          1
-                            ? styles.firstRank
-                            : {}),
-                        }}
-                      >
-                        {
-                          row.rank
-                        }
-                      </strong>
-                    </div>
-
-
-                    <div
-                      className="g365-standings-team-cell"
-                      style={
-                        styles.teamCell
+                      key={
+                        row.fantasyTeamId
                       }
                     >
                       <div
-                        className="g365-standings-team-circle"
+                        className="h2h-row"
                         style={{
-                          ...styles.teamCircle,
-
+                          ...styles.h2hGrid,
+                          ...styles.row,
                           ...(row.isMyTeam
-                            ? styles.myTeamCircle
+                            ? styles.myRow
                             : {}),
                         }}
-                      >
-                        {row.teamName
-                          .slice(
-                            0,
-                            1
-                          )
-                          .toUpperCase()}
-                      </div>
-
-
-                      <div
-                        style={
-                          styles.teamText
-                        }
                       >
                         <strong
-                          className="g365-standings-team-name"
                           style={
-                            styles.teamName
+                            styles.rank
                           }
                         >
-                          {
-                            row.teamName
+                          {row.rank}
+                        </strong>
+
+                        <div
+                          style={
+                            styles.team
                           }
+                        >
+                          <strong>
+                            {row.teamName}
+                          </strong>
+
+                          {row.isMyTeam ? (
+                            <span
+                              style={
+                                styles.mine
+                              }
+                            >
+                              MY TEAM
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <strong>
+                          {row.wins}
+                          -
+                          {row.losses}
+                          -
+                          {row.ties}
+                        </strong>
+
+                        <strong>
+                          {formatPct(
+                            row.winPct
+                          )}
                         </strong>
 
                         <span
-                          className="g365-standings-team-meta"
-                          style={
-                            styles.teamMeta
-                          }
+                          className="desktop-only"
                         >
-                          {row.isMyTeam
-                            ? "MY TEAM"
-                            : `${row.weeksScored} WEEK${row.weeksScored === 1 ? "" : "S"} SCORED`}
-                        </span>
-                      </div>
-                    </div>
-
-
-                    <StatCell
-                      value={
-                        formatPoints(
-                          row.totalPoints
-                        )
-                      }
-                      strong
-                      mobileClassName="g365-standings-mobile-stat"
-                    />
-
-
-                    <StatCell
-                      value={
-                        String(
-                          row.weeksScored
-                        )
-                      }
-                    mobileClassName="g365-standings-hide-mobile"
-                    />
-
-
-                    <StatCell
-                      value={
-                        row.weeksScored >
-                        0
-                          ? formatPoints(
-                              row.averageWeekScore
-                            )
-                          : "—"
-                      }
-                    mobileClassName="g365-standings-hide-mobile"
-                    />
-
-
-                    <StatCell
-                      value={
-                        row.weeksScored >
-                        0
-                          ? formatPoints(
-                              row.highestWeekScore
-                            )
-                          : "—"
-                      }
-                      positive={
-                        row.weeksScored >
-                        0
-                      }
-                    mobileClassName="g365-standings-hide-mobile"
-                    />
-
-
-                    <StatCell
-                      value={
-                        row.weeksScored >
-                        0
-                          ? formatPoints(
-                              row.lowestWeekScore
-                            )
-                          : "—"
-                      }
-                    mobileClassName="g365-standings-hide-mobile"
-                    />
-
-
-                    <div
-                      className="g365-standings-mobile-stat"
-                      style={
-                        styles.lastWeekCell
-                      }
-                    >
-                      {row.latestFinalWeek !==
-                        null &&
-                      row.latestFinalWeekPoints !==
-                        null ? (
-                        <span
-                          style={
-                            styles.lastWeekValue
-                          }
-                        >
-                          <span className="g365-standings-hide-mobile">
-                            W{row.latestFinalWeek}{" • "}
-                          </span>
-                          {formatPoints(
-                            row.latestFinalWeekPoints
+                          {row.pointsFor.toFixed(
+                            2
                           )}
                         </span>
-                      ) : (
-                        "—"
-                      )}
+
+                        <span
+                          className="desktop-only"
+                        >
+                          {row.pointsAgainst.toFixed(
+                            2
+                          )}
+                        </span>
+
+                        <span
+                          className="desktop-only"
+                          style={
+                            row.pointDiff >=
+                            0
+                              ? styles.positive
+                              : styles.negative
+                          }
+                        >
+                          {row.pointDiff >
+                          0
+                            ? "+"
+                            : ""}
+                          {row.pointDiff.toFixed(
+                            2
+                          )}
+                        </span>
+
+                        <strong
+                          className="desktop-only"
+                          style={
+                            styles.playoffPct
+                          }
+                        >
+                          {playoffsEnabled
+                            ? `${row.playoffPct.toFixed(1)}%`
+                            : "—"}
+                        </strong>
+                      </div>
+
+                      {playoffsEnabled &&
+                      index ===
+                        playoffTeams -
+                          1 &&
+                      ranked.length >
+                        playoffTeams ? (
+                        <div
+                          style={
+                            styles.playoffLine
+                          }
+                        >
+                          <span>
+                            PLAYOFF LINE
+                          </span>
+                          <span>
+                            TOP {playoffTeams} CURRENTLY IN
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
-                  </div>
-                )
-              )
-            )}
-          </div>
+                  )
+                )}
+              </div>
 
+              {playoffsEnabled ? (
+                <aside
+                  style={
+                    styles.sidebar
+                  }
+                >
+                  <section
+                    style={
+                      styles.sideCard
+                    }
+                  >
+                    <h3
+                      style={
+                        styles.sideTitle
+                      }
+                    >
+                      PLAYOFF PICTURE
+                    </h3>
 
-          <aside
+                    <PictureGroup
+                      title="Current Playoff Field"
+                      tone="green"
+                      teams={
+                        currentField.map(
+                          (
+                            row
+                          ) =>
+                            `#${row.rank} ${row.teamName}`
+                        )
+                      }
+                      empty="None"
+                    />
+
+                    <PictureGroup
+                      title="Clinched Playoff Berth"
+                      tone="green"
+                      teams={
+                        clinched.map(
+                          (
+                            row
+                          ) =>
+                            row.teamName
+                        )
+                      }
+                      empty="None"
+                    />
+
+                    <PictureGroup
+                      title="In The Hunt"
+                      tone="orange"
+                      teams={
+                        inTheHunt.map(
+                          (
+                            row
+                          ) =>
+                            `${row.teamName} • ${row.playoffPct.toFixed(1)}%`
+                        )
+                      }
+                      empty="None"
+                    />
+
+                    <PictureGroup
+                      title="On The Outside"
+                      tone="red"
+                      teams={
+                        outside.map(
+                          (
+                            row
+                          ) =>
+                            `${row.teamName} • ${row.playoffPct.toFixed(1)}%`
+                        )
+                      }
+                      empty={
+                        teamCount >
+                        playoffTeams
+                          ? "None"
+                          : "No teams below the line"
+                      }
+                    />
+                  </section>
+
+                  <section
+                    style={
+                      styles.sideCard
+                    }
+                  >
+                    <h3
+                      style={
+                        styles.sideTitle
+                      }
+                    >
+                      HOW IT WORKS
+                    </h3>
+
+                    <p
+                      style={
+                        styles.sideText
+                      }
+                    >
+                      Top{" "}
+                      <strong>
+                        {playoffTeams}
+                      </strong>{" "}
+                      teams currently qualify.
+                    </p>
+
+                    <ol
+                      style={
+                        styles.orderList
+                      }
+                    >
+                      <li>
+                        Winning Percentage
+                      </li>
+                      <li>
+                        Points For
+                      </li>
+                      <li>
+                        Lower Points Against
+                      </li>
+                    </ol>
+
+                    <p
+                      style={
+                        styles.sideFootnote
+                      }
+                    >
+                      Playoff % uses the same estimate model as Traditional: current rank, record, Points For, season progress and remaining regular-season schedule.
+                    </p>
+                  </section>
+                </aside>
+              ) : (
+                <aside
+                  style={
+                    styles.sidebar
+                  }
+                >
+                  <section
+                    style={
+                      styles.sideCard
+                    }
+                  >
+                    <h3
+                      style={
+                        styles.sideTitle
+                      }
+                    >
+                      PLAYOFFS DISABLED
+                    </h3>
+
+                    <p
+                      style={
+                        styles.sideText
+                      }
+                    >
+                      This Head-to-Head league is configured without a fantasy playoff bracket.
+                    </p>
+                  </section>
+                </aside>
+              )}
+            </section>
+          </>
+        ) : (
+          <section
             style={
-              styles.sidebar
+              styles.card
             }
           >
-            <section
+            <div
+              className="total-head"
               style={
-                styles.sideCard
+                styles.totalGrid
               }
             >
-              <h3
-                style={
-                  styles.sideTitle
-                }
-              >
-                SEASON LEADERS
-              </h3>
+              <span>RK</span>
+              <span>TEAM</span>
+              <span>TOTAL PTS</span>
+              <span>WEEKS</span>
+            </div>
 
+            {totalRows.map(
+              (
+                row,
+                index
+              ) => {
+                const isMine =
+                  myTeamId ===
+                  row.fantasy_team_id;
 
-              <LeaderRow
-                place="1"
-                team={
-                  leader
-                    ?.teamName ??
-                  "—"
-                }
-                points={
-                  leader
-                    ?.totalPoints ??
-                  null
-                }
-                tone="orange"
-              />
+                return (
+                  <div
+                    key={
+                      row.fantasy_team_id
+                    }
+                    className="total-row"
+                    style={{
+                      ...styles.totalGrid,
+                      ...styles.row,
+                      ...(isMine
+                        ? styles.myRow
+                        : {}),
+                    }}
+                  >
+                    <strong
+                      style={
+                        styles.rank
+                      }
+                    >
+                      {index + 1}
+                    </strong>
 
+                    <div
+                      style={
+                        styles.team
+                      }
+                    >
+                      <strong>
+                        {teamMap.get(
+                          row.fantasy_team_id
+                        ) ??
+                          `Team ${row.fantasy_team_id}`}
+                      </strong>
 
-              <LeaderRow
-                place="2"
-                team={
-                  secondPlace
-                    ?.teamName ??
-                  "—"
-                }
-                points={
-                  secondPlace
-                    ?.totalPoints ??
-                  null
-                }
-                tone="neutral"
-              />
+                      {isMine ? (
+                        <span
+                          style={
+                            styles.mine
+                          }
+                        >
+                          MY TEAM
+                        </span>
+                      ) : null}
+                    </div>
 
+                    <strong>
+                      {numberValue(
+                        row.total_points
+                      ).toFixed(
+                        2
+                      )}
+                    </strong>
 
-              <LeaderRow
-                place="3"
-                team={
-                  thirdPlace
-                    ?.teamName ??
-                  "—"
-                }
-                points={
-                  thirdPlace
-                    ?.totalPoints ??
-                  null
-                }
-                tone="neutral"
-              />
-            </section>
-
-
-            <section
-              style={
-                styles.sideCard
+                    <span>
+                      {row.weeks_scored ??
+                        0}
+                    </span>
+                  </div>
+                );
               }
-            >
-              <h3
-                style={
-                  styles.sideTitle
-                }
-              >
-                HOW IT WORKS
-              </h3>
-
-              <p
-                style={
-                  styles.sideText
-                }
-              >
-                Season-Long standings
-                are ranked by total
-                fantasy points earned
-                across finalized weeks.
-              </p>
-
-              <p
-                style={
-                  styles.sideText
-                }
-              >
-                <strong>
-                  Standings order
-                </strong>
-              </p>
-
-              <ol
-                style={
-                  styles.orderList
-                }
-              >
-                <li>
-                  Total fantasy points
-                </li>
-
-                <li>
-                  Finalized weeks only
-                </li>
-
-                <li>
-                  Highest total ranks first
-                </li>
-              </ol>
-
-              <p
-                style={
-                  styles.sideFootnote
-                }
-              >
-                Weekly lineups are
-                available from League
-                Teams. Standings remain
-                focused on finalized
-                season scoring and rank.
-              </p>
-            </section>
-          </aside>
-        </section>
-
+            )}
+          </section>
+        )}
 
         <div
           style={
             styles.note
           }
         >
-          Standings rebuild from
-          finalized Season-Long weekly
-          scores. Live or unfinished
-          weeks do not count toward
-          season totals.
+          {isH2H
+            ? "H2H standings rebuild from finalized weekly matchups. Playoff odds automatically evolve as the regular season is played."
+            : "Total Points runs through the full configured season. Final cumulative fantasy points determine the champion; there is no fantasy playoff cutoff."}
         </div>
       </div>
     </main>
@@ -1291,786 +1636,326 @@ export default async function SeasonLongStandings({
 }
 
 
-function StatCell({
+function Summary({
+  label,
   value,
-  strong = false,
-  positive = false,
-  mobileClassName,
 }: {
-  value:
-    string;
-
-  strong?:
-    boolean;
-
-  positive?:
-    boolean;
-
-  mobileClassName?:
-    string;
-}) {
-  return (
-    <div
-      className={mobileClassName}
-      style={{
-        ...styles.statCell,
-
-        ...(strong
-          ? styles.strongStat
-          : {}),
-
-        ...(positive
-          ? styles.positive
-          : {}),
-      }}
-    >
-      {
-        value
-      }
-    </div>
-  );
-}
-
-
-function LeaderRow({
-  place,
-  team,
-  points,
-  tone,
-}: {
-  place:
-    string;
-
-  team:
-    string;
-
-  points:
-    number |
-    null;
-
-  tone:
-    "orange" |
-    "neutral";
+  label: string;
+  value: string;
 }) {
   return (
     <div
       style={
-        styles.leaderRow
+        styles.summary
       }
     >
-      <div
-        style={{
-          ...styles.leaderPlace,
-
-          ...(tone ===
-          "orange"
-            ? styles.leaderPlaceOrange
-            : {}),
-        }}
-      >
-        {
-          place
-        }
-      </div>
-
-      <div
+      <span
         style={
-          styles.leaderText
+          styles.summaryLabel
         }
       >
-        <strong
-          style={
-            styles.leaderTeam
-          }
-        >
-          {
-            team
-          }
-        </strong>
+        {label}
+      </span>
 
-        <span
-          style={
-            styles.leaderPoints
-          }
-        >
-          {points ===
-          null
-            ? "No score"
-            : `${formatPoints(
-                points
-              )} pts`}
-        </span>
-      </div>
+      <strong
+        style={
+          styles.summaryValue
+        }
+      >
+        {value}
+      </strong>
     </div>
   );
 }
 
 
-const styles = {
-  page: {
-    minHeight:
-      "calc(100vh - 90px)",
-
-    padding:
-      "18px 16px 34px",
-
-    background:
-      "#0c0d0f",
-  },
-
-  shell: {
-    width:
-      "min(1500px,100%)",
-
-    margin:
-      "0 auto",
-
-    display:
-      "grid",
-
-    gap:
-      "14px",
-  },
-
-  pageHeader: {
-    display:
-      "flex",
-
-    alignItems:
-      "flex-end",
-
-    justifyContent:
-      "space-between",
-
-    gap:
-      "16px",
-
-    flexWrap:
-      "wrap" as const,
-  },
-
-  eyebrow: {
-    margin:
-      0,
-
-    color:
-      "#ff7a18",
-
-    fontSize:
-      "13px",
-
-    fontWeight:
-      950,
-
-    letterSpacing:
-      ".14em",
-  },
-
-  title: {
-    margin:
-      "4px 0 0",
-
-    color:
-      "#fff",
-
-    fontSize:
-      "32px",
-
-    lineHeight:
-      1,
-  },
-
-  subtitle: {
-    margin:
-      "6px 0 0",
-
-    color:
-      "#747b84",
-
-    fontSize:
-      "15px",
-  },
-
-  headerCards: {
-    display:
-      "flex",
-
-    alignItems:
-      "stretch",
-
-    gap:
-      "8px",
-  },
-
-  headerSummary: {
-    minWidth:
-      "145px",
-
-    padding:
-      "9px 12px",
-
-    display:
-      "grid",
-
-    justifyItems:
-      "center",
-
-    gap:
-      "2px",
-
-    border:
-      "1px solid rgba(255,110,20,.18)",
-
-    borderRadius:
-      "7px",
-
-    background:
-      "rgba(255,90,10,.035)",
-  },
-
-  headerSummaryLabel: {
-    color:
-      "#7d848e",
-
-    fontSize:
-      "11px",
-
-    fontWeight:
-      950,
-
-    letterSpacing:
-      ".06em",
-  },
-
-  headerSummaryValue: {
-    maxWidth:
-      "180px",
-
-    overflow:
-      "hidden",
-
-    textOverflow:
-      "ellipsis",
-
-    whiteSpace:
-      "nowrap" as const,
-
-    color:
-      "#ff8a25",
-
-    fontSize:
-      "16px",
-  },
-
-  headerSummaryGreen: {
-    color:
-      "#58dd67",
-
-    fontSize:
-      "20px",
-  },
-
-  headerSummarySub: {
-    color:
-      "#7a818a",
-
-    fontSize:
-      "12px",
-  },
-
-  contentGrid: {
-    display:
-      "grid",
-
-    gridTemplateColumns:
-      "minmax(0,1fr) 270px",
-
-    gap:
-      "14px",
-
-    alignItems:
-      "start",
-  },
-
-  tableCard: {
-    overflowX:
-      "auto" as const,
-
-    border:
-      "1px solid rgba(255,255,255,.08)",
-
-    borderRadius:
-      "8px",
-
-    background:
-      "linear-gradient(180deg,#151618,#101113)",
-  },
-
-  tableHeader: {
-    minWidth:
-      "900px",
-
-    minHeight:
-      "34px",
-
-    padding:
-      "7px 12px",
-
-    display:
-      "grid",
-
-    gridTemplateColumns:
-      "42px minmax(190px,1fr) 100px 70px 85px 85px 85px 110px",
-
-    alignItems:
-      "center",
-
-    gap:
-      "5px",
-
-    borderBottom:
-      "1px solid rgba(255,255,255,.07)",
-
-    color:
-      "#707780",
-
-    fontSize:
-      "12px",
-
-    fontWeight:
-      950,
-
-    letterSpacing:
-      ".05em",
-  },
-
-  numberHeader: {
-    textAlign:
-      "right" as const,
-  },
-
-  tableRow: {
-    minWidth:
-      "900px",
-
-    minHeight:
-      "52px",
-
-    padding:
-      "6px 12px",
-
-    display:
-      "grid",
-
-    gridTemplateColumns:
-      "42px minmax(190px,1fr) 100px 70px 85px 85px 85px 110px",
-
-    alignItems:
-      "center",
-
-    gap:
-      "5px",
-
-    borderBottom:
-      "1px solid rgba(255,255,255,.045)",
-  },
-
-  firstPlaceRow: {
-    background:
-      "rgba(255,125,25,.018)",
-  },
-
-  myTeamRow: {
-    background:
-      "linear-gradient(90deg,rgba(150,20,18,.23),rgba(255,80,15,.075) 52%,transparent)",
-
-    boxShadow:
-      "inset 3px 0 0 #ff7622",
-  },
-
-  rankCell: {
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-  },
-
-  rankNumber: {
-    color:
-      "#979da5",
-
-    fontSize:
-      "17px",
-  },
-
-  firstRank: {
-    color:
-      "#ff8726",
-  },
-
-  teamCell: {
-    minWidth:
-      0,
-
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    gap:
-      "9px",
-  },
-
-  teamCircle: {
-    width:
-      "32px",
-
-    height:
-      "32px",
-
-    flex:
-      "0 0 auto",
-
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "center",
-
-    border:
-      "1px solid rgba(255,255,255,.09)",
-
-    borderRadius:
-      "50%",
-
-    background:
-      "#24272b",
-
-    color:
-      "#e8eaed",
-
-    fontSize:
-      "15px",
-
-    fontWeight:
-      950,
-  },
-
-  myTeamCircle: {
-    border:
-      "1px solid rgba(255,115,25,.65)",
-
-    color:
-      "#ff8a2b",
-  },
-
-  teamText: {
-    minWidth:
-      0,
-
-    display:
-      "grid",
-
-    gap:
-      "2px",
-  },
-
-  teamName: {
-    overflow:
-      "hidden",
-
-    textOverflow:
-      "ellipsis",
-
-    whiteSpace:
-      "nowrap" as const,
-
-    color:
-      "#f5f5f6",
-
-    fontSize:
-      "15px",
-
-    fontWeight:
-      950,
-
-    textDecoration:
-      "none",
-  },
-
-  teamMeta: {
-    color:
-      "#6d747e",
-
-    fontSize:
-      "11px",
-
-    fontWeight:
-      850,
-  },
-
-  statCell: {
-    justifySelf:
-      "end",
-
-    color:
-      "#c6cad0",
-
-    fontSize:
-      "15px",
-
-    fontVariantNumeric:
-      "tabular-nums",
-  },
-
-  strongStat: {
-    color:
-      "#ffffff",
-
-    fontWeight:
-      950,
-  },
-
-  positive: {
-    color:
-      "#46d987",
-  },
-
-  lastWeekCell: {
-    justifySelf:
-      "end",
-
-    color:
-      "#9da3ab",
-
-    fontSize:
-      "13px",
-
-    fontVariantNumeric:
-      "tabular-nums",
-  },
-
-  lastWeekValue: {
-    color:
-      "#ff922d",
-
-    fontWeight:
-      900,
-  },
-
-  sidebar: {
-    display:
-      "grid",
-
-    gap:
-      "12px",
-  },
-
-  sideCard: {
-    padding:
-      "14px",
-
-    border:
-      "1px solid rgba(255,255,255,.11)",
-
-    borderRadius:
-      "8px",
-
-    background:
-      "linear-gradient(180deg,#121416,#0e1012)",
-  },
-
-  sideTitle: {
-    margin:
-      "0 0 12px",
-
-    color:
-      "#f0f1f2",
-
-    fontSize:
-      "16px",
-  },
-
-  leaderRow: {
-    minHeight:
-      "54px",
-
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    gap:
-      "10px",
-
-    borderBottom:
-      "1px solid rgba(255,255,255,.07)",
-  },
-
-  leaderPlace: {
-    width:
-      "28px",
-
-    height:
-      "28px",
-
-    flex:
-      "0 0 auto",
-
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "center",
-
-    border:
-      "1px solid rgba(255,255,255,.09)",
-
-    borderRadius:
-      "6px",
-
-    color:
-      "#9ca3ab",
-
-    fontSize:
-      "13px",
-
-    fontWeight:
-      950,
-  },
-
-  leaderPlaceOrange: {
-    border:
-      "1px solid rgba(255,120,25,.4)",
-
-    color:
-      "#ff8b25",
-
-    background:
-      "rgba(255,110,20,.06)",
-  },
-
-  leaderText: {
-    minWidth:
-      0,
-
-    display:
-      "grid",
-
-    gap:
-      "2px",
-  },
-
-  leaderTeam: {
-    overflow:
-      "hidden",
-
-    textOverflow:
-      "ellipsis",
-
-    whiteSpace:
-      "nowrap" as const,
-
-    color:
-      "#e9eaec",
-
-    fontSize:
-      "13px",
-  },
-
-  leaderPoints: {
-    color:
-      "#777e87",
-
-    fontSize:
-      "11px",
-  },
-
-  sideText: {
-    color:
-      "#a0a6af",
-
-    fontSize:
-      "13px",
-
-    lineHeight:
-      1.55,
-  },
-
-  orderList: {
-    margin:
-      "6px 0 10px 18px",
-
-    padding:
-      0,
-
-    color:
-      "#9ba2ab",
-
-    fontSize:
-      "13px",
-
-    lineHeight:
-      1.8,
-  },
-
-  sideFootnote: {
-    margin:
-      "10px 0 0",
-
-    color:
-      "#777e88",
-
-    fontSize:
-      "12px",
-
-    lineHeight:
-      1.55,
-  },
-
-  emptyState: {
-    padding:
-      "28px",
-
-    color:
-      "#727983",
-
-    fontSize:
-      "15px",
-
-    textAlign:
-      "center" as const,
-  },
-
-  note: {
-    padding:
-      "9px 11px",
-
-    border:
-      "1px solid rgba(255,255,255,.055)",
-
-    borderRadius:
-      "6px",
-
-    background:
-      "rgba(255,255,255,.015)",
-
-    color:
-      "#6e757f",
-
-    fontSize:
-      "13px",
-
-    lineHeight:
-      1.5,
-  },
-} as const;
+const styles:
+  Record<
+    string,
+    React.CSSProperties
+  > = {
+    page: {
+      minHeight: "100vh",
+      padding: "22px",
+      background:
+        "linear-gradient(180deg,#07080c,#0b0d12 50%,#07080b)",
+      color: "#f5f7fa",
+    },
+
+    shell: {
+      maxWidth: "1220px",
+      margin: "0 auto",
+    },
+
+    hero: {
+      display: "flex",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: "16px",
+      marginBottom: "16px",
+      flexWrap: "wrap",
+    },
+
+    eyebrow: {
+      color: "#ff7a24",
+      fontSize: "12px",
+      fontWeight: 900,
+      letterSpacing: ".08em",
+    },
+
+    title: {
+      margin: "4px 0 5px",
+      fontSize: "clamp(27px,4vw,42px)",
+      lineHeight: 1,
+    },
+
+    subtitle: {
+      margin: 0,
+      color: "#9ea3ab",
+      fontSize: "14px",
+    },
+
+    button: {
+      padding: "10px 14px",
+      borderRadius: "10px",
+      border:
+        "1px solid rgba(255,113,31,.42)",
+      background:
+        "linear-gradient(135deg,#a71912,#e85b19)",
+      color: "#fff",
+      textDecoration: "none",
+      fontWeight: 900,
+      fontSize: "12px",
+    },
+
+    summaryGrid: {
+      display: "grid",
+      gridTemplateColumns:
+        "repeat(4,minmax(0,1fr))",
+      gap: "10px",
+      marginBottom: "14px",
+    },
+
+    summary: {
+      border:
+        "1px solid #252a33",
+      background:
+        "linear-gradient(180deg,#11141a,#0d1015)",
+      borderRadius: "12px",
+      padding: "12px",
+      display: "grid",
+      gap: "4px",
+    },
+
+    summaryLabel: {
+      color: "#828892",
+      fontSize: "10px",
+      fontWeight: 900,
+      letterSpacing: ".08em",
+    },
+
+    summaryValue: {
+      fontSize: "16px",
+      color: "#f5f7fa",
+    },
+
+    h2hLayout: {
+      display: "grid",
+      gridTemplateColumns:
+        "minmax(0,1fr) 280px",
+      gap: "14px",
+      alignItems: "start",
+    },
+
+    card: {
+      border:
+        "1px solid #252a33",
+      background:
+        "linear-gradient(180deg,#11141a,#0c0f14)",
+      borderRadius: "14px",
+      overflow: "hidden",
+      minWidth: 0,
+    },
+
+    h2hGrid: {
+      display: "grid",
+      gridTemplateColumns:
+        "48px minmax(170px,1.35fr) 92px 76px 86px 86px 86px 94px",
+      alignItems: "center",
+      gap: "8px",
+      padding: "10px 12px",
+    },
+
+    totalGrid: {
+      display: "grid",
+      gridTemplateColumns:
+        "50px minmax(170px,1fr) 120px 90px",
+      alignItems: "center",
+      gap: "8px",
+      padding: "11px 12px",
+    },
+
+    row: {
+      borderTop:
+        "1px solid #20242c",
+      minHeight: "54px",
+      fontSize: "13px",
+    },
+
+    myRow: {
+      background:
+        "linear-gradient(90deg,rgba(187,37,23,.18),rgba(255,117,31,.07))",
+      boxShadow:
+        "inset 3px 0 #ef5a21",
+    },
+
+    rank: {
+      color: "#ff8a30",
+      fontSize: "16px",
+    },
+
+    team: {
+      minWidth: 0,
+      display: "flex",
+      alignItems: "center",
+      gap: "7px",
+      flexWrap: "wrap",
+    },
+
+    mine: {
+      padding: "2px 5px",
+      borderRadius: "999px",
+      background:
+        "rgba(255,106,30,.13)",
+      border:
+        "1px solid rgba(255,106,30,.35)",
+      color: "#ff984d",
+      fontSize: "8px",
+      fontWeight: 950,
+    },
+
+    positive: {
+      color: "#42d982",
+    },
+
+    negative: {
+      color: "#ff6259",
+    },
+
+    playoffPct: {
+      color: "#ff984d",
+      fontVariantNumeric:
+        "tabular-nums",
+    },
+
+    playoffLine: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: "10px",
+      padding: "7px 12px",
+      borderTop:
+        "2px solid #ff7b25",
+      borderBottom:
+        "1px solid rgba(255,123,37,.2)",
+      background:
+        "rgba(255,123,37,.08)",
+      color: "#ff9b54",
+      fontSize: "9px",
+      fontWeight: 950,
+      letterSpacing: ".08em",
+    },
+
+    sidebar: {
+      display: "grid",
+      gap: "12px",
+      minWidth: 0,
+    },
+
+    sideCard: {
+      border:
+        "1px solid #252a33",
+      background:
+        "linear-gradient(180deg,#11141a,#0c0f14)",
+      borderRadius: "14px",
+      padding: "14px",
+    },
+
+    sideTitle: {
+      margin: "0 0 12px",
+      fontSize: "12px",
+      letterSpacing: ".08em",
+      color: "#f6f7f8",
+    },
+
+    pictureGroup: {
+      display: "grid",
+      gap: "6px",
+      padding: "10px 0",
+      borderTop:
+        "1px solid #222731",
+    },
+
+    pictureTitle: {
+      fontSize: "10px",
+      letterSpacing: ".04em",
+    },
+
+    pictureGreen: {
+      color: "#42d982",
+    },
+
+    pictureOrange: {
+      color: "#ff9a43",
+    },
+
+    pictureRed: {
+      color: "#ff6259",
+    },
+
+    pictureTeams: {
+      display: "grid",
+      gap: "5px",
+    },
+
+    pictureTeam: {
+      color: "#d7d9dd",
+      fontSize: "12px",
+    },
+
+    pictureEmpty: {
+      color: "#737983",
+      fontSize: "11px",
+    },
+
+    sideText: {
+      color: "#b4b8bf",
+      fontSize: "12px",
+      lineHeight: 1.55,
+    },
+
+    orderList: {
+      color: "#c4c7cc",
+      fontSize: "12px",
+      lineHeight: 1.7,
+      paddingLeft: "20px",
+    },
+
+    sideFootnote: {
+      marginBottom: 0,
+      color: "#7f858f",
+      fontSize: "11px",
+      lineHeight: 1.5,
+    },
+
+    note: {
+      marginTop: "12px",
+      padding: "11px 13px",
+      borderRadius: "10px",
+      background: "#0f1217",
+      border:
+        "1px solid #242932",
+      color: "#8d939c",
+      fontSize: "12px",
+    },
+  };

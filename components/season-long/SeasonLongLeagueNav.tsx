@@ -9,6 +9,10 @@ import {
 type SeasonLongLeagueNavProps = {
   leagueId: string;
   isCommissioner?: boolean;
+  competitionFormat?:
+    | "total_points"
+    | "head_to_head";
+  playoffsEnabled?: boolean;
 };
 
 type NavItem = {
@@ -20,20 +24,75 @@ type NavItem = {
 export default function SeasonLongLeagueNav({
   leagueId,
   isCommissioner = false,
+  competitionFormat = "total_points",
+  playoffsEnabled = false,
 }: SeasonLongLeagueNavProps) {
   const pathname =
     usePathname();
 
+  const isHeadToHead =
+    competitionFormat ===
+    "head_to_head";
+
   const items: NavItem[] = [
-    { label: "Home", href: `/league/${leagueId}`, exact: true },
-    { label: "My Entry", href: `/league/${leagueId}/entry` },
-    { label: "League Teams", href: `/league/${leagueId}/teams` },
-    { label: "Standings", href: `/league/${leagueId}/standings` },
-    { label: "Recap", href: `/league/${leagueId}/season-long/recap` },
-    { label: "Trophy Case", href: `/league/${leagueId}/season-long/trophy-case` },
-    { label: "Settings", href: `/league/${leagueId}/season-long/settings` },
+    {
+      label: "Home",
+      href: `/league/${leagueId}`,
+      exact: true,
+    },
+    {
+      label: "My Entry",
+      href: `/league/${leagueId}/entry`,
+    },
+
+    ...(!isHeadToHead
+      ? [
+          {
+            label: "League Teams",
+            href: `/league/${leagueId}/teams`,
+          },
+        ]
+      : [
+          {
+            label: "Matchups",
+            href: `/league/${leagueId}/season-long/matchups`,
+          },
+        ]),
+
+    {
+      label: "Standings",
+      href: `/league/${leagueId}/standings`,
+    },
+
+    ...(isHeadToHead && playoffsEnabled
+      ? [
+          {
+            label: "Playoffs",
+            href: `/league/${leagueId}/season-long/playoffs`,
+          },
+        ]
+      : []),
+
+    {
+      label: "Recap",
+      href: `/league/${leagueId}/season-long/recap`,
+    },
+    {
+      label: "Trophy Case",
+      href: `/league/${leagueId}/season-long/trophy-case`,
+    },
+    {
+      label: "Settings",
+      href: `/league/${leagueId}/settings`,
+    },
+
     ...(isCommissioner
-      ? [{ label: "Commissioner", href: `/league/${leagueId}/commissioner` }]
+      ? [
+          {
+            label: "Commissioner",
+            href: `/league/${leagueId}/commissioner`,
+          },
+        ]
       : []),
   ];
 

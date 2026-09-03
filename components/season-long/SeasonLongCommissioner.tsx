@@ -8,18 +8,18 @@ import {
 } from "react";
 
 import Link from "next/link";
-import { createBrowserClient } from "@supabase/ssr";
-import { useRouter } from "next/navigation";
-
-import SeasonLongScoring from "@/components/season-long/SeasonLongScoring";
 import SeasonLongRenewButton from "@/components/season-long/SeasonLongRenewButton";
+
+import {
+  useRouter,
+} from "next/navigation";
 
 
 type Tab =
   | "overview"
   | "lineup"
-  | "scoring"
   | "teams"
+  | "playoffs"
   | "season";
 
 
@@ -30,7 +30,6 @@ type League = {
   player_selection_mode: string;
   season: number;
   status: string;
-  commissioner_user_id?: string | null;
 };
 
 
@@ -46,6 +45,13 @@ type Settings = {
   starting_superflex: number;
   starting_k: number;
   starting_dst: number;
+  competition_format:
+    | "total_points"
+    | "head_to_head";
+  regular_season_weeks: number;
+  playoffs_enabled: boolean;
+  playoff_team_count: number;
+  reseed_playoffs: boolean;
 };
 
 
@@ -57,12 +63,6 @@ type Team = {
   active: boolean;
 };
 
-type InviteApiResponse = {
-  success?: boolean;
-  error?: string;
-  message?: string;
-};
-
 
 type Standing = {
   fantasy_team_id: number;
@@ -72,12 +72,59 @@ type Standing = {
 };
 
 
+type H2HStanding = {
+  fantasy_team_id: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  points_for: number | string | null;
+  points_against: number | string | null;
+  games_played: number;
+  win_percentage: number | string | null;
+  current_rank: number | null;
+};
+
+
+type PlayoffTie = {
+  id: number;
+  week: number;
+  playoff_round: number | null;
+  playoff_slot: number | null;
+  home_fantasy_team_id: number;
+  away_fantasy_team_id: number;
+  home_points: number | string | null;
+  away_points: number | string | null;
+  home_seed: number | null;
+  away_seed: number | null;
+};
+
+
+type PlayoffControlPayload = {
+  success: boolean;
+  season: number;
+  playoffState: {
+    status:
+      | "not_started"
+      | "active"
+      | "complete";
+    current_round: number;
+    round_count: number;
+    playoff_start_week: number;
+    champion_fantasy_team_id: number | null;
+  } | null;
+  unresolvedTies: PlayoffTie[];
+  teams: Team[];
+};
+
+
 type CommissionerPayload = {
   success: boolean;
   league: League;
   settings: Settings | null;
   teams: Team[];
   standings: Standing[];
+  h2hStandings: H2HStanding[];
+  h2hMatchupCount: number;
   activeWeek: number;
   submittedEntries: number;
 };
@@ -136,17 +183,12 @@ function pretty(
 }
 
 
-const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-
 export default function SeasonLongCommissioner({
   leagueId,
 }: SeasonLongCommissionerProps) {
-  const router = useRouter();
+  const router =
+    useRouter();
+
   const [tab, setTab] =
     useState<Tab>(
       "overview"
@@ -179,28 +221,65 @@ export default function SeasonLongCommissioner({
     );
 
 
+  const [
+    playoffControls,
+    setPlayoffControls,
+  ] =
+    useState<PlayoffControlPayload | null>(
+      null
+    );
+
+
 
   const [teamNames, setTeamNames] =
     useState<Record<number, string>>(
       {}
     );
 
-  const [teamInviteEmails, setTeamInviteEmails] =
-    useState<Record<number, string>>({});
-  const [invitingTeamId, setInvitingTeamId] =
-    useState<number | null>(null);
 
-  const [removingOwnerTeamId, setRemovingOwnerTeamId] =
-    useState<number | null>(null);
+  const loadPlayoffControls =
+    useCallback(
+      async () => {
+        try {
+          const response =
+            await fetch(
+              `/api/leagues/${leagueId}/season-long/playoffs/commissioner`,
+              {
+                method:
+                  "GET",
+                cache:
+                  "no-store",
+              }
+            );
 
-  const [addingInviteSlots, setAddingInviteSlots] =
-    useState(false);
+          const payload =
+            await response.json();
 
-  const [deleteLeagueName, setDeleteLeagueName] =
-    useState("");
+          if (
+            !response.ok ||
+            !payload.success
+          ) {
+            throw new Error(
+              payload.error ??
+              "Unable to load playoff commissioner controls."
+            );
+          }
 
-  const [deletingLeague, setDeletingLeague] =
-    useState(false);
+          setPlayoffControls(
+            payload as PlayoffControlPayload
+          );
+        } catch (
+          playoffError
+        ) {
+          setPlayoffControls(
+            null
+          );
+
+          throw playoffError;
+        }
+      },
+      [leagueId]
+    );
 
 
   const load =
@@ -262,6 +341,25 @@ export default function SeasonLongCommissioner({
               )
             )
           );
+
+          if (
+            typed.settings
+              ?.competition_format ===
+              "head_to_head" &&
+            typed.settings
+              ?.playoffs_enabled
+          ) {
+            try {
+              await loadPlayoffControls();
+            } catch {
+              // Keep the main commissioner page usable if playoff
+              // controls are temporarily unavailable.
+            }
+          } else {
+            setPlayoffControls(
+              null
+            );
+          }
         } catch (
           loadError
         ) {
@@ -276,7 +374,10 @@ export default function SeasonLongCommissioner({
           );
         }
       },
-      [leagueId]
+      [
+        leagueId,
+        loadPlayoffControls,
+      ]
     );
 
 
@@ -345,6 +446,18 @@ export default function SeasonLongCommissioner({
       );
 
       await load();
+
+      /*
+       * Refresh the server-rendered league shell after every
+       * successful commissioner mutation so league-dependent
+       * navigation and other server components immediately reflect
+       * the newly saved configuration.
+       *
+       * Example:
+       *   Total Points -> Head-to-Head
+       *   League Teams disappears and Matchups appears immediately.
+       */
+      router.refresh();
     } catch (
       actionError
     ) {
@@ -361,183 +474,29 @@ export default function SeasonLongCommissioner({
   }
 
 
-  async function addInviteSlots(count = 1) {
-    if (addingInviteSlots) return;
-
-    setAddingInviteSlots(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      for (let index = 0; index < count; index += 1) {
-        const { error: slotError } = await supabase.rpc(
-          "commissioner_add_open_team_slot",
-          {
-            p_league_id: leagueId,
-            p_team_name: `Open Entry ${(data?.teams ?? []).length + index + 1}`,
-          }
-        );
-
-        if (slotError) {
-          throw new Error(slotError.message);
-        }
-      }
-
-      await load();
-      setSuccess(
-        `${count} human invite slot${count === 1 ? "" : "s"} added.`
-      );
-    } catch (actionError) {
-      setError(
-        actionError instanceof Error
-          ? actionError.message
-          : "The invite slot could not be added."
-      );
-    } finally {
-      setAddingInviteSlots(false);
-    }
-  }
-
-
-  async function sendSeasonLongInvite(team: Team) {
-    if (invitingTeamId !== null) return;
-
-    const email =
-      (teamInviteEmails[team.id] ?? "")
-        .trim()
-        .toLowerCase();
-
-    if (!email || !email.includes("@")) {
-      setError(`Enter a valid email address for ${team.team_name}.`);
-      return;
-    }
-
-    setInvitingTeamId(team.id);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const sessionResult =
-        await supabase.auth.getSession();
-
-      if (sessionResult.error) {
-        throw new Error(sessionResult.error.message);
-      }
-
-      const token =
-        sessionResult.data.session?.access_token;
-
-      if (!token) {
-        throw new Error(
-          "Your login session is missing. Sign in again and retry."
-        );
-      }
-
-      const response =
-        await fetch(
-          `/api/league/${leagueId}/invite`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              email,
-              firstName: team.team_name,
-              lastName: "Owner",
-              fantasyTeamId: team.id,
-            }),
-          }
-        );
-
-      let result: InviteApiResponse = {};
-
-      try {
-        result =
-          (await response.json()) as InviteApiResponse;
-      } catch {
-        result = {};
-      }
-
-      if (
-        !response.ok ||
-        result.success === false
-      ) {
-        throw new Error(
-          result.error ??
-            result.message ??
-            "The invitation could not be sent."
-        );
-      }
-
-      setTeamInviteEmails(
-        (current) => ({
-          ...current,
-          [team.id]: "",
-        })
-      );
-
-      setSuccess(
-        `Invitation sent to ${email} for ${team.team_name}.`
-      );
-
-      await load();
-    } catch (actionError) {
-      setError(
-        actionError instanceof Error
-          ? actionError.message
-          : "The invitation could not be sent."
-      );
-    } finally {
-      setInvitingTeamId(null);
-    }
-  }
-
-
-  async function removeSeasonLongOwner(team: Team) {
-    if (
-      removingOwnerTeamId !== null ||
-      !team.owner_id
-    ) {
-      return;
-    }
-
-
-    if (
-      data?.league.commissioner_user_id &&
-      team.owner_id ===
-        data.league.commissioner_user_id
-    ) {
-      setError(
-        "The primary commissioner cannot be removed from their own league."
-      );
-      return;
-    }
-
-
-    if (
-      !window.confirm(
-        `Remove the current owner from ${team.team_name}? The team, lineup history, scores and standings history will stay in the league, and this spot will become available for a replacement invitation.`
-      )
-    ) {
-      return;
-    }
-
-
-    setRemovingOwnerTeamId(
-      team.id
+  async function resolvePlayoffTie(
+    matchupId: number,
+    winnerFantasyTeamId: number
+  ) {
+    setSaving(
+      true
     );
-    setError(null);
-    setSuccess(null);
 
+    setError(
+      null
+    );
+
+    setSuccess(
+      null
+    );
 
     try {
       const response =
         await fetch(
-          `/api/leagues/${leagueId}/season-long/commissioner`,
+          `/api/leagues/${leagueId}/season-long/playoffs/commissioner`,
           {
-            method: "POST",
+            method:
+              "POST",
             headers: {
               "content-type":
                 "application/json",
@@ -545,17 +504,17 @@ export default function SeasonLongCommissioner({
             body:
               JSON.stringify({
                 action:
-                  "remove-owner",
-                fantasyTeamId:
-                  team.id,
+                  "resolve-tie",
+                matchupId,
+                winnerFantasyTeamId,
+                note:
+                  "Commissioner playoff tiebreak",
               }),
           }
         );
 
-
       const payload =
         await response.json();
-
 
       if (
         !response.ok ||
@@ -563,83 +522,15 @@ export default function SeasonLongCommissioner({
       ) {
         throw new Error(
           payload.error ??
-            "The owner could not be removed."
+          "Unable to resolve playoff tie."
         );
       }
 
-
       setSuccess(
-        `Owner removed from ${team.team_name}. This team is now vacant and ready for a replacement invitation.`
+        "Playoff tiebreak resolved. The bracket has been refreshed."
       );
 
       await load();
-    } catch (actionError) {
-      setError(
-        actionError instanceof Error
-          ? actionError.message
-          : "The owner could not be removed."
-      );
-    } finally {
-      setRemovingOwnerTeamId(
-        null
-      );
-    }
-  }
-
-
-  async function deleteLeague() {
-    if (
-      !data?.league ||
-      deletingLeague
-    ) {
-      return;
-    }
-
-    if (
-      deleteLeagueName.trim() !==
-      data.league.name
-    ) {
-      setError(
-        `Type "${data.league.name}" exactly before deleting this league.`
-      );
-      return;
-    }
-
-    if (
-      !window.confirm(
-        `Permanently delete ${data.league.name}? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
-
-    setDeletingLeague(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const {
-        error:
-          deleteError,
-      } =
-        await supabase.rpc(
-          "commissioner_delete_league",
-          {
-            p_league_id:
-              leagueId,
-          }
-        );
-
-      if (deleteError) {
-        throw new Error(
-          deleteError.message
-        );
-      }
-
-      router.replace(
-        "/my-leagues"
-      );
-
       router.refresh();
     } catch (
       actionError
@@ -647,10 +538,10 @@ export default function SeasonLongCommissioner({
       setError(
         actionError instanceof Error
           ? actionError.message
-          : "The league could not be deleted."
+          : "Unable to resolve playoff tie."
       );
-
-      setDeletingLeague(
+    } finally {
+      setSaving(
         false
       );
     }
@@ -663,6 +554,26 @@ export default function SeasonLongCommissioner({
         new Map(
           (
             data?.standings ??
+            []
+          ).map(
+            (
+              standing
+            ) => [
+              standing.fantasy_team_id,
+              standing,
+            ]
+          )
+        ),
+      [data]
+    );
+
+
+  const h2hStandingsMap =
+    useMemo(
+      () =>
+        new Map(
+          (
+            data?.h2hStandings ??
             []
           ).map(
             (
@@ -749,132 +660,28 @@ export default function SeasonLongCommissioner({
     ]> = [
       ["overview", "Overview"],
       ["lineup", "League & Lineup"],
-      ["scoring", "Scoring"],
       ["teams", "Teams"],
+      ...(settings?.competition_format ===
+        "head_to_head" &&
+      settings?.playoffs_enabled
+        ? [[
+            "playoffs",
+            "Playoffs",
+          ] as [
+            Tab,
+            string,
+          ]]
+        : []),
       ["season", "Season Controls"],
     ];
 
 
   return (
     <main
-      className="g365-season-long-mobile"
       style={
         styles.page
       }
     >
-
-      <style>{`
-        .g365-season-long-mobile,
-        .g365-season-long-mobile * {
-          box-sizing: border-box;
-        }
-
-        @media (max-width: 760px) {
-          .g365-season-long-mobile {
-            width: 100% !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
-            padding-left: 12px !important;
-            padding-right: 12px !important;
-            overflow-x: hidden !important;
-          }
-
-          .g365-season-long-mobile section,
-          .g365-season-long-mobile article,
-          .g365-season-long-mobile header,
-          .g365-season-long-mobile form,
-          .g365-season-long-mobile div {
-            min-width: 0;
-            max-width: 100%;
-          }
-
-          .g365-season-long-mobile h1 {
-            font-size: clamp(27px, 8vw, 36px) !important;
-            line-height: 1.08 !important;
-            overflow-wrap: anywhere;
-          }
-
-          .g365-season-long-mobile h2,
-          .g365-season-long-mobile h3,
-          .g365-season-long-mobile p,
-          .g365-season-long-mobile span,
-          .g365-season-long-mobile strong {
-            overflow-wrap: anywhere;
-          }
-
-          .g365-season-long-mobile input,
-          .g365-season-long-mobile select,
-          .g365-season-long-mobile textarea {
-            width: 100% !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
-            font-size: 16px !important;
-          }
-
-          .g365-season-long-mobile button,
-          .g365-season-long-mobile a {
-            max-width: 100%;
-          }
-
-          .g365-season-long-mobile :not(button)[style*="grid-template-columns"] {
-            grid-template-columns: minmax(0, 1fr) !important;
-          }
-
-          .g365-season-long-mobile [style*="white-space: nowrap"],
-          .g365-season-long-mobile [style*="white-space:nowrap"] {
-            white-space: normal !important;
-          }
-
-          .g365-season-long-mobile [style*="overflow-x: auto"],
-          .g365-season-long-mobile [style*="overflowX: auto"] {
-            max-width: 100%;
-            -webkit-overflow-scrolling: touch;
-          }
-        }
-
-        @media (max-width: 430px) {
-          .g365-season-long-mobile {
-            padding-left: 10px !important;
-            padding-right: 10px !important;
-          }
-
-          .g365-season-long-mobile button {
-            min-height: 42px;
-          }
-        }
-      `}</style>
-
-      <style>{`
-        .season-long-team-row {
-          grid-template-columns: 48px minmax(0, 1.5fr) minmax(130px, .75fr) minmax(190px, 1fr) minmax(190px, .9fr) !important;
-        }
-
-        @media (max-width: 1100px) {
-          .season-long-team-row {
-            grid-template-columns: 44px minmax(0, 1.35fr) minmax(120px, .8fr) minmax(170px, 1fr) !important;
-          }
-
-          .season-long-team-row > :nth-child(5) {
-            grid-column: 2 / -1;
-            justify-content: flex-end;
-          }
-        }
-
-        @media (max-width: 760px) {
-          .season-long-team-row {
-            grid-template-columns: 38px minmax(0, 1fr) !important;
-          }
-
-          .season-long-team-row > :nth-child(n + 3) {
-            grid-column: 2;
-          }
-
-          .season-long-team-row > :nth-child(5) {
-            justify-content: flex-start;
-          }
-        }
-      `}</style>
-
       <div
         style={
           styles.shell
@@ -1035,6 +842,16 @@ export default function SeasonLongCommissioner({
                 />
 
                 <Stat
+                  label="League Format"
+                  value={
+                    settings?.competition_format ===
+                    "head_to_head"
+                      ? "Head-to-Head"
+                      : "Total Points"
+                  }
+                />
+
+                <Stat
                   label="League Status"
                   value={
                     pretty(
@@ -1089,7 +906,12 @@ export default function SeasonLongCommissioner({
 
                 <Guide
                   title="After Week"
-                  text="Finalized weekly scores feed Season-Long standings. Only finalized weeks count toward season totals."
+                  text={
+                    settings?.competition_format ===
+                    "head_to_head"
+                      ? "Finalized weekly scores settle each matchup and update W-L-T standings, points for and points against."
+                      : "Finalized weekly scores feed Season-Long standings. Only finalized weeks count toward season totals."
+                  }
                 />
               </div>
             </Section>
@@ -1106,8 +928,210 @@ export default function SeasonLongCommissioner({
           >
             <div
               style={
-                styles.grid
+                styles.formatPanel
               }
+            >
+              <div
+                style={
+                  styles.fieldLabel
+                }
+              >
+                LEAGUE FORMAT
+              </div>
+
+              <div
+                style={
+                  styles.choiceGrid
+                }
+              >
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() =>
+                    setSettings({
+                      ...settings,
+                      competition_format:
+                        "total_points",
+                    })
+                  }
+                  style={{
+                    ...styles.choiceCard,
+                    ...(settings.competition_format ===
+                    "total_points"
+                      ? styles.choiceCardActive
+                      : {}),
+                  }}
+                >
+                  <strong>
+                    TOTAL POINTS
+                  </strong>
+                  <span>
+                    Existing Season-Long format. Standings rank teams by cumulative finalized fantasy points.
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() =>
+                    setSettings({
+                      ...settings,
+                      competition_format:
+                        "head_to_head",
+                    })
+                  }
+                  style={{
+                    ...styles.choiceCard,
+                    ...(settings.competition_format ===
+                    "head_to_head"
+                      ? styles.choiceCardActive
+                      : {}),
+                  }}
+                >
+                  <strong>
+                    HEAD-TO-HEAD
+                  </strong>
+                  <span>
+                    Teams keep the Season-Long weekly lineup model, but compete in weekly matchups with W-L-T standings.
+                  </span>
+                </button>
+              </div>
+
+              {settings.competition_format ===
+              "head_to_head" ? (
+                <>
+                  <div
+                    style={{
+                      ...styles.grid,
+                      marginTop: 12,
+                    }}
+                  >
+                    <Input
+                      label="Regular Season Weeks"
+                      value={
+                        settings.regular_season_weeks
+                      }
+                      onChange={(value) =>
+                        setSettings({
+                          ...settings,
+                          regular_season_weeks:
+                            Math.min(
+                              18,
+                              Math.max(
+                                1,
+                                toNumber(
+                                  value,
+                                  14
+                                )
+                              )
+                            ),
+                        })
+                      }
+                    />
+
+                    <Input
+                      label="Playoff Teams"
+                      value={
+                        settings.playoff_team_count
+                      }
+                      onChange={(value) =>
+                        setSettings({
+                          ...settings,
+                          playoff_team_count:
+                            Math.min(
+                              16,
+                              Math.max(
+                                2,
+                                toNumber(
+                                  value,
+                                  6
+                                )
+                              )
+                            ),
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div
+                    style={
+                      styles.toggleGrid
+                    }
+                  >
+                    <label
+                      style={
+                        styles.toggleCard
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={
+                          settings.playoffs_enabled
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setSettings({
+                            ...settings,
+                            playoffs_enabled:
+                              event.target.checked,
+                          })
+                        }
+                      />
+                      <span>
+                        Enable Head-to-Head Playoffs
+                      </span>
+                    </label>
+
+                    <label
+                      style={
+                        styles.toggleCard
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={
+                          settings.reseed_playoffs
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setSettings({
+                            ...settings,
+                            reseed_playoffs:
+                              event.target.checked,
+                          })
+                        }
+                      />
+                      <span>
+                        Reseed Playoffs Each Round
+                      </span>
+                    </label>
+                  </div>
+
+                  <div
+                    style={
+                      styles.h2hInfo
+                    }
+                  >
+                    <strong>
+                      H2H SCHEDULE STATUS
+                    </strong>
+                    <span>
+                      {data.h2hMatchupCount > 0
+                        ? `${data.h2hMatchupCount} regular-season matchups currently exist.`
+                        : "No Head-to-Head schedule has been built yet."}
+                    </span>
+                  </div>
+                </>
+              ) : null}
+            </div>
+
+            <div
+              style={{
+                ...styles.grid,
+                marginTop: 14,
+              }}
             >
               {isSalary ? (
                 <Input
@@ -1242,7 +1266,7 @@ export default function SeasonLongCommissioner({
                         "save-settings",
                       settings,
                     },
-                    "Season-Long lineup settings saved."
+                    "Season-Long league and lineup settings saved."
                   )
                 }
                 style={
@@ -1251,381 +1275,544 @@ export default function SeasonLongCommissioner({
               >
                 SAVE LEAGUE & LINEUP SETTINGS
               </button>
+
+              {settings.competition_format ===
+              "head_to_head" ? (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() =>
+                    void runAction(
+                      {
+                        action:
+                          "build-h2h-schedule",
+                      },
+                      "Season-Long Head-to-Head schedule built."
+                    )
+                  }
+                  style={
+                    styles.secondaryButton
+                  }
+                >
+                  BUILD / REFRESH H2H SCHEDULE
+                </button>
+              ) : null}
             </div>
           </Section>
         ) : null}
 
 
         {tab ===
-        "scoring" ? (
-          <SeasonLongScoring
-            leagueId={leagueId}
-            embedded
-          />
+        "overview" ? (
+          <Section
+            title="Scoring Settings"
+            subtitle="Season-Long uses the same full scoring-rule system as Traditional leagues."
+          >
+            <div
+              style={
+                styles.actions
+              }
+            >
+              <Link
+                href={`/league/${leagueId}/commissioner/scoring`}
+                style={
+                  styles.linkButton
+                }
+              >
+                OPEN FULL SCORING SETTINGS
+              </Link>
+            </div>
+          </Section>
         ) : null}
 
 
         {tab ===
         "teams" ? (
+          <Section
+            title="Teams"
+            subtitle="Rename active Season-Long teams. Owner invitation controls can be added here next."
+          >
+            <div
+              style={
+                styles.list
+              }
+            >
+              {data.teams.map(
+                (
+                  team
+                ) => {
+                  const standing =
+                    standingsMap.get(
+                      team.id
+                    );
+
+                  const h2hStanding =
+                    h2hStandingsMap.get(
+                      team.id
+                    );
+
+                  const isHeadToHead =
+                    settings?.competition_format ===
+                    "head_to_head";
+
+                  const displayRank =
+                    isHeadToHead
+                      ? h2hStanding?.current_rank
+                      : standing?.current_rank;
+
+                  return (
+                    <div
+                      key={
+                        team.id
+                      }
+                      style={
+                        styles.teamRow
+                      }
+                    >
+                      <div
+                        style={
+                          styles.rank
+                        }
+                      >
+                        {displayRank
+                          ? `#${displayRank}`
+                          : "—"}
+                      </div>
+
+                      <input
+                        value={
+                          teamNames[
+                            team.id
+                          ] ??
+                          team.team_name
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setTeamNames({
+                            ...teamNames,
+                            [team.id]:
+                              event.target.value,
+                          })
+                        }
+                        style={
+                          styles.input
+                        }
+                      />
+
+                      <div
+                        style={
+                          styles.teamMeta
+                        }
+                      >
+                        {isHeadToHead ? (
+                          <>
+                            <strong>
+                              {h2hStanding
+                                ? `${h2hStanding.wins}-${h2hStanding.losses}-${h2hStanding.ties}`
+                                : "0-0-0"} record
+                            </strong>
+
+                            <span>
+                              {toNumber(
+                                h2hStanding
+                                  ?.points_for
+                              ).toFixed(
+                                2
+                              )} PF • {toNumber(
+                                h2hStanding
+                                  ?.points_against
+                              ).toFixed(
+                                2
+                              )} PA
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <strong>
+                              {toNumber(
+                                standing
+                                  ?.total_points
+                              ).toFixed(
+                                2
+                              )} pts
+                            </strong>
+
+                            <span>
+                              {standing
+                                ?.weeks_scored ??
+                                0} weeks scored
+                            </span>
+                          </>
+                        )}
+                      </div>
+
+                      <div
+                        style={
+                          styles.teamMeta
+                        }
+                      >
+                        <strong>
+                          {team.owner_id
+                            ? "OWNER ASSIGNED"
+                            : "NO OWNER"}
+                        </strong>
+
+                        <span>
+                          {team.active
+                            ? "Active"
+                            : "Inactive"}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() =>
+                          void runAction(
+                            {
+                              action:
+                                "rename-team",
+                              fantasyTeamId:
+                                team.id,
+                              teamName:
+                                teamNames[
+                                  team.id
+                                ] ??
+                                team.team_name,
+                            },
+                            "Team name saved."
+                          )
+                        }
+                        style={
+                          styles.button
+                        }
+                      >
+                        SAVE
+                      </button>
+                    </div>
+                  );
+                }
+              )}
+            </div>
+          </Section>
+        ) : null}
+
+
+        {tab ===
+          "playoffs" &&
+        settings?.competition_format ===
+          "head_to_head" &&
+        settings.playoffs_enabled ? (
           <>
             <Section
-              title="Teams & Owners"
-              subtitle="Season-Long leagues use human owners only. Add as many invitation spots as you need; CPU teams are not available in Salary or No-Salary leagues."
+              title="Head-to-Head Playoff Control"
+              subtitle="Normal seeding and advancement are automatic. Commissioner action is only required when a finalized playoff matchup is tied."
             >
+              <div
+                style={
+                  styles.stats
+                }
+              >
+                <Stat
+                  label="Playoff Status"
+                  value={
+                    playoffControls
+                      ?.playoffState
+                      ?.status
+                      ? pretty(
+                          playoffControls
+                            .playoffState
+                            .status
+                        )
+                      : "Not Started"
+                  }
+                />
+
+                <Stat
+                  label="Current Round"
+                  value={
+                    playoffControls
+                      ?.playoffState
+                      ? `${playoffControls.playoffState.current_round} of ${playoffControls.playoffState.round_count}`
+                      : "—"
+                  }
+                />
+
+                <Stat
+                  label="Playoff Start"
+                  value={
+                    playoffControls
+                      ?.playoffState
+                      ? `Week ${playoffControls.playoffState.playoff_start_week}`
+                      : `Week ${
+                          settings.regular_season_weeks +
+                          1
+                        }`
+                  }
+                />
+
+                <Stat
+                  label="Unresolved Ties"
+                  value={
+                    playoffControls
+                      ?.unresolvedTies
+                      .length ??
+                    0
+                  }
+                />
+              </div>
+
               <div
                 style={
                   styles.actions
                 }
               >
-                <button
-                  type="button"
-                  disabled={
-                    addingInviteSlots ||
-                    saving
-                  }
-                  onClick={() =>
-                    void addInviteSlots(
-                      1
-                    )
-                  }
-                  style={
-                    styles.button
-                  }
-                >
-                  + ADD INVITE SPOT
-                </button>
-
-                <button
-                  type="button"
-                  disabled={
-                    addingInviteSlots ||
-                    saving
-                  }
-                  onClick={() =>
-                    void addInviteSlots(
-                      4
-                    )
-                  }
+                <Link
+                  href={`/league/${leagueId}/season-long/playoffs`}
                   style={
                     styles.linkButton
                   }
                 >
-                  + ADD 4 INVITE SPOTS
+                  VIEW PLAYOFF BRACKET
+                </Link>
+
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() =>
+                    void loadPlayoffControls()
+                      .catch(
+                        (
+                          refreshError
+                        ) =>
+                          setError(
+                            refreshError instanceof Error
+                              ? refreshError.message
+                              : "Unable to refresh playoff controls."
+                          )
+                      )
+                  }
+                  style={
+                    styles.secondaryButton
+                  }
+                >
+                  REFRESH PLAYOFF STATUS
                 </button>
               </div>
 
               <div
                 style={
-                  styles.list
+                  styles.warning
                 }
               >
-                {data.teams.map(
-                  (
-                    team
-                  ) => {
-                    const standing =
-                      standingsMap.get(
-                        team.id
-                      );
-
-                    const hasOwner =
-                      Boolean(
-                        team.owner_id
-                      );
-
-                    return (
-                      <div
-                        key={
-                          team.id
-                        }
-                        className="season-long-team-row"
-                        style={
-                          styles.teamRow
-                        }
-                      >
-                        <div
-                          style={
-                            styles.rank
-                          }
-                        >
-                          {standing
-                            ?.current_rank
-                            ? `#${standing.current_rank}`
-                            : "—"}
-                        </div>
-
-                        <input
-                          value={
-                            teamNames[
-                              team.id
-                            ] ??
-                            team.team_name
-                          }
-                          onChange={(
-                            event
-                          ) =>
-                            setTeamNames({
-                              ...teamNames,
-                              [team.id]:
-                                event.target.value,
-                            })
-                          }
-                          style={
-                            styles.input
-                          }
-                        />
-
-                        <div
-                          style={
-                            styles.teamMeta
-                          }
-                        >
-                          <strong>
-                            {hasOwner
-                              ? "OWNER ASSIGNED"
-                              : "VACANT / INVITE"}
-                          </strong>
-
-                          <span>
-                            {team.active
-                              ? "Active"
-                              : "Inactive"}
-                          </span>
-                        </div>
-
-                        {!hasOwner ? (
-                          <input
-                            type="email"
-                            placeholder="owner@example.com"
-                            value={
-                              teamInviteEmails[
-                                team.id
-                              ] ??
-                              ""
-                            }
-                            onChange={(
-                              event
-                            ) =>
-                              setTeamInviteEmails(
-                                (
-                                  current
-                                ) => ({
-                                  ...current,
-                                  [team.id]:
-                                    event
-                                      .target
-                                      .value,
-                                })
-                              )
-                            }
-                            style={
-                              styles.input
-                            }
-                          />
-                        ) : (
-                          <div
-                            style={
-                              styles.teamMeta
-                            }
-                          >
-                            <strong>
-                              HUMAN OWNER
-                            </strong>
-
-                            <span>
-                              No CPU option
-                            </span>
-                          </div>
-                        )}
-
-                        <div
-                          style={
-                            styles.teamActions
-                          }
-                        >
-                          {!hasOwner ? (
-                            <button
-                              type="button"
-                              disabled={
-                                saving ||
-                                invitingTeamId !==
-                                  null ||
-                                !(
-                                  teamInviteEmails[
-                                    team.id
-                                  ] ??
-                                  ""
-                                ).trim()
-                              }
-                              onClick={() =>
-                                void sendSeasonLongInvite(
-                                  team
-                                )
-                              }
-                              style={
-                                styles.button
-                              }
-                            >
-                              {invitingTeamId ===
-                              team.id
-                                ? "SENDING…"
-                                : "✉ INVITE"}
-                            </button>
-                          ) : null}
-
-                          {hasOwner ? (
-                            team.owner_id ===
-                            data.league.commissioner_user_id ? (
-                              <button
-                                type="button"
-                                disabled
-                                title="Transfer primary commissioner ownership before removing this owner."
-                                style={{
-                                  ...styles.linkButton,
-                                  opacity: 0.45,
-                                  cursor: "not-allowed",
-                                }}
-                              >
-                                PRIMARY COMMISSIONER
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                disabled={
-                                  saving ||
-                                  removingOwnerTeamId !==
-                                    null
-                                }
-                                onClick={() =>
-                                  void removeSeasonLongOwner(
-                                    team
-                                  )
-                                }
-                                style={
-                                  styles.linkButton
-                                }
-                              >
-                                {removingOwnerTeamId ===
-                                team.id
-                                  ? "REMOVING…"
-                                  : "REMOVE OWNER"}
-                              </button>
-                            )
-                          ) : null}
-
-                          <button
-                            type="button"
-                            disabled={
-                              saving
-                            }
-                            onClick={() =>
-                              void runAction(
-                                {
-                                  action:
-                                    "rename-team",
-                                  fantasyTeamId:
-                                    team.id,
-                                  teamName:
-                                    teamNames[
-                                      team.id
-                                    ] ??
-                                    team.team_name,
-                                },
-                                "Team name saved."
-                              )
-                            }
-                            style={
-                              styles.button
-                            }
-                          >
-                            SAVE
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  }
-                )}
+                G365 automatically seeds and advances the bracket after finalized scoring and the Tuesday 6:00 AM ET rollover gate. This control does not bypass weekly finalization or force playoff advancement.
               </div>
             </Section>
 
             <Section
-              title="Danger Zone"
-              subtitle="Only the primary commissioner can permanently delete the league."
+              title="Playoff Tiebreak Resolution"
+              subtitle="This section only appears as actionable when a playoff game finishes with an exact fantasy-point tie."
             >
-              <div
-                style={
-                  styles.dangerZone
-                }
-              >
-                <div>
+              {(
+                playoffControls
+                  ?.unresolvedTies
+                  .length ??
+                0
+              ) === 0 ? (
+                <div
+                  style={
+                    styles.h2hInfo
+                  }
+                >
                   <strong>
-                    DELETE LEAGUE
+                    NO COMMISSIONER ACTION REQUIRED
                   </strong>
 
-                  <p
-                    style={
-                      styles.dangerText
-                    }
-                  >
-                    Permanently deletes this league and all league-owned data.
-                    This action cannot be undone.
-                  </p>
-                </div>
-
-                <label
-                  style={
-                    styles.field
-                  }
-                >
-                  <span
-                    style={
-                      styles.fieldLabel
-                    }
-                  >
-                    Type {data.league.name} to confirm
+                  <span>
+                    There are no unresolved finalized playoff ties.
                   </span>
-
-                  <input
-                    type="text"
-                    value={
-                      deleteLeagueName
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setDeleteLeagueName(
-                        event.target.value
-                      )
-                    }
-                    placeholder={
-                      data.league.name
-                    }
-                    style={
-                      styles.input
-                    }
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  disabled={
-                    deletingLeague ||
-                    deleteLeagueName.trim() !==
-                      data.league.name
+                </div>
+              ) : (
+                <div
+                  style={
+                    styles.list
                   }
-                  onClick={() =>
-                    void deleteLeague()
-                  }
-                  style={{
-                    ...styles.button,
-                    ...styles.dangerButton,
-                  }}
                 >
-                  {deletingLeague
-                    ? "DELETING…"
-                    : "PERMANENTLY DELETE LEAGUE"}
-                </button>
-              </div>
+                  {playoffControls
+                    ?.unresolvedTies
+                    .map(
+                      (
+                        matchup
+                      ) => {
+                        const homeTeam =
+                          playoffControls
+                            .teams
+                            .find(
+                              (
+                                team
+                              ) =>
+                                team.id ===
+                                matchup.home_fantasy_team_id
+                            );
+
+                        const awayTeam =
+                          playoffControls
+                            .teams
+                            .find(
+                              (
+                                team
+                              ) =>
+                                team.id ===
+                                matchup.away_fantasy_team_id
+                            );
+
+                        return (
+                          <div
+                            key={
+                              matchup.id
+                            }
+                            style={
+                              styles.playoffTieCard
+                            }
+                          >
+                            <div
+                              style={
+                                styles.playoffTieHeader
+                              }
+                            >
+                              <strong>
+                                {matchup.playoff_round
+                                  ? `PLAYOFF ROUND ${matchup.playoff_round}`
+                                  : "PLAYOFF"}
+                              </strong>
+
+                              <span>
+                                Week {matchup.week}
+                              </span>
+                            </div>
+
+                            <div
+                              style={
+                                styles.playoffTieTeams
+                              }
+                            >
+                              <div
+                                style={
+                                  styles.playoffTieTeam
+                                }
+                              >
+                                <span>
+                                  {matchup.home_seed
+                                    ? `#${matchup.home_seed}`
+                                    : "—"}
+                                </span>
+
+                                <strong>
+                                  {homeTeam
+                                    ?.team_name ??
+                                    `Team ${matchup.home_fantasy_team_id}`}
+                                </strong>
+
+                                <b>
+                                  {toNumber(
+                                    matchup.home_points
+                                  ).toFixed(
+                                    2
+                                  )}
+                                </b>
+
+                                <button
+                                  type="button"
+                                  disabled={saving}
+                                  onClick={() => {
+                                    const confirmed =
+                                      window.confirm(
+                                        `Advance ${homeTeam?.team_name ?? `Team ${matchup.home_fantasy_team_id}`} from this tied playoff matchup?`
+                                      );
+
+                                    if (
+                                      confirmed
+                                    ) {
+                                      void resolvePlayoffTie(
+                                        matchup.id,
+                                        matchup.home_fantasy_team_id
+                                      );
+                                    }
+                                  }}
+                                  style={
+                                    styles.button
+                                  }
+                                >
+                                  ADVANCE THIS TEAM
+                                </button>
+                              </div>
+
+                              <div
+                                style={
+                                  styles.playoffTieVs
+                                }
+                              >
+                                TIED
+                              </div>
+
+                              <div
+                                style={
+                                  styles.playoffTieTeam
+                                }
+                              >
+                                <span>
+                                  {matchup.away_seed
+                                    ? `#${matchup.away_seed}`
+                                    : "—"}
+                                </span>
+
+                                <strong>
+                                  {awayTeam
+                                    ?.team_name ??
+                                    `Team ${matchup.away_fantasy_team_id}`}
+                                </strong>
+
+                                <b>
+                                  {toNumber(
+                                    matchup.away_points
+                                  ).toFixed(
+                                    2
+                                  )}
+                                </b>
+
+                                <button
+                                  type="button"
+                                  disabled={saving}
+                                  onClick={() => {
+                                    const confirmed =
+                                      window.confirm(
+                                        `Advance ${awayTeam?.team_name ?? `Team ${matchup.away_fantasy_team_id}`} from this tied playoff matchup?`
+                                      );
+
+                                    if (
+                                      confirmed
+                                    ) {
+                                      void resolvePlayoffTie(
+                                        matchup.id,
+                                        matchup.away_fantasy_team_id
+                                      );
+                                    }
+                                  }}
+                                  style={
+                                    styles.button
+                                  }
+                                >
+                                  ADVANCE THIS TEAM
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                    )}
+                </div>
+              )}
             </Section>
           </>
         ) : null}
@@ -1636,7 +1823,12 @@ export default function SeasonLongCommissioner({
           <>
             <Section
               title="Season Controls"
-              subtitle="Safe administrative actions for Season-Long scoring and standings."
+              subtitle={
+                settings?.competition_format ===
+                "head_to_head"
+                  ? "Safe administrative actions for Season-Long scoring, matchups and W-L-T standings."
+                  : "Safe administrative actions for Season-Long scoring and standings."
+              }
             >
               <div
                 style={
@@ -1667,7 +1859,10 @@ export default function SeasonLongCommissioner({
                 <Stat
                   label="Standings Teams"
                   value={
-                    data.standings.length
+                    settings?.competition_format ===
+                    "head_to_head"
+                      ? data.h2hStandings.length
+                      : data.standings.length
                   }
                 />
               </div>
@@ -1686,7 +1881,10 @@ export default function SeasonLongCommissioner({
                         action:
                           "rebuild-standings",
                       },
-                      "Season-Long standings rebuilt from finalized weekly scores."
+                      settings?.competition_format ===
+                      "head_to_head"
+                        ? "Season-Long Head-to-Head standings refreshed from finalized matchups."
+                        : "Season-Long standings rebuilt from finalized weekly scores."
                     )
                   }
                   style={
@@ -1695,6 +1893,14 @@ export default function SeasonLongCommissioner({
                 >
                   REBUILD STANDINGS
                 </button>
+              </div>
+
+              <div
+                style={
+                  styles.warning
+                }
+              >
+                Week preparation, scoring refresh and finalization continue through the existing Season-Long lifecycle. We are not adding a manual force-finalize button here because it could bypass NFL-week completeness safeguards.
               </div>
 
               <div
@@ -1744,10 +1950,10 @@ export default function SeasonLongCommissioner({
                       lineHeight: 1.55,
                     }}
                   >
-                    Creates the next-season league with this league&apos;s settings,
-                    scoring, members and team names. Weekly lineups, scores,
-                    standings, salaries and trophies start fresh. Renewal is
-                    accepted only after the current Season-Long season is complete.
+                    Creates the next-season league with this league&apos;s current
+                    format, scoring, lineup settings, members and team names.
+                    Current-season results and Trophy Case history remain preserved.
+                    Renewal is accepted only after this Season-Long season is complete.
                   </p>
                 </div>
 
@@ -1768,7 +1974,12 @@ export default function SeasonLongCommissioner({
               >
                 <Guide
                   title="Weekly Competition"
-                  text="Teams submit a new lineup every NFL regular-season week. Standings are total points across finalized weeks."
+                  text={
+                    settings?.competition_format ===
+                    "head_to_head"
+                      ? "Teams submit a new lineup every NFL regular-season week and compete in scheduled weekly matchups. Finalized results update W-L-T standings."
+                      : "Teams submit a new lineup every NFL regular-season week. Standings are total points across finalized weeks."
+                  }
                 />
 
                 <Guide
@@ -2147,8 +2358,6 @@ const styles:
     input: {
       width:
         "100%",
-      minWidth:
-        0,
       minHeight:
         "38px",
       boxSizing:
@@ -2284,34 +2493,24 @@ const styles:
       display:
         "grid",
       gap:
-        "10px",
-      width:
-        "100%",
-      minWidth:
-        0,
+        "8px",
     },
 
     teamRow: {
       display:
         "grid",
+      gridTemplateColumns:
+        "54px minmax(180px,1fr) minmax(130px,.7fr) minmax(130px,.7fr) 85px",
       gap:
-        "12px",
+        "8px",
       alignItems:
         "center",
-      width:
-        "100%",
-      minWidth:
-        0,
-      boxSizing:
-        "border-box",
       padding:
-        "12px 14px",
+        "9px",
       border:
         "1px solid rgba(255,255,255,.07)",
       borderRadius:
-        "10px",
-      background:
-        "rgba(255,255,255,.01)",
+        "9px",
     },
 
     rank: {
@@ -2321,8 +2520,6 @@ const styles:
         950,
       textAlign:
         "center",
-      minWidth:
-        0,
     },
 
     teamMeta: {
@@ -2330,29 +2527,10 @@ const styles:
         "grid",
       gap:
         "3px",
-      minWidth:
-        0,
       color:
         "#8f96a0",
       fontSize:
         "11px",
-    },
-
-    teamActions: {
-      display:
-        "flex",
-      alignItems:
-        "center",
-      justifyContent:
-        "flex-end",
-      gap:
-        "8px",
-      minWidth:
-        0,
-      width:
-        "100%",
-      flexWrap:
-        "wrap",
     },
 
     error: {
@@ -2410,6 +2588,217 @@ const styles:
         "11px",
     },
 
+    formatPanel: {
+      padding:
+        "14px",
+      border:
+        "1px solid rgba(255,102,45,.18)",
+      borderRadius:
+        "10px",
+      background:
+        "rgba(255,92,30,.035)",
+    },
+
+    choiceGrid: {
+      display:
+        "grid",
+      gridTemplateColumns:
+        "repeat(auto-fit,minmax(220px,1fr))",
+      gap:
+        "10px",
+      marginTop:
+        "8px",
+    },
+
+    choiceCard: {
+      minHeight:
+        "92px",
+      display:
+        "flex",
+      flexDirection:
+        "column",
+      alignItems:
+        "flex-start",
+      gap:
+        "7px",
+      padding:
+        "13px",
+      border:
+        "1px solid rgba(255,255,255,.09)",
+      borderRadius:
+        "9px",
+      background:
+        "rgba(255,255,255,.025)",
+      color:
+        "#d8dbe1",
+      textAlign:
+        "left",
+      cursor:
+        "pointer",
+      fontSize:
+        "12px",
+      lineHeight:
+        1.45,
+    },
+
+    choiceCardActive: {
+      border:
+        "1px solid rgba(255,102,45,.55)",
+      background:
+        "linear-gradient(135deg,rgba(181,27,24,.22),rgba(239,83,29,.10))",
+      color:
+        "#fff",
+      boxShadow:
+        "0 0 0 1px rgba(255,102,45,.08) inset",
+    },
+
+    toggleGrid: {
+      display:
+        "grid",
+      gridTemplateColumns:
+        "repeat(auto-fit,minmax(220px,1fr))",
+      gap:
+        "9px",
+      marginTop:
+        "10px",
+    },
+
+    toggleCard: {
+      minHeight:
+        "42px",
+      display:
+        "flex",
+      alignItems:
+        "center",
+      gap:
+        "9px",
+      padding:
+        "9px 11px",
+      border:
+        "1px solid rgba(255,255,255,.08)",
+      borderRadius:
+        "8px",
+      background:
+        "rgba(255,255,255,.02)",
+      color:
+        "#d7dae0",
+      fontSize:
+        "12px",
+      fontWeight:
+        800,
+    },
+
+    h2hInfo: {
+      marginTop:
+        "10px",
+      display:
+        "grid",
+      gap:
+        "4px",
+      padding:
+        "10px 11px",
+      border:
+        "1px solid rgba(255,175,60,.18)",
+      borderRadius:
+        "8px",
+      background:
+        "rgba(130,80,10,.08)",
+      color:
+        "#d9bd8b",
+      fontSize:
+        "11px",
+    },
+
+    secondaryButton: {
+      minHeight:
+        "38px",
+      border:
+        "1px solid rgba(255,255,255,.13)",
+      borderRadius:
+        "7px",
+      padding:
+        "8px 12px",
+      background:
+        "rgba(255,255,255,.045)",
+      color:
+        "#f5f7fa",
+      fontSize:
+        "12px",
+      fontWeight:
+        950,
+      cursor:
+        "pointer",
+    },
+
+    playoffTieCard: {
+      padding:
+        "12px",
+      border:
+        "1px solid rgba(255,175,60,.24)",
+      borderRadius:
+        "10px",
+      background:
+        "rgba(130,80,10,.08)",
+    },
+
+    playoffTieHeader: {
+      display:
+        "flex",
+      justifyContent:
+        "space-between",
+      gap:
+        "10px",
+      marginBottom:
+        "10px",
+      color:
+        "#e3bd81",
+      fontSize:
+        "11px",
+    },
+
+    playoffTieTeams: {
+      display:
+        "grid",
+      gridTemplateColumns:
+        "minmax(0,1fr) 52px minmax(0,1fr)",
+      gap:
+        "10px",
+      alignItems:
+        "stretch",
+    },
+
+    playoffTieTeam: {
+      minWidth:
+        0,
+      display:
+        "grid",
+      gap:
+        "7px",
+      padding:
+        "11px",
+      border:
+        "1px solid rgba(255,255,255,.08)",
+      borderRadius:
+        "9px",
+      background:
+        "rgba(255,255,255,.025)",
+    },
+
+    playoffTieVs: {
+      display:
+        "flex",
+      alignItems:
+        "center",
+      justifyContent:
+        "center",
+      color:
+        "#ffb55c",
+      fontSize:
+        "10px",
+      fontWeight:
+        950,
+    },
+
     center: {
       padding:
         "80px 20px",
@@ -2437,27 +2826,5 @@ const styles:
       background:
         "rgba(20,20,24,.94)",
     },
-  
-    dangerZone: {
-      display: "grid",
-      gap: "12px",
-      marginTop: "8px",
-      padding: "16px",
-      border: "1px solid rgba(255,75,75,.32)",
-      borderRadius: "12px",
-      background: "rgba(135,15,15,.12)",
-    },
+  };
 
-    dangerText: {
-      margin: "6px 0 0",
-      color: "#a7adb7",
-      fontSize: "12px",
-      lineHeight: 1.55,
-    },
-
-    dangerButton: {
-      border: "1px solid rgba(255,75,75,.5)",
-      background: "linear-gradient(135deg,#7d1111,#b51c14)",
-      color: "#fff",
-    },
-};

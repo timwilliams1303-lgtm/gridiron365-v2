@@ -16,6 +16,10 @@ import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
 
+import {
+  createSupabaseServerClient,
+} from "@/lib/supabase/server";
+
 import "./league-shell.css";
 
 
@@ -194,6 +198,77 @@ export default async function LeagueLayout({
   const isPickem =
     league.leagueType ===
     "pickem";
+
+
+  /*
+   * ============================================================
+   * SEASON-LONG NAVIGATION SETTINGS
+   * ============================================================
+   *
+   * The selected league decides which tabs are visible.
+   * Total Points leagues do not expose H2H-only pages.
+   * Head-to-Head leagues expose Matchups, and Stage 5 will use
+   * playoffsEnabled to expose the playoff/bracket tab only when
+   * that league actually has H2H playoffs enabled.
+   */
+  let seasonLongCompetitionFormat:
+    | "total_points"
+    | "head_to_head" =
+      "total_points";
+
+  let seasonLongPlayoffsEnabled =
+    false;
+
+
+  if (
+    isSeasonLong
+  ) {
+    const supabase =
+      await createSupabaseServerClient();
+
+    const {
+      data:
+        seasonLongSettings,
+      error:
+        seasonLongSettingsError,
+    } =
+      await supabase
+        .from(
+          "season_long_settings"
+        )
+        .select(`
+          competition_format,
+          playoffs_enabled
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .maybeSingle();
+
+
+    if (
+      seasonLongSettingsError
+    ) {
+      throw new Error(
+        `Could not load Season-Long navigation settings: ${seasonLongSettingsError.message}`
+      );
+    }
+
+
+    seasonLongCompetitionFormat =
+      seasonLongSettings
+        ?.competition_format ===
+        "head_to_head"
+        ? "head_to_head"
+        : "total_points";
+
+    seasonLongPlayoffsEnabled =
+      Boolean(
+        seasonLongSettings
+          ?.playoffs_enabled
+      );
+  }
 
 
   const leagueTypeLabel =
@@ -399,6 +474,12 @@ export default async function LeagueLayout({
           }
           isCommissioner={
             isCommissioner
+          }
+          competitionFormat={
+            seasonLongCompetitionFormat
+          }
+          playoffsEnabled={
+            seasonLongPlayoffsEnabled
           }
         />
       ) : null}

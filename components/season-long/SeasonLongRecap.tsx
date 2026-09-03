@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 
 import SeasonLongSeasonSummary from "@/components/season-long/SeasonLongSeasonSummary";
 
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireLeagueMember } from "@/lib/leagues/requireLeagueMember";
 import {
   getSeasonLongTeamLiveLineupData,
@@ -31,6 +31,72 @@ type StandingRow = {
   total_points: number | string | null;
   weeks_scored: number | null;
   current_rank: number | null;
+};
+
+type SeasonLongSettingsRow = {
+  competition_format:
+    | "total_points"
+    | "head_to_head"
+    | null;
+  regular_season_weeks:
+    number |
+    null;
+  playoffs_enabled:
+    boolean |
+    null;
+  playoff_team_count:
+    number |
+    null;
+};
+
+type H2HStandingRow = {
+  fantasy_team_id: number;
+  wins: number | null;
+  losses: number | null;
+  ties: number | null;
+  points_for:
+    number |
+    string |
+    null;
+  points_against:
+    number |
+    string |
+    null;
+  current_rank:
+    number |
+    null;
+};
+
+type H2HMatchupRow = {
+  id: number;
+  week: number;
+  home_fantasy_team_id: number;
+  away_fantasy_team_id:
+    number |
+    null;
+  home_points:
+    number |
+    string |
+    null;
+  away_points:
+    number |
+    string |
+    null;
+  is_final:
+    boolean |
+    null;
+  winner_fantasy_team_id:
+    number |
+    null;
+  is_tie:
+    boolean |
+    null;
+  matchup_type:
+    string |
+    null;
+  playoff_round:
+    number |
+    null;
 };
 
 type WeekBadgeRow = {
@@ -67,6 +133,10 @@ type TeamRecap = {
   projectedPoints: number;
   seasonPoints: number;
   seasonRank: number | null;
+  wins: number;
+  losses: number;
+  ties: number;
+  pointsAgainst: number;
   salaryUsed: number | null;
   lineup: SeasonLongTeamLiveLineupData;
   badges: WeekBadgeRow[];
@@ -245,7 +315,7 @@ export default async function SeasonLongRecap({
   }
 
   const supabase =
-    await createSupabaseServerClient();
+    createSupabaseAdminClient();
 
   const season =
     access.league.season;
@@ -254,6 +324,46 @@ export default async function SeasonLongRecap({
     access.league
       .playerSelectionMode ===
     "salary";
+
+  const {
+    data:
+      settingsData,
+    error:
+      settingsError,
+  } =
+    await supabase
+      .from(
+        "season_long_settings"
+      )
+      .select(`
+        competition_format,
+        regular_season_weeks,
+        playoffs_enabled,
+        playoff_team_count
+      `)
+      .eq(
+        "league_id",
+        leagueId
+      )
+      .maybeSingle();
+
+  if (
+    settingsError
+  ) {
+    throw new Error(
+      `Could not load Season-Long settings: ${settingsError.message}`
+    );
+  }
+
+  const leagueSettings =
+    settingsData as
+      SeasonLongSettingsRow |
+      null;
+
+  const isH2H =
+    leagueSettings
+      ?.competition_format ===
+    "head_to_head";
 
   const activeWeekResult =
     await supabase.rpc(
@@ -299,6 +409,8 @@ export default async function SeasonLongRecap({
     teamsResult,
     scoresResult,
     standingsResult,
+    h2hStandingsResult,
+    h2hMatchupsResult,
     weekBadgesResult,
     trophyResult,
   ] =
@@ -356,6 +468,64 @@ export default async function SeasonLongRecap({
           season
         ),
 
+      supabase
+        .from(
+          "season_long_h2h_standings"
+        )
+        .select(`
+          fantasy_team_id,
+          wins,
+          losses,
+          ties,
+          points_for,
+          points_against,
+          current_rank
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        ),
+
+      supabase
+        .from(
+          "season_long_matchups"
+        )
+        .select(`
+          id,
+          week,
+          home_fantasy_team_id,
+          away_fantasy_team_id,
+          home_points,
+          away_points,
+          is_final,
+          winner_fantasy_team_id,
+          is_tie,
+          matchup_type,
+          playoff_round
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        )
+        .eq(
+          "week",
+          week
+        )
+        .order(
+          "id",
+          {
+            ascending: true,
+          }
+        ),
+
       supabase.rpc(
         "get_season_long_week_badges",
         {
@@ -404,6 +574,22 @@ export default async function SeasonLongRecap({
   }
 
   if (
+    h2hStandingsResult.error
+  ) {
+    throw new Error(
+      `Could not load H2H standings: ${h2hStandingsResult.error.message}`
+    );
+  }
+
+  if (
+    h2hMatchupsResult.error
+  ) {
+    throw new Error(
+      `Could not load H2H matchups: ${h2hMatchupsResult.error.message}`
+    );
+  }
+
+  if (
     weekBadgesResult.error
   ) {
     throw new Error(
@@ -437,6 +623,18 @@ export default async function SeasonLongRecap({
       []
     ) as StandingRow[];
 
+  const h2hStandings =
+    (
+      h2hStandingsResult.data ??
+      []
+    ) as H2HStandingRow[];
+
+  const h2hMatchups =
+    (
+      h2hMatchupsResult.data ??
+      []
+    ) as H2HMatchupRow[];
+
   const weekBadges =
     (
       weekBadgesResult.data ??
@@ -469,6 +667,30 @@ export default async function SeasonLongRecap({
         ) => [
           row.fantasy_team_id,
           row,
+        ]
+      )
+    );
+
+  const h2hStandingsMap =
+    new Map(
+      h2hStandings.map(
+        (
+          row
+        ) => [
+          row.fantasy_team_id,
+          row,
+        ]
+      )
+    );
+
+  const teamNameMap =
+    new Map(
+      teams.map(
+        (
+          team
+        ) => [
+          team.id,
+          team.team_name,
         ]
       )
     );
@@ -575,15 +797,57 @@ export default async function SeasonLongRecap({
               ),
 
             seasonPoints:
-              n(
-                standing
-                  ?.total_points
-              ),
+              isH2H
+                ? n(
+                    h2hStandingsMap.get(
+                      team.id
+                    )?.points_for
+                  )
+                : n(
+                    standing
+                      ?.total_points
+                  ),
 
             seasonRank:
-              standing
-                ?.current_rank ??
-              null,
+              isH2H
+                ? h2hStandingsMap.get(
+                    team.id
+                  )?.current_rank ??
+                  null
+                : standing
+                    ?.current_rank ??
+                  null,
+
+            wins:
+              Number(
+                h2hStandingsMap.get(
+                  team.id
+                )?.wins ??
+                0
+              ),
+
+            losses:
+              Number(
+                h2hStandingsMap.get(
+                  team.id
+                )?.losses ??
+                0
+              ),
+
+            ties:
+              Number(
+                h2hStandingsMap.get(
+                  team.id
+                )?.ties ??
+                0
+              ),
+
+            pointsAgainst:
+              n(
+                h2hStandingsMap.get(
+                  team.id
+                )?.points_against
+              ),
 
             salaryUsed:
               isSalary
@@ -631,17 +895,27 @@ export default async function SeasonLongRecap({
    * This matches the permanent badge generator.
    */
   const isFinal =
-    teams.length >
-      0 &&
-    weeklyScores.length ===
-      teams.length &&
-    weeklyScores.every(
-      (
-        row
-      ) =>
-        row.is_final ===
-        true
-    );
+    isH2H
+      ? h2hMatchups.length >
+          0 &&
+        h2hMatchups.every(
+          (
+            matchup
+          ) =>
+            matchup.is_final ===
+            true
+        )
+      : teams.length >
+          0 &&
+        weeklyScores.length ===
+          teams.length &&
+        weeklyScores.every(
+          (
+            row
+          ) =>
+            row.is_final ===
+            true
+        );
 
   const champion =
     recaps[0] ??
@@ -802,6 +1076,10 @@ export default async function SeasonLongRecap({
           .g365-season-long-mobile button {
             min-height: 42px;
           }
+
+          .g365-h2h-recap-matchups {
+            grid-template-columns: 1fr !important;
+          }
         }
       `}</style>
 
@@ -846,6 +1124,10 @@ export default async function SeasonLongRecap({
               {isSalary
                 ? "Salary Cap"
                 : "No Salary Cap"}
+              {" · "}
+              {isH2H
+                ? "Head-to-Head"
+                : "Total Points"}
             </p>
           </div>
 
@@ -1275,6 +1557,212 @@ export default async function SeasonLongRecap({
           )}
         </section>
 
+        {isH2H ? (
+          <section
+            style={
+              styles.card
+            }
+          >
+            <div
+              style={
+                styles.sectionHead
+              }
+            >
+              <div>
+                <p
+                  style={
+                    styles.sectionEyebrow
+                  }
+                >
+                  WEEK {week}
+                  {h2hMatchups.some(
+                    (
+                      matchup
+                    ) =>
+                      matchup.matchup_type ===
+                      "playoff"
+                  )
+                    ? " · PLAYOFFS"
+                    : " · HEAD-TO-HEAD"}
+                </p>
+
+                <h2
+                  style={
+                    styles.sectionTitle
+                  }
+                >
+                  Matchup Results
+                </h2>
+              </div>
+
+              <span
+                style={
+                  styles.countBadge
+                }
+              >
+                {h2hMatchups.length}{" "}
+                MATCHUPS
+              </span>
+            </div>
+
+            {h2hMatchups.length >
+            0 ? (
+              <div
+                className="g365-h2h-recap-matchups"
+                style={
+                  styles.h2hMatchupGrid
+                }
+              >
+                {h2hMatchups.map(
+                  (
+                    matchup
+                  ) => {
+                    const homeName =
+                      teamNameMap.get(
+                        matchup.home_fantasy_team_id
+                      ) ??
+                      `Team ${matchup.home_fantasy_team_id}`;
+
+                    const awayName =
+                      matchup.away_fantasy_team_id
+                        ? teamNameMap.get(
+                            matchup.away_fantasy_team_id
+                          ) ??
+                          `Team ${matchup.away_fantasy_team_id}`
+                        : "BYE";
+
+                    const homeWinner =
+                      Boolean(
+                        matchup.is_final &&
+                        matchup.winner_fantasy_team_id ===
+                          matchup.home_fantasy_team_id
+                      );
+
+                    const awayWinner =
+                      Boolean(
+                        matchup.is_final &&
+                        matchup.away_fantasy_team_id &&
+                        matchup.winner_fantasy_team_id ===
+                          matchup.away_fantasy_team_id
+                      );
+
+                    const matchupBody = (
+                      <article
+                        style={
+                          styles.h2hMatchupCard
+                        }
+                      >
+                        <div
+                          style={
+                            styles.h2hMatchupMeta
+                          }
+                        >
+                          <span>
+                            {matchup.matchup_type ===
+                            "playoff"
+                              ? `PLAYOFF ROUND ${matchup.playoff_round ?? "—"}`
+                              : "REGULAR SEASON"}
+                          </span>
+
+                          <strong>
+                            {matchup.is_final
+                              ? "FINAL"
+                              : "IN PROGRESS"}
+                          </strong>
+                        </div>
+
+                        <div
+                          style={{
+                            ...styles.h2hTeamRow,
+                            ...(homeWinner
+                              ? styles.h2hWinnerRow
+                              : {}),
+                          }}
+                        >
+                          <span>
+                            {homeWinner
+                              ? "✓ "
+                              : ""}
+                            {homeName}
+                          </span>
+
+                          <strong>
+                            {points(
+                              matchup.home_points
+                            )}
+                          </strong>
+                        </div>
+
+                        <div
+                          style={{
+                            ...styles.h2hTeamRow,
+                            ...(awayWinner
+                              ? styles.h2hWinnerRow
+                              : {}),
+                          }}
+                        >
+                          <span>
+                            {awayWinner
+                              ? "✓ "
+                              : ""}
+                            {awayName}
+                          </span>
+
+                          <strong>
+                            {matchup.away_fantasy_team_id
+                              ? points(
+                                  matchup.away_points
+                                )
+                              : "BYE"}
+                          </strong>
+                        </div>
+
+                        {matchup.is_tie ? (
+                          <div
+                            style={
+                              styles.h2hTie
+                            }
+                          >
+                            TIE
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+
+                    return matchup.away_fantasy_team_id
+                      ? (
+                          <Link
+                            key={
+                              matchup.id
+                            }
+                            href={`/league/${leagueId}/season-long/matchups/${matchup.id}`}
+                            style={
+                              styles.h2hMatchupLink
+                            }
+                          >
+                            {matchupBody}
+                          </Link>
+                        )
+                      : (
+                          <div
+                            key={
+                              matchup.id
+                            }
+                          >
+                            {matchupBody}
+                          </div>
+                        );
+                  }
+                )}
+              </div>
+            ) : (
+              <EmptyState
+                text="No Head-to-Head matchup rows are available for this week yet."
+              />
+            )}
+          </section>
+        ) : null}
+
         <section
           style={
             styles.card
@@ -1299,8 +1787,9 @@ export default async function SeasonLongRecap({
                   styles.sectionTitle
                 }
               >
-                Weekly
-                Rankings
+                {isH2H
+                  ? "Weekly Scoring"
+                  : "Weekly Rankings"}
               </h2>
             </div>
           </div>
@@ -2518,4 +3007,119 @@ const styles:
       fontSize:
         15,
     },
+
+    h2hMatchupGrid: {
+      display:
+        "grid",
+
+      gridTemplateColumns:
+        "repeat(auto-fit,minmax(270px,1fr))",
+
+      gap: 12,
+    },
+
+    h2hMatchupLink: {
+      color:
+        "inherit",
+
+      textDecoration:
+        "none",
+    },
+
+    h2hMatchupCard: {
+      minWidth: 0,
+
+      overflow:
+        "hidden",
+
+      border:
+        "1px solid rgba(255,255,255,.10)",
+
+      borderRadius:
+        14,
+
+      background:
+        "linear-gradient(180deg,#101419,#090c10)",
+    },
+
+    h2hMatchupMeta: {
+      display:
+        "flex",
+
+      justifyContent:
+        "space-between",
+
+      gap: 10,
+
+      padding:
+        "10px 12px",
+
+      borderBottom:
+        "1px solid rgba(255,255,255,.08)",
+
+      color:
+        "#9ca3af",
+
+      fontSize:
+        10,
+
+      fontWeight:
+        900,
+
+      letterSpacing:
+        0.5,
+    },
+
+    h2hTeamRow: {
+      display:
+        "flex",
+
+      alignItems:
+        "center",
+
+      justifyContent:
+        "space-between",
+
+      gap: 12,
+
+      minWidth: 0,
+
+      padding:
+        "13px 12px",
+
+      color:
+        "#f4f4f5",
+
+      borderBottom:
+        "1px solid rgba(255,255,255,.06)",
+    },
+
+    h2hWinnerRow: {
+      background:
+        "linear-gradient(90deg,rgba(239,68,68,.14),rgba(249,115,22,.05))",
+
+      color:
+        "#fff",
+    },
+
+    h2hTie: {
+      padding:
+        "8px 12px",
+
+      color:
+        "#fbbf24",
+
+      fontSize:
+        10,
+
+      fontWeight:
+        950,
+
+      textAlign:
+        "center",
+
+      letterSpacing:
+        0.6,
+    },
+
   };

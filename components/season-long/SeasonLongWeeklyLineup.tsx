@@ -233,6 +233,9 @@ type Props = {
 
   playerPool:
     PoolPlayer[];
+
+  matchupHref?:
+    string | null;
 };
 
 
@@ -690,6 +693,7 @@ export default function SeasonLongWeeklyLineup({
   entry,
   initialLineup,
   playerPool,
+  matchupHref = null,
 }: Props) {
   const router =
     useRouter();
@@ -1342,6 +1346,14 @@ export default function SeasonLongWeeklyLineup({
       setMessage(
         `Week ${week} lineup submitted successfully.`
       );
+
+      if (
+        matchupHref
+      ) {
+        router.push(
+          matchupHref
+        );
+      }
 
       router.refresh();
 

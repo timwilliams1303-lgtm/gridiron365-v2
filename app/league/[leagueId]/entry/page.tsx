@@ -19,12 +19,21 @@ type PageProps = {
     Promise<{
       leagueId: string;
     }>;
+
+  searchParams:
+    Promise<{
+      edit?: string;
+    }>;
 };
 
 
 type SeasonLongSettingsRow = {
   season:
     number;
+
+  competition_format:
+    | "total_points"
+    | "head_to_head";
 
   weekly_salary_cap:
     number | string | null;
@@ -284,11 +293,19 @@ function normalizeTeamAbbreviation(
 
 export default async function SeasonLongEntryPage({
   params,
+  searchParams,
 }: PageProps) {
   const {
     leagueId,
   } =
     await params;
+
+  const query =
+    await searchParams;
+
+  const editMode =
+    query.edit ===
+    "1";
 
 
   const access =
@@ -355,6 +372,7 @@ export default async function SeasonLongEntryPage({
       )
       .select(`
         season,
+        competition_format,
         weekly_salary_cap,
         starting_qb,
         starting_rb,
@@ -448,6 +466,122 @@ export default async function SeasonLongEntryPage({
     activeWeekValue > 0
       ? activeWeekValue
       : 1;
+
+
+  /*
+   * ============================================================
+   * HEAD-TO-HEAD MY ENTRY
+   * ============================================================
+   *
+   * A Season-Long H2H league uses the matchup as the owner's
+   * primary weekly experience, just like Traditional.
+   *
+   * /entry              -> current matchup
+   * /entry?edit=1       -> weekly lineup builder
+   *
+   * A bye week has no two-team detail page, so My Entry remains
+   * on the lineup builder for that week.
+   */
+  let currentMatchupHref:
+    string |
+    null =
+      null;
+
+
+  if (
+    settings.competition_format ===
+    "head_to_head"
+  ) {
+    const matchupResult =
+      await supabase
+        .from(
+          "season_long_matchups"
+        )
+        .select(`
+          id,
+          matchup_type,
+          home_fantasy_team_id,
+          away_fantasy_team_id
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        )
+        .eq(
+          "week",
+          currentWeek
+        )
+        .in(
+          "matchup_type",
+          [
+            "regular_season",
+            "playoff",
+          ]
+        );
+
+
+    if (
+      matchupResult.error
+    ) {
+      throw new Error(
+        matchupResult
+          .error
+          .message
+      );
+    }
+
+
+    const myMatchups =
+      (
+        matchupResult.data ??
+        []
+      ).filter(
+        (
+          matchup
+        ) =>
+          matchup
+            .home_fantasy_team_id ===
+            fantasyTeamId ||
+          matchup
+            .away_fantasy_team_id ===
+            fantasyTeamId
+      );
+
+    const myMatchup =
+      myMatchups.find(
+        (
+          matchup
+        ) =>
+          matchup
+            .matchup_type ===
+          "playoff"
+      ) ??
+      myMatchups[0] ??
+      null;
+
+
+    if (
+      myMatchup &&
+      myMatchup
+        .away_fantasy_team_id !==
+        null
+    ) {
+      currentMatchupHref =
+        `/league/${leagueId}/season-long/matchups/${myMatchup.id}`;
+
+      if (
+        !editMode
+      ) {
+        redirect(
+          currentMatchupHref
+        );
+      }
+    }
+  }
 
 
   /*
@@ -1602,6 +1736,9 @@ export default async function SeasonLongEntryPage({
       }
       playerPool={
         poolForClient
+      }
+      matchupHref={
+        currentMatchupHref
       }
     />
   );

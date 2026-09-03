@@ -13,7 +13,6 @@ import {
 
 type Props = {
   leagueId: string;
-  embedded?: boolean;
 };
 
 type League = {
@@ -541,7 +540,6 @@ function makeComponent(
 ) {
   return function SeasonLongScoring({
     leagueId,
-    embedded = false,
   }: Props) {
     const supabase =
       useMemo(
@@ -1111,9 +1109,7 @@ function makeComponent(
       return (
         <main
           style={
-            embedded
-              ? styles.embeddedPage
-              : styles.page
+            styles.page
           }
         >
           <div
@@ -1135,102 +1131,16 @@ function makeComponent(
 
     return (
       <main
-        className="g365-season-long-mobile"
         style={
-          embedded
-            ? styles.embeddedPage
-            : styles.page
+          styles.page
         }
       >
-
-      <style>{`
-        .g365-season-long-mobile,
-        .g365-season-long-mobile * {
-          box-sizing: border-box;
-        }
-
-        @media (max-width: 760px) {
-          .g365-season-long-mobile {
-            width: 100% !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
-            padding-left: 12px !important;
-            padding-right: 12px !important;
-            overflow-x: hidden !important;
-          }
-
-          .g365-season-long-mobile section,
-          .g365-season-long-mobile article,
-          .g365-season-long-mobile header,
-          .g365-season-long-mobile form,
-          .g365-season-long-mobile div {
-            min-width: 0;
-            max-width: 100%;
-          }
-
-          .g365-season-long-mobile h1 {
-            font-size: clamp(27px, 8vw, 36px) !important;
-            line-height: 1.08 !important;
-            overflow-wrap: anywhere;
-          }
-
-          .g365-season-long-mobile h2,
-          .g365-season-long-mobile h3,
-          .g365-season-long-mobile p,
-          .g365-season-long-mobile span,
-          .g365-season-long-mobile strong {
-            overflow-wrap: anywhere;
-          }
-
-          .g365-season-long-mobile input,
-          .g365-season-long-mobile select,
-          .g365-season-long-mobile textarea {
-            width: 100% !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
-            font-size: 16px !important;
-          }
-
-          .g365-season-long-mobile button,
-          .g365-season-long-mobile a {
-            max-width: 100%;
-          }
-
-          .g365-season-long-mobile :not(button)[style*="grid-template-columns"] {
-            grid-template-columns: minmax(0, 1fr) !important;
-          }
-
-          .g365-season-long-mobile [style*="white-space: nowrap"],
-          .g365-season-long-mobile [style*="white-space:nowrap"] {
-            white-space: normal !important;
-          }
-
-          .g365-season-long-mobile [style*="overflow-x: auto"],
-          .g365-season-long-mobile [style*="overflowX: auto"] {
-            max-width: 100%;
-            -webkit-overflow-scrolling: touch;
-          }
-        }
-
-        @media (max-width: 430px) {
-          .g365-season-long-mobile {
-            padding-left: 10px !important;
-            padding-right: 10px !important;
-          }
-
-          .g365-season-long-mobile button {
-            min-height: 42px;
-          }
-        }
-      `}</style>
-
         <div
           style={
             styles.shell
           }
         >
-          {!embedded ? (
-            <header
+          <header
             style={
               styles.hero
             }
@@ -1273,8 +1183,7 @@ function makeComponent(
             >
               {displayName}
             </div>
-            </header>
-          ) : null}
+          </header>
 
           <section
             style={
@@ -2026,19 +1935,6 @@ const styles:
     string,
     React.CSSProperties
   > = {
-  embeddedPage: {
-    width:
-      "100%",
-    minHeight:
-      0,
-    background:
-      "transparent",
-    color:
-      "#fff",
-    padding:
-      0,
-  },
-
   page: {
     minHeight:
       "100vh",

@@ -316,15 +316,22 @@ export async function POST(
 
   /*
    * ----------------------------------------------------------
-   * SEASON COMPLETION SAFEGUARD
+   * FORMAT-AWARE SEASON COMPLETION SAFEGUARD
    * ----------------------------------------------------------
-   * The renewal control is visible in Commissioner > Season
-   * Controls, but the server will not create the next league
-   * until every active team has a final Week 18 score.
+   * Total Points:
+   *   requires every active team to have a final score in the
+   *   configured final Season-Long week.
+   *
+   * Head-to-Head without playoffs:
+   *   requires every scheduled regular-season matchup through
+   *   regular_season_weeks to be final.
+   *
+   * Head-to-Head with playoffs:
+   *   requires the playoff state to be complete with a champion.
    */
   const [
     activeTeamsResult,
-    finalWeekResult,
+    completionSettingsResult,
   ] =
     await Promise.all([
       admin
@@ -345,27 +352,18 @@ export async function POST(
 
       admin
         .from(
-          "season_long_weekly_scores"
+          "season_long_settings"
         )
-        .select(
-          "fantasy_team_id,is_final"
-        )
+        .select(`
+          competition_format,
+          regular_season_weeks,
+          playoffs_enabled
+        `)
         .eq(
           "league_id",
           league.id
         )
-        .eq(
-          "season",
-          league.season
-        )
-        .eq(
-          "week",
-          18
-        )
-        .eq(
-          "is_final",
-          true
-        ),
+        .maybeSingle(),
     ]);
 
   if (
@@ -378,10 +376,10 @@ export async function POST(
   }
 
   if (
-    finalWeekResult.error
+    completionSettingsResult.error
   ) {
     return jsonError(
-      finalWeekResult.error.message,
+      completionSettingsResult.error.message,
       500
     );
   }
@@ -401,42 +399,251 @@ export async function POST(
       )
     );
 
-  const finalTeamIds =
-    new Set(
-      (
-        finalWeekResult.data ??
-        []
-      ).map(
-        (
-          row
-        ) =>
-          Number(
-            row.fantasy_team_id
-          )
+  if (
+    activeTeamIds.size ===
+    0
+  ) {
+    return jsonError(
+      "This Season-Long league has no active teams to renew.",
+      409
+    );
+  }
+
+  const completionSettings =
+    completionSettingsResult.data as
+      | {
+          competition_format:
+            string |
+            null;
+          regular_season_weeks:
+            number |
+            null;
+          playoffs_enabled:
+            boolean |
+            null;
+        }
+      | null;
+
+  const competitionFormat =
+    completionSettings
+      ?.competition_format ===
+    "head_to_head"
+      ? "head_to_head"
+      : "total_points";
+
+  const regularSeasonWeeks =
+    Math.max(
+      1,
+      Number(
+        completionSettings
+          ?.regular_season_weeks ??
+        18
       )
     );
 
-  const seasonComplete =
-    activeTeamIds.size >
-      0 &&
-    Array.from(
-      activeTeamIds
-    ).every(
-      (
-        teamId
-      ) =>
-        finalTeamIds.has(
-          teamId
-        )
+  const playoffsEnabled =
+    competitionFormat ===
+      "head_to_head" &&
+    Boolean(
+      completionSettings
+        ?.playoffs_enabled
     );
 
   if (
-    !seasonComplete
+    competitionFormat ===
+    "head_to_head"
   ) {
-    return jsonError(
-      "This league can be renewed after the current Season-Long season is complete and every active team has a final Week 18 score.",
-      409
-    );
+    const regularMatchupsResult =
+      await admin
+        .from(
+          "season_long_matchups"
+        )
+        .select(
+          "id,is_final"
+        )
+        .eq(
+          "league_id",
+          league.id
+        )
+        .eq(
+          "season",
+          league.season
+        )
+        .eq(
+          "matchup_type",
+          "regular_season"
+        )
+        .lte(
+          "week",
+          regularSeasonWeeks
+        );
+
+    if (
+      regularMatchupsResult.error
+    ) {
+      return jsonError(
+        regularMatchupsResult
+          .error.message,
+        500
+      );
+    }
+
+    const regularMatchups =
+      regularMatchupsResult.data ??
+      [];
+
+    const regularSeasonComplete =
+      regularMatchups.length >
+        0 &&
+      regularMatchups.every(
+        (
+          matchup
+        ) =>
+          matchup.is_final ===
+          true
+      );
+
+    if (
+      !regularSeasonComplete
+    ) {
+      return jsonError(
+        `This Head-to-Head league can be renewed after all regular-season matchups through Week ${regularSeasonWeeks} are final.`,
+        409
+      );
+    }
+
+    if (
+      playoffsEnabled
+    ) {
+      const playoffStateResult =
+        await admin
+          .from(
+            "season_long_playoff_state"
+          )
+          .select(
+            "status,champion_fantasy_team_id"
+          )
+          .eq(
+            "league_id",
+            league.id
+          )
+          .eq(
+            "season",
+            league.season
+          )
+          .maybeSingle();
+
+      if (
+        playoffStateResult.error
+      ) {
+        return jsonError(
+          playoffStateResult
+            .error.message,
+          500
+        );
+      }
+
+      const playoffStatus =
+        String(
+          playoffStateResult
+            .data
+            ?.status ??
+          ""
+        ).toLowerCase();
+
+      const playoffComplete =
+        (
+          playoffStatus ===
+            "complete" ||
+          playoffStatus ===
+            "completed"
+        ) &&
+        Boolean(
+          playoffStateResult
+            .data
+            ?.champion_fantasy_team_id
+        );
+
+      if (
+        !playoffComplete
+      ) {
+        return jsonError(
+          "This Head-to-Head league can be renewed after the fantasy playoffs are complete and a champion has been finalized.",
+          409
+        );
+      }
+    }
+  } else {
+    const finalWeekResult =
+      await admin
+        .from(
+          "season_long_weekly_scores"
+        )
+        .select(
+          "fantasy_team_id,is_final"
+        )
+        .eq(
+          "league_id",
+          league.id
+        )
+        .eq(
+          "season",
+          league.season
+        )
+        .eq(
+          "week",
+          regularSeasonWeeks
+        )
+        .eq(
+          "is_final",
+          true
+        );
+
+    if (
+      finalWeekResult.error
+    ) {
+      return jsonError(
+        finalWeekResult
+          .error.message,
+        500
+      );
+    }
+
+    const finalTeamIds =
+      new Set(
+        (
+          finalWeekResult.data ??
+          []
+        ).map(
+          (
+            row
+          ) =>
+            Number(
+              row.fantasy_team_id
+            )
+        )
+      );
+
+    const seasonComplete =
+      Array.from(
+        activeTeamIds
+      ).every(
+        (
+          teamId
+        ) =>
+          finalTeamIds.has(
+            teamId
+          )
+      );
+
+    if (
+      !seasonComplete
+    ) {
+      return jsonError(
+        `This Total Points league can be renewed after every active team has a final Week ${regularSeasonWeeks} score.`,
+        409
+      );
+    }
   }
 
   /*
@@ -784,6 +991,19 @@ export async function POST(
             newLeagueId,
           season:
             targetSeason,
+
+          ...(competitionFormat ===
+          "total_points"
+            ? {
+                competition_format:
+                  "total_points",
+                playoffs_enabled:
+                  false,
+              }
+            : {
+                competition_format:
+                  "head_to_head",
+              }),
         }
       );
 
@@ -893,6 +1113,74 @@ export async function POST(
 
   /*
    * ----------------------------------------------------------
+   * INITIALIZE FRESH H2H SEASON
+   * ----------------------------------------------------------
+   * The new league receives new fantasy_team ids, so no old
+   * matchup / standings / playoff rows are copied. Build the
+   * new regular-season schedule from the renewed teams instead.
+   */
+  let h2hMatchupsCreated =
+    0;
+
+  if (
+    competitionFormat ===
+    "head_to_head"
+  ) {
+    const {
+      data:
+        h2hScheduleData,
+      error:
+        h2hScheduleError,
+    } =
+      await admin.rpc(
+        "build_season_long_h2h_schedule",
+        {
+          p_league_id:
+            newLeagueId,
+          p_season:
+            targetSeason,
+        }
+      );
+
+    if (
+      h2hScheduleError
+    ) {
+      return rollback(
+        h2hScheduleError.message
+      );
+    }
+
+    h2hMatchupsCreated =
+      Number(
+        h2hScheduleData ??
+        0
+      );
+
+    const {
+      error:
+        h2hStandingsError,
+    } =
+      await admin.rpc(
+        "rebuild_season_long_h2h_standings",
+        {
+          p_league_id:
+            newLeagueId,
+          p_season:
+            targetSeason,
+        }
+      );
+
+    if (
+      h2hStandingsError
+    ) {
+      return rollback(
+        h2hStandingsError.message
+      );
+    }
+  }
+
+  /*
+   * ----------------------------------------------------------
    * RECORD THE RENEWAL
    * ----------------------------------------------------------
    */
@@ -941,5 +1229,10 @@ export async function POST(
       newLeagueId,
     season:
       targetSeason,
+    historyId,
+    competitionFormat,
+    playerSelectionMode:
+      league.player_selection_mode,
+    h2hMatchupsCreated,
   });
 }

@@ -12,6 +12,8 @@ import {
   useRouter,
 } from "next/navigation";
 
+import G365MarchMadnessBracket from "@/components/playoffs/G365MarchMadnessBracket";
+
 import {
   createBrowserClient,
 } from "@supabase/ssr";
@@ -512,15 +514,12 @@ export default function PlayoffsPage() {
             loadedSettings
           );
 
-          const loadedActiveWeek =
+          setCurrentWeek(
             Number(
               seasonStateData
                 ?.active_week ??
               1
-            );
-
-          setCurrentWeek(
-            loadedActiveWeek
+            )
           );
 
           setIsCommissioner(
@@ -535,10 +534,17 @@ export default function PlayoffsPage() {
             )
           );
 
+          const loadedActiveWeek =
+            Number(
+              seasonStateData
+                ?.active_week ??
+              1
+            );
+
           const beforePlayoffs =
             loadedActiveWeek <
-              loadedSettings
-                .playoff_start_week;
+            loadedSettings
+              .playoff_start_week;
 
           if (beforePlayoffs) {
             const {
@@ -2144,25 +2150,42 @@ export default function PlayoffsPage() {
         ) : null}
 
         {beforePlayoffs ? (
-          <ProjectedPlayoffView
-            teams={
-              projectedTeams
+          <G365MarchMadnessBracket
+            leagueName={
+              league.name
             }
-            projectedBracket={
-              projectedBracket
+            season={
+              league.season
             }
             playoffTeamCount={
               settings.playoff_team_count
             }
-            currentWeek={
-              currentWeek
-            }
             playoffStartWeek={
               settings.playoff_start_week
             }
-            consolationEnabled={
-              settings.consolation_bracket_enabled
+            seededTeams={
+              projectedField.map(
+                (
+                  team
+                ) => ({
+                  id:
+                    team.teamId,
+                  seed:
+                    team.seed,
+                  name:
+                    team.teamName,
+                  record:
+                    `${team.wins}-${team.losses}-${team.ties}`,
+                  statusText:
+                    `${team.playoffProbability.toFixed(0)}% playoff chance`,
+                })
+              )
             }
+            matchups={[]}
+            championName={
+              null
+            }
+            statusLabel="PROJECTED BRACKET"
           />
         ) : !playoffState ? (
           <>
@@ -2470,9 +2493,12 @@ export default function PlayoffsPage() {
                   No playoff matchup rows exist yet.
                 </div>
               ) : (
-                <MarchMadnessRealBracket
-                  rounds={
-                    rounds
+                <G365MarchMadnessBracket
+                  leagueName={
+                    league.name
+                  }
+                  season={
+                    league.season
                   }
                   playoffTeamCount={
                     settings.playoff_team_count
@@ -2480,24 +2506,88 @@ export default function PlayoffsPage() {
                   playoffStartWeek={
                     settings.playoff_start_week
                   }
-                  consolationEnabled={
-                    settings.consolation_bracket_enabled
-                  }
-                  isCommissioner={
-                    isCommissioner
-                  }
-                  resolvingTiebreakMatchupId={
-                    resolvingTiebreakMatchupId
-                  }
-                  onResolveTiebreak={
-                    resolvePlayoffTiebreak
-                  }
-                  onOpenMatchup={(
-                    matchupId
-                  ) =>
-                    router.push(
-                      `/league/${league.id}/matchups/${matchupId}`
+                  seededTeams={[]}
+                  matchups={
+                    playoffMatchups.map(
+                      (
+                        matchup
+                      ) => ({
+                        id:
+                          matchup.id,
+                        round:
+                          matchup.round,
+                        slot:
+                          matchup.slot,
+                        week:
+                          matchup.week,
+                        home:
+                          matchup.homeTeam
+                            ? {
+                                id:
+                                  matchup.homeTeam.id,
+                                seed:
+                                  matchup.homeSeed,
+                                name:
+                                  matchup.homeTeam.team_name ??
+                                  `Team ${matchup.homeTeam.id}`,
+                                record:
+                                  `${matchup.homeTeam.wins}-${matchup.homeTeam.losses}-${matchup.homeTeam.ties}`,
+                                score:
+                                  matchup.homePoints,
+                                projectedScore:
+                                  matchup.homeProjectedPoints,
+                                isWinner:
+                                  matchup.winnerTeamId ===
+                                  matchup.homeTeam.id,
+                              }
+                            : null,
+                        away:
+                          matchup.awayTeam
+                            ? {
+                                id:
+                                  matchup.awayTeam.id,
+                                seed:
+                                  matchup.awaySeed,
+                                name:
+                                  matchup.awayTeam.team_name ??
+                                  `Team ${matchup.awayTeam.id}`,
+                                record:
+                                  `${matchup.awayTeam.wins}-${matchup.awayTeam.losses}-${matchup.awayTeam.ties}`,
+                                score:
+                                  matchup.awayPoints,
+                                projectedScore:
+                                  matchup.awayProjectedPoints,
+                                isWinner:
+                                  matchup.winnerTeamId ===
+                                  matchup.awayTeam.id,
+                              }
+                            : null,
+                        status:
+                          matchup.status,
+                        isFinal:
+                          matchup.status ===
+                            "final" ||
+                          matchup.status ===
+                            "completed",
+                        isTie:
+                          matchup.isTie,
+                        href:
+                          matchup.awayTeam
+                            ? `/league/${league.id}/matchups/${matchup.id}`
+                            : null,
+                      })
                     )
+                  }
+                  championName={
+                    championTeam
+                      ?.team_name ??
+                    null
+                  }
+                  statusLabel={
+                    playoffState.status ===
+                    "completed"
+                      ? "COMPLETE"
+                      : `ROUND ${playoffState.current_round ?? 1}`
                   }
                 />
               )}
@@ -5292,4 +5382,5 @@ const styles: Record<
   },
 
 };
+
 

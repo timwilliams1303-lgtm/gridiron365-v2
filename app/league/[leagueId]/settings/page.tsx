@@ -1,503 +1,1474 @@
-"use client";
+﻿import Link from "next/link";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
-import { useParams } from "next/navigation";
+import TraditionalSettings from "@/components/traditional/TraditionalSettings";
 
-type LeagueRow = {
-  id: string;
-  name: string;
-  league_type: string;
-  season: number;
-  status: string;
-  player_selection_mode: string;
+import {
+  createSupabaseAdminClient,
+} from "@/lib/supabase/admin";
+
+import {
+  requireLeagueMember,
+} from "@/lib/leagues/requireLeagueMember";
+
+
+type PageProps = {
+  params:
+    Promise<{
+      leagueId: string;
+    }>;
 };
 
-type LeagueSettingsRow = {
-  season: number;
-  max_teams: number | null;
-  regular_season_weeks: number | null;
+
+type SettingsRow = {
+  competition_format:
+    | "total_points"
+    | "head_to_head"
+    | null;
+  weekly_salary_cap:
+    number |
+    string |
+    null;
+  starting_qb: number | null;
+  starting_rb: number | null;
+  starting_wr: number | null;
+  starting_te: number | null;
+  starting_flex: number | null;
+  starting_superflex: number | null;
+  starting_k: number | null;
+  starting_dst: number | null;
+  regular_season_weeks:
+    number |
+    null;
+  playoffs_enabled:
+    boolean |
+    null;
+  playoff_team_count:
+    number |
+    null;
+  reseed_playoffs:
+    boolean |
+    null;
 };
 
-type RosterSettingsRow = {
-  starting_qb: number;
-  starting_rb: number;
-  starting_wr: number;
-  starting_te: number;
-  starting_flex: number;
-  starting_superflex: number;
-  starting_k: number;
-  starting_dst: number;
-  bench_slots: number;
-  ir_slots: number;
-  max_qb: number;
-  max_rb: number;
-  max_wr: number;
-  max_te: number;
-  max_k: number;
-  max_dst: number;
+
+type ScoringRow = {
+  passing_yard_points:
+    number |
+    string |
+    null;
+  passing_td_points:
+    number |
+    string |
+    null;
+  passing_interception_points:
+    number |
+    string |
+    null;
+  rushing_yard_points:
+    number |
+    string |
+    null;
+  rushing_td_points:
+    number |
+    string |
+    null;
+  reception_points:
+    number |
+    string |
+    null;
+  receiving_yard_points:
+    number |
+    string |
+    null;
+  receiving_td_points:
+    number |
+    string |
+    null;
+  extra_point_made_points:
+    number |
+    string |
+    null;
+  field_goal_0_19_points:
+    number |
+    string |
+    null;
+  field_goal_20_29_points:
+    number |
+    string |
+    null;
+  field_goal_30_39_points:
+    number |
+    string |
+    null;
+  field_goal_40_49_points:
+    number |
+    string |
+    null;
+  field_goal_50_59_points:
+    number |
+    string |
+    null;
+  field_goal_60_plus_points:
+    number |
+    string |
+    null;
+  dst_sack_points:
+    number |
+    string |
+    null;
+  dst_interception_points:
+    number |
+    string |
+    null;
+  dst_fumble_recovery_points:
+    number |
+    string |
+    null;
+  dst_touchdown_points:
+    number |
+    string |
+    null;
 };
 
-type DraftRow = {
-  status: string;
-  scheduled_at: string | null;
-  started_at: string | null;
-  completed_at: string | null;
-  total_rounds: number;
-  pick_timer_seconds: number;
-  cpu_pick_seconds: number;
-  is_paused: boolean;
-};
 
-type WaiverSettingsRow = {
-  waiver_type: string;
-  continuous_waivers: boolean;
-  waiver_period_hours: number;
-  faab_budget: number;
-  allow_free_agent_adds: boolean;
-};
+function value(
+  input:
+    | number
+    | string
+    | null
+    | undefined
+) {
+  if (
+    input === null ||
+    input === undefined ||
+    input === ""
+  ) {
+    return "â€”";
+  }
 
-type TradeSettingsRow = {
-  trade_deadline_week: number | null;
-};
-
-type PlayoffSettingsRow = {
-  season: number;
-  playoff_teams: number;
-  playoff_start_week: number;
-  championship_week: number;
-  reseed_each_round: boolean;
-};
-
-type ScoringSettingsRow = Record<string, number | string | boolean | null> & {
-  fractional_scoring_enabled: boolean;
-  decimal_places: number;
-};
-
-type ScoringRuleRow = {
-  id: number;
-  category: string;
-  rule_type: string;
-  stat_key: string;
-  min_value: number | string | null;
-  max_value: number | string | null;
-  points: number | string;
-  is_enabled: boolean;
-  stacking_mode: string;
-  priority: number;
-  label: string | null;
-};
-
-const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-function pretty(value: string | null | undefined) {
-  if (!value) return "—";
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return String(
+    input
+  );
 }
 
-function numberText(value: number | string | null | undefined) {
-  if (value === null || value === undefined) return "—";
-  const parsed = Number(value);
-  return Number.isFinite(parsed)
-    ? parsed.toLocaleString(undefined, { maximumFractionDigits: 3 })
-    : String(value);
+
+function yesNo(
+  input:
+    | boolean
+    | null
+    | undefined
+) {
+  return input
+    ? "Yes"
+    : "No";
 }
 
-function yesNo(value: boolean | null | undefined) {
-  return value ? "Yes" : "No";
+
+function money(
+  input:
+    | number
+    | string
+    | null
+    | undefined
+) {
+  const amount =
+    Number(
+      input ??
+      0
+    );
+
+  return new Intl.NumberFormat(
+    "en-US",
+    {
+      style:
+        "currency",
+      currency:
+        "USD",
+      maximumFractionDigits:
+        0,
+    }
+  ).format(
+    Number.isFinite(
+      amount
+    )
+      ? amount
+      : 0
+  );
 }
 
-function dateText(value: string | null | undefined) {
-  if (!value) return "Not set";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
 
-function Card({ label, value, note }: { label: string; value: React.ReactNode; note?: string }) {
+function Info({
+  label,
+  value:
+    displayValue,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
   return (
-    <div className="g365-card" style={styles.card}>
-      <div className="g365-cardLabel" style={styles.cardLabel}>{label}</div>
-      <div className="g365-cardValue" style={styles.cardValue}>{value}</div>
-      {note ? <div className="g365-cardNote" style={styles.cardNote}>{note}</div> : null}
+    <div
+      style={
+        styles.info
+      }
+    >
+      <span
+        style={
+          styles.infoLabel
+        }
+      >
+        {label}
+      </span>
+
+      <strong
+        style={{
+          ...styles.infoValue,
+          ...(accent
+            ? styles.accent
+            : {}),
+        }}
+      >
+        {displayValue}
+      </strong>
     </div>
   );
 }
 
-function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+
+function Rule({
+  title,
+  text,
+}: {
+  title: string;
+  text: string;
+}) {
   return (
-    <section className="g365-section" style={styles.section}>
-      <div className="g365-sectionHeader" style={styles.sectionHeader}>
-        <h2 className="g365-sectionTitle" style={styles.sectionTitle}>{title}</h2>
-        {subtitle ? <p className="g365-sectionSubtitle" style={styles.sectionSubtitle}>{subtitle}</p> : null}
-      </div>
-      {children}
-    </section>
+    <div
+      style={
+        styles.rule
+      }
+    >
+      <strong>
+        {title}
+      </strong>
+      <span>
+        {text}
+      </span>
+    </div>
   );
 }
 
-const scoringGroups: Array<{ title: string; rows: Array<[string, string]> }> = [
-  {
-    title: "Passing",
-    rows: [
-      ["Yards per point", "passing_yards_per_point"],
-      ["Passing TD", "passing_td_points"],
-      ["Interception", "passing_interception_points"],
-      ["2-point conversion", "passing_two_point_points"],
-      ["Completion", "passing_completion_points"],
-      ["Incompletion", "passing_incompletion_points"],
-      ["Passing first down", "passing_first_down_points"],
-    ],
-  },
-  {
-    title: "Rushing",
-    rows: [
-      ["Yards per point", "rushing_yards_per_point"],
-      ["Rushing TD", "rushing_td_points"],
-      ["2-point conversion", "rushing_two_point_points"],
-      ["Rushing attempt", "rushing_attempt_points"],
-      ["Rushing first down", "rushing_first_down_points"],
-    ],
-  },
-  {
-    title: "Receiving",
-    rows: [
-      ["Yards per point", "receiving_yards_per_point"],
-      ["Receiving TD", "receiving_td_points"],
-      ["2-point conversion", "receiving_two_point_points"],
-      ["Reception", "reception_points"],
-      ["Target", "receiving_target_points"],
-      ["Receiving first down", "receiving_first_down_points"],
-    ],
-  },
-  {
-    title: "Fumbles & Returns",
-    rows: [
-      ["Fumble", "fumble_points"],
-      ["Fumble lost", "fumble_lost_points"],
-      ["Offensive fumble recovery TD", "offensive_fumble_recovery_td_points"],
-      ["Kick return yards per point", "kick_return_yards_per_point"],
-      ["Punt return yards per point", "punt_return_yards_per_point"],
-      ["Kick return TD", "kick_return_td_points"],
-      ["Punt return TD", "punt_return_td_points"],
-    ],
-  },
-  {
-    title: "Kicking",
-    rows: [
-      ["Extra point made", "extra_point_made_points"],
-      ["Extra point missed", "extra_point_missed_points"],
-      ["Field goal missed", "field_goal_missed_points"],
-    ],
-  },
-  {
-    title: "Defense / Special Teams",
-    rows: [
-      ["Sack", "dst_sack_points"],
-      ["Interception", "dst_interception_points"],
-      ["Fumble recovery", "dst_fumble_recovery_points"],
-      ["Touchdown", "dst_touchdown_points"],
-      ["Safety", "dst_safety_points"],
-      ["Blocked kick", "dst_blocked_kick_points"],
-      ["Return touchdown", "dst_return_touchdown_points"],
-      ["Extra-point return", "dst_extra_point_return_points"],
-    ],
-  },
-];
 
-export default function TraditionalSettingsPage() {
-  const params = useParams<{ leagueId: string }>();
-  const leagueId = params.leagueId;
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [league, setLeague] = useState<LeagueRow | null>(null);
-  const [leagueSettings, setLeagueSettings] = useState<LeagueSettingsRow | null>(null);
-  const [roster, setRoster] = useState<RosterSettingsRow | null>(null);
-  const [draft, setDraft] = useState<DraftRow | null>(null);
-  const [waivers, setWaivers] = useState<WaiverSettingsRow | null>(null);
-  const [trades, setTrades] = useState<TradeSettingsRow | null>(null);
-  const [playoffs, setPlayoffs] = useState<PlayoffSettingsRow | null>(null);
-  const [scoring, setScoring] = useState<ScoringSettingsRow | null>(null);
-  const [rules, setRules] = useState<ScoringRuleRow[]>([]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    const [
-      leagueResult,
-      leagueSettingsResult,
-      rosterResult,
-      draftResult,
-      waiverResult,
-      tradeResult,
-      playoffResult,
-      scoringResult,
-      rulesResult,
-    ] = await Promise.all([
-      supabase.from("leagues").select("id,name,league_type,season,status,player_selection_mode").eq("id", leagueId).maybeSingle(),
-      supabase.from("league_settings").select("season,max_teams,regular_season_weeks").eq("league_id", leagueId).maybeSingle(),
-      supabase.from("traditional_roster_settings").select("*").eq("league_id", leagueId).maybeSingle(),
-      supabase.from("league_drafts").select("status,scheduled_at,started_at,completed_at,total_rounds,pick_timer_seconds,cpu_pick_seconds,is_paused").eq("league_id", leagueId).order("season", { ascending: false }).limit(1).maybeSingle(),
-      supabase.from("traditional_waiver_settings").select("*").eq("league_id", leagueId).maybeSingle(),
-      supabase.from("traditional_trade_settings").select("*").eq("league_id", leagueId).maybeSingle(),
-      supabase.from("traditional_playoff_settings").select("*").eq("league_id", leagueId).maybeSingle(),
-      supabase.from("league_scoring_settings").select("*").eq("league_id", leagueId).maybeSingle(),
-      supabase.from("league_scoring_rules").select("id,category,rule_type,stat_key,min_value,max_value,points,is_enabled,stacking_mode,priority,label").eq("league_id", leagueId).order("category").order("priority"),
-    ]);
-
-    const results = [leagueResult, leagueSettingsResult, rosterResult, draftResult, waiverResult, tradeResult, playoffResult, scoringResult, rulesResult];
-    const failed = results.find((result) => result.error);
-    if (failed?.error) {
-      setError(failed.error.message);
-      setLoading(false);
-      return;
-    }
-
-    setLeague(leagueResult.data as LeagueRow | null);
-    setLeagueSettings(leagueSettingsResult.data as LeagueSettingsRow | null);
-    setRoster(rosterResult.data as RosterSettingsRow | null);
-    setDraft(draftResult.data as DraftRow | null);
-    setWaivers(waiverResult.data as WaiverSettingsRow | null);
-    setTrades(tradeResult.data as TradeSettingsRow | null);
-    setPlayoffs(playoffResult.data as PlayoffSettingsRow | null);
-    setScoring(scoringResult.data as ScoringSettingsRow | null);
-    setRules((rulesResult.data ?? []) as ScoringRuleRow[]);
-    setLoading(false);
-  }, [leagueId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const enabledRules = useMemo(() => rules.filter((rule) => rule.is_enabled), [rules]);
-
-  if (loading) {
-    return <main className="g365-page g365-settings-page" style={styles.page}>
-      <style jsx global>{`
-@media (max-width: 760px) {
-  .g365-settings-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
-  .g365-settings-page .g365-shell { width: 100% !important; min-width: 0 !important; }
-  .g365-settings-page .g365-hero { flex-direction: column !important; align-items: stretch !important; padding: 16px 14px !important; }
-  .g365-settings-page .g365-title { font-size: 28px !important; }
-  .g365-settings-page .g365-section { padding: 14px 12px !important; min-width: 0 !important; }
-  .g365-settings-page .g365-grid,
-  .g365-settings-page .g365-scoringGrid { grid-template-columns: minmax(0,1fr) !important; }
-  .g365-settings-page .g365-tableWrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; width: 100% !important; }
-  .g365-settings-page .g365-table { min-width: 620px !important; }
-  .g365-settings-page button { min-height: 42px !important; }
+function ScoringItem({
+  label,
+  value:
+    displayValue,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div
+      style={
+        styles.scoringItem
+      }
+    >
+      <span>
+        {label}
+      </span>
+      <strong>
+        {displayValue}
+      </strong>
+    </div>
+  );
 }
-`}</style><div className="g365-loading" style={styles.loading}>Loading league settings…</div></main>;
+
+
+export default async function SeasonLongSettingsPage({
+  params,
+}: PageProps) {
+  const {
+    leagueId,
+  } =
+    await params;
+
+  const access =
+    await requireLeagueMember(
+      leagueId
+    );
+  if (
+    access.league.leagueType ===
+    "traditional"
+  ) {
+    return (
+      <TraditionalSettings
+        leagueId={leagueId}
+        leagueName={access.league.name}
+        season={access.league.season}
+        isCommissioner={access.isCommissioner}
+      />
+    );
   }
 
+  if (
+    access.league.leagueType !==
+    "season_long"
+  ) {
+    throw new Error(
+      "League settings are not available for this league type."
+    );
+  }
+
+  const supabase =
+    createSupabaseAdminClient();
+
+  const [
+    settingsResult,
+    scoringResult,
+    bonusCountResult,
+  ] =
+    await Promise.all([
+      supabase
+        .from(
+          "season_long_settings"
+        )
+        .select(`
+          competition_format,
+          weekly_salary_cap,
+          starting_qb,
+          starting_rb,
+          starting_wr,
+          starting_te,
+          starting_flex,
+          starting_superflex,
+          starting_k,
+          starting_dst,
+          regular_season_weeks,
+          playoffs_enabled,
+          playoff_team_count,
+          reseed_playoffs
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .maybeSingle(),
+
+      supabase
+        .from(
+          "league_scoring_settings"
+        )
+        .select(`
+          passing_yard_points,
+          passing_td_points,
+          passing_interception_points,
+          rushing_yard_points,
+          rushing_td_points,
+          reception_points,
+          receiving_yard_points,
+          receiving_td_points,
+          extra_point_made_points,
+          field_goal_0_19_points,
+          field_goal_20_29_points,
+          field_goal_30_39_points,
+          field_goal_40_49_points,
+          field_goal_50_59_points,
+          field_goal_60_plus_points,
+          dst_sack_points,
+          dst_interception_points,
+          dst_fumble_recovery_points,
+          dst_touchdown_points
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .maybeSingle(),
+
+      supabase
+        .from(
+          "league_scoring_rules"
+        )
+        .select(
+          "id",
+          {
+            count:
+              "exact",
+            head:
+              true,
+          }
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "is_enabled",
+          true
+        ),
+    ]);
+
+  if (
+    settingsResult.error
+  ) {
+    throw new Error(
+      `Could not load Season-Long settings: ${settingsResult.error.message}`
+    );
+  }
+
+  if (
+    scoringResult.error
+  ) {
+    throw new Error(
+      `Could not load scoring settings: ${scoringResult.error.message}`
+    );
+  }
+
+  if (
+    bonusCountResult.error
+  ) {
+    throw new Error(
+      `Could not load bonus scoring settings: ${bonusCountResult.error.message}`
+    );
+  }
+
+  const settings =
+    settingsResult.data as
+      SettingsRow |
+      null;
+
+  const scoring =
+    scoringResult.data as
+      ScoringRow |
+      null;
+
+  const isSalary =
+    access.league.playerSelectionMode ===
+    "salary";
+
+  const isH2H =
+    settings?.competition_format ===
+    "head_to_head";
+
+  const starterCount =
+    [
+      settings?.starting_qb,
+      settings?.starting_rb,
+      settings?.starting_wr,
+      settings?.starting_te,
+      settings?.starting_flex,
+      settings?.starting_superflex,
+      settings?.starting_k,
+      settings?.starting_dst,
+    ].reduce<number>(
+      (
+        total,
+        count
+      ) =>
+        total +
+        Number(
+          count ??
+          0
+        ),
+      0
+    );
+
+  const lineup = [
+    [
+      "QB",
+      settings?.starting_qb ??
+      0,
+    ],
+    [
+      "RB",
+      settings?.starting_rb ??
+      0,
+    ],
+    [
+      "WR",
+      settings?.starting_wr ??
+      0,
+    ],
+    [
+      "TE",
+      settings?.starting_te ??
+      0,
+    ],
+    [
+      "FLEX",
+      settings?.starting_flex ??
+      0,
+    ],
+    [
+      "SUPERFLEX",
+      settings?.starting_superflex ??
+      0,
+    ],
+    [
+      "K",
+      settings?.starting_k ??
+      0,
+    ],
+    [
+      "DST",
+      settings?.starting_dst ??
+      0,
+    ],
+  ] as const;
+
   return (
-    <main className="g365-page g365-settings-page" style={styles.page}>
-      <style jsx global>{`
-@media (max-width: 760px) {
-  .g365-settings-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
-  .g365-settings-page .g365-shell { width: 100% !important; min-width: 0 !important; }
-  .g365-settings-page .g365-hero { flex-direction: column !important; align-items: stretch !important; padding: 16px 14px !important; }
-  .g365-settings-page .g365-title { font-size: 28px !important; }
-  .g365-settings-page .g365-section { padding: 14px 12px !important; min-width: 0 !important; }
-  .g365-settings-page .g365-grid,
-  .g365-settings-page .g365-scoringGrid { grid-template-columns: minmax(0,1fr) !important; }
-  .g365-settings-page .g365-tableWrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; width: 100% !important; }
-  .g365-settings-page .g365-table { min-width: 620px !important; }
-  .g365-settings-page button { min-height: 42px !important; }
-}
-`}</style>
-      <div className="g365-shell" style={styles.shell}>
-        <header className="g365-hero" style={styles.hero}>
+    <main
+      className="g365-sl-settings"
+      style={
+        styles.page
+      }
+    >
+      <style>{`
+        .g365-sl-settings,
+        .g365-sl-settings * {
+          box-sizing: border-box;
+        }
+
+        @media(max-width:760px){
+          .g365-sl-settings {
+            padding:12px 10px!important;
+          }
+
+          .g365-sl-settings .settings-grid,
+          .g365-sl-settings .two-col,
+          .g365-sl-settings .scoring-grid {
+            grid-template-columns:1fr!important;
+          }
+        }
+      `}</style>
+
+      <section
+        style={
+          styles.shell
+        }
+      >
+        <header
+          style={
+            styles.hero
+          }
+        >
           <div>
-            <div className="g365-eyebrow" style={styles.eyebrow}>TRADITIONAL LEAGUE</div>
-            <h1 className="g365-title" style={styles.title}>League Settings</h1>
-            <p className="g365-subtitle" style={styles.subtitle}>Review the complete rules and configuration for {league?.name ?? "this league"}.</p>
+            <p
+              style={
+                styles.eyebrow
+              }
+            >
+              G365 SEASON-LONG • LEAGUE SETTINGS
+            </p>
+
+            <h1
+              style={
+                styles.title
+              }
+            >
+              {access.league.name}
+            </h1>
+
+            <p
+              style={
+                styles.subtitle
+              }
+            >
+              {access.league.season}
+              {" • "}
+              {isSalary
+                ? "Salary"
+                : "No Salary"}
+              {" • "}
+              {isH2H
+                ? "Head-to-Head"
+                : "Total Points"}
+            </p>
           </div>
-          <button type="button" onClick={() => void load()}className="g365-refreshButton" style={styles.refreshButton}>REFRESH</button>
+
+          <div
+            style={
+              styles.actions
+            }
+          >
+            <span
+              style={
+                styles.readOnly
+              }
+            >
+              READ ONLY
+            </span>
+
+            {access.isCommissioner ? (
+              <Link
+                href={`/league/${leagueId}/commissioner`}
+                style={
+                  styles.primaryButton
+                }
+              >
+                MANAGE SETTINGS
+              </Link>
+            ) : null}
+          </div>
         </header>
 
-        {error ? <div className="g365-error" style={styles.error}>{error}</div> : null}
+        <div
+          className="settings-grid"
+          style={
+            styles.summaryGrid
+          }
+        >
+          <Info
+            label="COMPETITION"
+            value={
+              isH2H
+                ? "Head-to-Head"
+                : "Total Points"
+            }
+            accent
+          />
 
-        <Section title="League Overview" subtitle="Core league and regular-season settings.">
-          <div className="g365-grid" style={styles.grid}>
-            <Card label="League Name" value={league?.name ?? "—"} />
-            <Card label="League Type" value={pretty(league?.league_type)} />
-            <Card label="Season" value={league?.season ?? "—"} />
-            <Card label="League Status" value={pretty(league?.status)} />
-            <Card label="Maximum Teams" value={leagueSettings?.max_teams ?? "—"} />
-            <Card label="Regular Season" value={leagueSettings?.regular_season_weeks ? `${leagueSettings.regular_season_weeks} weeks` : "—"} />
-            <Card label="Player Selection" value={pretty(league?.player_selection_mode)} />
+          <Info
+            label="PLAYER MODE"
+            value={
+              isSalary
+                ? "Salary"
+                : "No Salary"
+            }
+          />
+
+          <Info
+            label="STARTERS"
+            value={
+              String(
+                starterCount
+              )
+            }
+          />
+
+          <Info
+            label="PLAYOFFS"
+            value={
+              isH2H
+                ? settings?.playoffs_enabled
+                  ? "Enabled"
+                  : "Disabled"
+                : "Not Used"
+            }
+          />
+
+          {isSalary ? (
+            <Info
+              label="WEEKLY CAP"
+              value={
+                money(
+                  settings?.weekly_salary_cap
+                )
+              }
+            />
+          ) : (
+            <Info
+              label="WEEKLY CAP"
+              value="Not Used"
+            />
+          )}
+        </div>
+
+        <section
+          style={
+            styles.card
+          }
+        >
+          <div
+            style={
+              styles.cardHead
+            }
+          >
+            <div>
+              <p
+                style={
+                  styles.sectionEyebrow
+                }
+              >
+                WEEKLY ENTRY
+              </p>
+
+              <h2
+                style={
+                  styles.sectionTitle
+                }
+              >
+                Starting Lineup Requirements
+              </h2>
+            </div>
+
+            <span
+              style={
+                styles.countBadge
+              }
+            >
+              {starterCount} STARTERS
+            </span>
           </div>
-        </Section>
 
-        <Section title="Roster & Lineup" subtitle="Starting lineup, bench, IR and positional limits.">
-          {roster ? (
-            <>
-              <div className="g365-subheading" style={styles.subheading}>STARTING LINEUP</div>
-              <div className="g365-grid" style={styles.grid}>
-                <Card label="QB" value={roster.starting_qb} />
-                <Card label="RB" value={roster.starting_rb} />
-                <Card label="WR" value={roster.starting_wr} />
-                <Card label="TE" value={roster.starting_te} />
-                <Card label="FLEX" value={roster.starting_flex} />
-                <Card label="SUPERFLEX" value={roster.starting_superflex} />
-                <Card label="K" value={roster.starting_k} />
-                <Card label="DST" value={roster.starting_dst} />
-                <Card label="Bench" value={roster.bench_slots} />
-                <Card label="IR" value={roster.ir_slots} />
-              </div>
-              <div style={{ ...styles.subheading, marginTop: 18 }}>POSITION LIMITS</div>
-              <div className="g365-grid" style={styles.grid}>
-                <Card label="Max QB" value={roster.max_qb} />
-                <Card label="Max RB" value={roster.max_rb} />
-                <Card label="Max WR" value={roster.max_wr} />
-                <Card label="Max TE" value={roster.max_te} />
-                <Card label="Max K" value={roster.max_k} />
-                <Card label="Max DST" value={roster.max_dst} />
-              </div>
-            </>
-          ) : <div className="g365-empty" style={styles.empty}>Roster settings have not been configured.</div>}
-        </Section>
+          <div
+            className="settings-grid"
+            style={
+              styles.positionGrid
+            }
+          >
+            {lineup.map(
+              ([
+                position,
+                count,
+              ]) => (
+                <div
+                  key={
+                    position
+                  }
+                  style={
+                    styles.positionCard
+                  }
+                >
+                  <span
+                    style={
+                      styles.position
+                    }
+                  >
+                    {position}
+                  </span>
 
-        <Section title="Draft" subtitle="Live-draft configuration and current status.">
-          {draft ? (
-            <div className="g365-grid" style={styles.grid}>
-              <Card label="Status" value={pretty(draft.status)} />
-              <Card label="Rounds" value={draft.total_rounds} />
-              <Card label="Human Pick Clock" value={`${draft.pick_timer_seconds} sec`} />
-              <Card label="CPU Pick Clock" value={`${draft.cpu_pick_seconds} sec`} />
-              <Card label="Scheduled" value={dateText(draft.scheduled_at)} />
-              <Card label="Started" value={draft.started_at ? dateText(draft.started_at) : "Not started"} />
-              <Card label="Completed" value={draft.completed_at ? dateText(draft.completed_at) : "Not completed"} />
-              <Card label="Paused" value={yesNo(draft.is_paused)} />
+                  <strong
+                    style={
+                      styles.positionCount
+                    }
+                  >
+                    {count}
+                  </strong>
+
+                  <span
+                    style={
+                      styles.muted
+                    }
+                  >
+                    {count === 1
+                      ? "starter"
+                      : "starters"}
+                  </span>
+                </div>
+              )
+            )}
+          </div>
+        </section>
+
+        <section
+          className="two-col"
+          style={
+            styles.twoColumn
+          }
+        >
+          <div
+            style={
+              styles.card
+            }
+          >
+            <p
+              style={
+                styles.sectionEyebrow
+              }
+            >
+              COMPETITION
+            </p>
+
+            <h2
+              style={
+                styles.sectionTitle
+              }
+            >
+              {isH2H
+                ? "Head-to-Head Rules"
+                : "Total Points Rules"}
+            </h2>
+
+            {isH2H ? (
+              <>
+                <Rule
+                  title="Weekly Matchups"
+                  text="Each submitted weekly lineup produces the fantasy score used in that week's head-to-head matchup."
+                />
+
+                <Rule
+                  title="Standings"
+                  text="Finalized matchup results build W-L-T standings with Points For and Points Against."
+                />
+
+                <Rule
+                  title="Regular Season"
+                  text={`${value(settings?.regular_season_weeks)} configured regular-season weeks.`}
+                />
+
+                <Rule
+                  title="Fantasy Playoffs"
+                  text={
+                    settings?.playoffs_enabled
+                      ? `${value(settings?.playoff_team_count)} teams qualify. Reseeding: ${yesNo(settings?.reseed_playoffs)}.`
+                      : "Disabled for this Head-to-Head league."
+                  }
+                />
+              </>
+            ) : (
+              <>
+                <Rule
+                  title="Full Season"
+                  text="The competition runs straight through the configured NFL season. It does not stop early for fantasy playoffs."
+                />
+
+                <Rule
+                  title="Champion"
+                  text="Final cumulative finalized fantasy points determine the Season-Long Total Points champion."
+                />
+
+                <Rule
+                  title="Fantasy Playoffs"
+                  text="Not used in Total Points leagues."
+                />
+              </>
+            )}
+          </div>
+
+          <div
+            style={
+              styles.card
+            }
+          >
+            <p
+              style={
+                styles.sectionEyebrow
+              }
+            >
+              PLAYER SELECTION
+            </p>
+
+            <h2
+              style={
+                styles.sectionTitle
+              }
+            >
+              {isSalary
+                ? "Salary Rules"
+                : "No-Salary Rules"}
+            </h2>
+
+            {isSalary ? (
+              <>
+                <Rule
+                  title="Weekly Salary Cap"
+                  text={`Every submitted lineup must remain at or below ${money(settings?.weekly_salary_cap)}.`}
+                />
+
+                <Rule
+                  title="Weekly Lineup"
+                  text="A fresh lineup is selected each NFL week using that week's available player salaries."
+                />
+              </>
+            ) : (
+              <>
+                <Rule
+                  title="No Player Salaries"
+                  text="Player selection is not constrained by salary or a weekly cap."
+                />
+
+                <Rule
+                  title="Same H2H / Total Points Engine"
+                  text="Lineup slots, scoring, locking, injuries, weekly results and the selected competition format work exactly the same; only salary restrictions are removed."
+                />
+              </>
+            )}
+
+            <Rule
+              title="Individual Player Locks"
+              text="Each selected player locks when that player's NFL game begins."
+            />
+          </div>
+        </section>
+
+        <section
+          style={
+            styles.card
+          }
+        >
+          <div
+            style={
+              styles.cardHead
+            }
+          >
+            <div>
+              <p
+                style={
+                  styles.sectionEyebrow
+                }
+              >
+                SCORING
+              </p>
+
+              <h2
+                style={
+                  styles.sectionTitle
+                }
+              >
+                Current Fantasy Scoring
+              </h2>
+
+              <p
+                style={
+                  styles.muted
+                }
+              >
+                The same scoring configuration applies to Salary and No-Salary Season-Long leagues and to both Total Points and Head-to-Head competition formats.
+              </p>
             </div>
-          ) : <div className="g365-empty" style={styles.empty}>No draft has been created.</div>}
-        </Section>
 
-        <Section title="Waivers & Free Agency" subtitle="How available players are acquired.">
-          {waivers ? (
-            <div className="g365-grid" style={styles.grid}>
-              <Card label="Waiver Type" value={pretty(waivers.waiver_type)} />
-              <Card label="Waiver Period" value={`${waivers.waiver_period_hours} hours`} />
-              <Card label="Continuous Waivers" value={yesNo(waivers.continuous_waivers)} />
-              <Card label="FAAB Budget" value={waivers.faab_budget} />
-              <Card label="Free Agent Adds" value={waivers.allow_free_agent_adds ? "Allowed" : "Disabled"} />
+            <span
+              style={
+                styles.countBadge
+              }
+            >
+              {bonusCountResult.count ??
+                0} BONUS RULES
+            </span>
+          </div>
+
+          <div
+            className="scoring-grid"
+            style={
+              styles.scoringGrid
+            }
+          >
+            <div
+              style={
+                styles.scoringGroup
+              }
+            >
+              <strong>
+                PASSING
+              </strong>
+              <ScoringItem
+                label="Per Yard"
+                value={
+                  value(
+                    scoring?.passing_yard_points
+                  )
+                }
+              />
+              <ScoringItem
+                label="TD"
+                value={
+                  value(
+                    scoring?.passing_td_points
+                  )
+                }
+              />
+              <ScoringItem
+                label="Interception"
+                value={
+                  value(
+                    scoring?.passing_interception_points
+                  )
+                }
+              />
             </div>
-          ) : <div className="g365-empty" style={styles.empty}>Waiver settings have not been configured.</div>}
-        </Section>
 
-        <Section title="Trades" subtitle="Traditional league trade deadline.">
-          {trades ? (
-            <div className="g365-grid" style={styles.grid}>
-              <Card label="Trade Deadline" value={trades.trade_deadline_week === null ? "No deadline" : `Week ${trades.trade_deadline_week}`} />
+            <div
+              style={
+                styles.scoringGroup
+              }
+            >
+              <strong>
+                RUSHING / RECEIVING
+              </strong>
+              <ScoringItem
+                label="Rush Yard"
+                value={
+                  value(
+                    scoring?.rushing_yard_points
+                  )
+                }
+              />
+              <ScoringItem
+                label="Rush TD"
+                value={
+                  value(
+                    scoring?.rushing_td_points
+                  )
+                }
+              />
+              <ScoringItem
+                label="Reception"
+                value={
+                  value(
+                    scoring?.reception_points
+                  )
+                }
+              />
+              <ScoringItem
+                label="Receiving Yard"
+                value={
+                  value(
+                    scoring?.receiving_yard_points
+                  )
+                }
+              />
+              <ScoringItem
+                label="Receiving TD"
+                value={
+                  value(
+                    scoring?.receiving_td_points
+                  )
+                }
+              />
             </div>
-          ) : <div className="g365-empty" style={styles.empty}>Trade settings have not been configured.</div>}
-        </Section>
 
-        <Section title="Playoffs" subtitle="Postseason field and schedule.">
-          {playoffs ? (
-            <div className="g365-grid" style={styles.grid}>
-              <Card label="Playoff Teams" value={playoffs.playoff_teams} />
-              <Card label="Playoffs Start" value={`Week ${playoffs.playoff_start_week}`} />
-              <Card label="Championship" value={`Week ${playoffs.championship_week}`} />
-              <Card label="Reseed Each Round" value={yesNo(playoffs.reseed_each_round)} />
+            <div
+              style={
+                styles.scoringGroup
+              }
+            >
+              <strong>
+                KICKING
+              </strong>
+              <ScoringItem
+                label="FG 0â€“19"
+                value={
+                  value(
+                    scoring?.field_goal_0_19_points
+                  )
+                }
+              />
+              <ScoringItem
+                label="FG 20â€“29"
+                value={
+                  value(
+                    scoring?.field_goal_20_29_points
+                  )
+                }
+              />
+              <ScoringItem
+                label="FG 30â€“39"
+                value={
+                  value(
+                    scoring?.field_goal_30_39_points
+                  )
+                }
+              />
+              <ScoringItem
+                label="FG 40â€“49"
+                value={
+                  value(
+                    scoring?.field_goal_40_49_points
+                  )
+                }
+              />
+              <ScoringItem
+                label="FG 50â€“59"
+                value={
+                  value(
+                    scoring?.field_goal_50_59_points
+                  )
+                }
+              />
+              <ScoringItem
+                label="FG 60+"
+                value={
+                  value(
+                    scoring?.field_goal_60_plus_points
+                  )
+                }
+              />
             </div>
-          ) : <div className="g365-empty" style={styles.empty}>Playoff settings have not been configured.</div>}
-        </Section>
 
-        <Section title="Scoring" subtitle="Base scoring plus enabled custom and threshold rules.">
-          {scoring ? (
-            <>
-              <div className="g365-scoringGrid" style={styles.scoringGrid}>
-                {scoringGroups.map((group) => (
-                  <div key={group.title}className="g365-scoringGroup" style={styles.scoringGroup}>
-                    <div className="g365-scoringGroupTitle" style={styles.scoringGroupTitle}>{group.title}</div>
-                    {group.rows.map(([label, key]) => (
-                      <div key={key}className="g365-scoringRow" style={styles.scoringRow}>
-                        <span>{label}</span>
-                        <strong>{numberText(scoring[key] as number | string | null)}</strong>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-              <div style={{ ...styles.grid, marginTop: 12 }}>
-                <Card label="Fractional Scoring" value={yesNo(scoring.fractional_scoring_enabled)} />
-                <Card label="Decimal Places" value={scoring.decimal_places} />
-              </div>
-            </>
-          ) : <div className="g365-empty" style={styles.empty}>Scoring settings have not been configured.</div>}
-
-          <div style={{ ...styles.subheading, marginTop: 22 }}>CUSTOM / THRESHOLD RULES</div>
-          {enabledRules.length ? (
-            <div className="g365-tableWrap" style={styles.tableWrap}>
-              <table className="g365-table" style={styles.table}>
-                <thead>
-                  <tr>
-                    <th className="g365-th" style={styles.th}>Rule</th>
-                    <th className="g365-th" style={styles.th}>Category</th>
-                    <th className="g365-th" style={styles.th}>Range</th>
-                    <th className="g365-th" style={styles.th}>Points</th>
-                    <th className="g365-th" style={styles.th}>Stacking</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {enabledRules.map((rule) => (
-                    <tr key={rule.id}>
-                      <td className="g365-td" style={styles.td}>{rule.label ?? pretty(rule.stat_key)}</td>
-                      <td className="g365-td" style={styles.td}>{pretty(rule.category)}</td>
-                      <td className="g365-td" style={styles.td}>{rule.min_value === null && rule.max_value === null ? "—" : `${rule.min_value ?? "—"} to ${rule.max_value ?? "∞"}`}</td>
-                      <td className="g365-tdStrong" style={styles.tdStrong}>{numberText(rule.points)}</td>
-                      <td className="g365-td" style={styles.td}>{pretty(rule.stacking_mode)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div
+              style={
+                styles.scoringGroup
+              }
+            >
+              <strong>
+                DEFENSE / SPECIAL TEAMS
+              </strong>
+              <ScoringItem
+                label="Sack"
+                value={
+                  value(
+                    scoring?.dst_sack_points
+                  )
+                }
+              />
+              <ScoringItem
+                label="Interception"
+                value={
+                  value(
+                    scoring?.dst_interception_points
+                  )
+                }
+              />
+              <ScoringItem
+                label="Fumble Recovery"
+                value={
+                  value(
+                    scoring?.dst_fumble_recovery_points
+                  )
+                }
+              />
+              <ScoringItem
+                label="DST TD"
+                value={
+                  value(
+                    scoring?.dst_touchdown_points
+                  )
+                }
+              />
             </div>
-          ) : <div className="g365-empty" style={styles.empty}>No enabled custom scoring rules.</div>}
-        </Section>
-
-        <div className="g365-footer" style={styles.footer}>League members can review settings here. Editing will be handled from the Traditional Commissioner page.</div>
-      </div>
+          </div>
+        </section>
+      </section>
     </main>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  page: { minHeight: "100vh", background: "linear-gradient(180deg,#07090d 0%,#0b0d12 55%,#07080b 100%)", color: "#f5f7fa", padding: 24 },
-  shell: { width: "100%", maxWidth: 1500, margin: "0 auto" },
-  hero: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20, padding: 24, marginBottom: 18, borderRadius: 16, border: "1px solid rgba(255,92,40,.26)", background: "linear-gradient(135deg,rgba(140,12,12,.20),rgba(255,90,20,.08) 48%,rgba(255,255,255,.02))", boxShadow: "0 16px 45px rgba(0,0,0,.28)" },
-  eyebrow: { color: "#ff6a2a", fontSize: 12, fontWeight: 900, letterSpacing: ".15em", marginBottom: 6 },
-  title: { margin: 0, fontSize: 34, lineHeight: 1.05, fontWeight: 950, letterSpacing: "-.03em" },
-  subtitle: { margin: "8px 0 0", color: "#a8adb7", fontSize: 15, lineHeight: 1.5 },
-  refreshButton: { border: "1px solid rgba(255,100,45,.40)", borderRadius: 8, background: "linear-gradient(135deg,#b81717,#ef4d1d)", color: "#fff", padding: "10px 16px", fontSize: 13, fontWeight: 900, cursor: "pointer" },
-  loading: { padding: 80, textAlign: "center", color: "#c9cdd4", fontSize: 16 },
-  error: { marginBottom: 18, border: "1px solid rgba(255,80,80,.35)", borderRadius: 10, background: "rgba(150,20,20,.18)", color: "#ff9c9c", padding: "13px 15px", fontSize: 14, fontWeight: 700 },
-  section: { marginBottom: 18, padding: 20, borderRadius: 14, border: "1px solid rgba(255,255,255,.08)", background: "rgba(15,18,24,.88)", boxShadow: "0 12px 32px rgba(0,0,0,.22)" },
-  sectionHeader: { paddingBottom: 14, marginBottom: 16, borderBottom: "1px solid rgba(255,255,255,.07)" },
-  sectionTitle: { margin: 0, fontSize: 21, fontWeight: 950, letterSpacing: "-.02em" },
-  sectionSubtitle: { margin: "5px 0 0", color: "#8e949f", fontSize: 13, lineHeight: 1.45 },
-  subheading: { color: "#ff7840", fontSize: 12, fontWeight: 900, letterSpacing: ".10em", marginBottom: 10 },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10 },
-  card: { minHeight: 86, padding: 12, borderRadius: 10, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" },
-  cardLabel: { color: "#9197a2", fontSize: 12, fontWeight: 800, marginBottom: 6 },
-  cardValue: { color: "#f5f7fa", fontSize: 17, fontWeight: 900, lineHeight: 1.25 },
-  cardNote: { color: "#777e89", fontSize: 11, lineHeight: 1.35, marginTop: 5 },
-  empty: { padding: 18, borderRadius: 10, border: "1px dashed rgba(255,255,255,.10)", color: "#8e949f", fontSize: 13, textAlign: "center" },
-  scoringGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 12 },
-  scoringGroup: { borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.022)" },
-  scoringGroupTitle: { padding: "11px 12px", background: "rgba(255,88,35,.08)", borderBottom: "1px solid rgba(255,255,255,.06)", color: "#ff7a40", fontSize: 13, fontWeight: 900 },
-  scoringRow: { minHeight: 38, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "8px 12px", borderBottom: "1px solid rgba(255,255,255,.045)", color: "#adb2bb", fontSize: 12 },
-  tableWrap: { overflowX: "auto", borderRadius: 10, border: "1px solid rgba(255,255,255,.07)" },
-  table: { width: "100%", minWidth: 720, borderCollapse: "collapse" },
-  th: { padding: "10px 12px", textAlign: "left", background: "rgba(255,255,255,.035)", borderBottom: "1px solid rgba(255,255,255,.08)", color: "#9096a1", fontSize: 11, fontWeight: 900, letterSpacing: ".06em" },
-  td: { padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,.045)", color: "#c5c9d0", fontSize: 12 },
-  tdStrong: { padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,.045)", color: "#fff", fontSize: 12, fontWeight: 900 },
-  footer: { padding: "8px 12px 24px", textAlign: "center", color: "#777e89", fontSize: 12, lineHeight: 1.5 },
-};
+
+const styles:
+  Record<
+    string,
+    React.CSSProperties
+  > = {
+    page: {
+      minHeight:
+        "100vh",
+      padding:
+        "22px",
+      background:
+        "linear-gradient(180deg,#07080c,#0b0d12 50%,#07080b)",
+      color:
+        "#f5f7fa",
+    },
+
+    shell: {
+      maxWidth:
+        "1160px",
+      margin:
+        "0 auto",
+      display:
+        "grid",
+      gap:
+        "14px",
+    },
+
+    hero: {
+      display:
+        "flex",
+      alignItems:
+        "flex-start",
+      justifyContent:
+        "space-between",
+      gap:
+        "16px",
+      flexWrap:
+        "wrap",
+    },
+
+    eyebrow: {
+      margin:
+        "0 0 4px",
+      color:
+        "#ff7b25",
+      fontWeight:
+        950,
+      fontSize:
+        "11px",
+      letterSpacing:
+        ".08em",
+    },
+
+    title: {
+      margin:
+        0,
+      fontSize:
+        "clamp(28px,4vw,42px)",
+    },
+
+    subtitle: {
+      color:
+        "#9ca2ab",
+      margin:
+        "5px 0 0",
+    },
+
+    actions: {
+      display:
+        "flex",
+      gap:
+        "8px",
+      alignItems:
+        "center",
+      flexWrap:
+        "wrap",
+    },
+
+    readOnly: {
+      border:
+        "1px solid #343a44",
+      background:
+        "#11151b",
+      color:
+        "#9aa0a9",
+      borderRadius:
+        "999px",
+      padding:
+        "8px 10px",
+      fontSize:
+        "10px",
+      fontWeight:
+        950,
+      letterSpacing:
+        ".07em",
+    },
+
+    primaryButton: {
+      borderRadius:
+        "9px",
+      padding:
+        "9px 12px",
+      color:
+        "#fff",
+      background:
+        "linear-gradient(135deg,#aa1d13,#e9601e)",
+      textDecoration:
+        "none",
+      fontWeight:
+        900,
+      fontSize:
+        "11px",
+    },
+
+    summaryGrid: {
+      display:
+        "grid",
+      gridTemplateColumns:
+        "repeat(5,minmax(0,1fr))",
+      gap:
+        "9px",
+    },
+
+    info: {
+      border:
+        "1px solid #272c34",
+      borderRadius:
+        "12px",
+      background:
+        "#101319",
+      padding:
+        "12px",
+      display:
+        "grid",
+      gap:
+        "5px",
+    },
+
+    infoLabel: {
+      color:
+        "#818792",
+      fontSize:
+        "9px",
+      fontWeight:
+        950,
+      letterSpacing:
+        ".07em",
+    },
+
+    infoValue: {
+      fontSize:
+        "15px",
+    },
+
+    accent: {
+      color:
+        "#ff8a36",
+    },
+
+    card: {
+      border:
+        "1px solid #272c34",
+      borderRadius:
+        "14px",
+      background:
+        "linear-gradient(180deg,#11151b,#0c0f14)",
+      padding:
+        "15px",
+      minWidth:
+        0,
+    },
+
+    cardHead: {
+      display:
+        "flex",
+      justifyContent:
+        "space-between",
+      alignItems:
+        "flex-start",
+      gap:
+        "12px",
+      marginBottom:
+        "12px",
+      flexWrap:
+        "wrap",
+    },
+
+    sectionEyebrow: {
+      margin:
+        "0 0 3px",
+      color:
+        "#ff7d28",
+      fontSize:
+        "10px",
+      fontWeight:
+        950,
+      letterSpacing:
+        ".08em",
+    },
+
+    sectionTitle: {
+      margin:
+        "0 0 5px",
+      fontSize:
+        "18px",
+    },
+
+    countBadge: {
+      border:
+        "1px solid rgba(255,126,41,.4)",
+      background:
+        "rgba(255,126,41,.09)",
+      color:
+        "#ff974c",
+      borderRadius:
+        "999px",
+      padding:
+        "6px 9px",
+      fontSize:
+        "9px",
+      fontWeight:
+        950,
+    },
+
+    positionGrid: {
+      display:
+        "grid",
+      gridTemplateColumns:
+        "repeat(4,minmax(0,1fr))",
+      gap:
+        "8px",
+    },
+
+    positionCard: {
+      border:
+        "1px solid #252a32",
+      background:
+        "#0e1116",
+      borderRadius:
+        "10px",
+      padding:
+        "10px",
+      display:
+        "grid",
+      gap:
+        "3px",
+    },
+
+    position: {
+      color:
+        "#ff8a35",
+      fontWeight:
+        950,
+      fontSize:
+        "11px",
+    },
+
+    positionCount: {
+      fontSize:
+        "20px",
+    },
+
+    muted: {
+      color:
+        "#8c929c",
+      fontSize:
+        "11px",
+      lineHeight:
+        1.5,
+    },
+
+    twoColumn: {
+      display:
+        "grid",
+      gridTemplateColumns:
+        "repeat(2,minmax(0,1fr))",
+      gap:
+        "14px",
+    },
+
+    rule: {
+      padding:
+        "9px 0",
+      display:
+        "grid",
+      gap:
+        "3px",
+      borderTop:
+        "1px solid #232831",
+      color:
+        "#dfe1e5",
+      fontSize:
+        "12px",
+    },
+
+    scoringGrid: {
+      display:
+        "grid",
+      gridTemplateColumns:
+        "repeat(4,minmax(0,1fr))",
+      gap:
+        "10px",
+    },
+
+    scoringGroup: {
+      border:
+        "1px solid #252a32",
+      background:
+        "#0e1116",
+      borderRadius:
+        "10px",
+      padding:
+        "10px",
+      display:
+        "grid",
+      gap:
+        "7px",
+      minWidth:
+        0,
+    },
+
+    scoringItem: {
+      display:
+        "flex",
+      justifyContent:
+        "space-between",
+      gap:
+        "8px",
+      color:
+        "#aeb3bb",
+      fontSize:
+        "11px",
+    },
+  };
+
+

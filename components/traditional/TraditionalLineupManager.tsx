@@ -1377,7 +1377,7 @@ className="g365-playerText" style={styles.playerText}
               height: 20,
               minHeight: 20,
               padding: 0,
-              borderRadius: 4,
+              borderRadius: "50%",
               fontSize: 7,
               lineHeight: 1,
               display: "inline-flex",

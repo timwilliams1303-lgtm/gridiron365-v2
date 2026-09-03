@@ -1,8 +1,8 @@
 import Link from "next/link";
 
 import {
-  createSupabaseServerClient,
-} from "@/lib/supabase/server";
+  createSupabaseAdminClient,
+} from "@/lib/supabase/admin";
 
 import {
   requireLeagueMember,
@@ -46,6 +46,22 @@ type TeamRow = {
   id: number;
   team_name: string;
   season_long_franchise_id: string | null;
+};
+
+type SettingsRow = {
+  competition_format:
+    | "total_points"
+    | "head_to_head"
+    | null;
+  regular_season_weeks:
+    number |
+    null;
+  playoffs_enabled:
+    boolean |
+    null;
+  playoff_team_count:
+    number |
+    null;
 };
 
 type CareerAward = {
@@ -131,12 +147,13 @@ export default async function SeasonLongTrophyCasePage({
   }
 
   const supabase =
-    await createSupabaseServerClient();
+    createSupabaseAdminClient();
 
   const [
     historyResult,
     summaryResult,
     currentTeamsResult,
+    settingsResult,
   ] =
     await Promise.all([
       supabase.rpc(
@@ -170,6 +187,19 @@ export default async function SeasonLongTrophyCasePage({
           "active",
           true
         ),
+
+      supabase
+        .from(
+          "season_long_settings"
+        )
+        .select(
+          "competition_format,regular_season_weeks,playoffs_enabled,playoff_team_count"
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .maybeSingle(),
     ]);
 
   if (
@@ -196,6 +226,14 @@ export default async function SeasonLongTrophyCasePage({
     );
   }
 
+  if (
+    settingsResult.error
+  ) {
+    throw new Error(
+      `Could not load Season-Long settings: ${settingsResult.error.message}`
+    );
+  }
+
   const awards =
     (
       historyResult.data ??
@@ -215,6 +253,33 @@ export default async function SeasonLongTrophyCasePage({
       currentTeamsResult.data ??
       []
     ) as TeamRow[];
+
+  const leagueSettings =
+    settingsResult.data as
+      SettingsRow |
+      null;
+
+  const isH2H =
+    leagueSettings
+      ?.competition_format ===
+    "head_to_head";
+
+  const formatLabel =
+    isH2H
+      ? "Head-to-Head"
+      : "Total Points";
+
+  const playoffLabel =
+    isH2H
+      ? leagueSettings
+          ?.playoffs_enabled
+        ? `${Number(
+            leagueSettings
+              ?.playoff_team_count ??
+            0
+          )} Team Playoffs`
+        : "No Playoffs"
+      : "Full-Season Points";
 
   const currentNameByFranchise =
     new Map<
@@ -486,10 +551,34 @@ export default async function SeasonLongTrophyCasePage({
 
   return (
     <main
+      className="g365-season-long-trophy-mobile"
       style={
         styles.page
       }
     >
+      <style>{`
+        @media (max-width: 760px) {
+          .g365-season-long-trophy-mobile,
+          .g365-season-long-trophy-mobile * {
+            box-sizing: border-box;
+          }
+
+          .g365-season-long-trophy-mobile {
+            width: 100%;
+            min-width: 0;
+            overflow-x: hidden;
+          }
+
+          .g365-season-long-trophy-mobile > section {
+            width: 100%;
+            min-width: 0;
+          }
+
+          .g365-season-long-trophy-mobile a {
+            min-height: 42px;
+          }
+        }
+      `}</style>
       <section
         style={
           styles.shell
@@ -528,6 +617,8 @@ export default async function SeasonLongTrophyCasePage({
               latestSeason
                 ? `${latestSeason} Season`
                 : `${firstSeason}–${latestSeason}`}
+              {" • "}
+              {formatLabel}
             </p>
           </div>
 
@@ -601,6 +692,18 @@ export default async function SeasonLongTrophyCasePage({
             )}
             detail="Continuous team identities"
           />
+
+          <SummaryCard
+            label="CURRENT FORMAT"
+            value={
+              isH2H
+                ? "H2H"
+                : "POINTS"
+            }
+            detail={
+              playoffLabel
+            }
+          />
         </section>
 
         <section
@@ -616,7 +719,9 @@ export default async function SeasonLongTrophyCasePage({
             Renewing the league starts fresh weekly lineups, scores and standings,
             while this Trophy Case keeps the history attached to each franchise.
             Awards are never copied into the new season; they remain tied to the
-            season in which they were earned.
+            season in which they were earned. Total Points seasons crown the highest
+            full-season point scorer. Head-to-Head seasons use the final H2H result,
+            including the playoff champion when playoffs are enabled.
           </span>
         </section>
 

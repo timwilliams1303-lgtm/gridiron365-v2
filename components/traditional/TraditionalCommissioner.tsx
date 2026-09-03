@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
+
 import TraditionalScoring from "@/components/traditional/TraditionalScoring";
 
 type Tab =
@@ -148,12 +149,20 @@ type Team = {
   owner_id: string | null;
   team_name: string;
   active: boolean;
+  is_cpu: boolean;
 };
 
 type Member = {
   id: number;
   user_id: string;
   role: string;
+};
+
+type Profile = {
+  user_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  display_name: string | null;
 };
 
 type RosterRow = {
@@ -214,6 +223,15 @@ type InviteApiResponse = {
   invitationUrl?: string;
   invitation_url?: string;
   url?: string;
+};
+
+type LeagueInvitation = {
+  id: string;
+  league_id: string;
+  fantasy_team_id: number | null;
+  email: string;
+  status: string;
+  expires_at: string | null;
 };
 
 type ScoringCategoryKey =
@@ -412,7 +430,7 @@ function pretty(value?: string | null) {
 }
 
 function shortId(value?: string | null) {
-  return value ? `${value.slice(0, 8)}…` : "OWNERLESS / CPU";
+  return value ? `${value.slice(0, 8)}…` : "—";
 }
 
 function localDate(value: string | null) {
@@ -422,17 +440,28 @@ function localDate(value: string | null) {
   return shifted.toISOString().slice(0, 16);
 }
 
+function playoffRounds(teamCount: number) {
+  const count = Math.max(2, teamCount);
+  return Math.ceil(Math.log2(count));
+}
+
+function derivedPlayoffWeeks(regularSeasonWeeks: number, playoffTeams: number) {
+  const startWeek = regularSeasonWeeks + 1;
+  const championshipWeek = regularSeasonWeeks + playoffRounds(playoffTeams);
+  return { startWeek, championshipWeek };
+}
+
 function Section(props: {
   title: string;
   subtitle?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="g365-section" style={styles.section}>
-      <div className="g365-sectionHead" style={styles.sectionHead}>
-        <h2 className="g365-sectionTitle" style={styles.sectionTitle}>{props.title}</h2>
+    <section style={styles.section}>
+      <div style={styles.sectionHead}>
+        <h2 style={styles.sectionTitle}>{props.title}</h2>
         {props.subtitle ? (
-          <p className="g365-sectionSub" style={styles.sectionSub}>{props.subtitle}</p>
+          <p style={styles.sectionSub}>{props.subtitle}</p>
         ) : null}
       </div>
       {props.children}
@@ -448,14 +477,14 @@ function Input(props: {
   disabled?: boolean;
 }) {
   return (
-    <label className="g365-field" style={styles.field}>
-      <span className="g365-fieldLabel" style={styles.fieldLabel}>{props.label}</span>
+    <label style={styles.field}>
+      <span style={styles.fieldLabel}>{props.label}</span>
       <input
         type={props.type ?? "number"}
         value={props.value}
         disabled={props.disabled}
         onChange={(e) => props.onChange(e.target.value)}
-className="g365-input" style={styles.input}
+        style={styles.input}
       />
     </label>
   );
@@ -483,10 +512,14 @@ function Button(props: {
   );
 }
 
-export default function TraditionalCommissionerPage() {
-  const params = useParams<{ leagueId: string }>();
+type TraditionalCommissionerProps = {
+  leagueId: string;
+};
+
+export default function TraditionalCommissioner({
+  leagueId,
+}: TraditionalCommissionerProps) {
   const router = useRouter();
-  const leagueId = params.leagueId;
 
   const [tab, setTab] = useState<Tab>("overview");
   const [loading, setLoading] = useState(true);
@@ -506,6 +539,7 @@ export default function TraditionalCommissionerPage() {
   const [season, setSeason] = useState<SeasonState | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [rosters, setRosters] = useState<RosterRow[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [claims, setClaims] = useState<WaiverClaim[]>([]);
@@ -514,20 +548,32 @@ export default function TraditionalCommissionerPage() {
   const [scoringCategory, setScoringCategory] = useState<ScoringCategoryKey>("passing");
   const [draftOrderMode, setDraftOrderMode] = useState<"manual" | "random">("manual");
   const [draftOrder, setDraftOrder] = useState<number[]>([]);
-  const [inviteFirstName, setInviteFirstName] = useState("");
-  const [inviteLastName, setInviteLastName] = useState("");
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviting, setInviting] = useState(false);
+  const [teamInviteEmails, setTeamInviteEmails] = useState<Record<number, string>>({});
+  const [invitingTeamId, setInvitingTeamId] = useState<number | null>(null);
+  const [invitations, setInvitations] = useState<LeagueInvitation[]>([]);
+  const [cpuBusy, setCpuBusy] = useState(false);
   const [removingOwnerTeamId, setRemovingOwnerTeamId] = useState<number | null>(null);
+  const [deletingLeague, setDeletingLeague] = useState(false);
 
   const [rosterTeamId, setRosterTeamId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [addPlayerId, setAddPlayerId] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
+  const load = useCallback(async (options?: {
+    showLoading?: boolean;
+    clearMessages?: boolean;
+  }) => {
+    const showLoading = options?.showLoading ?? true;
+    const clearMessages = options?.clearMessages ?? true;
+
+    if (showLoading) {
+      setLoading(true);
+    }
+
+    if (clearMessages) {
+      setError(null);
+      setSuccess(null);
+    }
 
     const auth = await supabase.rpc("is_traditional_league_commissioner", {
       p_league_id: leagueId,
@@ -535,13 +581,13 @@ export default function TraditionalCommissionerPage() {
 
     if (auth.error) {
       setError(auth.error.message);
-      setLoading(false);
+      if (showLoading) setLoading(false);
       return;
     }
 
     if (auth.data !== true) {
       setAuthorized(false);
-      setLoading(false);
+      if (showLoading) setLoading(false);
       return;
     }
 
@@ -564,12 +610,17 @@ export default function TraditionalCommissionerPage() {
       supabase.from("league_scoring_rules").select("id,league_id,category,rule_type,stat_key,min_value,max_value,points,is_enabled,stacking_mode,priority,label").eq("league_id", leagueId).order("category").order("priority"),
       supabase.from("traditional_waiver_claims").select("*").eq("league_id", leagueId).order("submitted_at", { ascending: false }).limit(100),
       supabase.from("traditional_trade_offers").select("*").eq("league_id", leagueId).order("created_at", { ascending: false }).limit(100),
+      supabase
+        .from("league_invitations")
+        .select("id,league_id,fantasy_team_id,email,status,expires_at")
+        .eq("league_id", leagueId)
+        .eq("status", "pending"),
     ]);
 
     const failed = results.find((r) => r.error);
     if (failed?.error) {
       setError(failed.error.message);
-      setLoading(false);
+      if (showLoading) setLoading(false);
       return;
     }
 
@@ -579,16 +630,76 @@ export default function TraditionalCommissionerPage() {
     setScoring(results[3].data as Scoring | null);
     setDraft(results[4].data as Draft | null);
     setWaivers(results[5].data as WaiverSettings | null);
-    setTrades(results[6].data as TradeSettings | null);
-    setPlayoffs(results[7].data as PlayoffSettings | null);
+    const loadedLeagueSettings = results[1].data as LeagueSettings | null;
+    const loadedTrades = results[6].data as TradeSettings | null;
+
+    if (loadedTrades && loadedLeagueSettings) {
+      const regularSeasonWeeks = loadedLeagueSettings.regular_season_weeks ?? 14;
+      setTrades({
+        ...loadedTrades,
+        trade_deadline_week:
+          loadedTrades.trade_deadline_week === null
+            ? null
+            : Math.min(loadedTrades.trade_deadline_week, regularSeasonWeeks),
+      });
+    } else {
+      setTrades(loadedTrades);
+    }
+    const loadedPlayoffs = results[7].data as PlayoffSettings | null;
+
+    if (loadedPlayoffs && loadedLeagueSettings) {
+      const derived = derivedPlayoffWeeks(
+        loadedLeagueSettings.regular_season_weeks ?? 14,
+        loadedPlayoffs.playoff_teams
+      );
+
+      setPlayoffs({
+        ...loadedPlayoffs,
+        playoff_start_week: derived.startWeek,
+        championship_week: derived.championshipWeek,
+      });
+    } else {
+      setPlayoffs(loadedPlayoffs);
+    }
     setSeason(results[8].data as SeasonState | null);
-    setTeams((results[9].data ?? []) as Team[]);
-    setMembers((results[10].data ?? []) as Member[]);
+
+    const loadedTeams = (results[9].data ?? []) as Team[];
+    const loadedMembers = (results[10].data ?? []) as Member[];
+    const profileUserIds = Array.from(
+      new Set(
+        [
+          ...loadedMembers.map((member) => member.user_id),
+          ...loadedTeams
+            .map((team) => team.owner_id)
+            .filter((ownerId): ownerId is string => Boolean(ownerId)),
+        ].filter(Boolean)
+      )
+    );
+
+    let loadedProfiles: Profile[] = [];
+
+    if (profileUserIds.length > 0) {
+      const profileResult = await supabase
+        .from("profiles")
+        .select("user_id,first_name,last_name,display_name")
+        .in("user_id", profileUserIds);
+
+      if (profileResult.error) {
+        console.error("Failed to load league profiles:", profileResult.error);
+      } else {
+        loadedProfiles = (profileResult.data ?? []) as Profile[];
+      }
+    }
+
+    setTeams(loadedTeams);
+    setMembers(loadedMembers);
+    setProfiles(loadedProfiles);
     setRosters((results[11].data ?? []) as RosterRow[]);
     setPlayers((results[12].data ?? []) as Player[]);
     setScoringRules((results[13].data ?? []) as ScoringRule[]);
     setClaims((results[14].data ?? []) as WaiverClaim[]);
     setOffers((results[15].data ?? []) as TradeOffer[]);
+    setInvitations((results[16].data ?? []) as LeagueInvitation[]);
 
     const activeTeams = ((results[9].data ?? []) as Team[]).filter((team) => team.active);
 
@@ -602,16 +713,91 @@ export default function TraditionalCommissionerPage() {
       return currentIsValid ? current : activeTeamIds;
     });
 
-    if (!rosterTeamId) {
-      setRosterTeamId(activeTeams[0]?.id ?? null);
-    }
+    setRosterTeamId((current) => current ?? activeTeams[0]?.id ?? null);
 
-    setLoading(false);
-  }, [leagueId, rosterTeamId]);
+    if (showLoading) {
+      setLoading(false);
+    }
+  }, [leagueId]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`traditional-commissioner-${leagueId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "league_invitations",
+          filter: `league_id=eq.${leagueId}`,
+        },
+        () => {
+          void load({
+            showLoading: false,
+            clearMessages: false,
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "fantasy_teams",
+          filter: `league_id=eq.${leagueId}`,
+        },
+        () => {
+          void load({
+            showLoading: false,
+            clearMessages: false,
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "league_members",
+          filter: `league_id=eq.${leagueId}`,
+        },
+        () => {
+          void load({
+            showLoading: false,
+            clearMessages: false,
+          });
+        }
+      )
+      .subscribe();
+
+    const fallbackInterval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void load({
+          showLoading: false,
+          clearMessages: false,
+        });
+      }
+    }, 5000);
+
+    const handleFocus = () => {
+      void load({
+        showLoading: false,
+        clearMessages: false,
+      });
+    };
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      window.clearInterval(fallbackInterval);
+      window.removeEventListener("focus", handleFocus);
+      void supabase.removeChannel(channel);
+    };
+  }, [leagueId, load]);
 
   const playerMap = useMemo(
     () => new Map(players.map((p) => [p.id, p] as const)),
@@ -621,6 +807,32 @@ export default function TraditionalCommissionerPage() {
   const teamMap = useMemo(
     () => new Map(teams.map((t) => [t.id, t] as const)),
     [teams]
+  );
+
+  const profileByUserId = useMemo(
+    () => new Map(profiles.map((profile) => [profile.user_id, profile] as const)),
+    [profiles]
+  );
+
+  const profileName = useCallback(
+    (userId: string | null | undefined) => {
+      if (!userId) return "";
+
+      const profile = profileByUserId.get(userId);
+      const displayName = profile?.display_name?.trim();
+
+      if (displayName) return displayName;
+
+      const fullName = [
+        profile?.first_name?.trim(),
+        profile?.last_name?.trim(),
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      return fullName || shortId(userId);
+    },
+    [profileByUserId]
   );
 
   const rostered = useMemo(
@@ -679,11 +891,20 @@ export default function TraditionalCommissionerPage() {
         return;
       }
 
-      setSuccess(
-        message
-      );
+      await load({
+        showLoading: false,
+        clearMessages: false,
+      });
 
-      await load();
+      /*
+       * Commissioner mutations may affect server-rendered league
+       * navigation, settings summaries, standings, playoff state,
+       * roster configuration, and other league-dependent screens.
+       * Refresh the server shell immediately after the mutation.
+       */
+      router.refresh();
+
+      setSuccess(message);
     } catch (
       err
     ) {
@@ -697,6 +918,124 @@ export default function TraditionalCommissionerPage() {
         false
       );
     }
+  }
+
+  function changeMaximumTeams(nextMaxTeams: number) {
+    if (!leagueSettings) return;
+
+    const maxTeams = Math.max(4, Math.min(12, nextMaxTeams));
+    setLeagueSettings({ ...leagueSettings, max_teams: maxTeams });
+
+    if (playoffs && playoffs.playoff_teams > maxTeams) {
+      const nextPlayoffTeams = maxTeams >= 8 ? 8 : maxTeams >= 6 ? 6 : maxTeams >= 4 ? 4 : 2;
+      const regularWeeks = leagueSettings.regular_season_weeks ?? 14;
+      const derived = derivedPlayoffWeeks(regularWeeks, nextPlayoffTeams);
+      setPlayoffs({
+        ...playoffs,
+        playoff_teams: nextPlayoffTeams,
+        playoff_start_week: derived.startWeek,
+        championship_week: derived.championshipWeek,
+      });
+    }
+  }
+
+  function changeRegularSeasonWeeks(nextRegularSeasonWeeks: number) {
+    if (!leagueSettings) return;
+
+    const regularSeasonWeeks = Math.max(1, Math.min(17, nextRegularSeasonWeeks));
+    setLeagueSettings({ ...leagueSettings, regular_season_weeks: regularSeasonWeeks });
+
+    // A trade deadline can never be later than the final regular-season week.
+    if (trades?.trade_deadline_week !== null &&
+        trades?.trade_deadline_week !== undefined &&
+        trades.trade_deadline_week > regularSeasonWeeks) {
+      setTrades({ ...trades, trade_deadline_week: regularSeasonWeeks });
+    }
+
+    if (playoffs) {
+      const derived = derivedPlayoffWeeks(regularSeasonWeeks, playoffs.playoff_teams);
+      setPlayoffs({
+        ...playoffs,
+        playoff_start_week: derived.startWeek,
+        championship_week: derived.championshipWeek,
+      });
+    }
+  }
+
+  function changePlayoffTeams(nextPlayoffTeams: number) {
+    if (!playoffs || !leagueSettings) return;
+
+    const maxTeams = leagueSettings.max_teams ?? 12;
+    const playoffTeams = Math.min(nextPlayoffTeams, maxTeams);
+    let regularSeasonWeeks = leagueSettings.regular_season_weeks ?? 14;
+    const rounds = playoffRounds(playoffTeams);
+
+    // The NFL regular season ends in Week 18. If a larger playoff field needs
+    // another round, shorten the fantasy regular season automatically so the
+    // championship still fits inside Week 18.
+    if (regularSeasonWeeks + rounds > 18) {
+      regularSeasonWeeks = 18 - rounds;
+      setLeagueSettings({ ...leagueSettings, regular_season_weeks: regularSeasonWeeks });
+    }
+
+    const derived = derivedPlayoffWeeks(regularSeasonWeeks, playoffTeams);
+    setPlayoffs({
+      ...playoffs,
+      playoff_teams: playoffTeams,
+      playoff_start_week: derived.startWeek,
+      championship_week: derived.championshipWeek,
+    });
+  }
+
+  function changePlayoffStartWeek(nextStartWeek: number) {
+    if (!playoffs || !leagueSettings) return;
+
+    const rounds = playoffRounds(playoffs.playoff_teams);
+    const maxStartWeek = 19 - rounds;
+    const startWeek = Math.max(2, Math.min(maxStartWeek, nextStartWeek));
+    const regularSeasonWeeks = startWeek - 1;
+    const derived = derivedPlayoffWeeks(regularSeasonWeeks, playoffs.playoff_teams);
+
+    setLeagueSettings({ ...leagueSettings, regular_season_weeks: regularSeasonWeeks });
+
+    // Moving the playoffs earlier also moves the latest possible trade deadline.
+    if (trades?.trade_deadline_week !== null &&
+        trades?.trade_deadline_week !== undefined &&
+        trades.trade_deadline_week > regularSeasonWeeks) {
+      setTrades({ ...trades, trade_deadline_week: regularSeasonWeeks });
+    }
+
+    setPlayoffs({
+      ...playoffs,
+      playoff_start_week: derived.startWeek,
+      championship_week: derived.championshipWeek,
+    });
+  }
+
+  async function saveLeagueStructure() {
+    if (!leagueSettings || !playoffs) return;
+
+    const maxTeams = leagueSettings.max_teams ?? 12;
+    const regularSeasonWeeks = leagueSettings.regular_season_weeks ?? 14;
+    const derived = derivedPlayoffWeeks(regularSeasonWeeks, playoffs.playoff_teams);
+
+    if (derived.championshipWeek > 18) {
+      setError(
+        `This setup would place the championship in Week ${derived.championshipWeek}. Reduce the regular-season weeks or playoff field so the championship is Week 18 or earlier.`
+      );
+      return;
+    }
+
+    await action(
+      () =>
+        supabase.rpc("commissioner_save_traditional_structure", {
+          p_league_id: leagueId,
+          p_max_teams: maxTeams,
+          p_regular_season_weeks: regularSeasonWeeks,
+          p_playoff_teams: playoffs.playoff_teams,
+        }),
+      `League structure saved: ${maxTeams} teams, ${regularSeasonWeeks} regular-season weeks, playoffs Weeks ${derived.startWeek}-${derived.championshipWeek}.`
+    );
   }
 
   async function saveDraftOrder(order: number[]) {
@@ -752,81 +1091,311 @@ export default function TraditionalCommissionerPage() {
     router.push(`/league/${leagueId}/draft`);
   }
 
-  async function sendInvite() {
-    if (!league || inviting) return;
+  async function sendTeamInvite(
+    team: Team | null,
+    slotIndex: number
+  ) {
+    if (!league || invitingTeamId !== null) return;
 
-    const firstName = inviteFirstName.trim();
-    const lastName = inviteLastName.trim();
-    const email = inviteEmail.trim().toLowerCase();
+    const inviteKey = team?.id ?? -(slotIndex + 1);
+    const email = (teamInviteEmails[inviteKey] ?? "").trim().toLowerCase();
 
-    if (!firstName || !lastName || !email.includes("@")) {
-      setError("Enter the owner's first name, last name, and a valid email address.");
+    if (!email || !email.includes("@")) {
+      setError(`Enter a valid email address for Team ${slotIndex + 1}.`);
       return;
     }
 
-    setInviting(true);
+    setInvitingTeamId(inviteKey);
     setError(null);
     setSuccess(null);
 
     try {
+      let fantasyTeamId = team?.id ?? null;
+      let teamName = team?.team_name ?? `Team ${slotIndex + 1}`;
+
+      /*
+       * A visible vacant slot is only a UI slot until the commissioner
+       * actually uses it. Create the real fantasy team only when an invite
+       * is sent. This avoids filling the database with fake teams.
+       */
+      if (!fantasyTeamId) {
+        const { data: createdTeamId, error: createError } =
+          await supabase.rpc("commissioner_add_open_team_slot", {
+            p_league_id: leagueId,
+            p_team_name: teamName,
+          });
+
+        if (createError) {
+          throw new Error(createError.message);
+        }
+
+        fantasyTeamId = Number(createdTeamId);
+
+        if (!Number.isFinite(fantasyTeamId) || fantasyTeamId <= 0) {
+          throw new Error("The vacant team slot could not be created.");
+        }
+      }
+
       const sessionResult = await supabase.auth.getSession();
-      if (sessionResult.error) throw new Error(sessionResult.error.message);
+
+      if (sessionResult.error) {
+        throw new Error(sessionResult.error.message);
+      }
 
       const token = sessionResult.data.session?.access_token;
-      if (!token) throw new Error("Your login session is missing. Sign in again and retry.");
 
-      const response = await fetch(`/api/leagues/${league.id}/invite`, {
+      if (!token) {
+        throw new Error("Your login session is missing. Sign in again and retry.");
+      }
+
+      const response = await fetch(`/api/league/${league.id}/invite`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ firstName, lastName, email }),
+        body: JSON.stringify({
+          email,
+          firstName: teamName,
+          lastName: "Owner",
+          fantasyTeamId,
+        }),
       });
 
+      const responseText = await response.text();
       let result: InviteApiResponse = {};
-      try {
-        result = (await response.json()) as InviteApiResponse;
-      } catch {
-        result = {};
+
+      if (responseText) {
+        try {
+          result = JSON.parse(responseText) as InviteApiResponse;
+        } catch {
+          result = {};
+        }
       }
 
       if (!response.ok || result.success === false) {
-        throw new Error(result.error ?? result.message ?? "The invitation could not be sent.");
+        throw new Error(
+          result.error ??
+            result.message ??
+            (responseText && !responseText.trim().startsWith("<")
+              ? responseText
+              : `Invitation request failed (${response.status}).`)
+        );
       }
 
-      setSuccess(`Invitation sent to ${email}.`);
-      setInviteFirstName("");
-      setInviteLastName("");
-      setInviteEmail("");
+      setSuccess(`Invitation sent to ${email} for ${teamName}.`);
+      setTeamInviteEmails((current) => ({
+        ...current,
+        [inviteKey]: "",
+      }));
+
+      await load({
+        showLoading: false,
+        clearMessages: false,
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "The invitation could not be sent.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "The invitation could not be sent."
+      );
     } finally {
-      setInviting(false);
+      setInvitingTeamId(null);
     }
   }
 
-  async function removeTraditionalOwner(team: Team) {
-    if (
-      removingOwnerTeamId !== null ||
-      !team.owner_id
-    ) {
+  async function addCpuTeam() {
+    if (cpuBusy) return;
+
+    const maxTeams = leagueSettings?.max_teams ?? 12;
+    const pendingTeamIds = new Set(
+      invitations
+        .filter((invite) => invite.status === "pending")
+        .map((invite) => Number(invite.fantasy_team_id))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    );
+
+    const filledCount = teams.filter(
+      (team) =>
+        team.active &&
+        (Boolean(team.owner_id) ||
+          Boolean(team.is_cpu) ||
+          pendingTeamIds.has(team.id))
+    ).length;
+
+    if (filledCount >= maxTeams) {
+      setError(`This league is already at its ${maxTeams}-team limit.`);
       return;
     }
 
-    if (
-      league?.commissioner_user_id &&
-      team.owner_id === league.commissioner_user_id
-    ) {
-      setError(
-        "The primary commissioner cannot be removed from their own league. Transfer commissioner ownership first."
+    setCpuBusy(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const { error: cpuError } = await supabase.rpc(
+        "commissioner_add_cpu_to_vacant_slot",
+        {
+          p_league_id: leagueId,
+        }
       );
+
+      if (cpuError) {
+        throw new Error(cpuError.message);
+      }
+
+      await load({
+        showLoading: false,
+        clearMessages: false,
+      });
+
+      setSuccess("CPU team added.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "The CPU team could not be added."
+      );
+    } finally {
+      setCpuBusy(false);
+    }
+  }
+
+  async function fillRemainingWithCpu() {
+    if (cpuBusy) return;
+
+    const maxTeams = leagueSettings?.max_teams ?? 12;
+    const pendingTeamIds = new Set(
+      invitations
+        .filter((invite) => invite.status === "pending")
+        .map((invite) => Number(invite.fantasy_team_id))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    );
+
+    const filledCount = teams.filter(
+      (team) =>
+        team.active &&
+        (Boolean(team.owner_id) ||
+          Boolean(team.is_cpu) ||
+          pendingTeamIds.has(team.id))
+    ).length;
+
+    const remaining = Math.max(0, maxTeams - filledCount);
+
+    if (remaining <= 0) {
+      setError(`This league is already at its ${maxTeams}-team limit.`);
       return;
     }
 
     if (
       !window.confirm(
-        `Remove the current owner from ${team.team_name}? The fantasy team, roster, draft history, matchup history, scores, standings and league history will stay in place. The team will become ownerless / CPU and can be invited to a replacement owner.`
+        `Fill the remaining ${remaining} team slot${
+          remaining === 1 ? "" : "s"
+        } with CPU teams?`
+      )
+    ) {
+      return;
+    }
+
+    setCpuBusy(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const { data, error: fillError } = await supabase.rpc(
+        "commissioner_fill_vacant_slots_with_cpu",
+        {
+          p_league_id: leagueId,
+        }
+      );
+
+      if (fillError) {
+        throw new Error(fillError.message);
+      }
+
+      const added = Number(data ?? remaining);
+
+      await load({
+        showLoading: false,
+        clearMessages: false,
+      });
+
+      setSuccess(
+        `${added} CPU team${added === 1 ? "" : "s"} added.`
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "The CPU teams could not be added."
+      );
+    } finally {
+      setCpuBusy(false);
+    }
+  }
+
+  async function removeCpuTeam(team: Team) {
+    if (cpuBusy || !team.is_cpu) return;
+
+    if (
+      !window.confirm(
+        `Remove ${team.team_name} from this league?`
+      )
+    ) {
+      return;
+    }
+
+    setCpuBusy(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const { error: removeError } = await supabase.rpc("remove_cpu_team", {
+        p_league_id: leagueId,
+        p_team_id: team.id,
+      });
+
+      if (removeError) {
+        throw new Error(removeError.message);
+      }
+
+      await load({
+        showLoading: false,
+        clearMessages: false,
+      });
+
+      setSuccess(`${team.team_name} was removed.`);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "The CPU team could not be removed."
+      );
+    } finally {
+      setCpuBusy(false);
+    }
+  }
+
+  async function removeTeamOwner(team: Team) {
+    if (
+      !team.owner_id ||
+      removingOwnerTeamId !== null
+    ) {
+      return;
+    }
+
+    if (team.owner_id === league?.commissioner_user_id) {
+      setError(
+        "The primary commissioner cannot be removed from their own league."
+      );
+      return;
+    }
+
+    const ownerName = profileName(team.owner_id) || "this owner";
+
+    if (
+      !window.confirm(
+        `Remove ${ownerName} from ${team.team_name}? The team, roster, draft slot, standings and league history will stay intact, and this spot will become available for a replacement owner.`
       )
     ) {
       return;
@@ -837,57 +1406,75 @@ export default function TraditionalCommissionerPage() {
     setSuccess(null);
 
     try {
-      const response = await fetch(
-        `/api/leagues/${leagueId}/commissioner/remove-owner`,
+      const { error: removeError } = await supabase.rpc(
+        "commissioner_remove_traditional_owner",
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            fantasyTeamId: team.id,
-          }),
+          p_league_id: leagueId,
+          p_fantasy_team_id: team.id,
         }
       );
 
-      let payload: {
-        success?: boolean;
-        error?: string;
-        cancelledInvitations?: number;
-      } = {};
-
-      try {
-        payload = await response.json();
-      } catch {
-        payload = {};
+      if (removeError) {
+        throw new Error(removeError.message);
       }
 
-      if (
-        !response.ok ||
-        payload.success !== true
-      ) {
-        throw new Error(
-          payload.error ??
-            "The owner could not be removed."
-        );
-      }
+      await load({
+        showLoading: false,
+        clearMessages: false,
+      });
 
       setSuccess(
-        `Owner removed from ${team.team_name}. The team is now ownerless / CPU and ready for a replacement invitation.`
+        `${ownerName} was removed from ${team.team_name}. The team is now vacant and ready for a replacement invitation.`
       );
-
-      await load();
-    } catch (actionError) {
+    } catch (err) {
       setError(
-        actionError instanceof Error
-          ? actionError.message
-          : "The owner could not be removed."
+        err instanceof Error
+          ? err.message
+          : "The owner could not be removed from this team."
       );
     } finally {
       setRemovingOwnerTeamId(null);
     }
   }
 
+  async function deleteLeague() {
+    if (!league || deletingLeague) return;
+
+    if (
+      !window.confirm(
+        `Permanently delete ${league.name}? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingLeague(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const { error: deleteError } = await supabase.rpc(
+        "commissioner_delete_league",
+        {
+          p_league_id: leagueId,
+        }
+      );
+
+      if (deleteError) {
+        throw new Error(deleteError.message);
+      }
+
+      router.replace("/my-leagues");
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "The league could not be deleted."
+      );
+      setDeletingLeague(false);
+    }
+  }
 
   async function saveBonusRule(rule: ScoringRule) {
     await action(
@@ -949,131 +1536,13 @@ export default function TraditionalCommissionerPage() {
   }
 
   if (loading) {
-    return <main className="g365-page g365-commissioner-page" style={styles.page}>
-      <style jsx global>{`
-@media (max-width: 980px) {
-  .g365-commissioner-page .g365-tabs,
-  .g365-commissioner-page .g365-scoringCategoryTabs {
-    width: 100% !important;
-    max-width: 100% !important;
-    flex-wrap: nowrap !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-    touch-action: pan-x pan-y;
-    scrollbar-width: thin;
-  }
-  .g365-commissioner-page .g365-tab,
-  .g365-commissioner-page .g365-scoringCategoryTab {
-    flex: 0 0 auto !important;
-  }
-}
-@media (max-width: 760px) {
-  .g365-commissioner-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
-  .g365-commissioner-page .g365-shell { width: 100% !important; min-width: 0 !important; }
-  .g365-commissioner-page .g365-hero { padding: 16px 14px !important; gap: 12px !important; align-items: flex-start !important; flex-direction: column !important; }
-  .g365-commissioner-page .g365-title { font-size: 28px !important; }
-  .g365-commissioner-page .g365-tabs,
-  .g365-commissioner-page .g365-scoringCategoryTabs {
-    flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin; padding-bottom: 8px !important;
-  }
-  .g365-commissioner-page .g365-tab,
-  .g365-commissioner-page .g365-scoringCategoryTab { flex: 0 0 auto !important; min-height: 42px !important; }
-  .g365-commissioner-page .g365-section { padding: 14px 12px !important; min-width: 0 !important; }
-  .g365-commissioner-page .g365-grid,
-  .g365-commissioner-page .g365-stats,
-  .g365-commissioner-page .g365-guides,
-  .g365-commissioner-page .g365-leagueStructureGrid,
-  .g365-commissioner-page .g365-rosterGrid,
-  .g365-commissioner-page .g365-scoringBaseGrid,
-  .g365-commissioner-page .g365-scoringAdvanced,
-  .g365-commissioner-page .g365-draftTopGrid,
-  .g365-commissioner-page .g365-draftOrderGrid,
-  .g365-commissioner-page .g365-inviteGrid {
-    grid-template-columns: minmax(0,1fr) !important;
-  }
-  .g365-commissioner-page .g365-bonusRuleRow,
-  .g365-commissioner-page .g365-teamRowExpanded,
-  .g365-commissioner-page .g365-teamRow,
-  .g365-commissioner-page .g365-rosterRow,
-  .g365-commissioner-page .g365-tx {
-    grid-template-columns: minmax(0,1fr) !important; gap: 10px !important;
-  }
-  .g365-commissioner-page .g365-startDraftPanel { flex-direction: column !important; align-items: stretch !important; }
-  .g365-commissioner-page .g365-teamActions,
-  .g365-commissioner-page .g365-actions,
-  .g365-commissioner-page .g365-bonusActions { justify-content: stretch !important; }
-  .g365-commissioner-page button { min-height: 42px !important; }
-  .g365-commissioner-page input, .g365-commissioner-page select, .g365-commissioner-page textarea { min-width: 0 !important; max-width: 100% !important; font-size: 16px !important; }
-}
-`}</style><div className="g365-center" style={styles.center}>Loading Commissioner…</div></main>;
+    return <main style={styles.page}><div style={styles.center}>Loading Commissioner…</div></main>;
   }
 
   if (!authorized) {
     return (
-      <main className="g365-page g365-commissioner-page" style={styles.page}>
-      <style jsx global>{`
-@media (max-width: 980px) {
-  .g365-commissioner-page .g365-tabs,
-  .g365-commissioner-page .g365-scoringCategoryTabs {
-    width: 100% !important;
-    max-width: 100% !important;
-    flex-wrap: nowrap !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-    touch-action: pan-x pan-y;
-    scrollbar-width: thin;
-  }
-  .g365-commissioner-page .g365-tab,
-  .g365-commissioner-page .g365-scoringCategoryTab {
-    flex: 0 0 auto !important;
-  }
-}
-@media (max-width: 760px) {
-  .g365-commissioner-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
-  .g365-commissioner-page .g365-shell { width: 100% !important; min-width: 0 !important; }
-  .g365-commissioner-page .g365-hero { padding: 16px 14px !important; gap: 12px !important; align-items: flex-start !important; flex-direction: column !important; }
-  .g365-commissioner-page .g365-title { font-size: 28px !important; }
-  .g365-commissioner-page .g365-tabs,
-  .g365-commissioner-page .g365-scoringCategoryTabs {
-    flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin; padding-bottom: 8px !important;
-  }
-  .g365-commissioner-page .g365-tab,
-  .g365-commissioner-page .g365-scoringCategoryTab { flex: 0 0 auto !important; min-height: 42px !important; }
-  .g365-commissioner-page .g365-section { padding: 14px 12px !important; min-width: 0 !important; }
-  .g365-commissioner-page .g365-grid,
-  .g365-commissioner-page .g365-stats,
-  .g365-commissioner-page .g365-guides,
-  .g365-commissioner-page .g365-leagueStructureGrid,
-  .g365-commissioner-page .g365-rosterGrid,
-  .g365-commissioner-page .g365-scoringBaseGrid,
-  .g365-commissioner-page .g365-scoringAdvanced,
-  .g365-commissioner-page .g365-draftTopGrid,
-  .g365-commissioner-page .g365-draftOrderGrid,
-  .g365-commissioner-page .g365-inviteGrid {
-    grid-template-columns: minmax(0,1fr) !important;
-  }
-  .g365-commissioner-page .g365-bonusRuleRow,
-  .g365-commissioner-page .g365-teamRowExpanded,
-  .g365-commissioner-page .g365-teamRow,
-  .g365-commissioner-page .g365-rosterRow,
-  .g365-commissioner-page .g365-tx {
-    grid-template-columns: minmax(0,1fr) !important; gap: 10px !important;
-  }
-  .g365-commissioner-page .g365-startDraftPanel { flex-direction: column !important; align-items: stretch !important; }
-  .g365-commissioner-page .g365-teamActions,
-  .g365-commissioner-page .g365-actions,
-  .g365-commissioner-page .g365-bonusActions { justify-content: stretch !important; }
-  .g365-commissioner-page button { min-height: 42px !important; }
-  .g365-commissioner-page input, .g365-commissioner-page select, .g365-commissioner-page textarea { min-width: 0 !important; max-width: 100% !important; font-size: 16px !important; }
-}
-`}</style>
-        <div className="g365-denied" style={styles.denied}>
+      <main style={styles.page}>
+        <div style={styles.denied}>
           <h1>Commissioner Only</h1>
           <p>You do not have commissioner access to this Traditional league.</p>
           <Button onClick={() => router.push(`/league/${leagueId}`)}>BACK TO LEAGUE</Button>
@@ -1096,83 +1565,24 @@ export default function TraditionalCommissionerPage() {
   ];
 
   return (
-    <main className="g365-page g365-commissioner-page" style={styles.page}>
-      <style jsx global>{`
-@media (max-width: 980px) {
-  .g365-commissioner-page .g365-tabs,
-  .g365-commissioner-page .g365-scoringCategoryTabs {
-    width: 100% !important;
-    max-width: 100% !important;
-    flex-wrap: nowrap !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-    touch-action: pan-x pan-y;
-    scrollbar-width: thin;
-  }
-  .g365-commissioner-page .g365-tab,
-  .g365-commissioner-page .g365-scoringCategoryTab {
-    flex: 0 0 auto !important;
-  }
-}
-@media (max-width: 760px) {
-  .g365-commissioner-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
-  .g365-commissioner-page .g365-shell { width: 100% !important; min-width: 0 !important; }
-  .g365-commissioner-page .g365-hero { padding: 16px 14px !important; gap: 12px !important; align-items: flex-start !important; flex-direction: column !important; }
-  .g365-commissioner-page .g365-title { font-size: 28px !important; }
-  .g365-commissioner-page .g365-tabs,
-  .g365-commissioner-page .g365-scoringCategoryTabs {
-    flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin; padding-bottom: 8px !important;
-  }
-  .g365-commissioner-page .g365-tab,
-  .g365-commissioner-page .g365-scoringCategoryTab { flex: 0 0 auto !important; min-height: 42px !important; }
-  .g365-commissioner-page .g365-section { padding: 14px 12px !important; min-width: 0 !important; }
-  .g365-commissioner-page .g365-grid,
-  .g365-commissioner-page .g365-stats,
-  .g365-commissioner-page .g365-guides,
-  .g365-commissioner-page .g365-leagueStructureGrid,
-  .g365-commissioner-page .g365-rosterGrid,
-  .g365-commissioner-page .g365-scoringBaseGrid,
-  .g365-commissioner-page .g365-scoringAdvanced,
-  .g365-commissioner-page .g365-draftTopGrid,
-  .g365-commissioner-page .g365-draftOrderGrid,
-  .g365-commissioner-page .g365-inviteGrid {
-    grid-template-columns: minmax(0,1fr) !important;
-  }
-  .g365-commissioner-page .g365-bonusRuleRow,
-  .g365-commissioner-page .g365-teamRowExpanded,
-  .g365-commissioner-page .g365-teamRow,
-  .g365-commissioner-page .g365-rosterRow,
-  .g365-commissioner-page .g365-tx {
-    grid-template-columns: minmax(0,1fr) !important; gap: 10px !important;
-  }
-  .g365-commissioner-page .g365-startDraftPanel { flex-direction: column !important; align-items: stretch !important; }
-  .g365-commissioner-page .g365-teamActions,
-  .g365-commissioner-page .g365-actions,
-  .g365-commissioner-page .g365-bonusActions { justify-content: stretch !important; }
-  .g365-commissioner-page button { min-height: 42px !important; }
-  .g365-commissioner-page input, .g365-commissioner-page select, .g365-commissioner-page textarea { min-width: 0 !important; max-width: 100% !important; font-size: 16px !important; }
-}
-`}</style>
-      <div className="g365-shell" style={styles.shell}>
-        <header className="g365-hero" style={styles.hero}>
+    <main style={styles.page}>
+      <div style={styles.shell}>
+        <header style={styles.hero}>
           <div>
-            <div className="g365-eyebrow" style={styles.eyebrow}>TRADITIONAL LEAGUE • COMMISSIONER</div>
-            <h1 className="g365-title" style={styles.title}>Commissioner</h1>
-            <p className="g365-subtitle" style={styles.subtitle}>Manage {league?.name ?? "your league"} from one control center.</p>
+            <div style={styles.eyebrow}>TRADITIONAL LEAGUE • COMMISSIONER</div>
+            <h1 style={styles.title}>Commissioner</h1>
+            <p style={styles.subtitle}>Manage {league?.name ?? "your league"} from one control center.</p>
           </div>
-          <div className="g365-row" style={styles.row}>
+          <div style={styles.row}>
             <Button onClick={() => router.push(`/league/${leagueId}/settings`)}>VIEW SETTINGS</Button>
             <Button onClick={() => void load()} disabled={saving}>REFRESH</Button>
           </div>
         </header>
 
-        {error ? <div className="g365-error" style={styles.error}>{error}</div> : null}
-        {success ? <div className="g365-success" style={styles.success}>{success}</div> : null}
+        {error ? <div style={styles.error}>{error}</div> : null}
+        {success ? <div style={styles.success}>{success}</div> : null}
 
-        <div className="g365-tabs" style={styles.tabs}>
+        <div style={styles.tabs}>
           {tabs.map(([key, label]) => (
             <button
               key={key}
@@ -1188,12 +1598,30 @@ export default function TraditionalCommissionerPage() {
         {tab === "overview" ? (
           <>
             <Section title="League Control Center">
-              <div className="g365-stats" style={styles.stats}>
+              <div style={styles.stats}>
                 <Stat label="Season" value={league?.season ?? "—"} />
                 <Stat label="Active Week" value={season?.active_week ?? "—"} />
                 <Stat label="Phase" value={pretty(season?.phase)} />
-                <Stat label="Active Teams" value={teams.filter((t) => t.active).length} />
-                <Stat label="Ownerless / CPU" value={teams.filter((t) => !t.owner_id).length} />
+                <Stat
+                  label="Owners Joined"
+                  value={teams.filter((t) => t.active && Boolean(t.owner_id)).length}
+                />
+                <Stat
+                  label="CPU Teams"
+                  value={teams.filter((t) => t.active && t.is_cpu).length}
+                />
+                <Stat
+                  label="Open Spots"
+                  value={Math.max(
+                    0,
+                    (leagueSettings?.max_teams ?? 12) -
+                      teams.filter(
+                        (t) =>
+                          t.active &&
+                          (Boolean(t.owner_id) || t.is_cpu)
+                      ).length
+                  )}
+                />
                 <Stat label="Rostered Players" value={rosters.length} />
                 <Stat label="Draft Status" value={pretty(draft?.status)} />
                 <Stat label="Pending Waivers" value={claims.filter((c) => c.status === "pending").length} />
@@ -1201,8 +1629,8 @@ export default function TraditionalCommissionerPage() {
               </div>
             </Section>
             <Section title="Commissioner Workflow">
-              <div className="g365-guides" style={styles.guides}>
-                <Guide title="Before Draft" text="Confirm league, roster, scoring, draft, waiver, trade and playoff settings. Assign owners or leave CPU teams ownerless." />
+              <div style={styles.guides}>
+                <Guide title="Before Draft" text="Confirm league, roster, scoring, draft, waiver, trade and playoff settings. Assign owners or invite new owners by email." />
                 <Guide title="During Draft" text="Use the Live Draft for pause/resume, commissioner picks and Undo Last Pick." />
                 <Guide title="Regular Season" text="Use roster tools only when needed. Process waivers, enforce deadlines, rebuild standings and advance weeks after results are ready." />
                 <Guide title="Playoffs" text="Confirm field size and reseeding rules before starting the postseason." />
@@ -1213,35 +1641,71 @@ export default function TraditionalCommissionerPage() {
 
         {tab === "league" && leagueSettings && rosterSettings ? (
           <>
-            <Section title="League Structure" subtitle="Set the league size and regular-season length.">
-              <div className="g365-leagueStructureGrid" style={styles.leagueStructureGrid}>
-                <Input
-                  label="Maximum Teams"
-                  value={leagueSettings.max_teams ?? 12}
-                  onChange={(v) => setLeagueSettings({ ...leagueSettings, max_teams: n(v, 12) })}
-                />
-                <Input
-                  label="Regular Season Weeks"
-                  value={leagueSettings.regular_season_weeks ?? 14}
-                  onChange={(v) => setLeagueSettings({ ...leagueSettings, regular_season_weeks: n(v, 14) })}
-                />
+            <Section
+              title="League Structure"
+              subtitle="League size, regular-season length and playoff timing stay synchronized automatically."
+            >
+              <div style={styles.leagueStructureGrid}>
+                <label style={styles.field}>
+                  <span style={styles.fieldLabel}>Maximum Teams</span>
+                  <select
+                    value={leagueSettings.max_teams ?? 12}
+                    onChange={(e) => changeMaximumTeams(n(e.target.value, 12))}
+                    style={styles.input}
+                  >
+                    {[4, 6, 8, 10, 12].map((count) => (
+                      <option key={count} value={count}>
+                        {count} Teams
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={styles.field}>
+                  <span style={styles.fieldLabel}>Regular Season Weeks</span>
+                  <select
+                    value={leagueSettings.regular_season_weeks ?? 14}
+                    onChange={(e) => changeRegularSeasonWeeks(n(e.target.value, 14))}
+                    style={styles.input}
+                  >
+                    {Array.from({ length: 17 }, (_, index) => index + 1).map((week) => (
+                      <option key={week} value={week}>
+                        {week} Weeks
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {playoffs ? (
+                  <>
+                    <Input
+                      label="Playoff Start Week"
+                      value={playoffs.playoff_start_week}
+                      onChange={(v) => changePlayoffStartWeek(n(v, playoffs.playoff_start_week))}
+                    />
+                    <Input
+                      label="Championship Week"
+                      value={playoffs.championship_week}
+                      disabled
+                      onChange={() => {}}
+                    />
+                  </>
+                ) : null}
               </div>
-              <div className="g365-actions" style={styles.actions}>
+
+              <div style={styles.commissionerNotice}>
+                <strong>Linked League Calendar</strong>
+                <span>
+                  Changing Regular Season Weeks moves the playoff start automatically. Changing Playoff Start Week changes the regular-season length. Championship Week is calculated from the playoff field size.
+                </span>
+              </div>
+
+              <div style={styles.actions}>
                 <Button
-                  disabled={saving}
-                  onClick={() =>
-                    void action(
-                      () =>
-                        supabase.rpc("save_traditional_league_settings", {
-                          p_league_id: leagueId,
-                          p_max_teams: leagueSettings.max_teams ?? 12,
-                          p_regular_season_weeks: leagueSettings.regular_season_weeks ?? 14,
-                        }),
-                      "League settings saved."
-                    )
-                  }
+                  disabled={saving || !playoffs}
+                  onClick={() => void saveLeagueStructure()}
                 >
-                  SAVE LEAGUE SETTINGS
+                  SAVE LEAGUE STRUCTURE
                 </Button>
               </div>
             </Section>
@@ -1250,9 +1714,9 @@ export default function TraditionalCommissionerPage() {
               title="Roster & Lineup Requirements"
               subtitle="Starting lineup requirements are separated from maximum roster limits."
             >
-              <div className="g365-rosterSubsection" style={styles.rosterSubsection}>
-                <div className="g365-subsectionTitle" style={styles.subsectionTitle}>STARTING LINEUP</div>
-                <div className="g365-rosterGrid" style={styles.rosterGrid}>
+              <div style={styles.rosterSubsection}>
+                <div style={styles.subsectionTitle}>STARTING LINEUP</div>
+                <div style={styles.rosterGrid}>
                   {rosterFields.slice(0, 10).map(([key, label]) => (
                     <Input
                       key={key}
@@ -1266,14 +1730,14 @@ export default function TraditionalCommissionerPage() {
                 </div>
               </div>
 
-              <div className="g365-rosterDivider" style={styles.rosterDivider} />
+              <div style={styles.rosterDivider} />
 
-              <div className="g365-rosterSubsection" style={styles.rosterSubsection}>
-                <div className="g365-subsectionTitle" style={styles.subsectionTitle}>MAXIMUM POSITION LIMITS</div>
-                <p className="g365-sectionSub" style={styles.sectionSub}>
+              <div style={styles.rosterSubsection}>
+                <div style={styles.subsectionTitle}>MAXIMUM POSITION LIMITS</div>
+                <p style={styles.sectionSub}>
                   These limits control the maximum number of players a team may carry at each position.
                 </p>
-                <div className="g365-rosterGrid" style={styles.rosterGrid}>
+                <div style={styles.rosterGrid}>
                   {rosterFields.slice(10).map(([key, label]) => (
                     <Input
                       key={key}
@@ -1287,7 +1751,7 @@ export default function TraditionalCommissionerPage() {
                 </div>
               </div>
 
-              <div className="g365-actions" style={styles.actions}>
+              <div style={styles.actions}>
                 <Button
                   disabled={saving}
                   onClick={() =>
@@ -1324,7 +1788,10 @@ export default function TraditionalCommissionerPage() {
         ) : null}
 
         {tab === "scoring" ? (
-          <TraditionalScoring leagueId={leagueId} embedded />
+          <TraditionalScoring
+            leagueId={leagueId}
+            embedded
+          />
         ) : null}
 
         {tab === "draft" && draft ? (
@@ -1332,7 +1799,7 @@ export default function TraditionalCommissionerPage() {
             title="Draft Administration"
             subtitle="The draft can be started at any time, but only by the commissioner."
           >
-            <div className="g365-draftTopGrid" style={styles.draftTopGrid}>
+            <div style={styles.draftTopGrid}>
               <Input
                 label="Draft Rounds"
                 value={draft.total_rounds}
@@ -1349,9 +1816,9 @@ export default function TraditionalCommissionerPage() {
                 onChange={(v) => setDraft({ ...draft, cpu_pick_seconds: n(v, 5) })}
               />
 
-              <div className="g365-draftOrderModeCard" style={styles.draftOrderModeCard}>
-                <span className="g365-fieldLabel" style={styles.fieldLabel}>Draft Order</span>
-                <label className="g365-radioLine" style={styles.radioLine}>
+              <div style={styles.draftOrderModeCard}>
+                <span style={styles.fieldLabel}>Draft Order</span>
+                <label style={styles.radioLine}>
                   <input
                     type="radio"
                     checked={draftOrderMode === "manual"}
@@ -1359,7 +1826,7 @@ export default function TraditionalCommissionerPage() {
                   />
                   Manual Order
                 </label>
-                <label className="g365-radioLine" style={styles.radioLine}>
+                <label style={styles.radioLine}>
                   <input
                     type="radio"
                     checked={draftOrderMode === "random"}
@@ -1370,13 +1837,13 @@ export default function TraditionalCommissionerPage() {
               </div>
             </div>
 
-            <div className="g365-draftOrderPanel" style={styles.draftOrderPanel}>
-              <div className="g365-bonusHeader" style={styles.bonusHeader}>
+            <div style={styles.draftOrderPanel}>
+              <div style={styles.bonusHeader}>
                 <div>
-                  <div className="g365-subsectionTitle" style={styles.subsectionTitle}>
+                  <div style={styles.subsectionTitle}>
                     {draftOrderMode === "manual" ? "MANUAL DRAFT ORDER" : "RANDOMIZED DRAFT ORDER"}
                   </div>
-                  <p className="g365-sectionSub" style={styles.sectionSub}>
+                  <p style={styles.sectionSub}>
                     Set Round 1. The Live Draft will automatically snake the order in later rounds.
                   </p>
                 </div>
@@ -1385,15 +1852,15 @@ export default function TraditionalCommissionerPage() {
                 ) : null}
               </div>
 
-              <div className="g365-draftOrderGrid" style={styles.draftOrderGrid}>
+              <div style={styles.draftOrderGrid}>
                 {draftOrder.map((teamId, index) => (
-                  <label key={`${index}-${teamId}`}className="g365-draftSlotField" style={styles.draftSlotField}>
-                    <span className="g365-draftSlotNumber" style={styles.draftSlotNumber}>PICK {index + 1}</span>
+                  <label key={`${index}-${teamId}`} style={styles.draftSlotField}>
+                    <span style={styles.draftSlotNumber}>PICK {index + 1}</span>
                     <select
                       value={teamId}
                       disabled={draftOrderMode === "random"}
                       onChange={(e) => moveDraftTeam(index, n(e.target.value))}
-className="g365-input" style={styles.input}
+                      style={styles.input}
                     >
                       {teams.filter((team) => team.active).map((team) => (
                         <option key={team.id} value={team.id}>{team.team_name}</option>
@@ -1403,26 +1870,26 @@ className="g365-input" style={styles.input}
                 ))}
               </div>
 
-              <div className="g365-actions" style={styles.actions}>
+              <div style={styles.actions}>
                 <Button disabled={saving || Boolean(draft.started_at)} onClick={() => void saveDraftOrder(draftOrder)}>
                   SAVE DRAFT ORDER
                 </Button>
               </div>
             </div>
 
-            <div className="g365-status" style={styles.status}>
+            <div style={styles.status}>
               Status: <strong>{pretty(draft.status)}</strong> • Overall Pick: <strong>{draft.current_overall_pick}</strong> • Paused: <strong>{draft.is_paused ? "Yes" : "No"}</strong>
             </div>
 
-            <div className="g365-commissionerNotice" style={styles.commissionerNotice}>
+            <div style={styles.commissionerNotice}>
               <strong>Commissioner Control</strong>
               <span>Only the commissioner can start the live draft. There is no scheduled start requirement.</span>
             </div>
 
-            <div className="g365-startDraftPanel" style={styles.startDraftPanel}>
+            <div style={styles.startDraftPanel}>
               <div>
-                <div className="g365-subsectionTitle" style={styles.subsectionTitle}>START LIVE DRAFT</div>
-                <p className="g365-sectionSub" style={styles.sectionSub}>
+                <div style={styles.subsectionTitle}>START LIVE DRAFT</div>
+                <p style={styles.sectionSub}>
                   When you are ready, start the draft immediately and enter the live draft room.
                 </p>
               </div>
@@ -1434,7 +1901,7 @@ className="g365-input" style={styles.input}
               </Button>
             </div>
 
-            <div className="g365-actions" style={styles.actions}>
+            <div style={styles.actions}>
               <Button
                 disabled={saving || Boolean(draft.started_at)}
                 onClick={() =>
@@ -1462,201 +1929,355 @@ className="g365-input" style={styles.input}
 
         {tab === "teams" ? (
           <>
-            <div id="commissioner-email-invite">
-              <Section
-                title="Invite Owner by Email"
-                subtitle="Send a secure Gridiron365 invitation to a new league owner. You can also choose Invite Owner by Email directly from any team owner dropdown."
-              >
-              <div className="g365-inviteGrid" style={styles.inviteGrid}>
-                <Input
-                  label="First Name"
-                  type="text"
-                  value={inviteFirstName}
-                  onChange={setInviteFirstName}
-                />
-                <Input
-                  label="Last Name"
-                  type="text"
-                  value={inviteLastName}
-                  onChange={setInviteLastName}
-                />
-                <Input
-                  label="Email Address"
-                  type="email"
-                  value={inviteEmail}
-                  onChange={setInviteEmail}
-                />
-                <div className="g365-inviteButtonWrap" style={styles.inviteButtonWrap}>
-                  <Button disabled={inviting} onClick={() => void sendInvite()}>
-                    {inviting ? "SENDING…" : "✉ SEND EMAIL INVITE"}
-                  </Button>
-                </div>
-              </div>
-              </Section>
-            </div>
+            {(() => {
+              const maxTeams = leagueSettings?.max_teams ?? 12;
+              const activeTeams = teams.filter((team) => team.active);
+              const pendingInviteByTeamId = new Map(
+                invitations
+                  .filter(
+                    (invite) =>
+                      invite.status === "pending" &&
+                      invite.fantasy_team_id !== null
+                  )
+                  .map((invite) => [
+                    Number(invite.fantasy_team_id),
+                    invite,
+                  ] as const)
+              );
 
-            <Section
-              title="Teams & Owners"
-              subtitle="Manage team ownership here. Remove an owner at any time without deleting the team or league history; ownerless teams remain available as CPU teams until a replacement owner accepts an invitation."
-            >
-              <div className="g365-list" style={styles.list}>
-                {teams.map((team, index) => (
-                  <div key={team.id}className="g365-teamRowExpanded" style={styles.teamRowExpanded}>
-                    <strong className="g365-teamIndex" style={styles.teamIndex}>{index + 1}</strong>
+              const humanOwnerCount = activeTeams.filter(
+                (team) => Boolean(team.owner_id)
+              ).length;
+              const cpuCount = activeTeams.filter(
+                (team) => team.is_cpu
+              ).length;
+              const pendingCount = activeTeams.filter(
+                (team) =>
+                  !team.owner_id &&
+                  !team.is_cpu &&
+                  pendingInviteByTeamId.has(team.id)
+              ).length;
+              const reservedCount = humanOwnerCount + cpuCount + pendingCount;
+              const vacantCount = Math.max(0, maxTeams - reservedCount);
 
-                    <input
-                      value={team.team_name}
-                      onChange={(e) =>
-                        setTeams((current) =>
-                          current.map((row) =>
-                            row.id === team.id ? { ...row, team_name: e.target.value } : row
-                          )
-                        )
-                      }
-className="g365-input" style={styles.input}
-                    />
+              return (
+                <>
+                  <Section
+                    title="Teams & Owners"
+                    subtitle="Invite human owners to vacant spots, manage pending invitations, or fill open Traditional league spots with CPU teams."
+                  >
+                    <div style={styles.teamToolbar}>
+                      <div>
+                        <strong>
+                          {humanOwnerCount} / {maxTeams} OWNERS JOINED
+                        </strong>
+                        <div style={styles.smallMuted}>
+                          {cpuCount} CPU • {pendingCount} pending invitation{pendingCount === 1 ? "" : "s"} • {vacantCount} open spot{vacantCount === 1 ? "" : "s"}.
+                        </div>
+                      </div>
 
-                    <select
-                      value={team.owner_id ?? ""}
-                      onChange={(e) => {
-                        const nextOwnerId = e.target.value;
+                      <div style={styles.teamActions}>
+                        <Button
+                          disabled={cpuBusy || vacantCount === 0}
+                          onClick={() => void addCpuTeam()}
+                        >
+                          {cpuBusy ? "WORKING…" : "+ ADD CPU TEAM"}
+                        </Button>
 
-                        if (nextOwnerId === "__invite_by_email__") {
-                          setInviteFirstName("");
-                          setInviteLastName("");
-                          setInviteEmail("");
-                          setTimeout(() => {
-                            document
-                              .getElementById("commissioner-email-invite")
-                              ?.scrollIntoView({ behavior: "smooth", block: "start" });
-                          }, 0);
-                          return;
-                        }
-
-                        setTeams((current) =>
-                          current.map((row) =>
-                            row.id === team.id
-                              ? { ...row, owner_id: nextOwnerId || null }
-                              : row
-                          )
-                        );
-                      }}
-className="g365-input" style={styles.input}
-                    >
-                      <option value="">OWNERLESS / CPU</option>
-                      <option value="__invite_by_email__">✉ INVITE OWNER BY EMAIL…</option>
-                      {members.map((m) => (
-                        <option key={m.id} value={m.user_id}>
-                          {shortId(m.user_id)} • {pretty(m.role)}
-                        </option>
-                      ))}
-                    </select>
-
-                    <div className="g365-ownerStatus" style={styles.ownerStatus}>
-                      {team.owner_id ? (
-                        <>
-                          <strong>OWNER ASSIGNED</strong>
-                          <span>{shortId(team.owner_id)}</span>
-                        </>
-                      ) : (
-                        <>
-                          <strong>VACANT / CPU</strong>
-                          <span>Invite an owner or keep CPU-controlled</span>
-                        </>
-                      )}
+                        <Button
+                          disabled={cpuBusy || vacantCount === 0}
+                          onClick={() => void fillRemainingWithCpu()}
+                        >
+                          FILL REMAINING WITH CPU
+                        </Button>
+                      </div>
                     </div>
 
-                    <label className="g365-check" style={styles.check}>
-                      <input
-                        type="checkbox"
-                        checked={team.active}
-                        onChange={(e) =>
-                          setTeams((current) =>
-                            current.map((row) =>
-                              row.id === team.id ? { ...row, active: e.target.checked } : row
-                            )
-                          )
-                        }
-                      />
-                      ACTIVE
-                    </label>
+                    <div style={styles.list}>
+                      {Array.from({
+                        length: maxTeams,
+                      }).map((_, index) => {
+                        const team = activeTeams[index] ?? null;
+                        const inviteKey = team?.id ?? -(index + 1);
+                        const isCpu = Boolean(team?.is_cpu);
+                        const pendingInvite =
+                          team ? pendingInviteByTeamId.get(team.id) ?? null : null;
+                        const hasOwner = Boolean(team?.owner_id);
+                        const isVacant =
+                          !team || (!hasOwner && !isCpu && !pendingInvite);
 
-                    <div className="g365-teamActions" style={styles.teamActions}>
-                      {!team.owner_id ? (
-                        <Button
-                          onClick={() => {
-                            setInviteFirstName("");
-                            setInviteLastName("");
-                            setInviteEmail("");
-                            window.scrollTo({ top: 0, behavior: "smooth" });
-                          }}
-                        >
-                          ✉ INVITE
-                        </Button>
-                      ) : null}
+                        return (
+                          <div
+                            key={team?.id ?? `vacant-${index}`}
+                            style={styles.teamRowExpanded}
+                          >
+                            <strong style={styles.teamIndex}>{index + 1}</strong>
 
-                      {team.owner_id &&
-                      team.owner_id !== league?.commissioner_user_id ? (
-                        <Button
-                          danger
-                          disabled={
-                            saving ||
-                            removingOwnerTeamId !== null
-                          }
-                          onClick={() =>
-                            void removeTraditionalOwner(team)
-                          }
-                        >
-                          {removingOwnerTeamId === team.id
-                            ? "REMOVING…"
-                            : "REMOVE OWNER"}
-                        </Button>
-                      ) : null}
+                            {team ? (
+                              <label style={styles.field}>
+                                <span style={styles.fieldLabel}>Team Name</span>
+                                <input
+                                  value={team.team_name}
+                                  disabled={isCpu}
+                                  onChange={(e) =>
+                                    setTeams((current) =>
+                                      current.map((row) =>
+                                        row.id === team.id
+                                          ? {
+                                              ...row,
+                                              team_name: e.target.value,
+                                            }
+                                          : row
+                                      )
+                                    )
+                                  }
+                                  style={styles.input}
+                                />
+                              </label>
+                            ) : (
+                              <div style={styles.vacantField}>
+                                <span style={styles.fieldLabel}>Team Name</span>
+                                <strong>Vacant Team {index + 1}</strong>
+                              </div>
+                            )}
+
+                            {team && !isCpu ? (
+                              <label style={styles.field}>
+                                <span style={styles.fieldLabel}>Owner</span>
+                                <select
+                                  value={team.owner_id ?? ""}
+                                  disabled={hasOwner}
+                                  onChange={(e) => {
+                                    const nextOwnerId = e.target.value;
+                                    setTeams((current) =>
+                                      current.map((row) =>
+                                        row.id === team.id
+                                          ? {
+                                              ...row,
+                                              owner_id: nextOwnerId || null,
+                                            }
+                                          : row
+                                      )
+                                    );
+                                  }}
+                                  style={styles.input}
+                                >
+                                  <option value="">NO OWNER</option>
+                                  {members.map((member) => (
+                                    <option
+                                      key={member.id}
+                                      value={member.user_id}
+                                    >
+                                      {profileName(member.user_id)}
+                                      {` • ${pretty(member.role)}`}
+                                    </option>
+                                  ))}
+                                  {team?.owner_id &&
+                                  !members.some(
+                                    (member) => member.user_id === team.owner_id
+                                  ) ? (
+                                    <option value={team.owner_id}>
+                                      {profileName(team.owner_id)} • MEMBER
+                                    </option>
+                                  ) : null}
+                                </select>
+                              </label>
+                            ) : (
+                              <div style={styles.vacantField}>
+                                <span style={styles.fieldLabel}>Owner</span>
+                                <strong>{isCpu ? "CPU" : "VACANT"}</strong>
+                              </div>
+                            )}
+
+                            {!isCpu && !hasOwner && !pendingInvite ? (
+                              <label style={styles.field}>
+                                <span style={styles.fieldLabel}>Email Invite</span>
+                                <input
+                                  type="email"
+                                  placeholder="owner@example.com"
+                                  value={teamInviteEmails[inviteKey] ?? ""}
+                                  onChange={(e) =>
+                                    setTeamInviteEmails((current) => ({
+                                      ...current,
+                                      [inviteKey]: e.target.value,
+                                    }))
+                                  }
+                                  style={styles.input}
+                                />
+                              </label>
+                            ) : (
+                              <div style={styles.vacantField}>
+                                <span style={styles.fieldLabel}>Email / Status</span>
+                                <strong>
+                                  {isCpu
+                                    ? "CPU TEAM"
+                                    : hasOwner
+                                      ? profileName(team!.owner_id!)
+                                      : pendingInvite
+                                        ? `${pendingInvite.email} • PENDING`
+                                        : "VACANT"}
+                                </strong>
+                              </div>
+                            )}
+
+                            <div style={styles.ownerStatus}>
+                              {isCpu ? (
+                                <>
+                                  <strong>CPU TEAM</strong>
+                                  <span>Managed automatically by Gridiron365.</span>
+                                </>
+                              ) : hasOwner ? (
+                                <>
+                                  <strong>OWNER ASSIGNED</strong>
+                                  <span>{profileName(team!.owner_id!)}</span>
+                                </>
+                              ) : pendingInvite ? (
+                                <>
+                                  <strong>INVITE PENDING</strong>
+                                  <span>{pendingInvite.email}</span>
+                                </>
+                              ) : isVacant ? (
+                                <>
+                                  <strong>VACANT</strong>
+                                  <span>
+                                    Send an invitation or replace this spot with a CPU team.
+                                  </span>
+                                </>
+                              ) : null}
+                            </div>
+
+                            <div style={styles.teamActions}>
+                              {!isCpu && !hasOwner && !pendingInvite ? (
+                                <Button
+                                  disabled={
+                                    invitingTeamId !== null ||
+                                    !(teamInviteEmails[inviteKey] ?? "").trim()
+                                  }
+                                  onClick={() =>
+                                    void sendTeamInvite(team, index)
+                                  }
+                                >
+                                  {invitingTeamId === inviteKey
+                                    ? "SENDING…"
+                                    : "✉ INVITE"}
+                                </Button>
+                              ) : null}
+
+                              {team && !isCpu ? (
+                                <Button
+                                  disabled={saving}
+                                  onClick={() =>
+                                    void action(
+                                      () =>
+                                        supabase.rpc(
+                                          "commissioner_update_traditional_team",
+                                          {
+                                            p_league_id: leagueId,
+                                            p_fantasy_team_id: team.id,
+                                            p_team_name: team.team_name,
+                                            p_owner_id: team.owner_id,
+                                            p_active: true,
+                                          }
+                                        ),
+                                      `${team.team_name} updated.`
+                                    )
+                                  }
+                                >
+                                  SAVE
+                                </Button>
+                              ) : null}
+
+                              {team &&
+                              !isCpu &&
+                              hasOwner &&
+                              team.owner_id !== league?.commissioner_user_id ? (
+                                <Button
+                                  danger
+                                  disabled={
+                                    saving ||
+                                    removingOwnerTeamId !== null
+                                  }
+                                  onClick={() => void removeTeamOwner(team)}
+                                >
+                                  {removingOwnerTeamId === team.id
+                                    ? "REMOVING…"
+                                    : "REMOVE OWNER"}
+                                </Button>
+                              ) : null}
+
+                              {team &&
+                              !isCpu &&
+                              hasOwner &&
+                              team.owner_id === league?.commissioner_user_id ? (
+                                <span style={styles.smallMuted}>
+                                  PRIMARY COMMISSIONER
+                                </span>
+                              ) : null}
+
+                              {team && isCpu ? (
+                                <Button
+                                  danger
+                                  disabled={cpuBusy}
+                                  onClick={() => void removeCpuTeam(team)}
+                                >
+                                  REMOVE CPU
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Section>
+
+                  <Section
+                    title="Danger Zone"
+                    subtitle="Only the primary commissioner can permanently delete the league."
+                  >
+                    <div style={styles.dangerZone}>
+                      <div>
+                        <strong>DELETE LEAGUE</strong>
+                        <p style={styles.smallMuted}>
+                          This permanently deletes the league and all league-owned data.
+                          This action cannot be undone.
+                        </p>
+                      </div>
 
                       <Button
-                        disabled={saving}
-                        onClick={() =>
-                          void action(
-                            () =>
-                              supabase.rpc("commissioner_update_traditional_team", {
-                                p_league_id: leagueId,
-                                p_fantasy_team_id: team.id,
-                                p_team_name: team.team_name,
-                                p_owner_id: team.owner_id,
-                                p_active: team.active,
-                              }),
-                            `${team.team_name} updated.`
-                          )
-                        }
+                        danger
+                        disabled={deletingLeague || !league}
+                        onClick={() => void deleteLeague()}
                       >
-                        SAVE
+                        {deletingLeague
+                          ? "DELETING…"
+                          : "PERMANENTLY DELETE LEAGUE"}
                       </Button>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </Section>
+                  </Section>
+                </>
+              );
+            })()}
           </>
         ) : null}
 
         {tab === "rosters" ? (
           <Section title="Commissioner Roster Editor">
-            <div className="g365-grid" style={styles.grid}>
-              <label className="g365-field" style={styles.field}>
-                <span className="g365-fieldLabel" style={styles.fieldLabel}>Fantasy Team</span>
+            <div style={styles.grid}>
+              <label style={styles.field}>
+                <span style={styles.fieldLabel}>Fantasy Team</span>
                 <select
                   value={rosterTeamId ?? ""}
                   onChange={(e) => setRosterTeamId(n(e.target.value))}
-className="g365-input" style={styles.input}
+                  style={styles.input}
                 >
-                  {teams.map((t) => <option key={t.id} value={t.id}>{t.team_name}</option>)}
+                  {teams.filter((t) => t.active).map((t) => <option key={t.id} value={t.id}>{t.team_name}</option>)}
                 </select>
               </label>
               <Input label="Find Available Player" type="text" value={search} onChange={setSearch} />
             </div>
 
             {choices.length ? (
-              <div className="g365-searchBox" style={styles.searchBox}>
+              <div style={styles.searchBox}>
                 {choices.map((p) => (
                   <button
                     key={p.id}
@@ -1674,7 +2295,7 @@ className="g365-input" style={styles.input}
               </div>
             ) : null}
 
-            <div className="g365-actions" style={styles.actions}>
+            <div style={styles.actions}>
               <Button
                 disabled={saving || !rosterTeamId || !addPlayerId}
                 onClick={() => {
@@ -1697,14 +2318,14 @@ className="g365-input" style={styles.input}
               </Button>
             </div>
 
-            <div className="g365-list" style={styles.list}>
+            <div style={styles.list}>
               {rosterRows.map((row) => {
                 const p = playerMap.get(row.player_id);
                 return (
-                  <div key={row.id}className="g365-rosterRow" style={styles.rosterRow}>
+                  <div key={row.id} style={styles.rosterRow}>
                     <div>
                       <strong>{p?.full_name ?? `Player ${row.player_id}`}</strong>
-                      <div className="g365-muted" style={styles.muted}>{p?.primary_position ?? "—"} • {p?.team_abbreviation ?? "FA"} • {pretty(row.acquired_via)}</div>
+                      <div style={styles.muted}>{p?.primary_position ?? "—"} • {p?.team_abbreviation ?? "FA"} • {pretty(row.acquired_via)}</div>
                     </div>
                     <select
                       defaultValue=""
@@ -1722,7 +2343,7 @@ className="g365-input" style={styles.input}
                           "Player moved."
                         );
                       }}
-className="g365-input" style={styles.input}
+                      style={styles.input}
                     >
                       <option value="">MOVE TO…</option>
                       {teams.filter((t) => t.id !== rosterTeamId).map((t) => (
@@ -1750,7 +2371,7 @@ className="g365-input" style={styles.input}
                   </div>
                 );
               })}
-              {!rosterRows.length ? <div className="g365-empty" style={styles.empty}>No rostered players.</div> : null}
+              {!rosterRows.length ? <div style={styles.empty}>No rostered players.</div> : null}
             </div>
           </Section>
         ) : null}
@@ -1758,10 +2379,10 @@ className="g365-input" style={styles.input}
         {tab === "waivers" && waivers ? (
           <>
             <Section title="Waiver Settings">
-              <div className="g365-grid" style={styles.grid}>
-                <label className="g365-field" style={styles.field}>
-                  <span className="g365-fieldLabel" style={styles.fieldLabel}>Waiver Type</span>
-                  <select value={waivers.waiver_type} onChange={(e) => setWaivers({ ...waivers, waiver_type: e.target.value })}className="g365-input" style={styles.input}>
+              <div style={styles.grid}>
+                <label style={styles.field}>
+                  <span style={styles.fieldLabel}>Waiver Type</span>
+                  <select value={waivers.waiver_type} onChange={(e) => setWaivers({ ...waivers, waiver_type: e.target.value })} style={styles.input}>
                     <option value="rolling">Rolling</option>
                     <option value="faab">FAAB</option>
                   </select>
@@ -1771,7 +2392,7 @@ className="g365-input" style={styles.input}
                 <Toggle label="Continuous Waivers" value={waivers.continuous_waivers} onChange={(v) => setWaivers({ ...waivers, continuous_waivers: v })} />
                 <Toggle label="Allow Free Agent Adds" value={waivers.allow_free_agent_adds} onChange={(v) => setWaivers({ ...waivers, allow_free_agent_adds: v })} />
               </div>
-              <div className="g365-actions" style={styles.actions}>
+              <div style={styles.actions}>
                 <Button
                   disabled={saving}
                   onClick={() =>
@@ -1823,18 +2444,63 @@ className="g365-input" style={styles.input}
 
         {tab === "trades" && trades && league ? (
           <>
-            <Section title="Trade Settings">
-              <div className="g365-grid" style={styles.grid}>
-                <Input
-                  label="Trade Deadline Week"
-                  value={trades.trade_deadline_week ?? ""}
-                  onChange={(v) => setTrades({ ...trades, trade_deadline_week: v === "" ? null : n(v) })}
-                />
+            <Section
+              title="Trade Settings"
+              subtitle={`The trade deadline can only be set during the regular season (Weeks 1-${leagueSettings?.regular_season_weeks ?? 14}).`}
+            >
+              <div style={styles.grid}>
+                <label style={styles.field}>
+                  <span style={styles.fieldLabel}>Trade Deadline Week</span>
+                  <select
+                    key={`trade-deadline-${leagueSettings?.regular_season_weeks ?? 14}`}
+                    value={
+                      trades.trade_deadline_week !== null &&
+                      trades.trade_deadline_week <= (leagueSettings?.regular_season_weeks ?? 14)
+                        ? trades.trade_deadline_week
+                        : ""
+                    }
+                    onChange={(e) => {
+                      const regularSeasonWeeks = leagueSettings?.regular_season_weeks ?? 14;
+                      const selected =
+                        e.target.value === ""
+                          ? null
+                          : Math.min(n(e.target.value), regularSeasonWeeks);
+
+                      setTrades({
+                        ...trades,
+                        trade_deadline_week: selected,
+                      });
+                    }}
+                    style={styles.input}
+                  >
+                    <option value="">No Trade Deadline</option>
+                    {Array.from(
+                      { length: leagueSettings?.regular_season_weeks ?? 14 },
+                      (_, index) => index + 1
+                    ).map((week) => (
+                      <option key={week} value={week}>
+                        Week {week}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
-              <div className="g365-actions" style={styles.actions}>
+              <div style={styles.actions}>
                 <Button
                   disabled={saving}
-                  onClick={() =>
+                  onClick={() => {
+                    const regularSeasonWeeks = leagueSettings?.regular_season_weeks ?? 14;
+
+                    if (
+                      trades.trade_deadline_week !== null &&
+                      trades.trade_deadline_week > regularSeasonWeeks
+                    ) {
+                      setError(
+                        `Trade deadline must be Week ${regularSeasonWeeks} or earlier because the regular season ends in Week ${regularSeasonWeeks}.`
+                      );
+                      return;
+                    }
+
                     void action(
                       () =>
                         supabase.rpc("save_traditional_trade_settings", {
@@ -1842,9 +2508,11 @@ className="g365-input" style={styles.input}
                           p_season: league.season,
                           p_trade_deadline_week: trades.trade_deadline_week,
                         }),
-                      "Trade settings saved."
-                    )
-                  }
+                      trades.trade_deadline_week === null
+                        ? "Trade deadline removed."
+                        : `Trade deadline saved for Week ${trades.trade_deadline_week}.`
+                    );
+                  }}
                 >
                   SAVE TRADE SETTINGS
                 </Button>
@@ -1880,7 +2548,7 @@ className="g365-input" style={styles.input}
 
         {tab === "season" && league ? (
           <Section title="Season Administration">
-            <div className="g365-stats" style={styles.stats}>
+            <div style={styles.stats}>
               <Stat label="Active Week" value={season?.active_week ?? "—"} />
               <Stat label="Phase" value={pretty(season?.phase)} />
               <Stat label="Last Completed" value={season?.last_completed_week ?? "—"} />
@@ -1888,7 +2556,7 @@ className="g365-input" style={styles.input}
               <Stat label="Playoffs Started" value={season?.playoffs_started ? "Yes" : "No"} />
               <Stat label="Season Complete" value={season?.season_complete ? "Yes" : "No"} />
             </div>
-            <div className="g365-actions" style={styles.actions}>
+            <div style={styles.actions}>
               <Button
                 disabled={saving}
                 onClick={() =>
@@ -1926,35 +2594,59 @@ className="g365-input" style={styles.input}
               >
                 AUTO-ADVANCE WEEK
               </Button>
+
+              <Button
+                onClick={() =>
+                  router.push(
+                    `/league/${leagueId}/commissioner/new-season`
+                  )
+                }
+              >
+                RENEW FOR {league.season + 1}
+              </Button>
             </div>
-            <div className="g365-warning" style={styles.warning}>Season actions affect the league. Use them only after the week's results are ready.</div>
+
+            <div style={styles.warning}>
+              Season actions affect the league. Renewal uses the protected New Season
+              workflow and is allowed only after the current Traditional playoffs are
+              complete and a champion has been recorded.
+            </div>
           </Section>
         ) : null}
 
         {tab === "playoffs" && playoffs && league ? (
           <Section title="Playoff Administration">
-            <div className="g365-grid" style={styles.grid}>
-              <Input label="Playoff Teams" value={playoffs.playoff_teams} onChange={(v) => setPlayoffs({ ...playoffs, playoff_teams: n(v, 6) })} />
-              <Input label="Playoff Start Week" value={playoffs.playoff_start_week} disabled onChange={() => {}} />
+            <div style={styles.grid}>
+              <label style={styles.field}>
+                <span style={styles.fieldLabel}>Playoff Teams</span>
+                <select
+                  value={playoffs.playoff_teams}
+                  onChange={(e) => changePlayoffTeams(n(e.target.value, 6))}
+                  style={styles.input}
+                >
+                  {[2, 4, 5, 6, 7, 8]
+                    .filter((count) => count <= (leagueSettings?.max_teams ?? 12))
+                    .map((count) => (
+                      <option key={count} value={count}>
+                        {count} Teams
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <Input
+                label="Playoff Start Week"
+                value={playoffs.playoff_start_week}
+                onChange={(v) => changePlayoffStartWeek(n(v, playoffs.playoff_start_week))}
+              />
               <Input label="Championship Week" value={playoffs.championship_week} disabled onChange={() => {}} />
               <Toggle label="Reseed Each Round" value={playoffs.reseed_each_round} onChange={(v) => setPlayoffs({ ...playoffs, reseed_each_round: v })} />
             </div>
-            <div className="g365-actions" style={styles.actions}>
+            <div style={styles.actions}>
               <Button
-                disabled={saving}
-                onClick={() =>
-                  void action(
-                    () =>
-                      supabase.rpc("set_traditional_playoff_team_count", {
-                        p_league_id: leagueId,
-                        p_season: league.season,
-                        p_playoff_teams: playoffs.playoff_teams,
-                      }),
-                    "Playoff field saved."
-                  )
-                }
+                disabled={saving || !leagueSettings}
+                onClick={() => void saveLeagueStructure()}
               >
-                SAVE PLAYOFF TEAMS
+                SAVE PLAYOFF STRUCTURE
               </Button>
               <Button
                 disabled={saving}
@@ -1997,8 +2689,8 @@ className="g365-input" style={styles.input}
 
 function Toggle(props: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className="g365-field" style={styles.field}>
-      <span className="g365-fieldLabel" style={styles.fieldLabel}>{props.label}</span>
+    <label style={styles.field}>
+      <span style={styles.fieldLabel}>{props.label}</span>
       <button
         type="button"
         onClick={() => props.onChange(!props.value)}
@@ -2012,7 +2704,7 @@ function Toggle(props: { label: string; value: boolean; onChange: (v: boolean) =
 
 function Stat(props: { label: string; value: string | number }) {
   return (
-    <div className="g365-stat" style={styles.stat}>
+    <div style={styles.stat}>
       <span>{props.label}</span>
       <strong>{props.value}</strong>
     </div>
@@ -2021,7 +2713,7 @@ function Stat(props: { label: string; value: string | number }) {
 
 function Guide(props: { title: string; text: string }) {
   return (
-    <div className="g365-guide" style={styles.guide}>
+    <div style={styles.guide}>
       <strong>{props.title}</strong>
       <p>{props.text}</p>
     </div>
@@ -2029,11 +2721,11 @@ function Guide(props: { title: string; text: string }) {
 }
 
 function Transactions(props: { rows: Array<{ id: number; a: string; b: string; c: string }> }) {
-  if (!props.rows.length) return <div className="g365-empty" style={styles.empty}>No records to show.</div>;
+  if (!props.rows.length) return <div style={styles.empty}>No records to show.</div>;
   return (
-    <div className="g365-list" style={styles.list}>
+    <div style={styles.list}>
       {props.rows.map((r) => (
-        <div key={r.id}className="g365-tx" style={styles.tx}>
+        <div key={r.id} style={styles.tx}>
           <strong>{r.a}</strong>
           <span>{r.b}</span>
           <em>{r.c}</em>
@@ -2118,4 +2810,8 @@ const styles: Record<string, React.CSSProperties> = {
   teamIndex: { color: "#ff6c31", textAlign: "center" },
   ownerStatus: { display: "flex", flexDirection: "column", gap: "3px", color: "#9299a4", fontSize: "10px" },
   teamActions: { display: "flex", gap: "6px", justifyContent: "flex-end" },
+  teamToolbar: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap", marginBottom: "12px", padding: "12px", border: "1px solid rgba(255,95,40,.18)", borderRadius: "10px", background: "rgba(255,80,25,.045)" },
+  vacantField: { display: "flex", flexDirection: "column", gap: "6px", minHeight: "40px", justifyContent: "center", color: "#d8dce3" },
+  smallMuted: { margin: "5px 0 0", color: "#8f96a2", fontSize: "11px", lineHeight: 1.5 },
+  dangerZone: { display: "grid", gap: "12px", padding: "14px", border: "1px solid rgba(255,75,75,.34)", borderRadius: "10px", background: "rgba(130,10,10,.12)" },
 };
