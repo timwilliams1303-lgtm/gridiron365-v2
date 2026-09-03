@@ -121,20 +121,20 @@ function dateText(value: string | null | undefined) {
 
 function Card({ label, value, note }: { label: string; value: React.ReactNode; note?: string }) {
   return (
-    <div style={styles.card}>
-      <div style={styles.cardLabel}>{label}</div>
-      <div style={styles.cardValue}>{value}</div>
-      {note ? <div style={styles.cardNote}>{note}</div> : null}
+    <div className="g365-card" style={styles.card}>
+      <div className="g365-cardLabel" style={styles.cardLabel}>{label}</div>
+      <div className="g365-cardValue" style={styles.cardValue}>{value}</div>
+      {note ? <div className="g365-cardNote" style={styles.cardNote}>{note}</div> : null}
     </div>
   );
 }
 
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <section style={styles.section}>
-      <div style={styles.sectionHeader}>
-        <h2 style={styles.sectionTitle}>{title}</h2>
-        {subtitle ? <p style={styles.sectionSubtitle}>{subtitle}</p> : null}
+    <section className="g365-section" style={styles.section}>
+      <div className="g365-sectionHeader" style={styles.sectionHeader}>
+        <h2 className="g365-sectionTitle" style={styles.sectionTitle}>{title}</h2>
+        {subtitle ? <p className="g365-sectionSubtitle" style={styles.sectionSubtitle}>{subtitle}</p> : null}
       </div>
       {children}
     </section>
@@ -279,25 +279,53 @@ export default function TraditionalSettingsPage() {
   const enabledRules = useMemo(() => rules.filter((rule) => rule.is_enabled), [rules]);
 
   if (loading) {
-    return <main style={styles.page}><div style={styles.loading}>Loading league settings…</div></main>;
+    return <main className="g365-page g365-settings-page" style={styles.page}>
+      <style jsx global>{`
+@media (max-width: 760px) {
+  .g365-settings-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
+  .g365-settings-page .g365-shell { width: 100% !important; min-width: 0 !important; }
+  .g365-settings-page .g365-hero { flex-direction: column !important; align-items: stretch !important; padding: 16px 14px !important; }
+  .g365-settings-page .g365-title { font-size: 28px !important; }
+  .g365-settings-page .g365-section { padding: 14px 12px !important; min-width: 0 !important; }
+  .g365-settings-page .g365-grid,
+  .g365-settings-page .g365-scoringGrid { grid-template-columns: minmax(0,1fr) !important; }
+  .g365-settings-page .g365-tableWrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; width: 100% !important; }
+  .g365-settings-page .g365-table { min-width: 620px !important; }
+  .g365-settings-page button { min-height: 42px !important; }
+}
+`}</style><div className="g365-loading" style={styles.loading}>Loading league settings…</div></main>;
   }
 
   return (
-    <main style={styles.page}>
-      <div style={styles.shell}>
-        <header style={styles.hero}>
+    <main className="g365-page g365-settings-page" style={styles.page}>
+      <style jsx global>{`
+@media (max-width: 760px) {
+  .g365-settings-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
+  .g365-settings-page .g365-shell { width: 100% !important; min-width: 0 !important; }
+  .g365-settings-page .g365-hero { flex-direction: column !important; align-items: stretch !important; padding: 16px 14px !important; }
+  .g365-settings-page .g365-title { font-size: 28px !important; }
+  .g365-settings-page .g365-section { padding: 14px 12px !important; min-width: 0 !important; }
+  .g365-settings-page .g365-grid,
+  .g365-settings-page .g365-scoringGrid { grid-template-columns: minmax(0,1fr) !important; }
+  .g365-settings-page .g365-tableWrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; width: 100% !important; }
+  .g365-settings-page .g365-table { min-width: 620px !important; }
+  .g365-settings-page button { min-height: 42px !important; }
+}
+`}</style>
+      <div className="g365-shell" style={styles.shell}>
+        <header className="g365-hero" style={styles.hero}>
           <div>
-            <div style={styles.eyebrow}>TRADITIONAL LEAGUE</div>
-            <h1 style={styles.title}>League Settings</h1>
-            <p style={styles.subtitle}>Review the complete rules and configuration for {league?.name ?? "this league"}.</p>
+            <div className="g365-eyebrow" style={styles.eyebrow}>TRADITIONAL LEAGUE</div>
+            <h1 className="g365-title" style={styles.title}>League Settings</h1>
+            <p className="g365-subtitle" style={styles.subtitle}>Review the complete rules and configuration for {league?.name ?? "this league"}.</p>
           </div>
-          <button type="button" onClick={() => void load()} style={styles.refreshButton}>REFRESH</button>
+          <button type="button" onClick={() => void load()}className="g365-refreshButton" style={styles.refreshButton}>REFRESH</button>
         </header>
 
-        {error ? <div style={styles.error}>{error}</div> : null}
+        {error ? <div className="g365-error" style={styles.error}>{error}</div> : null}
 
         <Section title="League Overview" subtitle="Core league and regular-season settings.">
-          <div style={styles.grid}>
+          <div className="g365-grid" style={styles.grid}>
             <Card label="League Name" value={league?.name ?? "—"} />
             <Card label="League Type" value={pretty(league?.league_type)} />
             <Card label="Season" value={league?.season ?? "—"} />
@@ -311,8 +339,8 @@ export default function TraditionalSettingsPage() {
         <Section title="Roster & Lineup" subtitle="Starting lineup, bench, IR and positional limits.">
           {roster ? (
             <>
-              <div style={styles.subheading}>STARTING LINEUP</div>
-              <div style={styles.grid}>
+              <div className="g365-subheading" style={styles.subheading}>STARTING LINEUP</div>
+              <div className="g365-grid" style={styles.grid}>
                 <Card label="QB" value={roster.starting_qb} />
                 <Card label="RB" value={roster.starting_rb} />
                 <Card label="WR" value={roster.starting_wr} />
@@ -325,7 +353,7 @@ export default function TraditionalSettingsPage() {
                 <Card label="IR" value={roster.ir_slots} />
               </div>
               <div style={{ ...styles.subheading, marginTop: 18 }}>POSITION LIMITS</div>
-              <div style={styles.grid}>
+              <div className="g365-grid" style={styles.grid}>
                 <Card label="Max QB" value={roster.max_qb} />
                 <Card label="Max RB" value={roster.max_rb} />
                 <Card label="Max WR" value={roster.max_wr} />
@@ -334,12 +362,12 @@ export default function TraditionalSettingsPage() {
                 <Card label="Max DST" value={roster.max_dst} />
               </div>
             </>
-          ) : <div style={styles.empty}>Roster settings have not been configured.</div>}
+          ) : <div className="g365-empty" style={styles.empty}>Roster settings have not been configured.</div>}
         </Section>
 
         <Section title="Draft" subtitle="Live-draft configuration and current status.">
           {draft ? (
-            <div style={styles.grid}>
+            <div className="g365-grid" style={styles.grid}>
               <Card label="Status" value={pretty(draft.status)} />
               <Card label="Rounds" value={draft.total_rounds} />
               <Card label="Human Pick Clock" value={`${draft.pick_timer_seconds} sec`} />
@@ -349,49 +377,49 @@ export default function TraditionalSettingsPage() {
               <Card label="Completed" value={draft.completed_at ? dateText(draft.completed_at) : "Not completed"} />
               <Card label="Paused" value={yesNo(draft.is_paused)} />
             </div>
-          ) : <div style={styles.empty}>No draft has been created.</div>}
+          ) : <div className="g365-empty" style={styles.empty}>No draft has been created.</div>}
         </Section>
 
         <Section title="Waivers & Free Agency" subtitle="How available players are acquired.">
           {waivers ? (
-            <div style={styles.grid}>
+            <div className="g365-grid" style={styles.grid}>
               <Card label="Waiver Type" value={pretty(waivers.waiver_type)} />
               <Card label="Waiver Period" value={`${waivers.waiver_period_hours} hours`} />
               <Card label="Continuous Waivers" value={yesNo(waivers.continuous_waivers)} />
               <Card label="FAAB Budget" value={waivers.faab_budget} />
               <Card label="Free Agent Adds" value={waivers.allow_free_agent_adds ? "Allowed" : "Disabled"} />
             </div>
-          ) : <div style={styles.empty}>Waiver settings have not been configured.</div>}
+          ) : <div className="g365-empty" style={styles.empty}>Waiver settings have not been configured.</div>}
         </Section>
 
         <Section title="Trades" subtitle="Traditional league trade deadline.">
           {trades ? (
-            <div style={styles.grid}>
+            <div className="g365-grid" style={styles.grid}>
               <Card label="Trade Deadline" value={trades.trade_deadline_week === null ? "No deadline" : `Week ${trades.trade_deadline_week}`} />
             </div>
-          ) : <div style={styles.empty}>Trade settings have not been configured.</div>}
+          ) : <div className="g365-empty" style={styles.empty}>Trade settings have not been configured.</div>}
         </Section>
 
         <Section title="Playoffs" subtitle="Postseason field and schedule.">
           {playoffs ? (
-            <div style={styles.grid}>
+            <div className="g365-grid" style={styles.grid}>
               <Card label="Playoff Teams" value={playoffs.playoff_teams} />
               <Card label="Playoffs Start" value={`Week ${playoffs.playoff_start_week}`} />
               <Card label="Championship" value={`Week ${playoffs.championship_week}`} />
               <Card label="Reseed Each Round" value={yesNo(playoffs.reseed_each_round)} />
             </div>
-          ) : <div style={styles.empty}>Playoff settings have not been configured.</div>}
+          ) : <div className="g365-empty" style={styles.empty}>Playoff settings have not been configured.</div>}
         </Section>
 
         <Section title="Scoring" subtitle="Base scoring plus enabled custom and threshold rules.">
           {scoring ? (
             <>
-              <div style={styles.scoringGrid}>
+              <div className="g365-scoringGrid" style={styles.scoringGrid}>
                 {scoringGroups.map((group) => (
-                  <div key={group.title} style={styles.scoringGroup}>
-                    <div style={styles.scoringGroupTitle}>{group.title}</div>
+                  <div key={group.title}className="g365-scoringGroup" style={styles.scoringGroup}>
+                    <div className="g365-scoringGroupTitle" style={styles.scoringGroupTitle}>{group.title}</div>
                     {group.rows.map(([label, key]) => (
-                      <div key={key} style={styles.scoringRow}>
+                      <div key={key}className="g365-scoringRow" style={styles.scoringRow}>
                         <span>{label}</span>
                         <strong>{numberText(scoring[key] as number | string | null)}</strong>
                       </div>
@@ -404,38 +432,38 @@ export default function TraditionalSettingsPage() {
                 <Card label="Decimal Places" value={scoring.decimal_places} />
               </div>
             </>
-          ) : <div style={styles.empty}>Scoring settings have not been configured.</div>}
+          ) : <div className="g365-empty" style={styles.empty}>Scoring settings have not been configured.</div>}
 
           <div style={{ ...styles.subheading, marginTop: 22 }}>CUSTOM / THRESHOLD RULES</div>
           {enabledRules.length ? (
-            <div style={styles.tableWrap}>
-              <table style={styles.table}>
+            <div className="g365-tableWrap" style={styles.tableWrap}>
+              <table className="g365-table" style={styles.table}>
                 <thead>
                   <tr>
-                    <th style={styles.th}>Rule</th>
-                    <th style={styles.th}>Category</th>
-                    <th style={styles.th}>Range</th>
-                    <th style={styles.th}>Points</th>
-                    <th style={styles.th}>Stacking</th>
+                    <th className="g365-th" style={styles.th}>Rule</th>
+                    <th className="g365-th" style={styles.th}>Category</th>
+                    <th className="g365-th" style={styles.th}>Range</th>
+                    <th className="g365-th" style={styles.th}>Points</th>
+                    <th className="g365-th" style={styles.th}>Stacking</th>
                   </tr>
                 </thead>
                 <tbody>
                   {enabledRules.map((rule) => (
                     <tr key={rule.id}>
-                      <td style={styles.td}>{rule.label ?? pretty(rule.stat_key)}</td>
-                      <td style={styles.td}>{pretty(rule.category)}</td>
-                      <td style={styles.td}>{rule.min_value === null && rule.max_value === null ? "—" : `${rule.min_value ?? "—"} to ${rule.max_value ?? "∞"}`}</td>
-                      <td style={styles.tdStrong}>{numberText(rule.points)}</td>
-                      <td style={styles.td}>{pretty(rule.stacking_mode)}</td>
+                      <td className="g365-td" style={styles.td}>{rule.label ?? pretty(rule.stat_key)}</td>
+                      <td className="g365-td" style={styles.td}>{pretty(rule.category)}</td>
+                      <td className="g365-td" style={styles.td}>{rule.min_value === null && rule.max_value === null ? "—" : `${rule.min_value ?? "—"} to ${rule.max_value ?? "∞"}`}</td>
+                      <td className="g365-tdStrong" style={styles.tdStrong}>{numberText(rule.points)}</td>
+                      <td className="g365-td" style={styles.td}>{pretty(rule.stacking_mode)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          ) : <div style={styles.empty}>No enabled custom scoring rules.</div>}
+          ) : <div className="g365-empty" style={styles.empty}>No enabled custom scoring rules.</div>}
         </Section>
 
-        <div style={styles.footer}>League members can review settings here. Editing will be handled from the Traditional Commissioner page.</div>
+        <div className="g365-footer" style={styles.footer}>League members can review settings here. Editing will be handled from the Traditional Commissioner page.</div>
       </div>
     </main>
   );

@@ -1010,6 +1010,74 @@ export default async function SeasonLongLeagueTeamsPage({
         styles.page
       }
     >
+
+      <style>{`
+        @media (max-width: 760px) {
+          .g365-mobile-page-header,
+          .g365-mobile-hero,
+          .g365-mobile-week-header,
+          .g365-mobile-section-header {
+            align-items: flex-start !important;
+            flex-direction: column !important;
+            gap: 10px !important;
+          }
+
+          .g365-mobile-header-actions,
+          .g365-mobile-week-nav,
+          .g365-mobile-week-buttons {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            flex-wrap: nowrap !important;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .g365-mobile-summary-grid,
+          .g365-mobile-team-grid,
+          .g365-mobile-matchup-grid {
+            grid-template-columns: repeat(2, minmax(0,1fr)) !important;
+            gap: 8px !important;
+          }
+
+          .g365-mobile-player-row,
+          .g365-mobile-team-row {
+            min-width: 0 !important;
+          }
+
+          .g365-mobile-player-identity {
+            min-width: 0 !important;
+          }
+
+          .g365-mobile-status-column {
+            min-width: 0 !important;
+          }
+
+          .g365-mobile-week-viewport,
+          .g365-mobile-table-wrap,
+          .g365-mobile-lineup-viewport {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .g365-mobile-lineup-grid {
+            min-width: 760px !important;
+          }
+        }
+
+        @media (max-width: 430px) {
+          .g365-mobile-summary-grid,
+          .g365-mobile-team-grid,
+          .g365-mobile-matchup-grid {
+            grid-template-columns: minmax(0,1fr) !important;
+          }
+
+          .g365-mobile-player-row {
+            gap: 8px !important;
+          }
+        }
+      `}</style>
       <SeasonLongLeagueTeamsRealtime
         leagueId={leagueId}
         season={season}
@@ -1017,9 +1085,8 @@ export default async function SeasonLongLeagueTeamsPage({
         enabled={selectedWeekIsActive}
       />
       <section
-        style={
-          styles.hero
-        }
+        className="g365-mobile-hero"
+        style={styles.hero}
       >
         <div>
           <div
@@ -1547,9 +1614,8 @@ export default async function SeasonLongLeagueTeamsPage({
                         </div>
                       ) : (
                         <div
-                          style={
-                            styles.lineupGrid
-                          }
+                          className="g365-mobile-lineup-grid"
+                          style={styles.lineupGrid}
                         >
                           {lineup.players.map(
                             (

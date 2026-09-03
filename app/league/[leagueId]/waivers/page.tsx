@@ -119,11 +119,14 @@ export default async function TraditionalWaiversPage({
 
   return (
     <main
+      className="g365-waivers-page"
       style={
         styles.page
       }
     >
+      <style>{mobileCss}</style>
       <section
+        className="g365-waivers-shell"
         style={
           styles.shell
         }
@@ -133,6 +136,7 @@ export default async function TraditionalWaiversPage({
         =========================================== */}
 
         <header
+          className="g365-waivers-header"
           style={
             styles.pageHeader
           }
@@ -185,6 +189,7 @@ export default async function TraditionalWaiversPage({
         =========================================== */}
 
         <section
+          className="g365-waivers-summary"
           style={
             styles.summaryGrid
           }
@@ -239,6 +244,7 @@ export default async function TraditionalWaiversPage({
 
         <section>
           <div
+            className="g365-waivers-section-header"
             style={
               styles.sectionHeader
             }
@@ -306,6 +312,7 @@ export default async function TraditionalWaiversPage({
 
         <section>
           <div
+            className="g365-waivers-section-header"
             style={
               styles.sectionHeader
             }
@@ -364,6 +371,7 @@ export default async function TraditionalWaiversPage({
                         key={
                           claim.claimId
                         }
+                        className="g365-waivers-history-row"
                         style={
                           styles.historyRow
                         }
@@ -566,6 +574,56 @@ function SummaryCard({
   );
 }
 
+
+
+const mobileCss = `
+@media (max-width: 760px) {
+  .g365-waivers-page {
+    padding: 20px 10px 48px !important;
+    overflow-x: hidden !important;
+  }
+
+  .g365-waivers-shell {
+    min-width: 0 !important;
+    gap: 22px !important;
+  }
+
+  .g365-waivers-header {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    align-items: stretch !important;
+  }
+
+  .g365-waivers-header > a {
+    width: 100% !important;
+    min-height: 44px !important;
+  }
+
+  .g365-waivers-summary {
+    grid-template-columns: repeat(2,minmax(0,1fr)) !important;
+  }
+
+  .g365-waivers-section-header {
+    align-items: flex-start !important;
+  }
+
+  .g365-waivers-history-row {
+    grid-template-columns: minmax(0,1fr) minmax(95px,.7fr) 70px 84px !important;
+    gap: 10px !important;
+    min-width: 620px !important;
+  }
+
+  .g365-waivers-history-row > div {
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .g365-waivers-summary {
+    grid-template-columns: 1fr !important;
+  }
+}
+`;
 
 const styles = {
   page: {

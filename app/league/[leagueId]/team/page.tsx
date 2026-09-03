@@ -98,6 +98,74 @@ export default async function TraditionalTeamPage({
           styles.page
         }
       >
+
+      <style>{`
+        @media (max-width: 760px) {
+          .g365-mobile-page-header,
+          .g365-mobile-hero,
+          .g365-mobile-week-header,
+          .g365-mobile-section-header {
+            align-items: flex-start !important;
+            flex-direction: column !important;
+            gap: 10px !important;
+          }
+
+          .g365-mobile-header-actions,
+          .g365-mobile-week-nav,
+          .g365-mobile-week-buttons {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            flex-wrap: nowrap !important;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .g365-mobile-summary-grid,
+          .g365-mobile-team-grid,
+          .g365-mobile-matchup-grid {
+            grid-template-columns: repeat(2, minmax(0,1fr)) !important;
+            gap: 8px !important;
+          }
+
+          .g365-mobile-player-row,
+          .g365-mobile-team-row {
+            min-width: 0 !important;
+          }
+
+          .g365-mobile-player-identity {
+            min-width: 0 !important;
+          }
+
+          .g365-mobile-status-column {
+            min-width: 0 !important;
+          }
+
+          .g365-mobile-week-viewport,
+          .g365-mobile-table-wrap,
+          .g365-mobile-lineup-viewport {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .g365-mobile-lineup-grid {
+            min-width: 760px !important;
+          }
+        }
+
+        @media (max-width: 430px) {
+          .g365-mobile-summary-grid,
+          .g365-mobile-team-grid,
+          .g365-mobile-matchup-grid {
+            grid-template-columns: minmax(0,1fr) !important;
+          }
+
+          .g365-mobile-player-row {
+            gap: 8px !important;
+          }
+        }
+      `}</style>
         <section
           style={
             styles.shell
@@ -165,14 +233,6 @@ export default async function TraditionalTeamPage({
     );
 
 
-  const bench =
-    teamData.roster.filter(
-      (
-        player
-      ) =>
-        !player.isStarter
-    );
-
 
   return (
     <main
@@ -190,9 +250,8 @@ export default async function TraditionalTeamPage({
         =========================================== */}
 
         <header
-          style={
-            styles.pageHeader
-          }
+          className="g365-mobile-page-header"
+          style={styles.pageHeader}
         >
           <div>
             <p
@@ -237,9 +296,8 @@ export default async function TraditionalTeamPage({
 
 
           <div
-            style={
-              styles.headerActions
-            }
+            className="g365-mobile-header-actions"
+            style={styles.headerActions}
           >
             <Link
               href={
@@ -273,9 +331,8 @@ export default async function TraditionalTeamPage({
         =========================================== */}
 
         <section
-          style={
-            styles.summaryGrid
-          }
+          className="g365-mobile-summary-grid"
+          style={styles.summaryGrid}
         >
           <SummaryCard
             label="ROSTER"
@@ -326,9 +383,8 @@ export default async function TraditionalTeamPage({
 
         <section>
           <div
-            style={
-              styles.sectionHeader
-            }
+            className="g365-mobile-section-header"
+            style={styles.sectionHeader}
           >
             <div>
               <p
@@ -391,95 +447,7 @@ export default async function TraditionalTeamPage({
         </section>
 
 
-        {/* ==========================================
-            CURRENT BENCH
-        =========================================== */}
 
-        <section>
-          <div
-            style={
-              styles.sectionHeader
-            }
-          >
-            <div>
-              <p
-                style={
-                  styles.sectionEyebrow
-                }
-              >
-                ROSTER
-              </p>
-
-              <h2
-                style={
-                  styles.sectionTitle
-                }
-              >
-                Bench & Reserve
-              </h2>
-            </div>
-
-            <span
-              style={
-                styles.sectionMeta
-              }
-            >
-              {bench.length} player
-              {bench.length ===
-              1
-                ? ""
-                : "s"}
-            </span>
-          </div>
-
-
-          <Card
-            style={
-              styles.rosterCard
-            }
-          >
-            {bench.length >
-            0 ? (
-              <div
-                style={
-                  styles.playerList
-                }
-              >
-                {bench.map(
-                  (
-                    player
-                  ) => (
-                    <PlayerRow
-                      key={
-                        player.playerId
-                      }
-
-                      player={
-                        player
-                      }
-                    />
-                  )
-                )}
-              </div>
-            ) : (
-              <div
-                style={
-                  styles.emptyState
-                }
-              >
-                <strong>
-                  No bench players
-                </strong>
-
-                <span>
-                  Players not assigned to
-                  a starting slot will
-                  appear here.
-                </span>
-              </div>
-            )}
-          </Card>
-        </section>
       </section>
     </main>
   );
@@ -569,9 +537,8 @@ function PlayerRow({
 }) {
   return (
     <article
-      style={
-        styles.playerRow
-      }
+      className="g365-mobile-player-row"
+      style={styles.playerRow}
     >
       <div
         style={
@@ -601,9 +568,8 @@ function PlayerRow({
 
 
       <div
-        style={
-          styles.playerIdentity
-        }
+        className="g365-mobile-player-identity"
+        style={styles.playerIdentity}
       >
         <div
           style={
@@ -667,9 +633,8 @@ function PlayerRow({
 
 
       <div
-        style={
-          styles.statusColumn
-        }
+        className="g365-mobile-status-column"
+        style={styles.statusColumn}
       >
         {player.injuryStatus ? (
           <span

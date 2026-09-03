@@ -137,6 +137,74 @@ export default async function TraditionalMatchupsPage({
         styles.page
       }
     >
+
+      <style>{`
+        @media (max-width: 760px) {
+          .g365-mobile-page-header,
+          .g365-mobile-hero,
+          .g365-mobile-week-header,
+          .g365-mobile-section-header {
+            align-items: flex-start !important;
+            flex-direction: column !important;
+            gap: 10px !important;
+          }
+
+          .g365-mobile-header-actions,
+          .g365-mobile-week-nav,
+          .g365-mobile-week-buttons {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            flex-wrap: nowrap !important;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .g365-mobile-summary-grid,
+          .g365-mobile-team-grid,
+          .g365-mobile-matchup-grid {
+            grid-template-columns: repeat(2, minmax(0,1fr)) !important;
+            gap: 8px !important;
+          }
+
+          .g365-mobile-player-row,
+          .g365-mobile-team-row {
+            min-width: 0 !important;
+          }
+
+          .g365-mobile-player-identity {
+            min-width: 0 !important;
+          }
+
+          .g365-mobile-status-column {
+            min-width: 0 !important;
+          }
+
+          .g365-mobile-week-viewport,
+          .g365-mobile-table-wrap,
+          .g365-mobile-lineup-viewport {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .g365-mobile-lineup-grid {
+            min-width: 760px !important;
+          }
+        }
+
+        @media (max-width: 430px) {
+          .g365-mobile-summary-grid,
+          .g365-mobile-team-grid,
+          .g365-mobile-matchup-grid {
+            grid-template-columns: minmax(0,1fr) !important;
+          }
+
+          .g365-mobile-player-row {
+            gap: 8px !important;
+          }
+        }
+      `}</style>
       <section
         style={
           styles.shell
@@ -147,9 +215,8 @@ export default async function TraditionalMatchupsPage({
         ========================================== */}
 
         <header
-          style={
-            styles.pageHeader
-          }
+          className="g365-mobile-page-header"
+          style={styles.pageHeader}
         >
           <div>
             <p
@@ -181,9 +248,8 @@ export default async function TraditionalMatchupsPage({
 
 
           <div
-            style={
-              styles.activeWeekCard
-            }
+            className="g365-mobile-active-week"
+            style={styles.activeWeekCard}
           >
             <span
               style={
@@ -210,14 +276,12 @@ export default async function TraditionalMatchupsPage({
         ========================================== */}
 
         <section
-          style={
-            styles.weekSection
-          }
+          className="g365-mobile-week-section"
+          style={styles.weekSection}
         >
           <div
-            style={
-              styles.weekHeader
-            }
+            className="g365-mobile-week-header"
+            style={styles.weekHeader}
           >
             <div>
               <span
@@ -251,14 +315,12 @@ export default async function TraditionalMatchupsPage({
 
           <nav
             aria-label="Matchup week navigation"
-            style={
-              styles.weekViewport
-            }
+            className="g365-mobile-week-viewport"
+            style={styles.weekViewport}
           >
             <div
-              style={
-                styles.weekNav
-              }
+              className="g365-mobile-week-nav"
+              style={styles.weekNav}
             >
               {Array.from(
                 {
@@ -333,9 +395,8 @@ export default async function TraditionalMatchupsPage({
 
         <section>
           <div
-            style={
-              styles.sectionHeader
-            }
+            className="g365-mobile-section-header"
+            style={styles.sectionHeader}
           >
             <div>
               <p
@@ -378,9 +439,8 @@ export default async function TraditionalMatchupsPage({
           {data.matchups.length >
           0 ? (
             <div
-              style={
-                styles.matchupGrid
-              }
+              className="g365-mobile-matchup-grid"
+              style={styles.matchupGrid}
             >
               {data.matchups.map(
                 (
@@ -605,6 +665,7 @@ function TeamRow({
 }) {
   return (
     <div
+      className="g365-mobile-team-row"
       style={{
         ...styles.teamRow,
 

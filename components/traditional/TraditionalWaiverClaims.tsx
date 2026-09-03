@@ -336,15 +336,30 @@ export default function TraditionalWaiverClaims({
 
   return (
     <div
-      style={
-        styles.wrapper
-      }
+className="g365-wrapper g365-waivers-root" style={styles.wrapper}
     >
+      <style jsx global>{`
+@media (max-width: 760px) {
+  .g365-waivers-root { gap: 8px !important; min-width: 0 !important; }
+  .g365-waivers-root .g365-claimRow {
+    grid-template-columns: 58px minmax(0,1fr) !important;
+    gap: 10px !important; padding: 12px 10px !important; min-height: 0 !important;
+    align-items: start !important;
+  }
+  .g365-waivers-root .g365-rankColumn { grid-row: 1 / span 3 !important; }
+  .g365-waivers-root .g365-playerIdentity { min-width: 0 !important; }
+  .g365-waivers-root .g365-claimInfo,
+  .g365-waivers-root .g365-actionColumn { grid-column: 2 !important; width: 100% !important; min-width: 0 !important; }
+  .g365-waivers-root button { min-height: 40px !important; }
+}
+@media (max-width: 430px) {
+  .g365-waivers-root .g365-headshotWrap { width: 40px !important; height: 40px !important; }
+  .g365-waivers-root .g365-headshot, .g365-waivers-root .g365-headshotFallback { width: 40px !important; height: 40px !important; }
+}
+`}</style>
       {message ? (
         <div
-          style={
-            styles.successMessage
-          }
+className="g365-successMessage" style={styles.successMessage}
         >
           {message}
         </div>
@@ -353,9 +368,7 @@ export default function TraditionalWaiverClaims({
 
       {error ? (
         <div
-          style={
-            styles.errorMessage
-          }
+className="g365-errorMessage" style={styles.errorMessage}
         >
           {error}
         </div>
@@ -365,9 +378,7 @@ export default function TraditionalWaiverClaims({
       {claims.length >
       0 ? (
         <div
-          style={
-            styles.claimList
-          }
+className="g365-claimList" style={styles.claimList}
         >
           {claims.map(
             (
@@ -388,27 +399,19 @@ export default function TraditionalWaiverClaims({
                   key={
                     claim.claimId
                   }
-                  style={
-                    styles.claimRow
-                  }
+className="g365-claimRow" style={styles.claimRow}
                 >
                   <div
-                    style={
-                      styles.rankColumn
-                    }
+className="g365-rankColumn" style={styles.rankColumn}
                   >
                     <span
-                      style={
-                        styles.rankLabel
-                      }
+className="g365-rankLabel" style={styles.rankLabel}
                     >
                       CLAIM
                     </span>
 
                     <strong
-                      style={
-                        styles.rankValue
-                      }
+className="g365-rankValue" style={styles.rankValue}
                     >
                       #
                       {claim.claimRank ??
@@ -418,9 +421,7 @@ export default function TraditionalWaiverClaims({
 
 
                     <div
-                      style={
-                        styles.rankButtons
-                      }
+className="g365-rankButtons" style={styles.rankButtons}
                     >
                       <button
                         type="button"
@@ -477,14 +478,10 @@ export default function TraditionalWaiverClaims({
 
 
                   <div
-                    style={
-                      styles.playerIdentity
-                    }
+className="g365-playerIdentity" style={styles.playerIdentity}
                   >
                     <div
-                      style={
-                        styles.headshotWrap
-                      }
+className="g365-headshotWrap" style={styles.headshotWrap}
                     >
                       {claim
                         .playerHeadshotUrl ? (
@@ -499,15 +496,11 @@ export default function TraditionalWaiverClaims({
                           }
                           width={48}
                           height={48}
-                          style={
-                            styles.headshot
-                          }
+className="g365-headshot" style={styles.headshot}
                         />
                       ) : (
                         <div
-                          style={
-                            styles.headshotFallback
-                          }
+className="g365-headshotFallback" style={styles.headshotFallback}
                         >
                           {claim
                             .playerPosition}
@@ -517,23 +510,17 @@ export default function TraditionalWaiverClaims({
 
 
                     <div
-                      style={
-                        styles.playerText
-                      }
+className="g365-playerText" style={styles.playerText}
                     >
                       <strong
-                        style={
-                          styles.playerName
-                        }
+className="g365-playerName" style={styles.playerName}
                       >
                         {claim
                           .playerName}
                       </strong>
 
                       <span
-                        style={
-                          styles.playerMeta
-                        }
+className="g365-playerMeta" style={styles.playerMeta}
                       >
                         {claim
                           .playerPosition}
@@ -547,9 +534,7 @@ export default function TraditionalWaiverClaims({
                       {claim
                         .dropPlayerName ? (
                         <span
-                          style={
-                            styles.dropText
-                          }
+className="g365-dropText" style={styles.dropText}
                         >
                           Drop:{" "}
                           {claim
@@ -561,22 +546,16 @@ export default function TraditionalWaiverClaims({
 
 
                   <div
-                    style={
-                      styles.claimInfo
-                    }
+className="g365-claimInfo" style={styles.claimInfo}
                   >
                     <span
-                      style={
-                        styles.infoLabel
-                      }
+className="g365-infoLabel" style={styles.infoLabel}
                     >
                       PROCESS
                     </span>
 
                     <strong
-                      style={
-                        styles.infoValue
-                      }
+className="g365-infoValue" style={styles.infoValue}
                     >
                       {formatDateTime(
                         claim
@@ -587,9 +566,7 @@ export default function TraditionalWaiverClaims({
 
 
                   <div
-                    style={
-                      styles.actionCell
-                    }
+className="g365-actionCell" style={styles.actionCell}
                   >
                     <button
                       type="button"
@@ -604,9 +581,7 @@ export default function TraditionalWaiverClaims({
                           claim.claimId
                         )
                       }
-                      style={
-                        styles.cancelButton
-                      }
+className="g365-cancelButton" style={styles.cancelButton}
                     >
                       {cancellingClaimId ===
                       claim.claimId
@@ -621,9 +596,7 @@ export default function TraditionalWaiverClaims({
         </div>
       ) : (
         <div
-          style={
-            styles.emptyState
-          }
+className="g365-emptyState" style={styles.emptyState}
         >
           <strong>
             No pending waiver claims

@@ -468,6 +468,85 @@ export default async function TraditionalMatchupDetailPage({
         styles.page
       }
     >
+      <style>{`
+        @media (max-width: 760px) {
+          .g365-matchup-topbar {
+            grid-template-columns: minmax(0, 1fr) auto !important;
+            gap: 6px !important;
+            padding: 8px !important;
+          }
+
+          .g365-matchup-topbar > :nth-child(2) {
+            display: none !important;
+          }
+
+          .g365-matchup-scoreboard {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 10px !important;
+            padding: 12px 8px !important;
+          }
+
+          .g365-matchup-scoreboard > :nth-child(2) {
+            order: -1;
+          }
+
+          .g365-matchup-summary {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 8px !important;
+          }
+
+          .g365-matchup-main-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 10px !important;
+          }
+
+          .g365-matchup-center-column {
+            grid-column: 1 !important;
+            grid-row: auto !important;
+          }
+
+          .g365-matchup-bench-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 10px !important;
+          }
+
+          .g365-matchup-bench-grid > :nth-child(2) {
+            display: none !important;
+          }
+
+          .g365-matchup-roster {
+            width: 100% !important;
+            min-width: 0 !important;
+            overflow: hidden !important;
+          }
+
+          .g365-matchup-table-header,
+          .g365-matchup-player-row {
+            grid-template-columns:
+              42px minmax(0, 1fr) 44px 58px 46px 50px !important;
+            gap: 5px !important;
+          }
+
+          .g365-matchup-player-cell,
+          .g365-matchup-player-names {
+            min-width: 0 !important;
+          }
+        }
+
+        @media (max-width: 430px) {
+          .g365-matchup-table-header,
+          .g365-matchup-player-row {
+            grid-template-columns:
+              38px minmax(0, 1fr) 42px 50px 44px !important;
+            gap: 4px !important;
+          }
+
+          .g365-matchup-table-header > :nth-child(3),
+          .g365-matchup-player-row > :nth-child(3) {
+            display: none !important;
+          }
+        }
+      `}</style>
       <div
         style={
           styles.shell
@@ -478,6 +557,7 @@ export default async function TraditionalMatchupDetailPage({
         =================================================== */}
 
         <div
+          className="g365-matchup-topbar"
           style={
             styles.topBar
           }
@@ -516,6 +596,7 @@ export default async function TraditionalMatchupDetailPage({
         =================================================== */}
 
         <section
+          className="g365-matchup-scoreboard"
           style={
             styles.scoreboard
           }
@@ -762,6 +843,7 @@ export default async function TraditionalMatchupDetailPage({
         =================================================== */}
 
         <section
+          className="g365-matchup-summary"
           style={
             styles.summaryBar
           }
@@ -863,6 +945,7 @@ export default async function TraditionalMatchupDetailPage({
         =================================================== */}
 
         <section
+          className="g365-matchup-main-grid"
           style={
             styles.mainGrid
           }
@@ -879,6 +962,7 @@ export default async function TraditionalMatchupDetailPage({
 
 
           <div
+            className="g365-matchup-center-column"
             style={
               styles.centerColumn
             }
@@ -1023,6 +1107,7 @@ export default async function TraditionalMatchupDetailPage({
         =================================================== */}
 
         <section
+          className="g365-matchup-bench-grid"
           style={
             styles.benchGrid
           }
@@ -1999,6 +2084,7 @@ function CompactRoster({
 }) {
   return (
     <div
+      className="g365-matchup-roster"
       style={
         styles.rosterPanel
       }
@@ -2046,6 +2132,7 @@ function CompactRoster({
       ) : (
         <>
           <div
+            className="g365-matchup-table-header"
             style={
               styles.tableHeader
             }
@@ -2141,6 +2228,7 @@ function CompactBench({
 }) {
   return (
     <div
+      className="g365-matchup-roster"
       style={
         styles.rosterPanel
       }
@@ -2225,6 +2313,7 @@ function CompactPlayerRow({
 
   return (
     <div
+      className="g365-matchup-player-row"
       style={{
         ...styles.playerRow,
 
@@ -2249,6 +2338,7 @@ function CompactPlayerRow({
 
 
       <div
+        className="g365-matchup-player-cell"
         style={
           styles.playerCell
         }
@@ -2279,6 +2369,7 @@ function CompactPlayerRow({
 
 
         <div
+          className="g365-matchup-player-names"
           style={
             styles.playerNames
           }
@@ -4098,3 +4189,4 @@ const styles = {
       "center" as const,
   },
 };
+

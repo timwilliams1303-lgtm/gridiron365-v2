@@ -298,7 +298,39 @@ export default function SeasonRecapPage() {
 
   if (loading) {
     return (
-      <main style={styles.page}>
+      <main className="g365-recap-page" style={styles.page}>
+      <style>{`
+@media (max-width: 760px) {
+  .g365-recap-page { overflow-x: hidden !important; }
+  .g365-recap-shell { width: calc(100% - 20px) !important; padding: 10px 0 52px !important; min-width: 0 !important; }
+  .g365-recap-nav { top: 0 !important; width: 100% !important; overflow-x: auto !important; flex-wrap: nowrap !important; -webkit-overflow-scrolling: touch; }
+  .g365-recap-nav > * { flex: 0 0 auto !important; }
+  .g365-recap-hero,
+  .g365-recap-not-ready { padding: 38px 14px !important; }
+  .g365-recap-stats { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+  .g365-recap-section-head { flex-direction: column !important; align-items: flex-start !important; gap: 5px !important; }
+  .g365-recap-podium { grid-template-columns: 1fr !important; }
+  .g365-recap-team-tabs { overflow-x: auto !important; flex-wrap: nowrap !important; -webkit-overflow-scrolling: touch; padding-bottom: 4px !important; }
+  .g365-recap-team-tabs > * { flex: 0 0 auto !important; }
+  .g365-recap-team-story { padding: 14px !important; }
+  .g365-recap-team-story-top { gap: 12px !important; }
+  .g365-recap-dna-grid,
+  .g365-recap-feature-grid,
+  .g365-recap-badge-vault,
+  .g365-recap-card-grid,
+  .g365-recap-player-grid,
+  .g365-recap-record-grid { grid-template-columns: 1fr !important; }
+  .g365-recap-badge-row { overflow-x: auto !important; flex-wrap: nowrap !important; -webkit-overflow-scrolling: touch; }
+  .g365-recap-badge-row > * { flex: 0 0 auto !important; }
+  .g365-recap-front-office { grid-template-columns: 1fr !important; }
+  .g365-recap-timeline-item { grid-template-columns: 14px minmax(0,1fr) !important; }
+}
+@media (max-width: 430px) {
+  .g365-recap-stats { grid-template-columns: 1fr !important; }
+  .g365-recap-team-story-top,
+  .g365-recap-player-top { flex-direction: column !important; align-items: flex-start !important; }
+}
+`}</style>
         <div style={styles.loading}>
           <div style={styles.brand}>G365</div>
           <div>Building your season story…</div>
@@ -309,8 +341,8 @@ export default function SeasonRecapPage() {
 
   if (error || !payload) {
     return (
-      <main style={styles.page}>
-        <div style={styles.shell}>
+      <main className="g365-recap-page" style={styles.page}>
+        <div className="g365-recap-shell" style={styles.shell}>
           <div style={styles.error}>{error ?? "Unable to load season recap."}</div>
         </div>
       </main>
@@ -320,16 +352,16 @@ export default function SeasonRecapPage() {
   if (!payload.generated) {
     const r = payload.readiness;
     return (
-      <main style={styles.page}>
-        <div style={styles.shell}>
-          <section style={styles.notReady}>
+      <main className="g365-recap-page" style={styles.page}>
+        <div className="g365-recap-shell" style={styles.shell}>
+          <section className="g365-recap-not-ready" style={styles.notReady}>
             <div style={styles.eyebrow}>GRIDIRON365 • {payload.season} SEASON RECAP</div>
             <h1 style={styles.title}>YOUR STORY IS STILL BEING WRITTEN</h1>
             <p style={styles.copy}>
               The full recap unlocks after the championship is final and the season
               archive is generated.
             </p>
-            <div style={styles.statGrid}>
+            <div className="g365-recap-stats" style={styles.statGrid}>
               <Stat label="Phase" value={r?.phase ?? "—"} />
               <Stat label="Season Complete" value={r?.season_complete ? "YES" : "NOT YET"} />
               <Stat label="Final Result" value={r?.season_result_exists ? "RECORDED" : "WAITING"} />
@@ -350,9 +382,9 @@ export default function SeasonRecapPage() {
   const league = payload.league!;
 
   return (
-    <main style={styles.page}>
-      <div style={styles.shell}>
-        <nav style={styles.recapNav}>
+    <main className="g365-recap-page" style={styles.page}>
+      <div className="g365-recap-shell" style={styles.shell}>
+        <nav className="g365-recap-nav" style={styles.recapNav}>
           {NAV.map(([id, label]) => (
             <button key={id} type="button" onClick={() => jump(id)} style={styles.navButton}>
               {label}
@@ -363,7 +395,7 @@ export default function SeasonRecapPage() {
           </Link>
         </nav>
 
-        <section ref={(el) => { refs.current.overview = el; }} style={styles.hero}>
+        <section ref={(el) => { refs.current.overview = el; }} className="g365-recap-hero" style={styles.hero}>
           <div style={styles.heroGlow} />
           <div style={styles.eyebrow}>GRIDIRON365 • {payload.season} SEASON RECAP</div>
           <div style={styles.trophy}>🏆</div>
@@ -375,7 +407,7 @@ export default function SeasonRecapPage() {
             the badges and the players who defined it.
           </p>
 
-          <div style={styles.statGrid}>
+          <div className="g365-recap-stats" style={styles.statGrid}>
             <Stat label="Teams" value={String(league.total_teams)} />
             <Stat label="Matchups" value={String(league.total_matchups)} />
             <Stat label="Fantasy Points" value={number(league.total_fantasy_points)} />
@@ -386,7 +418,7 @@ export default function SeasonRecapPage() {
         </section>
 
         <Section title="FINAL PODIUM" subtitle="The teams that reached the top.">
-          <div style={styles.podium}>
+          <div className="g365-recap-podium" style={styles.podium}>
             {teams.slice(0, 3).map((team, index) => (
               <div key={team.fantasy_team_id} style={{...styles.podiumCard,...(index===0?styles.podiumChampion:{})}}>
                 <div style={styles.podiumIcon}>{index===0?"🏆":index===1?"🥈":"🥉"}</div>
@@ -410,7 +442,7 @@ export default function SeasonRecapPage() {
 
         <section ref={(el) => { refs.current.teams = el; }} style={styles.section}>
           <SectionHeader title="TEAM STORIES" subtitle="Every roster gets its own identity and season DNA." />
-          <div style={styles.teamTabs}>
+          <div className="g365-recap-team-tabs" style={styles.teamTabs}>
             {teams.map((team)=>(
               <button
                 key={team.fantasy_team_id}
@@ -427,7 +459,7 @@ export default function SeasonRecapPage() {
 
         <section ref={(el) => { refs.current.awards = el; }} style={styles.section}>
           <SectionHeader title="SEASON AWARDS" subtitle="The performances and stories everyone will remember." />
-          <div style={styles.cardGrid}>
+          <div className="g365-recap-card-grid" style={styles.cardGrid}>
             {(payload.awards ?? []).map((award)=>(
               <div key={award.award_key} style={styles.awardCard}>
                 <div style={styles.awardStar}>★</div>
@@ -442,7 +474,7 @@ export default function SeasonRecapPage() {
 
         <section ref={(el) => { refs.current.badges = el; }} style={styles.section}>
           <SectionHeader title="BADGE VAULT" subtitle={`${teamBadges.length + playerBadges.length} achievements earned this season.`} />
-          <div style={styles.badgeVault}>
+          <div className="g365-recap-badge-vault" style={styles.badgeVault}>
             {teamBadges.map((badge, i)=>(
               <BadgeCard key={`t-${badge.badge_key}-${badge.fantasy_team_id}-${i}`} badge={badge} />
             ))}
@@ -460,10 +492,10 @@ export default function SeasonRecapPage() {
             placeholder="Search player, position or NFL team…"
             style={styles.search}
           />
-          <div style={styles.playerGrid}>
+          <div className="g365-recap-player-grid" style={styles.playerGrid}>
             {filteredPlayers.map((p)=>(
               <div key={p.nfl_player_id} style={styles.playerCard}>
-                <div style={styles.playerTop}>
+                <div className="g365-recap-player-top" style={styles.playerTop}>
                   <div>
                     <div style={styles.eyebrow}>#{p.league_player_rank ?? "—"} OVERALL</div>
                     <strong style={styles.playerName}>{p.player_name}</strong>
@@ -492,7 +524,7 @@ export default function SeasonRecapPage() {
 
         <section ref={(el) => { refs.current.draft = el; }} style={styles.section}>
           <SectionHeader title="DRAFT REPORT" subtitle="Who crushed draft night — and which picks changed the league." />
-          <div style={styles.cardGrid}>
+          <div className="g365-recap-card-grid" style={styles.cardGrid}>
             {teams
               .slice()
               .sort((a,b)=>Number(b.draft_score ?? 0)-Number(a.draft_score ?? 0))
@@ -511,9 +543,9 @@ export default function SeasonRecapPage() {
 
         <section ref={(el) => { refs.current.transactions = el; }} style={styles.section}>
           <SectionHeader title="FRONT OFFICE REPORT" subtitle="Waivers, trades and roster management." />
-          <div style={styles.cardGrid}>
+          <div className="g365-recap-card-grid" style={styles.cardGrid}>
             {teams.map((team)=>(
-              <div key={team.fantasy_team_id} style={styles.frontOfficeCard}>
+              <div key={team.fantasy_team_id} className="g365-recap-front-office" style={styles.frontOfficeCard}>
                 <strong style={styles.cardTitle}>{team.team_name}</strong>
                 <div style={styles.dnaMini}>
                   <DNABar label="Waivers" value={team.waiver_score} />
@@ -531,7 +563,7 @@ export default function SeasonRecapPage() {
           <SectionHeader title="PLAYOFF STORY" subtitle="The path to the championship." />
           <div style={styles.timeline}>
             {(payload.highlights ?? []).map((h,index)=>(
-              <div key={`${h.highlight_key}-${index}`} style={styles.timelineItem}>
+              <div key={`${h.highlight_key}-${index}`} className="g365-recap-timeline-item" style={styles.timelineItem}>
                 <div style={styles.timelineDot}/>
                 <div>
                   <div style={styles.eyebrow}>{h.week ? `WEEK ${h.week}` : (h.season_phase ?? "SEASON")}</div>
@@ -545,7 +577,7 @@ export default function SeasonRecapPage() {
         </section>
 
         <Section title="RECORD BOOK" subtitle="The all-time marks this season helped shape.">
-          <div style={styles.recordGrid}>
+          <div className="g365-recap-record-grid" style={styles.recordGrid}>
             {(payload.records ?? []).map((r)=>(
               <div key={r.record_key} style={styles.recordCard}>
                 <div style={styles.eyebrow}>{r.record_name}</div>
@@ -573,8 +605,8 @@ function TeamStory({team,badges}:{team:Team;badges:Badge[]}) {
   ] as const;
 
   return (
-    <div style={styles.teamStory}>
-      <div style={styles.teamStoryTop}>
+    <div className="g365-recap-team-story" style={styles.teamStory}>
+      <div className="g365-recap-team-story-top" style={styles.teamStoryTop}>
         <div>
           <div style={styles.personality}>{team.team_personality_title ?? "THE COMPETITOR"}</div>
           <h3 style={styles.teamName}>{team.team_name}</h3>
@@ -583,7 +615,7 @@ function TeamStory({team,badges}:{team:Team;badges:Badge[]}) {
         <div style={styles.finish}>{team.won_championship?"🏆 CHAMPION":ordinal(team.final_finish)}</div>
       </div>
 
-      <div style={styles.statGrid}>
+      <div className="g365-recap-stats" style={styles.statGrid}>
         <Stat label="Record" value={`${team.wins}-${team.losses}${team.ties?`-${team.ties}`:""}`} />
         <Stat label="Points" value={number(team.points_for)} />
         <Stat label="PPG" value={number(team.points_per_game)} />
@@ -594,12 +626,12 @@ function TeamStory({team,badges}:{team:Team;badges:Badge[]}) {
 
       <div style={styles.dnaBlock}>
         <div style={styles.dnaTitle}>SEASON DNA</div>
-        <div style={styles.dnaGrid}>
+        <div className="g365-recap-dna-grid" style={styles.dnaGrid}>
           {dna.map(([label,value])=><DNABar key={label} label={label} value={value}/>)}
         </div>
       </div>
 
-      <div style={styles.featureGrid}>
+      <div className="g365-recap-feature-grid" style={styles.featureGrid}>
         <Feature label="Team MVP" value={team.team_mvp_name} />
         <Feature label="Best Draft Pick" value={team.best_draft_pick_name} />
         <Feature label="Best Waiver Pickup" value={team.best_waiver_pickup_name} />
@@ -610,7 +642,7 @@ function TeamStory({team,badges}:{team:Team;badges:Badge[]}) {
 
       {team.recap_summary ? <p style={styles.story}>{team.recap_summary}</p> : null}
 
-      <div style={styles.badgeRow}>
+      <div className="g365-recap-badge-row" style={styles.badgeRow}>
         {badges.length ? badges.map((badge)=><BadgeCard key={badge.badge_key} badge={badge}/>) : <Empty text="No season badges earned." />}
       </div>
     </div>
@@ -649,7 +681,7 @@ function Section({title,subtitle,children}:{title:string;subtitle?:string;childr
 }
 
 function SectionHeader({title,subtitle}:{title:string;subtitle?:string}) {
-  return <div style={styles.sectionHead}><div style={styles.eyebrow}>GRIDIRON365</div><h2 style={styles.sectionTitle}>{title}</h2>{subtitle?<p style={styles.sectionSub}>{subtitle}</p>:null}</div>;
+  return <div className="g365-recap-section-head" style={styles.sectionHead}><div style={styles.eyebrow}>GRIDIRON365</div><h2 style={styles.sectionTitle}>{title}</h2>{subtitle?<p style={styles.sectionSub}>{subtitle}</p>:null}</div>;
 }
 
 function Stat({label,value}:{label:string;value:string}) {

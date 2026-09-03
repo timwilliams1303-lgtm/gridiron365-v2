@@ -1396,41 +1396,50 @@ export default function TraditionalTradesPage() {
 
   return (
     <main
-      style={
-        styles.page
-      }
+className="g365-page g365-trades-page" style={styles.page}
     >
+      <style jsx global>{`
+@media (max-width: 760px) {
+  .g365-trades-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
+  .g365-trades-page .g365-shell { width: 100% !important; min-width: 0 !important; }
+  .g365-trades-page .g365-header { align-items: flex-start !important; flex-direction: column !important; gap: 10px !important; }
+  .g365-trades-page .g365-title { font-size: 28px !important; }
+  .g365-trades-page .g365-tabs { overflow-x: auto !important; flex-wrap: nowrap !important; -webkit-overflow-scrolling: touch; width: 100% !important; }
+  .g365-trades-page .g365-tab { flex: 0 0 auto !important; min-height: 42px !important; }
+  .g365-trades-page .g365-tradeCard,
+  .g365-trades-page .g365-composer,
+  .g365-trades-page .g365-panel { min-width: 0 !important; padding-left: 12px !important; padding-right: 12px !important; }
+  .g365-trades-page .g365-tradeGrid,
+  .g365-trades-page .g365-composerGrid,
+  .g365-trades-page .g365-teamGrid,
+  .g365-trades-page .g365-playerGrid,
+  .g365-trades-page .g365-detailGrid { grid-template-columns: minmax(0,1fr) !important; }
+  .g365-trades-page .g365-actions { flex-wrap: wrap !important; }
+  .g365-trades-page button { min-height: 42px !important; }
+  .g365-trades-page input, .g365-trades-page select, .g365-trades-page textarea { width: 100% !important; max-width: 100% !important; min-width: 0 !important; font-size: 16px !important; box-sizing: border-box !important; }
+}
+`}</style>
       <div
-        style={
-          styles.shell
-        }
+className="g365-shell" style={styles.shell}
       >
         <header
-          style={
-            styles.header
-          }
+className="g365-header" style={styles.header}
         >
           <div>
             <p
-              style={
-                styles.eyebrow
-              }
+className="g365-eyebrow" style={styles.eyebrow}
             >
               TRADITIONAL
             </p>
 
             <h1
-              style={
-                styles.title
-              }
+className="g365-title" style={styles.title}
             >
               Trades
             </h1>
 
             <p
-              style={
-                styles.subtitle
-              }
+className="g365-subtitle" style={styles.subtitle}
             >
               Build offers, review incoming deals, and track trade history.
             </p>
@@ -1473,9 +1482,7 @@ export default function TraditionalTradesPage() {
 
         {error ? (
           <div
-            style={
-              styles.errorBox
-            }
+className="g365-errorBox" style={styles.errorBox}
           >
             {error}
           </div>
@@ -1483,9 +1490,7 @@ export default function TraditionalTradesPage() {
 
 
         <section
-          style={
-            styles.summaryGrid
-          }
+className="g365-summaryGrid" style={styles.summaryGrid}
         >
           <SummaryCard
             label="INCOMING"
@@ -1511,14 +1516,10 @@ export default function TraditionalTradesPage() {
 
 
         <section
-          style={
-            styles.contentCard
-          }
+className="g365-contentCard" style={styles.contentCard}
         >
           <div
-            style={
-              styles.tabs
-            }
+className="g365-tabs" style={styles.tabs}
           >
             <TabButton
               active={
@@ -1575,31 +1576,23 @@ export default function TraditionalTradesPage() {
 
           {loading ? (
             <div
-              style={
-                styles.emptyState
-              }
+className="g365-emptyState" style={styles.emptyState}
             >
               Loading trades...
             </div>
           ) : visibleTrades.length ===
           0 ? (
             <div
-              style={
-                styles.emptyState
-              }
+className="g365-emptyState" style={styles.emptyState}
             >
               <strong
-                style={
-                  styles.emptyTitle
-                }
+className="g365-emptyTitle" style={styles.emptyTitle}
               >
                 No trades here yet
               </strong>
 
               <span
-                style={
-                  styles.emptyText
-                }
+className="g365-emptyText" style={styles.emptyText}
               >
                 {activeTab ===
                 "incoming"
@@ -1612,9 +1605,7 @@ export default function TraditionalTradesPage() {
             </div>
           ) : (
             <div
-              style={
-                styles.tradeList
-              }
+className="g365-tradeList" style={styles.tradeList}
             >
               {visibleTrades.map(
                 (
@@ -1753,22 +1744,16 @@ function SummaryCard({
 }) {
   return (
     <div
-      style={
-        styles.summaryCard
-      }
+className="g365-summaryCard" style={styles.summaryCard}
     >
       <span
-        style={
-          styles.summaryLabel
-        }
+className="g365-summaryLabel" style={styles.summaryLabel}
       >
         {label}
       </span>
 
       <strong
-        style={
-          styles.summaryValue
-        }
+className="g365-summaryValue" style={styles.summaryValue}
       >
         {value}
       </strong>
@@ -1853,29 +1838,21 @@ function TradeCard({
 }) {
   return (
     <article
-      style={
-        styles.tradeCard
-      }
+className="g365-tradeCard" style={styles.tradeCard}
     >
       <div
-        style={
-          styles.tradeHeader
-        }
+className="g365-tradeHeader" style={styles.tradeHeader}
       >
         <div>
           <div
-            style={
-              styles.tradeTeams
-            }
+className="g365-tradeTeams" style={styles.tradeTeams}
           >
             <strong>
               {trade.proposing_team_name}
             </strong>
 
             <span
-              style={
-                styles.swapArrow
-              }
+className="g365-swapArrow" style={styles.swapArrow}
             >
               ⇄
             </span>
@@ -1886,9 +1863,7 @@ function TradeCard({
           </div>
 
           <span
-            style={
-              styles.tradeMeta
-            }
+className="g365-tradeMeta" style={styles.tradeMeta}
           >
             Week {trade.week}
             {" • "}
@@ -1909,9 +1884,7 @@ function TradeCard({
 
       {detail ? (
         <div
-          style={
-            styles.packageGrid
-          }
+className="g365-packageGrid" style={styles.packageGrid}
         >
           <TradePackage
             title={`${detail.proposingTeam.name} gives`}
@@ -1923,9 +1896,7 @@ function TradeCard({
           />
 
           <div
-            style={
-              styles.packageSwap
-            }
+className="g365-packageSwap" style={styles.packageSwap}
           >
             ⇄
           </div>
@@ -1941,9 +1912,7 @@ function TradeCard({
         </div>
       ) : (
         <div
-          style={
-            styles.tradeCounts
-          }
+className="g365-tradeCounts" style={styles.tradeCounts}
         >
           {trade.proposing_player_count}
           {" "}
@@ -1960,9 +1929,7 @@ function TradeCard({
 
       {trade.message ? (
         <div
-          style={
-            styles.messageBox
-          }
+className="g365-messageBox" style={styles.messageBox}
         >
           “{trade.message}”
         </div>
@@ -1972,9 +1939,7 @@ function TradeCard({
       {trade.status ===
         "pending" ? (
         <div
-          style={
-            styles.tradeActions
-          }
+className="g365-tradeActions" style={styles.tradeActions}
         >
           {trade.direction ===
           "received" ? (
@@ -1987,9 +1952,7 @@ function TradeCard({
                 onClick={
                   onAccept
                 }
-                style={
-                  styles.acceptButton
-                }
+className="g365-acceptButton" style={styles.acceptButton}
               >
                 {loading
                   ? "WORKING..."
@@ -2004,9 +1967,7 @@ function TradeCard({
                 onClick={
                   onReject
                 }
-                style={
-                  styles.secondaryButton
-                }
+className="g365-secondaryButton" style={styles.secondaryButton}
               >
                 REJECT
               </button>
@@ -2020,9 +1981,7 @@ function TradeCard({
               onClick={
                 onCancel
               }
-              style={
-                styles.secondaryButton
-              }
+className="g365-secondaryButton" style={styles.secondaryButton}
             >
               {loading
                 ? "WORKING..."
@@ -2047,22 +2006,16 @@ function TradePackage({
 }) {
   return (
     <div
-      style={
-        styles.packageCard
-      }
+className="g365-packageCard" style={styles.packageCard}
     >
       <span
-        style={
-          styles.packageTitle
-        }
+className="g365-packageTitle" style={styles.packageTitle}
       >
         {title}
       </span>
 
       <div
-        style={
-          styles.packagePlayers
-        }
+className="g365-packagePlayers" style={styles.packagePlayers}
       >
         {players.length >
         0 ? (
@@ -2074,9 +2027,7 @@ function TradePackage({
                 key={
                   player.playerId
                 }
-                style={
-                  styles.packagePlayer
-                }
+className="g365-packagePlayer" style={styles.packagePlayer}
               >
                 <PlayerAvatar
                   player={
@@ -2085,22 +2036,16 @@ function TradePackage({
                 />
 
                 <div
-                  style={
-                    styles.playerText
-                  }
+className="g365-playerText" style={styles.playerText}
                 >
                   <strong
-                    style={
-                      styles.playerName
-                    }
+className="g365-playerName" style={styles.playerName}
                   >
                     {player.fullName}
                   </strong>
 
                   <span
-                    style={
-                      styles.playerMeta
-                    }
+className="g365-playerMeta" style={styles.playerMeta}
                   >
                     {player.position}
                     {player.team
@@ -2113,9 +2058,7 @@ function TradePackage({
           )
         ) : (
           <span
-            style={
-              styles.noPlayers
-            }
+className="g365-noPlayers" style={styles.noPlayers}
           >
             No players
           </span>
@@ -2227,33 +2170,23 @@ function TradeComposer({
 }) {
   return (
     <div
-      style={
-        styles.modalBackdrop
-      }
+className="g365-modalBackdrop" style={styles.modalBackdrop}
     >
       <div
-        style={
-          styles.modal
-        }
+className="g365-modal" style={styles.modal}
       >
         <div
-          style={
-            styles.modalHeader
-          }
+className="g365-modalHeader" style={styles.modalHeader}
         >
           <div>
             <span
-              style={
-                styles.eyebrow
-              }
+className="g365-eyebrow" style={styles.eyebrow}
             >
               NEW OFFER
             </span>
 
             <h2
-              style={
-                styles.modalTitle
-              }
+className="g365-modalTitle" style={styles.modalTitle}
             >
               Build Trade
             </h2>
@@ -2264,9 +2197,7 @@ function TradeComposer({
             onClick={
               onClose
             }
-            style={
-              styles.closeButton
-            }
+className="g365-closeButton" style={styles.closeButton}
           >
             ×
           </button>
@@ -2274,14 +2205,10 @@ function TradeComposer({
 
 
         <div
-          style={
-            styles.composerTop
-          }
+className="g365-composerTop" style={styles.composerTop}
         >
           <label
-            style={
-              styles.fieldLabel
-            }
+className="g365-fieldLabel" style={styles.fieldLabel}
           >
             TRADE WITH
           </label>
@@ -2311,9 +2238,7 @@ function TradeComposer({
                 }
               }
             }
-            style={
-              styles.select
-            }
+className="g365-select" style={styles.select}
           >
             <option
               value=""
@@ -2342,9 +2267,7 @@ function TradeComposer({
 
 
         <div
-          style={
-            styles.composerGrid
-          }
+className="g365-composerGrid" style={styles.composerGrid}
         >
           <RosterSelector
             title="YOU GIVE"
@@ -2380,14 +2303,10 @@ function TradeComposer({
 
 
         <div
-          style={
-            styles.messageField
-          }
+className="g365-messageField" style={styles.messageField}
         >
           <label
-            style={
-              styles.fieldLabel
-            }
+className="g365-fieldLabel" style={styles.fieldLabel}
           >
             MESSAGE
           </label>
@@ -2406,22 +2325,16 @@ function TradeComposer({
                 )
             }
             placeholder="Optional message..."
-            style={
-              styles.textarea
-            }
+className="g365-textarea" style={styles.textarea}
           />
         </div>
 
 
         <div
-          style={
-            styles.modalFooter
-          }
+className="g365-modalFooter" style={styles.modalFooter}
         >
           <div
-            style={
-              styles.tradeSummaryText
-            }
+className="g365-tradeSummaryText" style={styles.tradeSummaryText}
           >
             {mySelected.length}
             {" "}
@@ -2433,18 +2346,14 @@ function TradeComposer({
           </div>
 
           <div
-            style={
-              styles.modalActions
-            }
+className="g365-modalActions" style={styles.modalActions}
           >
             <button
               type="button"
               onClick={
                 onClose
               }
-              style={
-                styles.secondaryButton
-              }
+className="g365-secondaryButton" style={styles.secondaryButton}
             >
               CANCEL
             </button>
@@ -2457,9 +2366,7 @@ function TradeComposer({
               disabled={
                 submitting
               }
-              style={
-                styles.primaryButton
-              }
+className="g365-primaryButton" style={styles.primaryButton}
             >
               {submitting
                 ? "SENDING..."
@@ -2497,23 +2404,17 @@ function RosterSelector({
 }) {
   return (
     <section
-      style={
-        styles.rosterPanel
-      }
+className="g365-rosterPanel" style={styles.rosterPanel}
     >
       <div
-        style={
-          styles.rosterHeader
-        }
+className="g365-rosterHeader" style={styles.rosterHeader}
       >
         <strong>
           {title}
         </strong>
 
         <span
-          style={
-            styles.selectedCount
-          }
+className="g365-selectedCount" style={styles.selectedCount}
         >
           {selected.length}
           {" "}
@@ -2522,9 +2423,7 @@ function RosterSelector({
       </div>
 
       <div
-        style={
-          styles.rosterList
-        }
+className="g365-rosterList" style={styles.rosterList}
       >
         {players.length >
         0 ? (
@@ -2565,22 +2464,16 @@ function RosterSelector({
                   />
 
                   <div
-                    style={
-                      styles.playerText
-                    }
+className="g365-playerText" style={styles.playerText}
                   >
                     <strong
-                      style={
-                        styles.playerName
-                      }
+className="g365-playerName" style={styles.playerName}
                     >
                       {player.fullName}
                     </strong>
 
                     <span
-                      style={
-                        styles.playerMeta
-                      }
+className="g365-playerMeta" style={styles.playerMeta}
                     >
                       {player.position}
                       {player.team
@@ -2608,9 +2501,7 @@ function RosterSelector({
           )
         ) : (
           <div
-            style={
-              styles.rosterEmpty
-            }
+className="g365-rosterEmpty" style={styles.rosterEmpty}
           >
             {emptyText}
           </div>
@@ -2640,9 +2531,7 @@ function PlayerAvatar({
           player.headshotUrl
         }
         alt=""
-        style={
-          styles.avatar
-        }
+className="g365-avatar" style={styles.avatar}
       />
     );
   }
@@ -2650,9 +2539,7 @@ function PlayerAvatar({
 
   return (
     <div
-      style={
-        styles.avatarFallback
-      }
+className="g365-avatarFallback" style={styles.avatarFallback}
     >
       {player.fullName
         .slice(

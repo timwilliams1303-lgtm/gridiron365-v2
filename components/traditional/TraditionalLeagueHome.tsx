@@ -124,6 +124,31 @@ export default async function TraditionalLeagueHome({
         styles.page
       }
     >
+      <style>{`
+@media (max-width: 760px) {
+  .g365-home-page { padding: 18px 10px 44px !important; overflow-x: hidden !important; }
+  .g365-home-shell { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+  .g365-home-header { grid-template-columns: 1fr !important; gap: 14px !important; align-items: stretch !important; }
+  .g365-home-statuses { grid-template-columns: repeat(2,minmax(0,1fr)) !important; width: 100% !important; }
+  .g365-home-stats { grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 8px !important; }
+  .g365-home-dashboard { grid-template-columns: 1fr !important; gap: 10px !important; }
+  .g365-home-card-heading { gap: 10px !important; align-items: flex-start !important; }
+  .g365-home-matchup { grid-template-columns: minmax(0,1fr) auto minmax(0,1fr) !important; gap: 8px !important; padding: 14px 10px !important; }
+  .g365-home-matchup > * { min-width: 0 !important; }
+  .g365-home-summary-row { gap: 12px !important; }
+  .g365-home-quick-grid { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+}
+@media (max-width: 430px) {
+  .g365-home-statuses,
+  .g365-home-stats,
+  .g365-home-quick-grid { grid-template-columns: 1fr !important; }
+  .g365-home-matchup { grid-template-columns: 1fr !important; text-align: center !important; }
+  .g365-home-matchup > div { text-align: center !important; align-items: center !important; }
+  .g365-home-card-heading { flex-direction: column !important; align-items: stretch !important; }
+  .g365-home-card-heading a { align-self: flex-start !important; }
+  .g365-home-progress-heading { gap: 8px !important; }
+}
+`}</style>
       <section
         style={
           styles.shell

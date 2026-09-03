@@ -97,27 +97,6 @@ type DraftPlayerProfile = {
 
     dstYardsAllowed: number;
   };
-
-  projected: {
-    passingAttempts: number | null;
-    passingCompletions: number | null;
-    passingYards: number | null;
-    passingTouchdowns: number | null;
-    passingInterceptions: number | null;
-    rushingAttempts: number | null;
-    rushingYards: number | null;
-    rushingTouchdowns: number | null;
-    receivingTargets: number | null;
-    receptions: number | null;
-    receivingYards: number | null;
-    receivingTouchdowns: number | null;
-    fumbles: number | null;
-    fumblesLost: number | null;
-    fieldGoalsMade: number | null;
-    fieldGoalsAttempted: number | null;
-    extraPointsMade: number | null;
-    extraPointsAttempted: number | null;
-  };
 };
 
 
@@ -921,6 +900,21 @@ export default function TraditionalRankingsManager({
           styles.loadingCard
         }
       >
+      <style>{`
+        @media (max-width:760px){
+          .g365-rankings-toolbar{padding:12px!important}
+          .g365-rankings-toolbar-bottom{align-items:stretch!important;flex-direction:column!important}
+          .g365-rankings-toolbar-bottom>*{width:100%!important;min-width:0!important}
+          .g365-rankings-table-shell{width:100%!important;max-width:100%!important}
+          .g365-rankings-table-scroll{overflow-x:auto!important;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+          .g365-rankings-table{min-width:900px!important}
+          .g365-rankings-profile-stats{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+          .g365-rankings-move-controls{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+        }
+        @media (max-width:430px){
+          .g365-rankings-profile-stats,.g365-rankings-move-controls{grid-template-columns:minmax(0,1fr)!important}
+        }
+`}</style>
         <strong
           style={
             styles.loadingTitle
@@ -991,10 +985,10 @@ export default function TraditionalRankingsManager({
           FILTERS
       ============================ */}
 
-      <section
+      <section className="g365-rankings-toolbar"
         style={
-          styles.toolbar
-        }
+            styles.toolbar
+          }
       >
         <input
           type="search"
@@ -1052,7 +1046,7 @@ export default function TraditionalRankingsManager({
         </div>
 
 
-        <div
+        <div className="g365-rankings-toolbar-bottom"
           style={
             styles.toolbarBottom
           }
@@ -1164,20 +1158,20 @@ export default function TraditionalRankingsManager({
           RANKINGS
       ============================ */}
 
-      <section
+      <section className="g365-rankings-table-shell"
         style={
-          styles.tableShell
-        }
+            styles.tableShell
+          }
       >
-        <div
+        <div className="g365-rankings-table-scroll"
           style={
             styles.tableScroll
           }
         >
-          <div
+          <div className="g365-rankings-table"
             style={
-              styles.table
-            }
+            styles.table
+          }
           >
             <div
               style={
@@ -1317,21 +1311,6 @@ function PlayerProfileModal({
     profile
       ?.actual ??
     null;
-
-
-  const projected =
-    profile
-      ?.projected ??
-    null;
-
-
-  const [
-    injuryReportOpen,
-    setInjuryReportOpen,
-  ] =
-    useState(
-      false
-    );
 
 
   const position =
@@ -1499,131 +1478,6 @@ function PlayerProfileModal({
   }
 
 
-  const projectedStatRows:
-    Array<[
-      string,
-      string |
-      number
-    ]> =
-      [];
-
-
-  const formatProjection = (
-    value: number | null | undefined,
-    decimals = 1
-  ) => {
-    if (
-      value === null ||
-      value === undefined ||
-      !Number.isFinite(Number(value))
-    ) {
-      return "—";
-    }
-
-    return Number(value).toFixed(decimals);
-  };
-
-
-  if (
-    projected
-  ) {
-    if (
-      position === "QB"
-    ) {
-      projectedStatRows.push(
-        [
-          "Comp / Att",
-          `${formatProjection(projected.passingCompletions)} / ${formatProjection(projected.passingAttempts)}`,
-        ],
-        [
-          "Pass Yards",
-          formatProjection(projected.passingYards),
-        ],
-        [
-          "Pass TD",
-          formatProjection(projected.passingTouchdowns),
-        ],
-        [
-          "INT",
-          formatProjection(projected.passingInterceptions),
-        ],
-        [
-          "Rush Att",
-          formatProjection(projected.rushingAttempts),
-        ],
-        [
-          "Rush Yards",
-          formatProjection(projected.rushingYards),
-        ],
-        [
-          "Rush TD",
-          formatProjection(projected.rushingTouchdowns),
-        ]
-      );
-    } else if (
-      [
-        "RB",
-        "WR",
-        "TE",
-      ].includes(
-        position
-      )
-    ) {
-      projectedStatRows.push(
-        [
-          "Carries",
-          formatProjection(projected.rushingAttempts),
-        ],
-        [
-          "Rush Yards",
-          formatProjection(projected.rushingYards),
-        ],
-        [
-          "Rush TD",
-          formatProjection(projected.rushingTouchdowns),
-        ],
-        [
-          "Targets",
-          formatProjection(projected.receivingTargets),
-        ],
-        [
-          "Receptions",
-          formatProjection(projected.receptions),
-        ],
-        [
-          "Rec Yards",
-          formatProjection(projected.receivingYards),
-        ],
-        [
-          "Rec TD",
-          formatProjection(projected.receivingTouchdowns),
-        ]
-      );
-    } else if (
-      position === "K"
-    ) {
-      projectedStatRows.push(
-        [
-          "FG Made",
-          formatProjection(projected.fieldGoalsMade),
-        ],
-        [
-          "FG Att",
-          formatProjection(projected.fieldGoalsAttempted),
-        ],
-        [
-          "XP Made",
-          formatProjection(projected.extraPointsMade),
-        ],
-        [
-          "XP Att",
-          formatProjection(projected.extraPointsAttempted),
-        ]
-      );
-    }
-  }
-
-
   const injury =
     getInjuryDisplay(
       player.injuryStatus
@@ -1729,32 +1583,14 @@ function PlayerProfileModal({
                 </span>
 
                 {injury ? (
-                  <>
-                    <button
-                      type="button"
-                      title={`View ${injury.label} injury report`}
-                      style={{
-                        ...styles.injuryBadge,
-                        ...styles.injuryBadgeButton,
-                      }}
-                      onClick={
-                        () =>
-                          setInjuryReportOpen(
-                            true
-                          )
-                      }
-                    >
-                      {injury.code}
-                    </button>
-
-                    <span
-                      style={
-                        styles.profileInjuryLabel
-                      }
-                    >
-                      {injury.label}
-                    </span>
-                  </>
+                  <span
+                    title={`${injury.code} — ${injury.label}`}
+                    style={
+                      styles.injuryBadge
+                    }
+                  >
+                    {injury.code}
+                  </span>
                 ) : (
                   <span
                     style={
@@ -1762,24 +1598,10 @@ function PlayerProfileModal({
                     }
                     title="No injury designation"
                   >
-                    Healthy
+                    —
                   </span>
                 )}
               </div>
-
-              {injuryReportOpen ? (
-                <InjuryReportModal
-                  player={
-                    player
-                  }
-                  onClose={
-                    () =>
-                      setInjuryReportOpen(
-                        false
-                      )
-                  }
-                />
-              ) : null}
             </div>
           </div>
 
@@ -1827,10 +1649,10 @@ function PlayerProfileModal({
               </div>
 
 
-              <div
+              <div className="g365-rankings-profile-stats"
                 style={
-                  styles.profileStatsGrid
-                }
+            styles.profileStatsGrid
+          }
               >
                 {statRows.length >
                 0 ? (
@@ -1849,19 +1671,11 @@ function PlayerProfileModal({
                           styles.profileStatCard
                         }
                       >
-                        <span
-                          style={
-                            styles.profileStatLabel
-                          }
-                        >
+                        <span>
                           {label}
                         </span>
 
-                        <strong
-                          style={
-                            styles.profileStatValue
-                          }
-                        >
+                        <strong>
                           {value}
                         </strong>
                       </div>
@@ -1890,51 +1704,7 @@ function PlayerProfileModal({
                   styles.profileSectionHeader
                 }
               >
-                {profile?.projectionSeason ?? "CURRENT"} PROJECTED STATS
-              </div>
-
-
-              <div
-                style={
-                  styles.profileStatsGrid
-                }
-              >
-                {projectedStatRows.length > 0 ? (
-                  projectedStatRows.map(
-                    ([label, value]) => (
-                      <div
-                        key={`projected-${label}`}
-                        style={
-                          styles.profileStatCard
-                        }
-                      >
-                        <span
-                          style={
-                            styles.profileStatLabel
-                          }
-                        >
-                          {label}
-                        </span>
-
-                        <strong
-                          style={
-                            styles.profileStatValue
-                          }
-                        >
-                          {value}
-                        </strong>
-                      </div>
-                    )
-                  )
-                ) : (
-                  <div
-                    style={
-                      styles.profileNoStats
-                    }
-                  >
-                    No detailed season projection is currently available for this player.
-                  </div>
-                )}
+                {profile?.projectionSeason ?? "CURRENT"} PROJECTION
               </div>
 
 
@@ -1943,270 +1713,30 @@ function PlayerProfileModal({
                   styles.projectionHero
                 }
               >
-                <span
-                  style={
-                    styles.projectionHeroLabel
-                  }
-                >
+                <span>
                   PROJECTED FANTASY POINTS
                 </span>
 
-                <strong
-                  style={
-                    styles.projectionHeroValue
-                  }
-                >
-                  {(profile?.projectedPoints ??
-                    player.projectedPoints) !== null &&
-                  (profile?.projectedPoints ??
-                    player.projectedPoints) !== undefined
-                    ? Number(
-                        profile?.projectedPoints ??
-                        player.projectedPoints
-                      ).toFixed(1)
-                    : "—"}
+                <strong>
+                  {profile
+                    ?.projectedPoints ??
+                    player.projectedPoints ??
+                    "—"}
                 </strong>
+              </div>
+
+
+              <div
+                style={
+                  styles.profileProjectionNote
+                }
+              >
+                Detailed projected passing, rushing, receiving, kicking, and DST stat lines are not stored in the current database yet. The current projection source contains projected fantasy points only.
               </div>
             </section>
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-
-function InjuryReportModal({
-  player,
-  onClose,
-}: {
-  player:
-    TraditionalRankingPlayer;
-
-  onClose:
-    () => void;
-}) {
-  const injury =
-    getInjuryDisplay(
-      player.injuryStatus
-    );
-
-
-  if (
-    !injury
-  ) {
-    return null;
-  }
-
-
-  return (
-    <div
-      style={
-        styles.injuryReportOverlay
-      }
-      onMouseDown={
-        onClose
-      }
-    >
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-label={`${player.fullName} injury report`}
-        style={
-          styles.injuryReportModal
-        }
-        onMouseDown={
-          (
-            event
-          ) =>
-            event.stopPropagation()
-        }
-      >
-        <div
-          style={
-            styles.injuryReportHeader
-          }
-        >
-          <div>
-            <span
-              style={
-                styles.injuryReportEyebrow
-              }
-            >
-              INJURY REPORT
-            </span>
-
-            <strong
-              style={
-                styles.injuryReportName
-              }
-            >
-              {player.fullName}
-            </strong>
-
-            <span
-              style={
-                styles.injuryReportMeta
-              }
-            >
-              {player.position}
-              {" • "}
-              {player.teamAbbreviation ??
-                "FA"}
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={
-              onClose
-            }
-            style={
-              styles.injuryReportClose
-            }
-            aria-label="Close injury report"
-          >
-            ×
-          </button>
-        </div>
-
-
-        <div
-          style={
-            styles.injuryReportBody
-          }
-        >
-          <div
-            style={
-              styles.injuryReportStatusRow
-            }
-          >
-            <button
-              type="button"
-              title={
-                injury.label
-              }
-              style={{
-                ...styles.injuryBadge,
-                ...styles.injuryBadgeButton,
-              }}
-            >
-              {injury.code}
-            </button>
-
-            <div
-              style={
-                styles.injuryReportStatusText
-              }
-            >
-              <strong>
-                {injury.label}
-              </strong>
-
-              <span>
-                Current designation
-              </span>
-            </div>
-          </div>
-
-
-          <div
-            style={
-              styles.injuryReportGrid
-            }
-          >
-            <div
-              style={
-                styles.injuryReportCard
-              }
-            >
-              <span>
-                INJURY
-              </span>
-
-              <strong>
-                {player.injuryType ??
-                  "Not specified"}
-              </strong>
-            </div>
-
-            <div
-              style={
-                styles.injuryReportCard
-              }
-            >
-              <span>
-                LOCATION
-              </span>
-
-              <strong>
-                {player.injuryLocation ??
-                  "Not specified"}
-              </strong>
-            </div>
-
-            <div
-              style={
-                styles.injuryReportCard
-              }
-            >
-              <span>
-                INJURY DATE
-              </span>
-
-              <strong>
-                {player.injuryDate
-                  ? new Date(
-                      `${player.injuryDate}T00:00:00`
-                    ).toLocaleDateString()
-                  : "Not available"}
-              </strong>
-            </div>
-
-            <div
-              style={
-                styles.injuryReportCard
-              }
-            >
-              <span>
-                EXPECTED RETURN
-              </span>
-
-              <strong>
-                {player.injuryReturnDate
-                  ? new Date(
-                      `${player.injuryReturnDate}T00:00:00`
-                    ).toLocaleDateString()
-                  : "Not available"}
-              </strong>
-            </div>
-          </div>
-
-
-          <div
-            style={
-              styles.injuryReportDetailCard
-            }
-          >
-            <span
-              style={
-                styles.injuryReportDetailLabel
-              }
-            >
-              FULL REPORT
-            </span>
-
-            <p
-              style={
-                styles.injuryReportDetailText
-              }
-            >
-              {player.injuryDetail ??
-                "No additional injury report is currently available."}
-            </p>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }
@@ -2269,15 +1799,6 @@ function RankingRow({
     );
 
 
-  const [
-    injuryReportOpen,
-    setInjuryReportOpen,
-  ] =
-    useState(
-      false
-    );
-
-
   function submitRank() {
     const parsed =
       Number(
@@ -2329,21 +1850,6 @@ function RankingRow({
         styles.row
       }
     >
-      {injuryReportOpen ? (
-        <InjuryReportModal
-          player={
-            player
-          }
-          onClose={
-            () =>
-              setInjuryReportOpen(
-                false
-              )
-          }
-        />
-      ) : null}
-
-
       <strong
         style={
           styles.myRank
@@ -2449,29 +1955,16 @@ function RankingRow({
       </span>
 
 
-      <div
-        style={
-          styles.injuryCell
-        }
-      >
+      <span>
         {injury ? (
-          <button
-            type="button"
-            title={`View ${injury.label} injury report`}
-            style={{
-              ...styles.injuryBadge,
-              ...styles.injuryBadgeButton,
-            }}
-            onClick={
-              () =>
-                setInjuryReportOpen(
-                  true
-                )
+          <span
+            title={`${injury.code} — ${injury.label}`}
+            style={
+              styles.injuryBadge
             }
-            aria-label={`View ${player.fullName} injury report`}
           >
             {injury.code}
-          </button>
+          </span>
         ) : (
           <span
             style={
@@ -2481,7 +1974,7 @@ function RankingRow({
             —
           </span>
         )}
-      </div>
+      </span>
 
 
       <span
@@ -2498,10 +1991,10 @@ function RankingRow({
       </span>
 
 
-      <div
+      <div className="g365-rankings-move-controls"
         style={
-          styles.moveControls
-        }
+            styles.moveControls
+          }
       >
         <button
           type="button"
@@ -2672,7 +2165,7 @@ const styles = {
       "#ffffff",
 
     fontSize:
-      "20px",
+      "17px",
   },
 
 
@@ -2681,7 +2174,7 @@ const styles = {
       "#858c96",
 
     fontSize:
-      "14px",
+      "11px",
   },
 
 
@@ -2702,7 +2195,7 @@ const styles = {
       "#ff7272",
 
     fontSize:
-      "14px",
+      "11px",
   },
 
 
@@ -2753,7 +2246,7 @@ const styles = {
       "#ffffff",
 
     fontSize:
-      "14px",
+      "12px",
   },
 
 
@@ -2792,7 +2285,7 @@ const styles = {
       "#878e98",
 
     fontSize:
-      "12px",
+      "9px",
 
     fontWeight:
       900,
@@ -2846,7 +2339,7 @@ const styles = {
       "#6f7680",
 
     fontSize:
-      "11px",
+      "8px",
 
     fontWeight:
       900,
@@ -2879,7 +2372,7 @@ const styles = {
       "#d4d7db",
 
     fontSize:
-      "13px",
+      "10px",
   },
 
 
@@ -2903,7 +2396,7 @@ const styles = {
       "#ff8a2c",
 
     fontSize:
-      "12px",
+      "9px",
 
     fontWeight:
       900,
@@ -2927,7 +2420,7 @@ const styles = {
       "#747b85",
 
     fontSize:
-      "13px",
+      "10px",
   },
 
 
@@ -2963,7 +2456,7 @@ const styles = {
 
   table: {
     minWidth:
-      "1100px",
+      "1050px",
   },
 
 
@@ -2978,7 +2471,7 @@ const styles = {
       "grid",
 
     gridTemplateColumns:
-      "50px 50px minmax(240px,2fr) 55px 55px 50px 70px 80px 190px",
+      "50px 50px minmax(240px,2fr) 55px 55px 50px 50px 70px 190px",
 
     alignItems:
       "center",
@@ -2996,7 +2489,7 @@ const styles = {
       "#646b75",
 
     fontSize:
-      "11px",
+      "8px",
 
     fontWeight:
       900,
@@ -3017,7 +2510,7 @@ const styles = {
       "grid",
 
     gridTemplateColumns:
-      "50px 50px minmax(240px,2fr) 55px 55px 50px 70px 80px 190px",
+      "50px 50px minmax(240px,2fr) 55px 55px 50px 50px 70px 190px",
 
     alignItems:
       "center",
@@ -3032,7 +2525,7 @@ const styles = {
       "#a7adb5",
 
     fontSize:
-      "13px",
+      "10px",
   },
 
 
@@ -3041,7 +2534,7 @@ const styles = {
       "#ff7d20",
 
     fontSize:
-      "16px",
+      "14px",
   },
 
 
@@ -3122,7 +2615,7 @@ const styles = {
       "#717883",
 
     fontSize:
-      "11px",
+      "8px",
 
     fontWeight:
       900,
@@ -3155,7 +2648,7 @@ const styles = {
       "inherit",
 
     fontSize:
-      "14px",
+      "11px",
 
     fontWeight:
       900,
@@ -3329,7 +2822,7 @@ const styles = {
       "#777f88",
 
     fontSize:
-      "12px",
+      "9px",
 
     fontWeight:
       900,
@@ -3341,7 +2834,7 @@ const styles = {
       "#f5f6f7",
 
     fontSize:
-      "24px",
+      "18px",
 
     fontWeight:
       1000,
@@ -3356,7 +2849,7 @@ const styles = {
       "#9ba2aa",
 
     fontSize:
-      "14px",
+      "11px",
   },
 
 
@@ -3377,7 +2870,7 @@ const styles = {
       "#7d858e",
 
     fontSize:
-      "13px",
+      "10px",
   },
 
 
@@ -3386,7 +2879,7 @@ const styles = {
       "#565c65",
 
     fontSize:
-      "12px",
+      "9px",
   },
 
 
@@ -3425,7 +2918,7 @@ const styles = {
       "#8d949d",
 
     fontSize:
-      "15px",
+      "12px",
 
     textAlign:
       "center" as const,
@@ -3470,7 +2963,7 @@ const styles = {
       "#ff7b22",
 
     fontSize:
-      "14px",
+      "10px",
 
     fontWeight:
       1000,
@@ -3479,7 +2972,7 @@ const styles = {
 
   profileStatsGrid: {
     padding:
-      "12px",
+      "10px",
 
     display:
       "grid",
@@ -3494,10 +2987,10 @@ const styles = {
 
   profileStatCard: {
     minHeight:
-      "92px",
+      "68px",
 
     padding:
-      "14px",
+      "9px",
 
     display:
       "grid",
@@ -3505,11 +2998,8 @@ const styles = {
     alignContent:
       "center",
 
-    justifyItems:
-      "center",
-
     gap:
-      "7px",
+      "5px",
 
     border:
       "1px solid rgba(255,255,255,.05)",
@@ -3520,44 +3010,11 @@ const styles = {
     background:
       "#0d0f11",
 
-    textAlign:
-      "center" as const,
-  },
-
-
-  profileStatLabel: {
     color:
-      "#8f969f",
+      "#7d858e",
 
     fontSize:
-      "12px",
-
-    fontWeight:
-      850,
-
-    lineHeight:
-      1.2,
-
-    textTransform:
-      "uppercase" as const,
-
-    letterSpacing:
-      ".03em",
-  },
-
-
-  profileStatValue: {
-    color:
-      "#ffffff",
-
-    fontSize:
-      "24px",
-
-    fontWeight:
-      1000,
-
-    lineHeight:
-      1.05,
+      "9px",
   },
 
 
@@ -3572,7 +3029,7 @@ const styles = {
       "#767e87",
 
     fontSize:
-      "13px",
+      "10px",
 
     textAlign:
       "center" as const,
@@ -3584,13 +3041,13 @@ const styles = {
       "12px",
 
     padding:
-      "20px",
+      "18px",
 
     display:
       "grid",
 
     gap:
-      "8px",
+      "5px",
 
     border:
       "1px solid rgba(255,108,20,.13)",
@@ -3601,38 +3058,14 @@ const styles = {
     background:
       "linear-gradient(135deg,rgba(183,28,23,.12),rgba(255,102,12,.04))",
 
-    textAlign:
-      "center" as const,
-  },
-
-
-  projectionHeroLabel: {
     color:
       "#9ca3ab",
 
     fontSize:
-      "12px",
+      "10px",
 
-    fontWeight:
-      900,
-
-    letterSpacing:
-      ".04em",
-  },
-
-
-  projectionHeroValue: {
-    color:
-      "#ffffff",
-
-    fontSize:
-      "32px",
-
-    fontWeight:
-      1000,
-
-    lineHeight:
-      1,
+    textAlign:
+      "center" as const,
   },
 
 
@@ -3644,7 +3077,7 @@ const styles = {
       "#737b84",
 
     fontSize:
-      "12px",
+      "9px",
 
     lineHeight:
       1.5,
@@ -3659,7 +3092,7 @@ const styles = {
       "#ffffff",
 
     fontSize:
-      "14px",
+      "11px",
 
     textOverflow:
       "ellipsis",
@@ -3684,441 +3117,6 @@ const styles = {
   muted: {
     color:
       "#565c65",
-  },
-
-
-  injuryBadgeButton: {
-    border:
-      0,
-
-    font:
-      "inherit",
-
-    lineHeight:
-      1,
-
-    cursor:
-      "pointer",
-  },
-
-
-  injuryReportOverlay: {
-    position:
-      "fixed" as const,
-
-    inset:
-      0,
-
-    zIndex:
-      1300,
-
-    padding:
-      "24px",
-
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "center",
-
-    background:
-      "rgba(0,0,0,.82)",
-
-    backdropFilter:
-      "blur(5px)",
-  },
-
-
-  injuryReportModal: {
-    width:
-      "min(680px,96vw)",
-
-    maxHeight:
-      "86vh",
-
-    overflowY:
-      "auto" as const,
-
-    border:
-      "1px solid rgba(255,125,25,.22)",
-
-    borderRadius:
-      "12px",
-
-    background:
-      "linear-gradient(180deg,#17191c,#0d0f11)",
-
-    boxShadow:
-      "0 26px 90px rgba(0,0,0,.62)",
-  },
-
-
-  injuryReportHeader: {
-    padding:
-      "18px",
-
-    display:
-      "flex",
-
-    alignItems:
-      "flex-start",
-
-    justifyContent:
-      "space-between",
-
-    gap:
-      "16px",
-
-    borderBottom:
-      "1px solid rgba(255,255,255,.07)",
-  },
-
-
-  injuryReportEyebrow: {
-    display:
-      "block",
-
-    marginBottom:
-      "5px",
-
-    color:
-      "#ff8526",
-
-    fontSize:
-      "12px",
-
-    fontWeight:
-      1000,
-
-    letterSpacing:
-      ".08em",
-  },
-
-
-  injuryReportName: {
-    display:
-      "block",
-
-    color:
-      "#ffffff",
-
-    fontSize:
-      "24px",
-
-    fontWeight:
-      1000,
-  },
-
-
-  injuryReportMeta: {
-    display:
-      "block",
-
-    marginTop:
-      "5px",
-
-    color:
-      "#9ca3ad",
-
-    fontSize:
-      "14px",
-  },
-
-
-  injuryReportClose: {
-    width:
-      "38px",
-
-    height:
-      "38px",
-
-    flex:
-      "0 0 auto",
-
-    border:
-      "1px solid rgba(255,255,255,.08)",
-
-    borderRadius:
-      "7px",
-
-    background:
-      "#1a1c1f",
-
-    color:
-      "#d0d4da",
-
-    fontSize:
-      "22px",
-
-    cursor:
-      "pointer",
-  },
-
-
-  injuryReportBody: {
-    padding:
-      "18px",
-
-    display:
-      "grid",
-
-    gap:
-      "14px",
-  },
-
-
-  injuryReportStatusRow: {
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    gap:
-      "12px",
-  },
-
-
-  injuryReportStatusText: {
-    display:
-      "grid",
-
-    gap:
-      "2px",
-
-    color:
-      "#9aa1aa",
-
-    fontSize:
-      "13px",
-  },
-
-
-  injuryReportGrid: {
-    display:
-      "grid",
-
-    gridTemplateColumns:
-      "repeat(2,minmax(0,1fr))",
-
-    gap:
-      "9px",
-  },
-
-
-  injuryReportCard: {
-    minHeight:
-      "84px",
-
-    padding:
-      "12px",
-
-    display:
-      "grid",
-
-    alignContent:
-      "center",
-
-    gap:
-      "6px",
-
-    border:
-      "1px solid rgba(255,255,255,.055)",
-
-    borderRadius:
-      "7px",
-
-    background:
-      "#0d0f11",
-
-    color:
-      "#7e8690",
-
-    fontSize:
-      "11px",
-  },
-
-
-  injuryReportDetailCard: {
-    padding:
-      "15px",
-
-    border:
-      "1px solid rgba(255,125,25,.12)",
-
-    borderRadius:
-      "8px",
-
-    background:
-      "rgba(255,105,20,.04)",
-  },
-
-
-  injuryReportDetailLabel: {
-    display:
-      "block",
-
-    marginBottom:
-      "7px",
-
-    color:
-      "#ff8e2d",
-
-    fontSize:
-      "12px",
-
-    fontWeight:
-      1000,
-
-    letterSpacing:
-      ".06em",
-  },
-
-
-  injuryReportDetailText: {
-    margin:
-      0,
-
-    color:
-      "#e5e7eb",
-
-    fontSize:
-      "15px",
-
-    lineHeight:
-      1.55,
-  },
-
-
-  injuryCell: {
-    minWidth:
-      0,
-
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    gap:
-      "8px",
-
-    overflow:
-      "hidden",
-  },
-
-
-  injuryNews: {
-    minWidth:
-      0,
-
-    overflow:
-      "hidden",
-
-    color:
-      "#b5bbc3",
-
-    fontSize:
-      "12px",
-
-    lineHeight:
-      1.35,
-
-    textOverflow:
-      "ellipsis",
-
-    whiteSpace:
-      "nowrap" as const,
-  },
-
-
-  profileInjuryLabel: {
-    color:
-      "#d3d7dc",
-
-    fontSize:
-      "13px",
-
-    fontWeight:
-      800,
-  },
-
-
-  profileInjuryNews: {
-    marginTop:
-      "10px",
-
-    maxWidth:
-      "560px",
-
-    padding:
-      "11px 12px",
-
-    display:
-      "grid",
-
-    gap:
-      "5px",
-
-    border:
-      "1px solid rgba(255,145,35,.12)",
-
-    borderRadius:
-      "7px",
-
-    background:
-      "rgba(255,120,20,.045)",
-
-    color:
-      "#aeb4bd",
-
-    fontSize:
-      "13px",
-
-    lineHeight:
-      1.45,
-  },
-
-
-  profileInjuryNewsTitle: {
-    color:
-      "#ff932f",
-
-    fontSize:
-      "12px",
-
-    fontWeight:
-      1000,
-
-    letterSpacing:
-      ".04em",
-
-    textTransform:
-      "uppercase" as const,
-  },
-
-
-  profileInjuryDetail: {
-    color:
-      "#e1e4e8",
-
-    fontSize:
-      "14px",
-
-    lineHeight:
-      1.45,
-  },
-
-
-  profileInjuryReturn: {
-    color:
-      "#9097a1",
-
-    fontSize:
-      "12px",
   },
 
 
@@ -4148,7 +3146,7 @@ const styles = {
       "#ff992b",
 
     fontSize:
-      "11px",
+      "8px",
 
     fontWeight:
       900,
@@ -4190,7 +3188,7 @@ const styles = {
       "#d6d9dd",
 
     fontSize:
-      "16px",
+      "14px",
 
     fontWeight:
       900,
@@ -4226,7 +3224,7 @@ const styles = {
       "#ffffff",
 
     fontSize:
-      "13px",
+      "10px",
 
     textAlign:
       "center" as const,
@@ -4250,7 +3248,7 @@ const styles = {
       "#ffffff",
 
     fontSize:
-      "11px",
+      "8px",
 
     fontWeight:
       900,
@@ -4277,7 +3275,7 @@ const styles = {
       "#777e87",
 
     fontSize:
-      "14px",
+      "11px",
 
     textAlign:
       "center" as const,

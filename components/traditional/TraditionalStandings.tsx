@@ -863,12 +863,26 @@ export default async function TraditionalStandings({
         styles.page
       }
     >
+      <style>{`
+        @media (max-width:760px){
+          .g365-standings-header{align-items:flex-start!important;flex-direction:column!important}
+          .g365-standings-header-cards{width:100%!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch}
+          .g365-standings-header-cards>*{flex:0 0 auto!important}
+          .g365-standings-content{grid-template-columns:minmax(0,1fr)!important}
+          .g365-standings-sidebar{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+          .g365-standings-table-card{overflow-x:auto!important;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+          .g365-standings-table-header,.g365-standings-table-row{min-width:790px!important}
+        }
+        @media (max-width:430px){
+          .g365-standings-sidebar{grid-template-columns:minmax(0,1fr)!important}
+        }
+`}</style>
       <div
         style={
           styles.shell
         }
       >
-        <header
+        <header className="g365-standings-header"
           style={
             styles.pageHeader
           }
@@ -903,10 +917,10 @@ export default async function TraditionalStandings({
           </div>
 
 
-          <div
+          <div className="g365-standings-header-cards"
             style={
-              styles.headerCards
-            }
+            styles.headerCards
+          }
           >
             <div
               style={
@@ -975,20 +989,20 @@ export default async function TraditionalStandings({
         </header>
 
 
-        <section
+        <section className="g365-standings-content"
           style={
             styles.contentGrid
           }
         >
-          <div
+          <div className="g365-standings-table-card"
             style={
-              styles.tableCard
-            }
+            styles.tableCard
+          }
           >
-            <div
+            <div className="g365-standings-table-header"
               style={
-                styles.tableHeader
-              }
+            styles.tableHeader
+          }
             >
               <span>
                 RK

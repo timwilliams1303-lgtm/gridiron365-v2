@@ -427,11 +427,11 @@ function Section(props: {
   children: React.ReactNode;
 }) {
   return (
-    <section style={styles.section}>
-      <div style={styles.sectionHead}>
-        <h2 style={styles.sectionTitle}>{props.title}</h2>
+    <section className="g365-section" style={styles.section}>
+      <div className="g365-sectionHead" style={styles.sectionHead}>
+        <h2 className="g365-sectionTitle" style={styles.sectionTitle}>{props.title}</h2>
         {props.subtitle ? (
-          <p style={styles.sectionSub}>{props.subtitle}</p>
+          <p className="g365-sectionSub" style={styles.sectionSub}>{props.subtitle}</p>
         ) : null}
       </div>
       {props.children}
@@ -447,14 +447,14 @@ function Input(props: {
   disabled?: boolean;
 }) {
   return (
-    <label style={styles.field}>
-      <span style={styles.fieldLabel}>{props.label}</span>
+    <label className="g365-field" style={styles.field}>
+      <span className="g365-fieldLabel" style={styles.fieldLabel}>{props.label}</span>
       <input
         type={props.type ?? "number"}
         value={props.value}
         disabled={props.disabled}
         onChange={(e) => props.onChange(e.target.value)}
-        style={styles.input}
+className="g365-input" style={styles.input}
       />
     </label>
   );
@@ -948,13 +948,95 @@ export default function TraditionalCommissionerPage() {
   }
 
   if (loading) {
-    return <main style={styles.page}><div style={styles.center}>Loading Commissioner…</div></main>;
+    return <main className="g365-page g365-commissioner-page" style={styles.page}>
+      <style jsx global>{`
+@media (max-width: 760px) {
+  .g365-commissioner-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
+  .g365-commissioner-page .g365-shell { width: 100% !important; min-width: 0 !important; }
+  .g365-commissioner-page .g365-hero { padding: 16px 14px !important; gap: 12px !important; align-items: flex-start !important; flex-direction: column !important; }
+  .g365-commissioner-page .g365-title { font-size: 28px !important; }
+  .g365-commissioner-page .g365-tabs,
+  .g365-commissioner-page .g365-scoringCategoryTabs {
+    flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin; padding-bottom: 8px !important;
+  }
+  .g365-commissioner-page .g365-tab,
+  .g365-commissioner-page .g365-scoringCategoryTab { flex: 0 0 auto !important; min-height: 42px !important; }
+  .g365-commissioner-page .g365-section { padding: 14px 12px !important; min-width: 0 !important; }
+  .g365-commissioner-page .g365-grid,
+  .g365-commissioner-page .g365-stats,
+  .g365-commissioner-page .g365-guides,
+  .g365-commissioner-page .g365-leagueStructureGrid,
+  .g365-commissioner-page .g365-rosterGrid,
+  .g365-commissioner-page .g365-scoringBaseGrid,
+  .g365-commissioner-page .g365-scoringAdvanced,
+  .g365-commissioner-page .g365-draftTopGrid,
+  .g365-commissioner-page .g365-draftOrderGrid,
+  .g365-commissioner-page .g365-inviteGrid {
+    grid-template-columns: minmax(0,1fr) !important;
+  }
+  .g365-commissioner-page .g365-bonusRuleRow,
+  .g365-commissioner-page .g365-teamRowExpanded,
+  .g365-commissioner-page .g365-teamRow,
+  .g365-commissioner-page .g365-rosterRow,
+  .g365-commissioner-page .g365-tx {
+    grid-template-columns: minmax(0,1fr) !important; gap: 10px !important;
+  }
+  .g365-commissioner-page .g365-startDraftPanel { flex-direction: column !important; align-items: stretch !important; }
+  .g365-commissioner-page .g365-teamActions,
+  .g365-commissioner-page .g365-actions,
+  .g365-commissioner-page .g365-bonusActions { justify-content: stretch !important; }
+  .g365-commissioner-page button { min-height: 42px !important; }
+  .g365-commissioner-page input, .g365-commissioner-page select, .g365-commissioner-page textarea { min-width: 0 !important; max-width: 100% !important; font-size: 16px !important; }
+}
+`}</style><div className="g365-center" style={styles.center}>Loading Commissioner…</div></main>;
   }
 
   if (!authorized) {
     return (
-      <main style={styles.page}>
-        <div style={styles.denied}>
+      <main className="g365-page g365-commissioner-page" style={styles.page}>
+      <style jsx global>{`
+@media (max-width: 760px) {
+  .g365-commissioner-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
+  .g365-commissioner-page .g365-shell { width: 100% !important; min-width: 0 !important; }
+  .g365-commissioner-page .g365-hero { padding: 16px 14px !important; gap: 12px !important; align-items: flex-start !important; flex-direction: column !important; }
+  .g365-commissioner-page .g365-title { font-size: 28px !important; }
+  .g365-commissioner-page .g365-tabs,
+  .g365-commissioner-page .g365-scoringCategoryTabs {
+    flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin; padding-bottom: 8px !important;
+  }
+  .g365-commissioner-page .g365-tab,
+  .g365-commissioner-page .g365-scoringCategoryTab { flex: 0 0 auto !important; min-height: 42px !important; }
+  .g365-commissioner-page .g365-section { padding: 14px 12px !important; min-width: 0 !important; }
+  .g365-commissioner-page .g365-grid,
+  .g365-commissioner-page .g365-stats,
+  .g365-commissioner-page .g365-guides,
+  .g365-commissioner-page .g365-leagueStructureGrid,
+  .g365-commissioner-page .g365-rosterGrid,
+  .g365-commissioner-page .g365-scoringBaseGrid,
+  .g365-commissioner-page .g365-scoringAdvanced,
+  .g365-commissioner-page .g365-draftTopGrid,
+  .g365-commissioner-page .g365-draftOrderGrid,
+  .g365-commissioner-page .g365-inviteGrid {
+    grid-template-columns: minmax(0,1fr) !important;
+  }
+  .g365-commissioner-page .g365-bonusRuleRow,
+  .g365-commissioner-page .g365-teamRowExpanded,
+  .g365-commissioner-page .g365-teamRow,
+  .g365-commissioner-page .g365-rosterRow,
+  .g365-commissioner-page .g365-tx {
+    grid-template-columns: minmax(0,1fr) !important; gap: 10px !important;
+  }
+  .g365-commissioner-page .g365-startDraftPanel { flex-direction: column !important; align-items: stretch !important; }
+  .g365-commissioner-page .g365-teamActions,
+  .g365-commissioner-page .g365-actions,
+  .g365-commissioner-page .g365-bonusActions { justify-content: stretch !important; }
+  .g365-commissioner-page button { min-height: 42px !important; }
+  .g365-commissioner-page input, .g365-commissioner-page select, .g365-commissioner-page textarea { min-width: 0 !important; max-width: 100% !important; font-size: 16px !important; }
+}
+`}</style>
+        <div className="g365-denied" style={styles.denied}>
           <h1>Commissioner Only</h1>
           <p>You do not have commissioner access to this Traditional league.</p>
           <Button onClick={() => router.push(`/league/${leagueId}`)}>BACK TO LEAGUE</Button>
@@ -977,24 +1059,65 @@ export default function TraditionalCommissionerPage() {
   ];
 
   return (
-    <main style={styles.page}>
-      <div style={styles.shell}>
-        <header style={styles.hero}>
+    <main className="g365-page g365-commissioner-page" style={styles.page}>
+      <style jsx global>{`
+@media (max-width: 760px) {
+  .g365-commissioner-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
+  .g365-commissioner-page .g365-shell { width: 100% !important; min-width: 0 !important; }
+  .g365-commissioner-page .g365-hero { padding: 16px 14px !important; gap: 12px !important; align-items: flex-start !important; flex-direction: column !important; }
+  .g365-commissioner-page .g365-title { font-size: 28px !important; }
+  .g365-commissioner-page .g365-tabs,
+  .g365-commissioner-page .g365-scoringCategoryTabs {
+    flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin; padding-bottom: 8px !important;
+  }
+  .g365-commissioner-page .g365-tab,
+  .g365-commissioner-page .g365-scoringCategoryTab { flex: 0 0 auto !important; min-height: 42px !important; }
+  .g365-commissioner-page .g365-section { padding: 14px 12px !important; min-width: 0 !important; }
+  .g365-commissioner-page .g365-grid,
+  .g365-commissioner-page .g365-stats,
+  .g365-commissioner-page .g365-guides,
+  .g365-commissioner-page .g365-leagueStructureGrid,
+  .g365-commissioner-page .g365-rosterGrid,
+  .g365-commissioner-page .g365-scoringBaseGrid,
+  .g365-commissioner-page .g365-scoringAdvanced,
+  .g365-commissioner-page .g365-draftTopGrid,
+  .g365-commissioner-page .g365-draftOrderGrid,
+  .g365-commissioner-page .g365-inviteGrid {
+    grid-template-columns: minmax(0,1fr) !important;
+  }
+  .g365-commissioner-page .g365-bonusRuleRow,
+  .g365-commissioner-page .g365-teamRowExpanded,
+  .g365-commissioner-page .g365-teamRow,
+  .g365-commissioner-page .g365-rosterRow,
+  .g365-commissioner-page .g365-tx {
+    grid-template-columns: minmax(0,1fr) !important; gap: 10px !important;
+  }
+  .g365-commissioner-page .g365-startDraftPanel { flex-direction: column !important; align-items: stretch !important; }
+  .g365-commissioner-page .g365-teamActions,
+  .g365-commissioner-page .g365-actions,
+  .g365-commissioner-page .g365-bonusActions { justify-content: stretch !important; }
+  .g365-commissioner-page button { min-height: 42px !important; }
+  .g365-commissioner-page input, .g365-commissioner-page select, .g365-commissioner-page textarea { min-width: 0 !important; max-width: 100% !important; font-size: 16px !important; }
+}
+`}</style>
+      <div className="g365-shell" style={styles.shell}>
+        <header className="g365-hero" style={styles.hero}>
           <div>
-            <div style={styles.eyebrow}>TRADITIONAL LEAGUE • COMMISSIONER</div>
-            <h1 style={styles.title}>Commissioner</h1>
-            <p style={styles.subtitle}>Manage {league?.name ?? "your league"} from one control center.</p>
+            <div className="g365-eyebrow" style={styles.eyebrow}>TRADITIONAL LEAGUE • COMMISSIONER</div>
+            <h1 className="g365-title" style={styles.title}>Commissioner</h1>
+            <p className="g365-subtitle" style={styles.subtitle}>Manage {league?.name ?? "your league"} from one control center.</p>
           </div>
-          <div style={styles.row}>
+          <div className="g365-row" style={styles.row}>
             <Button onClick={() => router.push(`/league/${leagueId}/settings`)}>VIEW SETTINGS</Button>
             <Button onClick={() => void load()} disabled={saving}>REFRESH</Button>
           </div>
         </header>
 
-        {error ? <div style={styles.error}>{error}</div> : null}
-        {success ? <div style={styles.success}>{success}</div> : null}
+        {error ? <div className="g365-error" style={styles.error}>{error}</div> : null}
+        {success ? <div className="g365-success" style={styles.success}>{success}</div> : null}
 
-        <div style={styles.tabs}>
+        <div className="g365-tabs" style={styles.tabs}>
           {tabs.map(([key, label]) => (
             <button
               key={key}
@@ -1010,7 +1133,7 @@ export default function TraditionalCommissionerPage() {
         {tab === "overview" ? (
           <>
             <Section title="League Control Center">
-              <div style={styles.stats}>
+              <div className="g365-stats" style={styles.stats}>
                 <Stat label="Season" value={league?.season ?? "—"} />
                 <Stat label="Active Week" value={season?.active_week ?? "—"} />
                 <Stat label="Phase" value={pretty(season?.phase)} />
@@ -1023,7 +1146,7 @@ export default function TraditionalCommissionerPage() {
               </div>
             </Section>
             <Section title="Commissioner Workflow">
-              <div style={styles.guides}>
+              <div className="g365-guides" style={styles.guides}>
                 <Guide title="Before Draft" text="Confirm league, roster, scoring, draft, waiver, trade and playoff settings. Assign owners or leave CPU teams ownerless." />
                 <Guide title="During Draft" text="Use the Live Draft for pause/resume, commissioner picks and Undo Last Pick." />
                 <Guide title="Regular Season" text="Use roster tools only when needed. Process waivers, enforce deadlines, rebuild standings and advance weeks after results are ready." />
@@ -1036,7 +1159,7 @@ export default function TraditionalCommissionerPage() {
         {tab === "league" && leagueSettings && rosterSettings ? (
           <>
             <Section title="League Structure" subtitle="Set the league size and regular-season length.">
-              <div style={styles.leagueStructureGrid}>
+              <div className="g365-leagueStructureGrid" style={styles.leagueStructureGrid}>
                 <Input
                   label="Maximum Teams"
                   value={leagueSettings.max_teams ?? 12}
@@ -1048,7 +1171,7 @@ export default function TraditionalCommissionerPage() {
                   onChange={(v) => setLeagueSettings({ ...leagueSettings, regular_season_weeks: n(v, 14) })}
                 />
               </div>
-              <div style={styles.actions}>
+              <div className="g365-actions" style={styles.actions}>
                 <Button
                   disabled={saving}
                   onClick={() =>
@@ -1072,9 +1195,9 @@ export default function TraditionalCommissionerPage() {
               title="Roster & Lineup Requirements"
               subtitle="Starting lineup requirements are separated from maximum roster limits."
             >
-              <div style={styles.rosterSubsection}>
-                <div style={styles.subsectionTitle}>STARTING LINEUP</div>
-                <div style={styles.rosterGrid}>
+              <div className="g365-rosterSubsection" style={styles.rosterSubsection}>
+                <div className="g365-subsectionTitle" style={styles.subsectionTitle}>STARTING LINEUP</div>
+                <div className="g365-rosterGrid" style={styles.rosterGrid}>
                   {rosterFields.slice(0, 10).map(([key, label]) => (
                     <Input
                       key={key}
@@ -1088,14 +1211,14 @@ export default function TraditionalCommissionerPage() {
                 </div>
               </div>
 
-              <div style={styles.rosterDivider} />
+              <div className="g365-rosterDivider" style={styles.rosterDivider} />
 
-              <div style={styles.rosterSubsection}>
-                <div style={styles.subsectionTitle}>MAXIMUM POSITION LIMITS</div>
-                <p style={styles.sectionSub}>
+              <div className="g365-rosterSubsection" style={styles.rosterSubsection}>
+                <div className="g365-subsectionTitle" style={styles.subsectionTitle}>MAXIMUM POSITION LIMITS</div>
+                <p className="g365-sectionSub" style={styles.sectionSub}>
                   These limits control the maximum number of players a team may carry at each position.
                 </p>
-                <div style={styles.rosterGrid}>
+                <div className="g365-rosterGrid" style={styles.rosterGrid}>
                   {rosterFields.slice(10).map(([key, label]) => (
                     <Input
                       key={key}
@@ -1109,7 +1232,7 @@ export default function TraditionalCommissionerPage() {
                 </div>
               </div>
 
-              <div style={styles.actions}>
+              <div className="g365-actions" style={styles.actions}>
                 <Button
                   disabled={saving}
                   onClick={() =>
@@ -1150,7 +1273,7 @@ export default function TraditionalCommissionerPage() {
             title="Scoring"
             subtitle="Base scoring and category-specific bonuses include yardage milestones, multiple-TD bonuses, long-play/long-TD bonuses, kicking distance bonuses, and DST thresholds. Tiered bonuses use highest-only non-stacking logic."
           >
-            <div style={styles.scoringCategoryTabs}>
+            <div className="g365-scoringCategoryTabs" style={styles.scoringCategoryTabs}>
               {(Object.keys(scoringGroups) as ScoringCategoryKey[]).map((key) => (
                 <button
                   key={key}
@@ -1166,11 +1289,11 @@ export default function TraditionalCommissionerPage() {
               ))}
             </div>
 
-            <div style={styles.scoringCategoryPanel}>
-              <div style={styles.subsectionTitle}>
+            <div className="g365-scoringCategoryPanel" style={styles.scoringCategoryPanel}>
+              <div className="g365-subsectionTitle" style={styles.subsectionTitle}>
                 {scoringGroups[scoringCategory].label.toUpperCase()} BASE SCORING
               </div>
-              <div style={styles.scoringBaseGrid}>
+              <div className="g365-scoringBaseGrid" style={styles.scoringBaseGrid}>
                 {scoringGroups[scoringCategory].baseFields.map(([key, label]) => (
                   <Input
                     key={key}
@@ -1187,26 +1310,26 @@ export default function TraditionalCommissionerPage() {
               </div>
             </div>
 
-            <div style={styles.scoringCategoryPanel}>
-              <div style={styles.bonusHeader}>
+            <div className="g365-scoringCategoryPanel" style={styles.scoringCategoryPanel}>
+              <div className="g365-bonusHeader" style={styles.bonusHeader}>
                 <div>
-                  <div style={styles.subsectionTitle}>
+                  <div className="g365-subsectionTitle" style={styles.subsectionTitle}>
                     {scoringGroups[scoringCategory].label.toUpperCase()} BONUS RULES
                   </div>
-                  <p style={styles.sectionSub}>
+                  <p className="g365-sectionSub" style={styles.sectionSub}>
                     Add yardage, multiple-touchdown, long-play/long-TD, kicking-distance, or defense threshold bonuses. Use Minimum for the threshold and Maximum when you want a range. If multiple enabled thresholds in the same stat family are reached, only the highest qualifying bonus is awarded.
                   </p>
                 </div>
                 <Button onClick={addBonusRule}>+ ADD BONUS RULE</Button>
               </div>
 
-              <div style={styles.bonusRuleList}>
+              <div className="g365-bonusRuleList" style={styles.bonusRuleList}>
                 {scoringRules
                   .filter((rule) => rule.category.toLowerCase() === scoringGroups[scoringCategory].label.toLowerCase())
                   .map((rule) => (
-                    <div key={rule.id} style={styles.bonusRuleRow}>
-                      <label style={styles.field}>
-                        <span style={styles.fieldLabel}>Rule Name</span>
+                    <div key={rule.id}className="g365-bonusRuleRow" style={styles.bonusRuleRow}>
+                      <label className="g365-field" style={styles.field}>
+                        <span className="g365-fieldLabel" style={styles.fieldLabel}>Rule Name</span>
                         <input
                           value={rule.label ?? ""}
                           onChange={(e) =>
@@ -1216,12 +1339,12 @@ export default function TraditionalCommissionerPage() {
                               )
                             )
                           }
-                          style={styles.input}
+className="g365-input" style={styles.input}
                         />
                       </label>
 
-                      <label style={styles.field}>
-                        <span style={styles.fieldLabel}>Statistic</span>
+                      <label className="g365-field" style={styles.field}>
+                        <span className="g365-fieldLabel" style={styles.fieldLabel}>Statistic</span>
                         <select
                           value={rule.stat_key}
                           onChange={(e) =>
@@ -1231,7 +1354,7 @@ export default function TraditionalCommissionerPage() {
                               )
                             )
                           }
-                          style={styles.input}
+className="g365-input" style={styles.input}
                         >
                           {scoringGroups[scoringCategory].bonusStats.map(([key, label]) => (
                             <option key={key} value={key}>{label}</option>
@@ -1275,7 +1398,7 @@ export default function TraditionalCommissionerPage() {
                         }
                       />
 
-                      <label style={styles.check}>
+                      <label className="g365-check" style={styles.check}>
                         <input
                           type="checkbox"
                           checked={rule.is_enabled}
@@ -1290,7 +1413,7 @@ export default function TraditionalCommissionerPage() {
                         ENABLED
                       </label>
 
-                      <div style={styles.bonusActions}>
+                      <div className="g365-bonusActions" style={styles.bonusActions}>
                         <Button disabled={saving} onClick={() => void saveBonusRule(rule)}>SAVE</Button>
                         <Button danger disabled={saving} onClick={() => void deleteBonusRule(rule.id)}>DELETE</Button>
                       </div>
@@ -1300,16 +1423,16 @@ export default function TraditionalCommissionerPage() {
                 {!scoringRules.some(
                   (rule) => rule.category.toLowerCase() === scoringGroups[scoringCategory].label.toLowerCase()
                 ) ? (
-                  <div style={styles.empty}>
+                  <div className="g365-empty" style={styles.empty}>
                     No {scoringGroups[scoringCategory].label.toLowerCase()} bonus rules yet.
                   </div>
                 ) : null}
               </div>
             </div>
 
-            <div style={styles.scoringAdvanced}>
-              <label style={styles.field}>
-                <span style={styles.fieldLabel}>Fractional Scoring</span>
+            <div className="g365-scoringAdvanced" style={styles.scoringAdvanced}>
+              <label className="g365-field" style={styles.field}>
+                <span className="g365-fieldLabel" style={styles.fieldLabel}>Fractional Scoring</span>
                 <select
                   value={scoring.fractional_scoring_enabled ? "true" : "false"}
                   onChange={(e) =>
@@ -1318,7 +1441,7 @@ export default function TraditionalCommissionerPage() {
                       fractional_scoring_enabled: e.target.value === "true",
                     })
                   }
-                  style={styles.input}
+className="g365-input" style={styles.input}
                 >
                   <option value="true">Enabled</option>
                   <option value="false">Disabled</option>
@@ -1331,7 +1454,7 @@ export default function TraditionalCommissionerPage() {
               />
             </div>
 
-            <div style={styles.actions}>
+            <div className="g365-actions" style={styles.actions}>
               <Button
                 disabled={saving}
                 onClick={() => {
@@ -1357,7 +1480,7 @@ export default function TraditionalCommissionerPage() {
             title="Draft Administration"
             subtitle="The draft can be started at any time, but only by the commissioner."
           >
-            <div style={styles.draftTopGrid}>
+            <div className="g365-draftTopGrid" style={styles.draftTopGrid}>
               <Input
                 label="Draft Rounds"
                 value={draft.total_rounds}
@@ -1374,9 +1497,9 @@ export default function TraditionalCommissionerPage() {
                 onChange={(v) => setDraft({ ...draft, cpu_pick_seconds: n(v, 5) })}
               />
 
-              <div style={styles.draftOrderModeCard}>
-                <span style={styles.fieldLabel}>Draft Order</span>
-                <label style={styles.radioLine}>
+              <div className="g365-draftOrderModeCard" style={styles.draftOrderModeCard}>
+                <span className="g365-fieldLabel" style={styles.fieldLabel}>Draft Order</span>
+                <label className="g365-radioLine" style={styles.radioLine}>
                   <input
                     type="radio"
                     checked={draftOrderMode === "manual"}
@@ -1384,7 +1507,7 @@ export default function TraditionalCommissionerPage() {
                   />
                   Manual Order
                 </label>
-                <label style={styles.radioLine}>
+                <label className="g365-radioLine" style={styles.radioLine}>
                   <input
                     type="radio"
                     checked={draftOrderMode === "random"}
@@ -1395,13 +1518,13 @@ export default function TraditionalCommissionerPage() {
               </div>
             </div>
 
-            <div style={styles.draftOrderPanel}>
-              <div style={styles.bonusHeader}>
+            <div className="g365-draftOrderPanel" style={styles.draftOrderPanel}>
+              <div className="g365-bonusHeader" style={styles.bonusHeader}>
                 <div>
-                  <div style={styles.subsectionTitle}>
+                  <div className="g365-subsectionTitle" style={styles.subsectionTitle}>
                     {draftOrderMode === "manual" ? "MANUAL DRAFT ORDER" : "RANDOMIZED DRAFT ORDER"}
                   </div>
-                  <p style={styles.sectionSub}>
+                  <p className="g365-sectionSub" style={styles.sectionSub}>
                     Set Round 1. The Live Draft will automatically snake the order in later rounds.
                   </p>
                 </div>
@@ -1410,15 +1533,15 @@ export default function TraditionalCommissionerPage() {
                 ) : null}
               </div>
 
-              <div style={styles.draftOrderGrid}>
+              <div className="g365-draftOrderGrid" style={styles.draftOrderGrid}>
                 {draftOrder.map((teamId, index) => (
-                  <label key={`${index}-${teamId}`} style={styles.draftSlotField}>
-                    <span style={styles.draftSlotNumber}>PICK {index + 1}</span>
+                  <label key={`${index}-${teamId}`}className="g365-draftSlotField" style={styles.draftSlotField}>
+                    <span className="g365-draftSlotNumber" style={styles.draftSlotNumber}>PICK {index + 1}</span>
                     <select
                       value={teamId}
                       disabled={draftOrderMode === "random"}
                       onChange={(e) => moveDraftTeam(index, n(e.target.value))}
-                      style={styles.input}
+className="g365-input" style={styles.input}
                     >
                       {teams.filter((team) => team.active).map((team) => (
                         <option key={team.id} value={team.id}>{team.team_name}</option>
@@ -1428,26 +1551,26 @@ export default function TraditionalCommissionerPage() {
                 ))}
               </div>
 
-              <div style={styles.actions}>
+              <div className="g365-actions" style={styles.actions}>
                 <Button disabled={saving || Boolean(draft.started_at)} onClick={() => void saveDraftOrder(draftOrder)}>
                   SAVE DRAFT ORDER
                 </Button>
               </div>
             </div>
 
-            <div style={styles.status}>
+            <div className="g365-status" style={styles.status}>
               Status: <strong>{pretty(draft.status)}</strong> • Overall Pick: <strong>{draft.current_overall_pick}</strong> • Paused: <strong>{draft.is_paused ? "Yes" : "No"}</strong>
             </div>
 
-            <div style={styles.commissionerNotice}>
+            <div className="g365-commissionerNotice" style={styles.commissionerNotice}>
               <strong>Commissioner Control</strong>
               <span>Only the commissioner can start the live draft. There is no scheduled start requirement.</span>
             </div>
 
-            <div style={styles.startDraftPanel}>
+            <div className="g365-startDraftPanel" style={styles.startDraftPanel}>
               <div>
-                <div style={styles.subsectionTitle}>START LIVE DRAFT</div>
-                <p style={styles.sectionSub}>
+                <div className="g365-subsectionTitle" style={styles.subsectionTitle}>START LIVE DRAFT</div>
+                <p className="g365-sectionSub" style={styles.sectionSub}>
                   When you are ready, start the draft immediately and enter the live draft room.
                 </p>
               </div>
@@ -1459,7 +1582,7 @@ export default function TraditionalCommissionerPage() {
               </Button>
             </div>
 
-            <div style={styles.actions}>
+            <div className="g365-actions" style={styles.actions}>
               <Button
                 disabled={saving || Boolean(draft.started_at)}
                 onClick={() =>
@@ -1492,7 +1615,7 @@ export default function TraditionalCommissionerPage() {
                 title="Invite Owner by Email"
                 subtitle="Send a secure Gridiron365 invitation to a new league owner. You can also choose Invite Owner by Email directly from any team owner dropdown."
               >
-              <div style={styles.inviteGrid}>
+              <div className="g365-inviteGrid" style={styles.inviteGrid}>
                 <Input
                   label="First Name"
                   type="text"
@@ -1511,7 +1634,7 @@ export default function TraditionalCommissionerPage() {
                   value={inviteEmail}
                   onChange={setInviteEmail}
                 />
-                <div style={styles.inviteButtonWrap}>
+                <div className="g365-inviteButtonWrap" style={styles.inviteButtonWrap}>
                   <Button disabled={inviting} onClick={() => void sendInvite()}>
                     {inviting ? "SENDING…" : "✉ SEND EMAIL INVITE"}
                   </Button>
@@ -1524,10 +1647,10 @@ export default function TraditionalCommissionerPage() {
               title="Teams & Owners"
               subtitle="Manage team ownership here. Remove an owner at any time without deleting the team or league history; ownerless teams remain available as CPU teams until a replacement owner accepts an invitation."
             >
-              <div style={styles.list}>
+              <div className="g365-list" style={styles.list}>
                 {teams.map((team, index) => (
-                  <div key={team.id} style={styles.teamRowExpanded}>
-                    <strong style={styles.teamIndex}>{index + 1}</strong>
+                  <div key={team.id}className="g365-teamRowExpanded" style={styles.teamRowExpanded}>
+                    <strong className="g365-teamIndex" style={styles.teamIndex}>{index + 1}</strong>
 
                     <input
                       value={team.team_name}
@@ -1538,7 +1661,7 @@ export default function TraditionalCommissionerPage() {
                           )
                         )
                       }
-                      style={styles.input}
+className="g365-input" style={styles.input}
                     />
 
                     <select
@@ -1566,7 +1689,7 @@ export default function TraditionalCommissionerPage() {
                           )
                         );
                       }}
-                      style={styles.input}
+className="g365-input" style={styles.input}
                     >
                       <option value="">OWNERLESS / CPU</option>
                       <option value="__invite_by_email__">✉ INVITE OWNER BY EMAIL…</option>
@@ -1577,7 +1700,7 @@ export default function TraditionalCommissionerPage() {
                       ))}
                     </select>
 
-                    <div style={styles.ownerStatus}>
+                    <div className="g365-ownerStatus" style={styles.ownerStatus}>
                       {team.owner_id ? (
                         <>
                           <strong>OWNER ASSIGNED</strong>
@@ -1591,7 +1714,7 @@ export default function TraditionalCommissionerPage() {
                       )}
                     </div>
 
-                    <label style={styles.check}>
+                    <label className="g365-check" style={styles.check}>
                       <input
                         type="checkbox"
                         checked={team.active}
@@ -1606,7 +1729,7 @@ export default function TraditionalCommissionerPage() {
                       ACTIVE
                     </label>
 
-                    <div style={styles.teamActions}>
+                    <div className="g365-teamActions" style={styles.teamActions}>
                       {!team.owner_id ? (
                         <Button
                           onClick={() => {
@@ -1666,13 +1789,13 @@ export default function TraditionalCommissionerPage() {
 
         {tab === "rosters" ? (
           <Section title="Commissioner Roster Editor">
-            <div style={styles.grid}>
-              <label style={styles.field}>
-                <span style={styles.fieldLabel}>Fantasy Team</span>
+            <div className="g365-grid" style={styles.grid}>
+              <label className="g365-field" style={styles.field}>
+                <span className="g365-fieldLabel" style={styles.fieldLabel}>Fantasy Team</span>
                 <select
                   value={rosterTeamId ?? ""}
                   onChange={(e) => setRosterTeamId(n(e.target.value))}
-                  style={styles.input}
+className="g365-input" style={styles.input}
                 >
                   {teams.map((t) => <option key={t.id} value={t.id}>{t.team_name}</option>)}
                 </select>
@@ -1681,7 +1804,7 @@ export default function TraditionalCommissionerPage() {
             </div>
 
             {choices.length ? (
-              <div style={styles.searchBox}>
+              <div className="g365-searchBox" style={styles.searchBox}>
                 {choices.map((p) => (
                   <button
                     key={p.id}
@@ -1699,7 +1822,7 @@ export default function TraditionalCommissionerPage() {
               </div>
             ) : null}
 
-            <div style={styles.actions}>
+            <div className="g365-actions" style={styles.actions}>
               <Button
                 disabled={saving || !rosterTeamId || !addPlayerId}
                 onClick={() => {
@@ -1722,14 +1845,14 @@ export default function TraditionalCommissionerPage() {
               </Button>
             </div>
 
-            <div style={styles.list}>
+            <div className="g365-list" style={styles.list}>
               {rosterRows.map((row) => {
                 const p = playerMap.get(row.player_id);
                 return (
-                  <div key={row.id} style={styles.rosterRow}>
+                  <div key={row.id}className="g365-rosterRow" style={styles.rosterRow}>
                     <div>
                       <strong>{p?.full_name ?? `Player ${row.player_id}`}</strong>
-                      <div style={styles.muted}>{p?.primary_position ?? "—"} • {p?.team_abbreviation ?? "FA"} • {pretty(row.acquired_via)}</div>
+                      <div className="g365-muted" style={styles.muted}>{p?.primary_position ?? "—"} • {p?.team_abbreviation ?? "FA"} • {pretty(row.acquired_via)}</div>
                     </div>
                     <select
                       defaultValue=""
@@ -1747,7 +1870,7 @@ export default function TraditionalCommissionerPage() {
                           "Player moved."
                         );
                       }}
-                      style={styles.input}
+className="g365-input" style={styles.input}
                     >
                       <option value="">MOVE TO…</option>
                       {teams.filter((t) => t.id !== rosterTeamId).map((t) => (
@@ -1775,7 +1898,7 @@ export default function TraditionalCommissionerPage() {
                   </div>
                 );
               })}
-              {!rosterRows.length ? <div style={styles.empty}>No rostered players.</div> : null}
+              {!rosterRows.length ? <div className="g365-empty" style={styles.empty}>No rostered players.</div> : null}
             </div>
           </Section>
         ) : null}
@@ -1783,10 +1906,10 @@ export default function TraditionalCommissionerPage() {
         {tab === "waivers" && waivers ? (
           <>
             <Section title="Waiver Settings">
-              <div style={styles.grid}>
-                <label style={styles.field}>
-                  <span style={styles.fieldLabel}>Waiver Type</span>
-                  <select value={waivers.waiver_type} onChange={(e) => setWaivers({ ...waivers, waiver_type: e.target.value })} style={styles.input}>
+              <div className="g365-grid" style={styles.grid}>
+                <label className="g365-field" style={styles.field}>
+                  <span className="g365-fieldLabel" style={styles.fieldLabel}>Waiver Type</span>
+                  <select value={waivers.waiver_type} onChange={(e) => setWaivers({ ...waivers, waiver_type: e.target.value })}className="g365-input" style={styles.input}>
                     <option value="rolling">Rolling</option>
                     <option value="faab">FAAB</option>
                   </select>
@@ -1796,7 +1919,7 @@ export default function TraditionalCommissionerPage() {
                 <Toggle label="Continuous Waivers" value={waivers.continuous_waivers} onChange={(v) => setWaivers({ ...waivers, continuous_waivers: v })} />
                 <Toggle label="Allow Free Agent Adds" value={waivers.allow_free_agent_adds} onChange={(v) => setWaivers({ ...waivers, allow_free_agent_adds: v })} />
               </div>
-              <div style={styles.actions}>
+              <div className="g365-actions" style={styles.actions}>
                 <Button
                   disabled={saving}
                   onClick={() =>
@@ -1849,14 +1972,14 @@ export default function TraditionalCommissionerPage() {
         {tab === "trades" && trades && league ? (
           <>
             <Section title="Trade Settings">
-              <div style={styles.grid}>
+              <div className="g365-grid" style={styles.grid}>
                 <Input
                   label="Trade Deadline Week"
                   value={trades.trade_deadline_week ?? ""}
                   onChange={(v) => setTrades({ ...trades, trade_deadline_week: v === "" ? null : n(v) })}
                 />
               </div>
-              <div style={styles.actions}>
+              <div className="g365-actions" style={styles.actions}>
                 <Button
                   disabled={saving}
                   onClick={() =>
@@ -1905,7 +2028,7 @@ export default function TraditionalCommissionerPage() {
 
         {tab === "season" && league ? (
           <Section title="Season Administration">
-            <div style={styles.stats}>
+            <div className="g365-stats" style={styles.stats}>
               <Stat label="Active Week" value={season?.active_week ?? "—"} />
               <Stat label="Phase" value={pretty(season?.phase)} />
               <Stat label="Last Completed" value={season?.last_completed_week ?? "—"} />
@@ -1913,7 +2036,7 @@ export default function TraditionalCommissionerPage() {
               <Stat label="Playoffs Started" value={season?.playoffs_started ? "Yes" : "No"} />
               <Stat label="Season Complete" value={season?.season_complete ? "Yes" : "No"} />
             </div>
-            <div style={styles.actions}>
+            <div className="g365-actions" style={styles.actions}>
               <Button
                 disabled={saving}
                 onClick={() =>
@@ -1952,19 +2075,19 @@ export default function TraditionalCommissionerPage() {
                 AUTO-ADVANCE WEEK
               </Button>
             </div>
-            <div style={styles.warning}>Season actions affect the league. Use them only after the week's results are ready.</div>
+            <div className="g365-warning" style={styles.warning}>Season actions affect the league. Use them only after the week's results are ready.</div>
           </Section>
         ) : null}
 
         {tab === "playoffs" && playoffs && league ? (
           <Section title="Playoff Administration">
-            <div style={styles.grid}>
+            <div className="g365-grid" style={styles.grid}>
               <Input label="Playoff Teams" value={playoffs.playoff_teams} onChange={(v) => setPlayoffs({ ...playoffs, playoff_teams: n(v, 6) })} />
               <Input label="Playoff Start Week" value={playoffs.playoff_start_week} disabled onChange={() => {}} />
               <Input label="Championship Week" value={playoffs.championship_week} disabled onChange={() => {}} />
               <Toggle label="Reseed Each Round" value={playoffs.reseed_each_round} onChange={(v) => setPlayoffs({ ...playoffs, reseed_each_round: v })} />
             </div>
-            <div style={styles.actions}>
+            <div className="g365-actions" style={styles.actions}>
               <Button
                 disabled={saving}
                 onClick={() =>
@@ -2022,8 +2145,8 @@ export default function TraditionalCommissionerPage() {
 
 function Toggle(props: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label style={styles.field}>
-      <span style={styles.fieldLabel}>{props.label}</span>
+    <label className="g365-field" style={styles.field}>
+      <span className="g365-fieldLabel" style={styles.fieldLabel}>{props.label}</span>
       <button
         type="button"
         onClick={() => props.onChange(!props.value)}
@@ -2037,7 +2160,7 @@ function Toggle(props: { label: string; value: boolean; onChange: (v: boolean) =
 
 function Stat(props: { label: string; value: string | number }) {
   return (
-    <div style={styles.stat}>
+    <div className="g365-stat" style={styles.stat}>
       <span>{props.label}</span>
       <strong>{props.value}</strong>
     </div>
@@ -2046,7 +2169,7 @@ function Stat(props: { label: string; value: string | number }) {
 
 function Guide(props: { title: string; text: string }) {
   return (
-    <div style={styles.guide}>
+    <div className="g365-guide" style={styles.guide}>
       <strong>{props.title}</strong>
       <p>{props.text}</p>
     </div>
@@ -2054,11 +2177,11 @@ function Guide(props: { title: string; text: string }) {
 }
 
 function Transactions(props: { rows: Array<{ id: number; a: string; b: string; c: string }> }) {
-  if (!props.rows.length) return <div style={styles.empty}>No records to show.</div>;
+  if (!props.rows.length) return <div className="g365-empty" style={styles.empty}>No records to show.</div>;
   return (
-    <div style={styles.list}>
+    <div className="g365-list" style={styles.list}>
       {props.rows.map((r) => (
-        <div key={r.id} style={styles.tx}>
+        <div key={r.id}className="g365-tx" style={styles.tx}>
           <strong>{r.a}</strong>
           <span>{r.b}</span>
           <em>{r.c}</em>

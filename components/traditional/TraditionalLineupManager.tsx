@@ -327,31 +327,157 @@ export default function TraditionalLineupManager({
             LineupPlayer
           >();
 
+        const usedPlayerIds =
+          new Set<number>();
 
-        for (
-          const player
-          of players
-        ) {
+        const normalizeSlot =
+          (value: string) => {
+            const normalized =
+              value.toUpperCase();
+
+            if (
+              ["BN", "BE", "RESERVE"].includes(
+                normalized
+              )
+            ) {
+              return "BENCH";
+            }
+
+            return normalized;
+          };
+
+        // First honor every player that already has an explicit
+        // lineup slot and slot index. This remains the source of
+        // truth for starters, BENCH, and IR.
+        for (const player of players) {
           if (
             player.lineupSlot &&
-            player.slotIndex !==
-              null
+            player.slotIndex !== null
           ) {
+            const normalizedSlot =
+              normalizeSlot(
+                player.lineupSlot
+              );
+
             map.set(
               slotKey(
-                player.lineupSlot,
+                normalizedSlot,
                 player.slotIndex
               ),
               player
             );
+
+            usedPlayerIds.add(
+              player.playerId
+            );
           }
         }
 
+        // Older roster rows can have BENCH/IR recorded without a
+        // slot index. Put those players into the configured reserve
+        // slots instead of rendering blank BENCH/IR rows.
+        for (const reserveSlot of ["IR", "BENCH"]) {
+          const availableDefinitions =
+            slots.filter(
+              (definition) =>
+                definition.slot === reserveSlot &&
+                !map.has(
+                  slotKey(
+                    definition.slot,
+                    definition.index
+                  )
+                )
+            );
+
+          const matchingPlayers =
+            players.filter((player) => {
+              if (
+                usedPlayerIds.has(
+                  player.playerId
+                ) ||
+                !player.lineupSlot
+              ) {
+                return false;
+              }
+
+              return (
+                normalizeSlot(
+                  player.lineupSlot
+                ) === reserveSlot
+              );
+            });
+
+          matchingPlayers.forEach(
+            (player, index) => {
+              const definition =
+                availableDefinitions[index];
+
+              if (!definition) {
+                return;
+              }
+
+              map.set(
+                slotKey(
+                  definition.slot,
+                  definition.index
+                ),
+                player
+              );
+
+              usedPlayerIds.add(
+                player.playerId
+              );
+            }
+          );
+        }
+
+        // Any remaining roster player with no lineup slot is a
+        // legacy/unassigned reserve. Display that player in the next
+        // open BENCH slot so there is only one reserve area on My Team.
+        const openBenchSlots =
+          slots.filter(
+            (definition) =>
+              definition.slot === "BENCH" &&
+              !map.has(
+                slotKey(
+                  definition.slot,
+                  definition.index
+                )
+              )
+          );
+
+        const unassignedPlayers =
+          players.filter(
+            (player) =>
+              !usedPlayerIds.has(
+                player.playerId
+              )
+          );
+
+        unassignedPlayers.forEach(
+          (player, index) => {
+            const definition =
+              openBenchSlots[index];
+
+            if (!definition) {
+              return;
+            }
+
+            map.set(
+              slotKey(
+                definition.slot,
+                definition.index
+              ),
+              player
+            );
+          }
+        );
 
         return map;
       },
       [
         players,
+        slots,
       ]
     );
 
@@ -652,28 +778,39 @@ export default function TraditionalLineupManager({
 
   return (
     <div
-      style={
-        styles.wrapper
-      }
+className="g365-wrapper g365-lineup-root" style={styles.wrapper}
     >
+      <style jsx global>{`
+@media (max-width: 760px) {
+  .g365-lineup-root { gap: 14px !important; min-width: 0 !important; }
+  .g365-lineup-root .g365-instructions { padding: 12px !important; align-items: flex-start !important; }
+  .g365-lineup-root .g365-lineupGrid,
+  .g365-lineup-root .g365-grid,
+  .g365-lineup-root .g365-slotGrid { grid-template-columns: minmax(0,1fr) !important; }
+  .g365-lineup-root .g365-slotRow,
+  .g365-lineup-root .g365-playerRow { min-width: 0 !important; }
+  .g365-lineup-root .g365-playerIdentity { min-width: 0 !important; }
+  .g365-lineup-root .g365-actions { flex-wrap: wrap !important; }
+  .g365-lineup-root button { min-height: 42px !important; }
+}
+@media (max-width: 430px) {
+  .g365-lineup-root .g365-headshotWrap,
+  .g365-lineup-root .g365-headshot,
+  .g365-lineup-root .g365-headshotFallback { width: 40px !important; height: 40px !important; }
+}
+`}</style>
       <div
-        style={
-          styles.instructions
-        }
+className="g365-instructions" style={styles.instructions}
       >
         <div>
           <strong
-            style={
-              styles.instructionsTitle
-            }
+className="g365-instructionsTitle" style={styles.instructionsTitle}
           >
             Edit Week {week} Lineup
           </strong>
 
           <span
-            style={
-              styles.instructionsText
-            }
+className="g365-instructionsText" style={styles.instructionsText}
           >
             Select a player, then select
             the lineup slot where you
@@ -684,9 +821,7 @@ export default function TraditionalLineupManager({
 
         {selectedPlayer ? (
           <div
-            style={
-              styles.selectedChip
-            }
+className="g365-selectedChip" style={styles.selectedChip}
           >
             <span>
               Selected
@@ -703,9 +838,7 @@ export default function TraditionalLineupManager({
                   null
                 )
               }
-              style={
-                styles.clearButton
-              }
+className="g365-clearButton" style={styles.clearButton}
             >
               Clear
             </button>
@@ -716,9 +849,7 @@ export default function TraditionalLineupManager({
 
       {message ? (
         <div
-          style={
-            styles.successMessage
-          }
+className="g365-successMessage" style={styles.successMessage}
         >
           {message}
         </div>
@@ -727,9 +858,7 @@ export default function TraditionalLineupManager({
 
       {error ? (
         <div
-          style={
-            styles.errorMessage
-          }
+className="g365-errorMessage" style={styles.errorMessage}
         >
           {error}
         </div>
@@ -738,9 +867,7 @@ export default function TraditionalLineupManager({
 
       <section>
         <div
-          style={
-            styles.sectionHeading
-          }
+className="g365-sectionHeading" style={styles.sectionHeading}
         >
           <strong>
             Starting Lineup
@@ -753,9 +880,7 @@ export default function TraditionalLineupManager({
 
 
         <div
-          style={
-            styles.slotList
-          }
+className="g365-slotList" style={styles.slotList}
         >
           {startingSlots.map(
             (
@@ -815,9 +940,7 @@ export default function TraditionalLineupManager({
 
       <section>
         <div
-          style={
-            styles.sectionHeading
-          }
+className="g365-sectionHeading" style={styles.sectionHeading}
         >
           <strong>
             Bench & IR
@@ -830,9 +953,7 @@ export default function TraditionalLineupManager({
 
 
         <div
-          style={
-            styles.slotList
-          }
+className="g365-slotList" style={styles.slotList}
         >
           {reserveSlots.map(
             (
@@ -973,22 +1094,16 @@ function LineupSlot({
       }}
     >
       <div
-        style={
-          styles.slotLabelColumn
-        }
+className="g365-slotLabelColumn" style={styles.slotLabelColumn}
       >
         <strong
-          style={
-            styles.slotBadge
-          }
+className="g365-slotBadge" style={styles.slotBadge}
         >
           {definition.slot}
         </strong>
 
         <span
-          style={
-            styles.slotNumber
-          }
+className="g365-slotNumber" style={styles.slotNumber}
         >
           #{definition.index}
         </span>
@@ -1030,9 +1145,7 @@ function LineupSlot({
                 : player.playerId
             );
           }}
-          style={
-            styles.playerButton
-          }
+className="g365-playerButton" style={styles.playerButton}
         >
           <PlayerIdentity
             player={
@@ -1073,16 +1186,12 @@ function LineupSlot({
 
 
       <div
-        style={
-          styles.rowStatus
-        }
+className="g365-rowStatus" style={styles.rowStatus}
       >
         {player
           ?.isLocked ? (
           <span
-            style={
-              styles.lockedBadge
-            }
+className="g365-lockedBadge" style={styles.lockedBadge}
           >
             LOCKED
           </span>
@@ -1090,9 +1199,7 @@ function LineupSlot({
           <>
             {selected ? (
               <span
-                style={
-                  styles.selectedBadge
-                }
+className="g365-selectedBadge" style={styles.selectedBadge}
               >
                 SELECTED
               </span>
@@ -1108,9 +1215,7 @@ function LineupSlot({
                     definition.index
                   )
                 }
-                style={
-                  styles.moveHereButton
-                }
+className="g365-moveHereButton" style={styles.moveHereButton}
               >
                 MOVE HERE
               </button>
@@ -1130,9 +1235,7 @@ function LineupSlot({
                     player
                   )
                 }
-                style={
-                  styles.dropButton
-                }
+className="g365-dropButton" style={styles.dropButton}
               >
                 {droppingPlayerId ===
                 player.playerId
@@ -1156,14 +1259,10 @@ function PlayerIdentity({
 }) {
   return (
     <div
-      style={
-        styles.playerIdentity
-      }
+className="g365-playerIdentity" style={styles.playerIdentity}
     >
       <div
-        style={
-          styles.headshotWrap
-        }
+className="g365-headshotWrap" style={styles.headshotWrap}
       >
         {player.headshotUrl ? (
           <Image
@@ -1175,15 +1274,11 @@ function PlayerIdentity({
             }
             width={48}
             height={48}
-            style={
-              styles.headshot
-            }
+className="g365-headshot" style={styles.headshot}
           />
         ) : (
           <div
-            style={
-              styles.headshotFallback
-            }
+className="g365-headshotFallback" style={styles.headshotFallback}
           >
             {player.position}
           </div>
@@ -1192,22 +1287,16 @@ function PlayerIdentity({
 
 
       <div
-        style={
-          styles.playerText
-        }
+className="g365-playerText" style={styles.playerText}
       >
         <strong
-          style={
-            styles.playerName
-          }
+className="g365-playerName" style={styles.playerName}
         >
           {player.fullName}
         </strong>
 
         <span
-          style={
-            styles.playerMeta
-          }
+className="g365-playerMeta" style={styles.playerMeta}
         >
           {player.position}
 
@@ -1223,9 +1312,7 @@ function PlayerIdentity({
               player.injuryDetail ??
               player.injuryStatus
             }
-            style={
-              styles.injuryText
-            }
+className="g365-injuryText" style={styles.injuryText}
           >
             {player.injuryStatus}
           </span>

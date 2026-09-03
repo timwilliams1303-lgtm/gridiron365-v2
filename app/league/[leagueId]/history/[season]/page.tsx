@@ -57,13 +57,28 @@ export default function HistoricalSeasonPage() {
     [data, selectedTeamId]
   );
 
-  if (loading) return <main style={styles.page}><div style={styles.center}>Opening {season} archive…</div></main>;
-  if (error) return <main style={styles.page}><div style={styles.shell}><div style={styles.error}>{error}</div></div></main>;
+  if (loading) return <main className="g365-hseason-page" style={styles.page}>
+      <style>{`
+@media (max-width: 760px) {
+  .g365-hseason-page { overflow-x: hidden !important; }
+  .g365-hseason-shell { width: calc(100% - 20px) !important; padding: 14px 0 50px !important; }
+  .g365-hseason-hero { padding: 36px 14px !important; }
+  .g365-hseason-grid { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+  .g365-hseason-stats { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+  .g365-hseason-badges,
+  .g365-hseason-players { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 430px) {
+  .g365-hseason-grid,
+  .g365-hseason-stats { grid-template-columns: 1fr !important; }
+}
+`}</style><div style={styles.center}>Opening {season} archive…</div></main>;
+  if (error) return <main className="g365-hseason-page" style={styles.page}><div className="g365-hseason-shell" style={styles.shell}><div style={styles.error}>{error}</div></div></main>;
 
   if (!data?.found) {
     return (
-      <main style={styles.page}>
-        <div style={styles.shell}>
+      <main className="g365-hseason-page" style={styles.page}>
+        <div className="g365-hseason-shell" style={styles.shell}>
           <Link href={`/league/${leagueId}/history`} style={styles.back}>← LEAGUE HISTORY</Link>
           <div style={styles.empty}>No archived recap exists for {season}.</div>
         </div>
@@ -76,11 +91,11 @@ export default function HistoricalSeasonPage() {
   const players = data.players ?? [];
 
   return (
-    <main style={styles.page}>
-      <div style={styles.shell}>
+    <main className="g365-hseason-page" style={styles.page}>
+      <div className="g365-hseason-shell" style={styles.shell}>
         <Link href={`/league/${leagueId}/history`} style={styles.back}>← LEAGUE HISTORY</Link>
 
-        <section style={styles.hero}>
+        <section className="g365-hseason-hero" style={styles.hero}>
           <div style={styles.eyebrow}>GRIDIRON365 • {season} SEASON ARCHIVE</div>
           <div style={styles.trophy}>🏆</div>
           <h1 style={styles.title}>{league.champion_team_name}</h1>
@@ -93,7 +108,7 @@ export default function HistoricalSeasonPage() {
 
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>FINAL STANDINGS</h2>
-          <div style={styles.grid}>
+          <div className="g365-hseason-grid" style={styles.grid}>
             {teams.map((team: AnyRow) => (
               <button
                 type="button"
@@ -119,7 +134,7 @@ export default function HistoricalSeasonPage() {
             <h2 style={styles.teamTitle}>{selectedTeam.team_name}</h2>
             <p style={styles.copy}>{selectedTeam.recap_headline}</p>
 
-            <div style={styles.statGrid}>
+            <div className="g365-hseason-stats" style={styles.statGrid}>
               <Stat label="Final Finish" value={`#${selectedTeam.final_finish ?? "—"}`} />
               <Stat label="Record" value={`${selectedTeam.wins}-${selectedTeam.losses}${selectedTeam.ties ? `-${selectedTeam.ties}` : ""}`} />
               <Stat label="Points" value={Number(selectedTeam.points_for ?? 0).toFixed(1)} />
@@ -130,7 +145,7 @@ export default function HistoricalSeasonPage() {
 
             <p style={styles.story}>{selectedTeam.recap_summary}</p>
 
-            <div style={styles.badges}>
+            <div className="g365-hseason-badges" style={styles.badges}>
               {selectedBadges.map((badge: AnyRow) => (
                 <div key={badge.badge_key} style={styles.badge}>
                   <span style={styles.badgeIcon}>{badge.icon ?? "◆"}</span>
@@ -146,7 +161,7 @@ export default function HistoricalSeasonPage() {
 
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>SEASON AWARDS</h2>
-          <div style={styles.grid}>
+          <div className="g365-hseason-grid" style={styles.grid}>
             {(data.awards ?? []).map((award: AnyRow) => (
               <div key={award.award_key} style={styles.card}>
                 <div style={styles.eyebrow}>{award.award_name}</div>
@@ -161,7 +176,7 @@ export default function HistoricalSeasonPage() {
           <h2 style={styles.sectionTitle}>SEASON TIMELINE</h2>
           <div style={styles.timeline}>
             {(data.highlights ?? []).map((h: AnyRow, index: number) => (
-              <div key={`${h.highlight_key}-${index}`} style={styles.timelineRow}>
+              <div key={`${h.highlight_key}-${index}`} className="g365-hseason-timeline-row" style={styles.timelineRow}>
                 <span style={styles.dot} />
                 <div>
                   <div style={styles.eyebrow}>{h.week ? `WEEK ${h.week}` : (h.season_phase ?? "SEASON")}</div>
@@ -175,7 +190,7 @@ export default function HistoricalSeasonPage() {
 
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>PLAYER YEARBOOK</h2>
-          <div style={styles.playerGrid}>
+          <div className="g365-hseason-players" style={styles.playerGrid}>
             {players.slice(0, 40).map((p: AnyRow) => (
               <div key={p.nfl_player_id} style={styles.card}>
                 <div style={styles.eyebrow}>#{p.league_player_rank ?? "—"} • {p.position ?? "—"}</div>

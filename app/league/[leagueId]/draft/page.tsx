@@ -5392,6 +5392,186 @@ export default function TraditionalDraftPage() {
         .g365-available-player-scroll::-webkit-scrollbar-thumb:hover {
           background: #ff7a24;
         }
+
+        /*
+         * PHONE / SMALL TABLET DRAFT LAYOUT
+         * Desktop keeps the approved three-column workspace.
+         */
+        @media (max-width: 760px) {
+          .g365-draft-top-header {
+            min-height: 0 !important;
+            grid-template-columns: minmax(0,1fr) auto !important;
+            gap: 8px !important;
+            padding: 8px !important;
+          }
+
+          .g365-draft-top-header > :nth-child(2) {
+            display: none !important;
+          }
+
+          .g365-draft-train {
+            grid-auto-columns: minmax(104px,122px) !important;
+            gap: 5px !important;
+            padding: 6px !important;
+            scroll-snap-type: x proximity;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .g365-draft-main-grid {
+            width: 100% !important;
+            min-width: 0 !important;
+            grid-template-columns: minmax(0,1fr) !important;
+            gap: 8px !important;
+          }
+
+          .g365-draft-history-sidebar {
+            display: none !important;
+          }
+
+          .g365-draft-workspace {
+            width: 100% !important;
+            min-width: 0 !important;
+            grid-column: 1 !important;
+            grid-row: 1 !important;
+          }
+
+          .g365-draft-control-grid {
+            grid-template-columns: repeat(2,minmax(0,1fr)) !important;
+            gap: 6px !important;
+            padding: 6px !important;
+          }
+
+          .g365-draft-tabs {
+            padding: 5px 6px !important;
+            gap: 2px !important;
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .g365-draft-tabs::-webkit-scrollbar {
+            display: none;
+          }
+
+          .g365-draft-tabs button {
+            min-height: 34px;
+            padding: 7px 9px !important;
+            white-space: nowrap;
+          }
+
+          .g365-draft-workspace-body {
+            min-height: 560px !important;
+            max-height: none !important;
+            height: auto !important;
+          }
+
+          .g365-draft-player-filters {
+            grid-template-columns: minmax(0,1fr) minmax(92px,112px) !important;
+            gap: 6px !important;
+            padding: 7px !important;
+          }
+
+          .g365-draft-player-filters > select:nth-of-type(2) {
+            grid-column: 1 / 2;
+          }
+
+          .g365-draft-player-filters > div:last-child {
+            grid-column: 2 / 3;
+            text-align: right !important;
+            white-space: normal !important;
+            line-height: 1.2;
+          }
+
+          .g365-draft-player-actionbar {
+            grid-template-columns: minmax(0,1fr) auto !important;
+            gap: 7px !important;
+            padding: 7px !important;
+          }
+
+          .g365-draft-player-actionbar button {
+            min-height: 38px !important;
+            max-width: 148px;
+            white-space: normal !important;
+            line-height: 1.05;
+          }
+
+          .g365-draft-player-table-header,
+          .g365-draft-player-row {
+            grid-template-columns: 34px minmax(0,1fr) 40px 40px 48px 34px !important;
+            gap: 5px !important;
+          }
+
+          .g365-draft-player-table-header {
+            padding: 6px 7px !important;
+            font-size: 9px !important;
+          }
+
+          .g365-draft-player-row {
+            min-height: 54px !important;
+            padding: 6px 7px !important;
+          }
+
+          .g365-draft-player-table-header > :nth-child(5),
+          .g365-draft-player-table-header > :nth-child(6),
+          .g365-draft-player-row > :nth-child(5),
+          .g365-draft-player-row > :nth-child(6) {
+            display: none !important;
+          }
+
+          .g365-available-player-scroll {
+            height: min(54vh,520px) !important;
+            min-height: 330px !important;
+            max-height: none !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .g365-draft-right-column {
+            width: 100% !important;
+            min-width: 0 !important;
+            grid-column: 1 !important;
+            grid-row: 2 !important;
+          }
+
+          .g365-draft-roster-groups {
+            grid-template-columns: repeat(2,minmax(0,1fr)) !important;
+            gap: 6px !important;
+            padding: 7px !important;
+          }
+        }
+
+        @media (max-width: 430px) {
+          .g365-draft-control-grid {
+            grid-template-columns: minmax(0,1fr) !important;
+          }
+
+          .g365-draft-player-table-header,
+          .g365-draft-player-row {
+            grid-template-columns: 30px minmax(0,1fr) 38px 38px 44px 32px !important;
+            gap: 4px !important;
+          }
+
+          .g365-draft-player-row {
+            padding-left: 5px !important;
+            padding-right: 5px !important;
+          }
+
+          .g365-draft-player-actionbar {
+            grid-template-columns: minmax(0,1fr) 118px !important;
+          }
+
+          .g365-draft-player-actionbar button {
+            width: 118px !important;
+            max-width: 118px !important;
+            padding-left: 7px !important;
+            padding-right: 7px !important;
+            font-size: 10px !important;
+          }
+
+          .g365-draft-roster-groups {
+            grid-template-columns: minmax(0,1fr) !important;
+          }
+        }
       `}</style>
       <div
         style={
@@ -5399,6 +5579,7 @@ export default function TraditionalDraftPage() {
         }
       >
         <header
+          className="g365-draft-top-header"
           style={
             styles.topHeader
           }
@@ -5626,6 +5807,7 @@ export default function TraditionalDraftPage() {
 
 
         <section
+          className="g365-draft-train"
           style={
             styles.draftTrain
           }
@@ -5759,11 +5941,13 @@ export default function TraditionalDraftPage() {
 
 
         <section
+          className="g365-draft-main-grid"
           style={
             styles.mainGrid
           }
         >
           <aside
+            className="g365-draft-history-sidebar"
             style={
               styles.historySidebar
             }
@@ -5803,6 +5987,7 @@ export default function TraditionalDraftPage() {
 
 
           <section
+            className="g365-draft-workspace"
             style={
               styles.workspace
             }
@@ -5855,6 +6040,7 @@ export default function TraditionalDraftPage() {
             {!collapsedWorkspace ? (
               <>
                 <div
+                  className="g365-draft-control-grid"
                   style={
                     styles.workspaceControlGrid
                   }
@@ -6152,6 +6338,7 @@ export default function TraditionalDraftPage() {
 
 
                 <div
+                  className="g365-draft-tabs"
                   style={
                     styles.tabs
                   }
@@ -6230,6 +6417,7 @@ export default function TraditionalDraftPage() {
 
 
                 <div
+                  className="g365-draft-workspace-body"
                   style={{
                     ...styles.workspaceBody,
 
@@ -6445,6 +6633,7 @@ export default function TraditionalDraftPage() {
 
 
           <aside
+            className="g365-draft-right-column"
             style={
               styles.rightColumn
             }
@@ -7980,6 +8169,7 @@ function PlayersPanel({
       }
     >
       <div
+        className="g365-draft-player-filters"
         style={
           styles.filters
         }
@@ -8103,6 +8293,7 @@ function PlayersPanel({
 
 
       <div
+        className="g365-draft-player-actionbar"
         style={
           styles.availableDraftActionBar
         }
@@ -8149,6 +8340,7 @@ function PlayersPanel({
 
 
       <div
+        className="g365-draft-player-table-header"
         style={
           styles.playerTableHeader
         }
@@ -8228,6 +8420,7 @@ function PlayersPanel({
                         player.id
                       )
                   }
+                  className="g365-draft-player-row"
                   style={{
                     ...styles.playerRow,
 
@@ -10129,6 +10322,7 @@ function RosterGroups({
 }) {
   return (
     <div
+      className="g365-draft-roster-groups"
       style={
         styles.rosterGroups
       }
@@ -14611,6 +14805,7 @@ const styles = {
   },
 
 } as const;
+
 
 
 

@@ -356,11 +356,14 @@ export default function TraditionalTeamNameEditor({
   if (!editing) {
     return (
       <div
+        className="g365-team-name-wrap"
         style={
           styles.wrap
         }
       >
+        <style>{mobileCss}</style>
         <div
+          className="g365-team-name-title-row"
           style={
             styles.titleRow
           }
@@ -410,7 +413,9 @@ export default function TraditionalTeamNameEditor({
         styles.wrap
       }
     >
+      <style>{mobileCss}</style>
       <div
+        className="g365-team-name-edit-row"
         style={
           styles.editRow
         }
@@ -456,6 +461,7 @@ export default function TraditionalTeamNameEditor({
           }}
           autoFocus
           aria-label="Team name"
+          className="g365-team-name-input"
           style={
             styles.input
           }
@@ -531,6 +537,55 @@ export default function TraditionalTeamNameEditor({
   );
 }
 
+
+
+const mobileCss = `
+@media (max-width: 620px) {
+  .g365-team-name-wrap {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .g365-team-name-title-row {
+    align-items: flex-start !important;
+  }
+
+  .g365-team-name-title-row h1 {
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
+    font-size: 30px !important;
+  }
+
+  .g365-team-name-edit-row {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    width: 100% !important;
+  }
+
+  .g365-team-name-input {
+    grid-column: 1 / -1 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    font-size: 16px !important;
+  }
+
+  .g365-team-name-edit-row button {
+    width: 100% !important;
+    min-height: 44px !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .g365-team-name-edit-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .g365-team-name-input {
+    grid-column: auto !important;
+  }
+}
+`;
 
 const styles:
   Record<

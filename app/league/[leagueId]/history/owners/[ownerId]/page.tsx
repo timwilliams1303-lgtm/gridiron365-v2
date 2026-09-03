@@ -51,7 +51,8 @@ export default function OwnerLegacyProfilePage() {
   if (!profile) {
     return (
       <main style={styles.page}>
-        <div style={styles.shell}>
+        <style>{mobileCss}</style>
+        <div className="g365-owner-shell" style={styles.shell}>
           <Link href={`/league/${leagueId}/history`} style={styles.back}>← LEAGUE HISTORY</Link>
           <div style={styles.empty}>This owner does not have an archived league history yet.</div>
         </div>
@@ -60,17 +61,18 @@ export default function OwnerLegacyProfilePage() {
   }
 
   return (
-    <main style={styles.page}>
-      <div style={styles.shell}>
+    <main className="g365-owner-page" style={styles.page}>
+      <style>{mobileCss}</style>
+      <div className="g365-owner-shell" style={styles.shell}>
         <Link href={`/league/${leagueId}/history`} style={styles.back}>← LEAGUE HISTORY</Link>
 
-        <section style={styles.hero}>
+        <section className="g365-owner-hero" style={styles.hero}>
           <div style={styles.eyebrow}>G365 LEGACY PROFILE • {profile.legacy_tier}</div>
           <h1 style={styles.title}>{profile.display_name ?? "League Owner"}</h1>
           <div style={styles.score}>{Number(profile.legacy_score ?? 0).toFixed(0)}</div>
           <div style={styles.scoreLabel}>G365 LEGACY SCORE</div>
 
-          <div style={styles.statGrid}>
+          <div className="g365-owner-stats" style={styles.statGrid}>
             <Stat label="Seasons" value={profile.seasons_played} />
             <Stat label="Championships" value={profile.championships} />
             <Stat label="Finals" value={profile.championship_appearances} />
@@ -85,7 +87,7 @@ export default function OwnerLegacyProfilePage() {
 
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>TROPHY CASE</h2>
-          <div style={styles.badges}>
+          <div className="g365-owner-badges" style={styles.badges}>
             {(data.badges ?? []).length ? (data.badges ?? []).map((badge: any, i: number) => (
               <div key={`${badge.badge_key}-${badge.season ?? "all"}-${i}`} style={styles.badge}>
                 <span style={styles.icon}>{badge.icon ?? "◆"}</span>
@@ -106,6 +108,7 @@ export default function OwnerLegacyProfilePage() {
               <Link
                 key={`${season.season}-${season.fantasy_team_id}`}
                 href={`/league/${leagueId}/history/${season.season}`}
+                className="g365-owner-season-card"
                 style={styles.seasonCard}
               >
                 <div>
@@ -113,7 +116,7 @@ export default function OwnerLegacyProfilePage() {
                   <strong style={styles.seasonName}>{season.team_name}</strong>
                   <div style={styles.muted}>{season.recap_headline}</div>
                 </div>
-                <div style={styles.finish}>
+                <div className="g365-owner-finish" style={styles.finish}>
                   {season.won_championship ? "🏆 CHAMPION" : `#${season.final_finish ?? "—"}`}
                   <small>{season.wins}-{season.losses}{season.ties ? `-${season.ties}` : ""}</small>
                 </div>
@@ -129,6 +132,22 @@ export default function OwnerLegacyProfilePage() {
 function Stat({ label, value }: { label: string; value: string | number }) {
   return <div style={styles.stat}><span style={styles.statLabel}>{label}</span><strong>{value}</strong></div>;
 }
+
+const mobileCss = `
+@media (max-width: 760px) {
+  .g365-owner-page { overflow-x: hidden !important; }
+  .g365-owner-shell { width: calc(100% - 20px) !important; padding: 14px 0 50px !important; min-width: 0 !important; }
+  .g365-owner-hero { padding: 38px 14px 24px !important; }
+  .g365-owner-stats { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+  .g365-owner-badges { grid-template-columns: 1fr !important; }
+  .g365-owner-season-card { min-width: 0 !important; }
+}
+@media (max-width: 430px) {
+  .g365-owner-stats { grid-template-columns: 1fr !important; }
+  .g365-owner-season-card { flex-direction: column !important; align-items: stretch !important; }
+  .g365-owner-finish { text-align: left !important; justify-items: start !important; }
+}
+`;
 
 const styles: Record<string, React.CSSProperties> = {
   page:{minHeight:"100vh",background:"radial-gradient(circle at 50% -10%,rgba(255,88,0,.14),transparent 28%),#070707",color:"#fff",fontFamily:"Inter,system-ui,sans-serif"},

@@ -179,7 +179,36 @@ export default function LeagueHistoryPage() {
 
   if (loading) {
     return (
-      <main style={styles.page}>
+      <main className="g365-history-page" style={styles.page}>
+      <style>{`
+@media (max-width: 760px) {
+  .g365-history-page { overflow-x: hidden !important; }
+  .g365-history-shell { width: calc(100% - 20px) !important; padding: 14px 0 50px !important; min-width: 0 !important; }
+  .g365-history-hero { padding: 34px 14px !important; }
+  .g365-history-summary { grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 7px !important; }
+  .g365-history-section-head { flex-direction: column !important; align-items: flex-start !important; gap: 5px !important; }
+  .g365-history-championship-wall { grid-template-columns: minmax(0,1fr) !important; }
+  .g365-history-legacy-grid { grid-template-columns: 1fr !important; }
+  .g365-history-legacy-list { min-width: 0 !important; }
+  .g365-history-owner-profile { min-width: 0 !important; }
+  .g365-history-profile-top { gap: 12px !important; align-items: flex-start !important; }
+  .g365-history-profile-stats { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+  .g365-history-badge-case,
+  .g365-history-record-grid,
+  .g365-history-rivalry-grid { grid-template-columns: 1fr !important; }
+  .g365-history-rivalry-facts { flex-wrap: wrap !important; gap: 7px 12px !important; }
+  .g365-history-archive-row { gap: 10px !important; }
+}
+@media (max-width: 430px) {
+  .g365-history-summary,
+  .g365-history-profile-stats { grid-template-columns: 1fr !important; }
+  .g365-history-profile-top,
+  .g365-history-archive-row { flex-direction: column !important; align-items: stretch !important; }
+  .g365-history-archive-right { text-align: left !important; align-items: flex-start !important; }
+  .g365-history-rivalry-teams { grid-template-columns: 1fr !important; gap: 8px !important; }
+  .g365-history-rivalry-teams > div { text-align: left !important; }
+}
+`}</style>
         <div style={styles.loading}>
           <div style={styles.brand}>G365</div>
           <div>Opening the league vault…</div>
@@ -190,8 +219,8 @@ export default function LeagueHistoryPage() {
 
   if (error || !payload) {
     return (
-      <main style={styles.page}>
-        <div style={styles.shell}>
+      <main className="g365-history-page" style={styles.page}>
+        <div className="g365-history-shell" style={styles.shell}>
           <div style={styles.error}>{error ?? "League history could not be loaded."}</div>
         </div>
       </main>
@@ -199,9 +228,9 @@ export default function LeagueHistoryPage() {
   }
 
   return (
-    <main style={styles.page}>
-      <div style={styles.shell}>
-        <section style={styles.hero}>
+    <main className="g365-history-page" style={styles.page}>
+      <div className="g365-history-shell" style={styles.shell}>
+        <section className="g365-history-hero" style={styles.hero}>
           <div style={styles.eyebrow}>GRIDIRON365 • LEAGUE HISTORY</div>
           <h1 style={styles.title}>{payload.league_name}</h1>
           <p style={styles.heroCopy}>
@@ -209,7 +238,7 @@ export default function LeagueHistoryPage() {
             adds another permanent chapter to this league.
           </p>
 
-          <div style={styles.summaryGrid}>
+          <div className="g365-history-summary" style={styles.summaryGrid}>
             <Stat label="Established" value={String(payload.established)} />
             <Stat label="Seasons" value={String(payload.summary.seasons)} />
             <Stat label="Champions" value={String(payload.summary.champions)} />
@@ -221,7 +250,7 @@ export default function LeagueHistoryPage() {
 
         <Section title="CHAMPIONSHIP WALL" subtitle="Every champion. Every season. Permanently preserved.">
           {payload.seasons.length ? (
-            <div style={styles.championshipWall}>
+            <div className="g365-history-championship-wall" style={styles.championshipWall}>
               {payload.seasons.map((season) => (
                 <Link
                   key={season.season}
@@ -245,8 +274,8 @@ export default function LeagueHistoryPage() {
 
         <Section title="G365 LEGACY RANKINGS" subtitle="The all-time owner leaderboard.">
           {payload.legacy.length ? (
-            <div style={styles.legacyGrid}>
-              <div style={styles.legacyList}>
+            <div className="g365-history-legacy-grid" style={styles.legacyGrid}>
+              <div className="g365-history-legacy-list" style={styles.legacyList}>
                 {payload.legacy.map((owner, index) => (
                   <button
                     key={owner.owner_user_id}
@@ -271,8 +300,8 @@ export default function LeagueHistoryPage() {
               </div>
 
               {selectedOwner ? (
-                <div style={styles.ownerProfile}>
-                  <div style={styles.profileTop}>
+                <div className="g365-history-owner-profile" style={styles.ownerProfile}>
+                  <div className="g365-history-profile-top" style={styles.profileTop}>
                     <div>
                       <div style={styles.eyebrow}>{selectedOwner.legacy_tier.toUpperCase()}</div>
                       <h3 style={styles.profileName}>{selectedOwner.display_name ?? "League Owner"}</h3>
@@ -280,7 +309,7 @@ export default function LeagueHistoryPage() {
                     <div style={styles.legacyScoreBig}>{n(selectedOwner.legacy_score, 0)}</div>
                   </div>
 
-                  <div style={styles.profileStats}>
+                  <div className="g365-history-profile-stats" style={styles.profileStats}>
                     <Stat label="Seasons" value={String(selectedOwner.seasons_played)} />
                     <Stat label="Titles" value={String(selectedOwner.championships)} />
                     <Stat label="Championship Games" value={String(selectedOwner.championship_appearances)} />
@@ -293,7 +322,7 @@ export default function LeagueHistoryPage() {
                     <Stat label="Legendary" value={String(selectedOwner.legendary_badges)} />
                   </div>
 
-                  <div style={styles.badgeCase}>
+                  <div className="g365-history-badge-case" style={styles.badgeCase}>
                     {selectedOwnerBadges.length ? (
                       selectedOwnerBadges.map((badge, index) => (
                         <div key={`${badge.badge_key}-${badge.season ?? "all"}-${index}`} style={styles.badge}>
@@ -329,7 +358,7 @@ export default function LeagueHistoryPage() {
 
         <Section title="LEAGUE RECORD BOOK" subtitle="The marks every future season will chase.">
           {payload.records.length ? (
-            <div style={styles.recordGrid}>
+            <div className="g365-history-record-grid" style={styles.recordGrid}>
               {payload.records.map((record) => (
                 <div key={record.record_key} style={styles.recordCard}>
                   <div style={styles.recordLabel}>{record.record_name}</div>
@@ -352,7 +381,7 @@ export default function LeagueHistoryPage() {
 
         <Section title="RIVALRY VAULT" subtitle="Every head-to-head matchup adds to the story.">
           {payload.rivalries.length ? (
-            <div style={styles.rivalryGrid}>
+            <div className="g365-history-rivalry-grid" style={styles.rivalryGrid}>
               {payload.rivalries.slice(0, 12).map((rivalry) => {
                 const total = rivalry.wins_a + rivalry.wins_b + rivalry.ties;
 
@@ -361,7 +390,7 @@ export default function LeagueHistoryPage() {
                     key={`${rivalry.fantasy_team_id_a}-${rivalry.fantasy_team_id_b}`}
                     style={styles.rivalryCard}
                   >
-                    <div style={styles.rivalryTeams}>
+                    <div className="g365-history-rivalry-teams" style={styles.rivalryTeams}>
                       <div>
                         <strong>{rivalry.team_name_a}</strong>
                         <span>{rivalry.wins_a} wins</span>
@@ -378,7 +407,7 @@ export default function LeagueHistoryPage() {
                       {rivalry.ties ? `-${rivalry.ties}` : ""}
                     </div>
 
-                    <div style={styles.rivalryFacts}>
+                    <div className="g365-history-rivalry-facts" style={styles.rivalryFacts}>
                       <span>{total} meetings</span>
                       <span>{rivalry.playoff_meetings} playoff</span>
                       <span>{rivalry.championship_meetings} championship</span>
@@ -400,7 +429,7 @@ export default function LeagueHistoryPage() {
                 <Link
                   key={season.season}
                   href={`/league/${leagueId}/history/${season.season}`}
-                  style={styles.archiveRow}
+                  className="g365-history-archive-row" style={styles.archiveRow}
                 >
                   <div>
                     <div style={styles.archiveYear}>{season.season}</div>
@@ -411,7 +440,7 @@ export default function LeagueHistoryPage() {
                     </div>
                   </div>
 
-                  <div style={styles.archiveRight}>
+                  <div className="g365-history-archive-right" style={styles.archiveRight}>
                     <span>{season.playoff_teams ?? "—"} playoff teams</span>
                     <strong>VIEW RECAP →</strong>
                   </div>
@@ -434,7 +463,7 @@ function Section(props: {
 }) {
   return (
     <section style={styles.section}>
-      <div style={styles.sectionHead}>
+      <div className="g365-history-section-head" style={styles.sectionHead}>
         <div style={styles.eyebrow}>GRIDIRON365</div>
         <h2 style={styles.sectionTitle}>{props.title}</h2>
         {props.subtitle ? <p style={styles.sectionSub}>{props.subtitle}</p> : null}

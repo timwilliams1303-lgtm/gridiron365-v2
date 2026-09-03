@@ -1110,21 +1110,41 @@ function makeComponent(
     if (loading) {
       return (
         <main
+          className="g365-scoring-page"
           style={
             embedded
               ? styles.embeddedPage
               : styles.page
           }
         >
+      <style jsx global>{`
+@media (max-width: 760px) {
+  .g365-scoring-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
+  .g365-scoring-page .g365-shell { width: 100% !important; min-width: 0 !important; }
+  .g365-scoring-page .g365-hero { flex-direction: column !important; align-items: stretch !important; padding: 16px 14px !important; }
+  .g365-scoring-page .g365-title { font-size: 30px !important; }
+  .g365-scoring-page .g365-tabs,
+  .g365-scoring-page .g365-categoryTabs,
+  .g365-scoring-page .g365-scoringCategoryTabs { flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+  .g365-scoring-page .g365-grid,
+  .g365-scoring-page .g365-baseGrid,
+  .g365-scoring-page .g365-scoringBaseGrid,
+  .g365-scoring-page .g365-advancedGrid,
+  .g365-scoring-page .g365-scoringAdvanced { grid-template-columns: minmax(0,1fr) !important; }
+  .g365-scoring-page .g365-ruleRow,
+  .g365-scoring-page .g365-bonusRuleRow { grid-template-columns: minmax(0,1fr) !important; gap: 10px !important; }
+  .g365-scoring-page .g365-section,
+  .g365-scoring-page .g365-categoryPanel,
+  .g365-scoring-page .g365-scoringCategoryPanel { padding-left: 12px !important; padding-right: 12px !important; min-width: 0 !important; }
+  .g365-scoring-page button { min-height: 42px !important; }
+  .g365-scoring-page input, .g365-scoring-page select { min-width: 0 !important; max-width: 100% !important; font-size: 16px !important; }
+}
+`}</style>
           <div
-            style={
-              styles.shell
-            }
+className="g365-shell" style={styles.shell}
           >
             <div
-              style={
-                styles.loading
-              }
+className="g365-loading" style={styles.loading}
             >
               Loading scoring settings…
             </div>
@@ -1135,44 +1155,58 @@ function makeComponent(
 
     return (
       <main
+        className="g365-scoring-page"
         style={
           embedded
             ? styles.embeddedPage
             : styles.page
         }
       >
+      <style jsx global>{`
+@media (max-width: 760px) {
+  .g365-scoring-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
+  .g365-scoring-page .g365-shell { width: 100% !important; min-width: 0 !important; }
+  .g365-scoring-page .g365-hero { flex-direction: column !important; align-items: stretch !important; padding: 16px 14px !important; }
+  .g365-scoring-page .g365-title { font-size: 30px !important; }
+  .g365-scoring-page .g365-tabs,
+  .g365-scoring-page .g365-categoryTabs,
+  .g365-scoring-page .g365-scoringCategoryTabs { flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+  .g365-scoring-page .g365-grid,
+  .g365-scoring-page .g365-baseGrid,
+  .g365-scoring-page .g365-scoringBaseGrid,
+  .g365-scoring-page .g365-advancedGrid,
+  .g365-scoring-page .g365-scoringAdvanced { grid-template-columns: minmax(0,1fr) !important; }
+  .g365-scoring-page .g365-ruleRow,
+  .g365-scoring-page .g365-bonusRuleRow { grid-template-columns: minmax(0,1fr) !important; gap: 10px !important; }
+  .g365-scoring-page .g365-section,
+  .g365-scoring-page .g365-categoryPanel,
+  .g365-scoring-page .g365-scoringCategoryPanel { padding-left: 12px !important; padding-right: 12px !important; min-width: 0 !important; }
+  .g365-scoring-page button { min-height: 42px !important; }
+  .g365-scoring-page input, .g365-scoring-page select { min-width: 0 !important; max-width: 100% !important; font-size: 16px !important; }
+}
+`}</style>
         <div
-          style={
-            styles.shell
-          }
+className="g365-shell" style={styles.shell}
         >
           {!embedded ? (
             <header
-            style={
-              styles.hero
-            }
+className="g365-hero" style={styles.hero}
           >
             <div>
               <div
-                style={
-                  styles.eyebrow
-                }
+className="g365-eyebrow" style={styles.eyebrow}
               >
                 {eyebrow}
               </div>
 
               <h1
-                style={
-                  styles.title
-                }
+className="g365-title" style={styles.title}
               >
                 Scoring Settings
               </h1>
 
               <p
-                style={
-                  styles.subtitle
-                }
+className="g365-subtitle" style={styles.subtitle}
               >
                 {league?.name ??
                   "Gridiron365 League"}
@@ -1184,9 +1218,7 @@ function makeComponent(
             </div>
 
             <div
-              style={
-                styles.modeBadge
-              }
+className="g365-modeBadge" style={styles.modeBadge}
             >
               {displayName}
             </div>
@@ -1194,9 +1226,7 @@ function makeComponent(
           ) : null}
 
           <section
-            style={
-              styles.notice
-            }
+className="g365-notice" style={styles.notice}
           >
             <strong>
               SAME SCORING SYSTEM
@@ -1222,28 +1252,20 @@ function makeComponent(
           ) : null}
 
           <section
-            style={
-              styles.section
-            }
+className="g365-section" style={styles.section}
           >
             <div
-              style={
-                styles.sectionHeader
-              }
+className="g365-sectionHeader" style={styles.sectionHeader}
             >
               <div>
                 <div
-                  style={
-                    styles.smallLabel
-                  }
+className="g365-smallLabel" style={styles.smallLabel}
                 >
                   SCORING CATEGORY
                 </div>
 
                 <h2
-                  style={
-                    styles.sectionTitle
-                  }
+className="g365-sectionTitle" style={styles.sectionTitle}
                 >
                   Choose a Category
                 </h2>
@@ -1251,9 +1273,7 @@ function makeComponent(
             </div>
 
             <div
-              style={
-                styles.tabs
-              }
+className="g365-tabs" style={styles.tabs}
             >
               {(
                 Object.keys(
@@ -1294,20 +1314,14 @@ function makeComponent(
           </section>
 
           <section
-            style={
-              styles.section
-            }
+className="g365-section" style={styles.section}
           >
             <div
-              style={
-                styles.sectionHeader
-              }
+className="g365-sectionHeader" style={styles.sectionHeader}
             >
               <div>
                 <div
-                  style={
-                    styles.smallLabel
-                  }
+className="g365-smallLabel" style={styles.smallLabel}
                 >
                   {group.label.toUpperCase()}
                   {" "}
@@ -1315,17 +1329,13 @@ function makeComponent(
                 </div>
 
                 <h2
-                  style={
-                    styles.sectionTitle
-                  }
+className="g365-sectionTitle" style={styles.sectionTitle}
                 >
                   Core Points
                 </h2>
 
                 <p
-                  style={
-                    styles.sectionSub
-                  }
+className="g365-sectionSub" style={styles.sectionSub}
                 >
                   {
                     group.description
@@ -1335,9 +1345,7 @@ function makeComponent(
             </div>
 
             <div
-              style={
-                styles.grid
-              }
+className="g365-grid" style={styles.grid}
             >
               {group.baseFields.map(
                 ([
@@ -1388,19 +1396,13 @@ function makeComponent(
             </div>
 
             <div
-              style={
-                styles.advanced
-              }
+className="g365-advanced" style={styles.advanced}
             >
               <label
-                style={
-                  styles.field
-                }
+className="g365-field" style={styles.field}
               >
                 <span
-                  style={
-                    styles.fieldLabel
-                  }
+className="g365-fieldLabel" style={styles.fieldLabel}
                 >
                   Fractional Scoring
                 </span>
@@ -1428,9 +1430,7 @@ function makeComponent(
                       })
                     )
                   }
-                  style={
-                    styles.input
-                  }
+className="g365-input" style={styles.input}
                 >
                   <option value="true">
                     Enabled
@@ -1469,9 +1469,7 @@ function makeComponent(
             </div>
 
             <div
-              style={
-                styles.actions
-              }
+className="g365-actions" style={styles.actions}
             >
               <button
                 type="button"
@@ -1481,9 +1479,7 @@ function makeComponent(
                 onClick={() =>
                   void saveBaseScoring()
                 }
-                style={
-                  styles.primaryButton
-                }
+className="g365-primaryButton" style={styles.primaryButton}
               >
                 {saving
                   ? "SAVING…"
@@ -1493,20 +1489,14 @@ function makeComponent(
           </section>
 
           <section
-            style={
-              styles.section
-            }
+className="g365-section" style={styles.section}
           >
             <div
-              style={
-                styles.bonusHeader
-              }
+className="g365-bonusHeader" style={styles.bonusHeader}
             >
               <div>
                 <div
-                  style={
-                    styles.smallLabel
-                  }
+className="g365-smallLabel" style={styles.smallLabel}
                 >
                   {group.label.toUpperCase()}
                   {" "}
@@ -1514,25 +1504,19 @@ function makeComponent(
                 </div>
 
                 <h2
-                  style={
-                    styles.sectionTitle
-                  }
+className="g365-sectionTitle" style={styles.sectionTitle}
                 >
                   Milestones & Bonuses
                 </h2>
 
                 <p
-                  style={
-                    styles.sectionSub
-                  }
+className="g365-sectionSub" style={styles.sectionSub}
                 >
                   Add yardage milestones, multiple-touchdown bonuses, long-play or long-TD bonuses, kicking bonuses, or other thresholds. Minimum and Maximum define the qualifying range.
                 </p>
 
                 <div
-                  style={
-                    styles.ruleNotice
-                  }
+className="g365-ruleNotice" style={styles.ruleNotice}
                 >
                   <strong>
                     Non-stacking:
@@ -1547,18 +1531,14 @@ function makeComponent(
                 onClick={
                   addBonusRule
                 }
-                style={
-                  styles.secondaryButton
-                }
+className="g365-secondaryButton" style={styles.secondaryButton}
               >
                 + ADD BONUS RULE
               </button>
             </div>
 
             <div
-              style={
-                styles.ruleList
-              }
+className="g365-ruleList" style={styles.ruleList}
             >
               {visibleRules.map(
                 (
@@ -1568,9 +1548,7 @@ function makeComponent(
                     key={
                       rule.id
                     }
-                    style={
-                      styles.ruleCard
-                    }
+className="g365-ruleCard" style={styles.ruleCard}
                   >
                     <Field
                       label="Rule Name"
@@ -1604,14 +1582,10 @@ function makeComponent(
                     />
 
                     <label
-                      style={
-                        styles.field
-                      }
+className="g365-field" style={styles.field}
                     >
                       <span
-                        style={
-                          styles.fieldLabel
-                        }
+className="g365-fieldLabel" style={styles.fieldLabel}
                       >
                         Statistic
                       </span>
@@ -1644,9 +1618,7 @@ function makeComponent(
                               )
                           )
                         }
-                        style={
-                          styles.input
-                        }
+className="g365-input" style={styles.input}
                       >
                         {group.bonusStats.map(
                           ([
@@ -1770,9 +1742,7 @@ function makeComponent(
                     />
 
                     <label
-                      style={
-                        styles.checkboxField
-                      }
+className="g365-checkboxField" style={styles.checkboxField}
                     >
                       <input
                         type="checkbox"
@@ -1811,9 +1781,7 @@ function makeComponent(
                     </label>
 
                     <div
-                      style={
-                        styles.ruleActions
-                      }
+className="g365-ruleActions" style={styles.ruleActions}
                     >
                       <button
                         type="button"
@@ -1825,9 +1793,7 @@ function makeComponent(
                             rule
                           )
                         }
-                        style={
-                          styles.primaryButton
-                        }
+className="g365-primaryButton" style={styles.primaryButton}
                       >
                         SAVE
                       </button>
@@ -1842,9 +1808,7 @@ function makeComponent(
                             rule.id
                           )
                         }
-                        style={
-                          styles.dangerButton
-                        }
+className="g365-dangerButton" style={styles.dangerButton}
                       >
                         DELETE
                       </button>
@@ -1856,9 +1820,7 @@ function makeComponent(
               {visibleRules.length ===
               0 ? (
                 <div
-                  style={
-                    styles.empty
-                  }
+className="g365-empty" style={styles.empty}
                 >
                   No{" "}
                   {group.label.toLowerCase()}
@@ -1896,14 +1858,10 @@ function Field({
 }) {
   return (
     <label
-      style={
-        styles.field
-      }
+className="g365-field" style={styles.field}
     >
       <span
-        style={
-          styles.fieldLabel
-        }
+className="g365-fieldLabel" style={styles.fieldLabel}
       >
         {label}
       </span>
@@ -1930,9 +1888,7 @@ function Field({
               .value
           )
         }
-        style={
-          styles.input
-        }
+className="g365-input" style={styles.input}
       />
     </label>
   );
