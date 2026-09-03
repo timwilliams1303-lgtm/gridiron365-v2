@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 
 type Props = {
@@ -38,10 +41,33 @@ const linkStyle: React.CSSProperties = {
 };
 
 
+const activeLinkStyle: React.CSSProperties = {
+  borderColor: "rgba(255,95,31,0.72)",
+  color: "#ffffff",
+  background:
+    "linear-gradient(135deg, rgba(166,14,20,0.62), rgba(255,102,0,0.48))",
+  boxShadow: "inset 0 0 0 1px rgba(255,135,36,0.10)",
+};
+
+
 export default function PickemLeagueNav({
   leagueId,
   isCommissioner,
 }: Props) {
+  const pathname =
+    usePathname();
+
+  const leagueRoot =
+    `/league/${leagueId}`;
+
+  function isActive(href: string) {
+    if (href === leagueRoot) {
+      return pathname === leagueRoot;
+    }
+
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
   return (
     <>
       <style>{`
@@ -98,7 +124,17 @@ export default function PickemLeagueNav({
             <Link
               key={href}
               href={href}
-              style={linkStyle}
+              aria-current={
+                isActive(href)
+                  ? "page"
+                  : undefined
+              }
+              style={{
+                ...linkStyle,
+                ...(isActive(href)
+                  ? activeLinkStyle
+                  : {}),
+              }}
             >
               {label}
             </Link>
@@ -108,11 +144,16 @@ export default function PickemLeagueNav({
         {isCommissioner ? (
           <Link
             href={`/league/${leagueId}/commissioner`}
+            aria-current={
+              isActive(`/league/${leagueId}/commissioner`)
+                ? "page"
+                : undefined
+            }
             style={{
               ...linkStyle,
-              borderColor: "rgba(255,95,31,0.55)",
-              background:
-                "linear-gradient(135deg, rgba(166,14,20,0.42), rgba(255,102,0,0.34))",
+              ...(isActive(`/league/${leagueId}/commissioner`)
+                ? activeLinkStyle
+                : {}),
             }}
           >
             Commissioner

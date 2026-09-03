@@ -689,6 +689,51 @@ export default async function SeasonLongStandings({
             max-width: 100%;
             -webkit-overflow-scrolling: touch;
           }
+
+          .g365-standings-table-card {
+            overflow: hidden !important;
+          }
+
+          .g365-standings-table-header,
+          .g365-standings-table-row {
+            min-width: 0 !important;
+            width: 100% !important;
+            grid-template-columns: minmax(0,1fr) 92px 92px !important;
+            gap: 8px !important;
+            padding: 7px 9px !important;
+          }
+
+          .g365-standings-table-row {
+            min-height: 46px !important;
+          }
+
+          .g365-standings-hide-mobile {
+            display: none !important;
+          }
+
+          .g365-standings-team-cell {
+            gap: 7px !important;
+          }
+
+          .g365-standings-team-circle {
+            width: 27px !important;
+            height: 27px !important;
+            font-size: 12px !important;
+          }
+
+          .g365-standings-team-name {
+            font-size: 12px !important;
+            line-height: 1.15 !important;
+          }
+
+          .g365-standings-team-meta {
+            display: none !important;
+          }
+
+          .g365-standings-mobile-stat {
+            font-size: 12px !important;
+            text-align: right !important;
+          }
         }
 
         @media (max-width: 430px) {
@@ -832,16 +877,18 @@ export default async function SeasonLongStandings({
           }
         >
           <div
+            className="g365-standings-table-card"
             style={
               styles.tableCard
             }
           >
             <div
+              className="g365-standings-table-header"
               style={
                 styles.tableHeader
               }
             >
-              <span>
+              <span className="g365-standings-hide-mobile">
                 RK
               </span>
 
@@ -857,35 +904,19 @@ export default async function SeasonLongStandings({
                 TOTAL PTS
               </span>
 
-              <span
-                style={
-                  styles.numberHeader
-                }
-              >
+              <span className="g365-standings-hide-mobile" style={styles.numberHeader}>
                 WEEKS
               </span>
 
-              <span
-                style={
-                  styles.numberHeader
-                }
-              >
+              <span className="g365-standings-hide-mobile" style={styles.numberHeader}>
                 AVG
               </span>
 
-              <span
-                style={
-                  styles.numberHeader
-                }
-              >
+              <span className="g365-standings-hide-mobile" style={styles.numberHeader}>
                 HIGH
               </span>
 
-              <span
-                style={
-                  styles.numberHeader
-                }
-              >
+              <span className="g365-standings-hide-mobile" style={styles.numberHeader}>
                 LOW
               </span>
 
@@ -894,7 +925,7 @@ export default async function SeasonLongStandings({
                   styles.numberHeader
                 }
               >
-                LAST WEEK
+                CURRENT WK
               </span>
             </div>
 
@@ -918,6 +949,7 @@ export default async function SeasonLongStandings({
                     key={
                       row.fantasyTeamId
                     }
+                    className="g365-standings-table-row"
                     style={{
                       ...styles.tableRow,
 
@@ -932,6 +964,7 @@ export default async function SeasonLongStandings({
                     }}
                   >
                     <div
+                      className="g365-standings-hide-mobile"
                       style={
                         styles.rankCell
                       }
@@ -954,11 +987,13 @@ export default async function SeasonLongStandings({
 
 
                     <div
+                      className="g365-standings-team-cell"
                       style={
                         styles.teamCell
                       }
                     >
                       <div
+                        className="g365-standings-team-circle"
                         style={{
                           ...styles.teamCircle,
 
@@ -982,6 +1017,7 @@ export default async function SeasonLongStandings({
                         }
                       >
                         <strong
+                          className="g365-standings-team-name"
                           style={
                             styles.teamName
                           }
@@ -992,6 +1028,7 @@ export default async function SeasonLongStandings({
                         </strong>
 
                         <span
+                          className="g365-standings-team-meta"
                           style={
                             styles.teamMeta
                           }
@@ -1011,6 +1048,7 @@ export default async function SeasonLongStandings({
                         )
                       }
                       strong
+                      mobileClassName="g365-standings-mobile-stat"
                     />
 
 
@@ -1020,6 +1058,7 @@ export default async function SeasonLongStandings({
                           row.weeksScored
                         )
                       }
+                    mobileClassName="g365-standings-hide-mobile"
                     />
 
 
@@ -1032,6 +1071,7 @@ export default async function SeasonLongStandings({
                             )
                           : "—"
                       }
+                    mobileClassName="g365-standings-hide-mobile"
                     />
 
 
@@ -1048,6 +1088,7 @@ export default async function SeasonLongStandings({
                         row.weeksScored >
                         0
                       }
+                    mobileClassName="g365-standings-hide-mobile"
                     />
 
 
@@ -1060,10 +1101,12 @@ export default async function SeasonLongStandings({
                             )
                           : "—"
                       }
+                    mobileClassName="g365-standings-hide-mobile"
                     />
 
 
                     <div
+                      className="g365-standings-mobile-stat"
                       style={
                         styles.lastWeekCell
                       }
@@ -1077,11 +1120,9 @@ export default async function SeasonLongStandings({
                             styles.lastWeekValue
                           }
                         >
-                          W
-                          {
-                            row.latestFinalWeek
-                          }
-                          {" • "}
+                          <span className="g365-standings-hide-mobile">
+                            W{row.latestFinalWeek}{" • "}
+                          </span>
                           {formatPoints(
                             row.latestFinalWeekPoints
                           )}
@@ -1254,6 +1295,7 @@ function StatCell({
   value,
   strong = false,
   positive = false,
+  mobileClassName,
 }: {
   value:
     string;
@@ -1263,9 +1305,13 @@ function StatCell({
 
   positive?:
     boolean;
+
+  mobileClassName?:
+    string;
 }) {
   return (
     <div
+      className={mobileClassName}
       style={{
         ...styles.statCell,
 

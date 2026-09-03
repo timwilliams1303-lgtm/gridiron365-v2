@@ -809,12 +809,16 @@ export default function TraditionalPlayersBrowser({
           .g365-player-desktop-cell{display:none!important}
           .g365-player-action{grid-area:action!important;align-self:center!important}
           .g365-player-name{max-width:100%!important}
+          .g365-injury-desktop{display:none!important}
+          .g365-injury-mobile{display:inline-flex!important}
+          .g365-injury-mobile-detail{display:block!important}
           .g365-player-headshot{width:46px!important;height:46px!important}
           .g365-load-more{width:100%!important}
           .g365-players-modal{width:calc(100vw - 24px)!important;max-width:calc(100vw - 24px)!important;max-height:calc(100dvh - 24px)!important}
         }
         @media (min-width:761px){
           .g365-player-mobile-meta{display:none!important}
+          .g365-injury-mobile,.g365-injury-mobile-detail{display:none!important}
         }
 `}</style>
       {message ? (
@@ -1389,6 +1393,9 @@ const PlayerRow = memo(function PlayerRow({
       player.injuryDetail
     );
 
+  const [showMobileInjury, setShowMobileInjury] =
+    useState(false);
+
 
   return (
     <article className="g365-players-row"
@@ -1450,19 +1457,53 @@ const PlayerRow = memo(function PlayerRow({
           </strong>
 
           {injury ? (
-            <span
-              title={
-                injury.detail ?? injury.label
-              }
-              style={{
-                ...styles.injuryBadge,
-                ...getInjuryStyle(
-                  player.injuryStatus ?? player.nflStatus
-                ),
-              }}
-            >
-              {injury.text}
-            </span>
+            <>
+              <span
+                className="g365-injury-desktop"
+                title={
+                  injury.detail ?? injury.label
+                }
+                style={{
+                  ...styles.injuryBadge,
+                  ...getInjuryStyle(
+                    player.injuryStatus ?? player.nflStatus
+                  ),
+                }}
+              >
+                {injury.text}
+              </span>
+
+              <button
+                type="button"
+                className="g365-injury-mobile"
+                aria-expanded={showMobileInjury}
+                aria-label={`${injury.label}${injury.detail ? `: ${injury.detail}` : ""}`}
+                onClick={() =>
+                  setShowMobileInjury(
+                    (current) => !current
+                  )
+                }
+                style={{
+                  ...styles.injuryBadge,
+                  ...styles.injuryButton,
+                  ...getInjuryStyle(
+                    player.injuryStatus ?? player.nflStatus
+                  ),
+                }}
+              >
+                {injury.code}
+              </button>
+
+              {showMobileInjury ? (
+                <span
+                  className="g365-injury-mobile-detail"
+                  style={styles.injuryExpandedDetail}
+                >
+                  <strong>{injury.label}</strong>
+                  {injury.detail ? ` · ${injury.detail}` : ""}
+                </span>
+              ) : null}
+            </>
           ) : null}
         </div>
       </div>
@@ -2518,6 +2559,45 @@ const styles = {
   },
 
 
+  injuryButton: {
+    display:
+      "none",
+
+    width:
+      "auto",
+
+    minWidth:
+      "30px",
+
+    maxWidth:
+      "none",
+
+    border:
+      "1px solid currentColor",
+
+    cursor:
+      "pointer",
+
+    lineHeight:
+      1.1,
+  },
+
+
+  injuryExpandedDetail: {
+    marginTop:
+      "3px",
+
+    color:
+      "#cfd3d8",
+
+    fontSize:
+      "12px",
+
+    lineHeight:
+      1.35,
+  },
+
+
   injuryDanger: {
     background:
       "rgba(210,25,25,.10)",
@@ -2720,3 +2800,4 @@ const styles = {
       "14px",
   },
 };
+
