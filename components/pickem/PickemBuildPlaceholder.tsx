@@ -12,11 +12,53 @@ export default function PickemBuildPlaceholder({
 }: Props) {
   return (
     <main
+      className="g365-pickem-placeholder"
       style={{
         padding: "22px 18px 36px",
+        width: "100%",
+        minWidth: 0,
       }}
     >
+      <style>{`
+        .g365-pickem-placeholder * {
+          box-sizing: border-box;
+        }
+
+        @media (max-width: 760px) {
+          .g365-pickem-placeholder {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            padding: 14px 12px 28px !important;
+            overflow-x: hidden;
+          }
+
+          .g365-pickem-placeholder-card {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            padding: 17px !important;
+          }
+
+          .g365-pickem-placeholder h2 {
+            font-size: clamp(27px, 8vw, 34px) !important;
+            overflow-wrap: anywhere;
+          }
+
+          .g365-pickem-placeholder p {
+            overflow-wrap: anywhere;
+          }
+        }
+
+        @media (max-width: 430px) {
+          .g365-pickem-placeholder {
+            padding: 12px 10px 24px !important;
+          }
+        }
+      `}</style>
+
       <section
+        className="g365-pickem-placeholder-card"
         style={{
           maxWidth: 900,
           padding: 22,

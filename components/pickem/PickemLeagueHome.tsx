@@ -173,13 +173,85 @@ export default async function PickemLeagueHome({
 
   return (
     <main
+      className="g365-pickem-home"
       style={{
         display: "grid",
         gap: 18,
         padding: "22px 18px 34px",
+        width: "100%",
+        minWidth: 0,
       }}
     >
+      <style>{`
+        .g365-pickem-home * {
+          box-sizing: border-box;
+        }
+
+        @media (max-width: 760px) {
+          .g365-pickem-home {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            padding: 14px 12px 28px !important;
+            gap: 14px !important;
+            overflow-x: hidden;
+          }
+
+          .g365-pickem-home > section {
+            min-width: 0;
+            max-width: 100%;
+          }
+
+          .g365-pickem-home .g365-pickem-home-hero {
+            padding: 17px !important;
+            border-radius: 15px !important;
+          }
+
+          .g365-pickem-home .g365-pickem-home-stats {
+            grid-template-columns: repeat(2, minmax(0,1fr)) !important;
+            gap: 9px !important;
+          }
+
+          .g365-pickem-home .g365-pickem-home-links {
+            grid-template-columns: minmax(0,1fr) !important;
+            gap: 9px !important;
+          }
+
+          .g365-pickem-home .g365-pickem-home-stat {
+            padding: 13px !important;
+            min-width: 0;
+          }
+
+          .g365-pickem-home .g365-pickem-home-link {
+            padding: 15px !important;
+            min-width: 0;
+          }
+
+          .g365-pickem-home h2 {
+            font-size: clamp(29px, 9vw, 38px) !important;
+            line-height: 1.03 !important;
+          }
+
+          .g365-pickem-home p,
+          .g365-pickem-home div,
+          .g365-pickem-home strong {
+            overflow-wrap: anywhere;
+          }
+        }
+
+        @media (max-width: 430px) {
+          .g365-pickem-home {
+            padding: 12px 10px 24px !important;
+          }
+
+          .g365-pickem-home .g365-pickem-home-stats {
+            grid-template-columns: minmax(0,1fr) !important;
+          }
+        }
+      `}</style>
+
       <section
+        className="g365-pickem-home-hero"
         style={{
           padding: 22,
           borderRadius: 18,
@@ -227,6 +299,7 @@ export default async function PickemLeagueHome({
       </section>
 
       <section
+        className="g365-pickem-home-stats"
         style={{
           display: "grid",
           gridTemplateColumns:
@@ -258,6 +331,7 @@ export default async function PickemLeagueHome({
           ],
         ].map(([label, value]) => (
           <div
+            className="g365-pickem-home-stat"
             key={label}
             style={{
               padding: 16,
@@ -293,6 +367,7 @@ export default async function PickemLeagueHome({
       </section>
 
       <section
+        className="g365-pickem-home-links"
         style={{
           display: "grid",
           gridTemplateColumns:
@@ -324,6 +399,7 @@ export default async function PickemLeagueHome({
         ].map(
           ([title, description, href]) => (
             <Link
+              className="g365-pickem-home-link"
               key={href}
               href={href}
               style={{

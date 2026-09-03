@@ -79,13 +79,60 @@ export default async function PickemReadOnlySettings({
 
   return (
     <main
+      className="g365-pickem-settings"
       style={{
         display: "grid",
         gap: 16,
         padding: "22px 18px 36px",
+        width: "100%",
         maxWidth: 960,
+        minWidth: 0,
       }}
     >
+      <style>{`
+        .g365-pickem-settings * {
+          box-sizing: border-box;
+        }
+
+        .g365-pickem-settings-row {
+          display: grid;
+          grid-template-columns: minmax(190px,0.75fr) minmax(0,1.5fr);
+          gap: 14px;
+          padding: 15px;
+        }
+
+        @media (max-width: 760px) {
+          .g365-pickem-settings {
+            max-width: 100% !important;
+            padding: 14px 12px 28px !important;
+            gap: 14px !important;
+            overflow-x: hidden;
+          }
+
+          .g365-pickem-settings h2 {
+            font-size: clamp(27px, 8vw, 34px) !important;
+          }
+
+          .g365-pickem-settings-row {
+            grid-template-columns: minmax(0,1fr);
+            gap: 5px;
+            padding: 13px 14px;
+          }
+
+          .g365-pickem-settings-row strong,
+          .g365-pickem-settings-row span {
+            min-width: 0;
+            overflow-wrap: anywhere;
+          }
+        }
+
+        @media (max-width: 430px) {
+          .g365-pickem-settings {
+            padding: 12px 10px 24px !important;
+          }
+        }
+      `}</style>
+
       <section>
         <div
           style={{
@@ -120,13 +167,9 @@ export default async function PickemReadOnlySettings({
       >
         {rows.map(([label, value], index) => (
           <div
+            className="g365-pickem-settings-row"
             key={label}
             style={{
-              display: "grid",
-              gridTemplateColumns:
-                "minmax(190px,0.75fr) minmax(0,1.5fr)",
-              gap: 14,
-              padding: 15,
               borderTop:
                 index === 0
                   ? "none"

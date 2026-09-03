@@ -114,6 +114,103 @@ function recordText(
 }
 
 
+
+const PICKEM_MOBILE_CSS = `
+  .g365-pickem-mobile-page {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .g365-pickem-mobile-page * {
+    box-sizing: border-box;
+  }
+
+  @media (max-width: 760px) {
+    .g365-pickem-mobile-page {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      overflow-x: hidden !important;
+      padding: 14px 12px 30px !important;
+      gap: 14px !important;
+    }
+
+    .g365-pickem-mobile-page > section,
+    .g365-pickem-mobile-page section,
+    .g365-pickem-mobile-page article,
+    .g365-pickem-mobile-page form,
+    .g365-pickem-mobile-page div {
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .g365-pickem-mobile-page h1 {
+      font-size: clamp(26px, 8vw, 34px) !important;
+      line-height: 1.08 !important;
+      overflow-wrap: anywhere;
+    }
+
+    .g365-pickem-mobile-page h2,
+    .g365-pickem-mobile-page h3,
+    .g365-pickem-mobile-page p,
+    .g365-pickem-mobile-page span,
+    .g365-pickem-mobile-page strong {
+      overflow-wrap: anywhere;
+    }
+
+    .g365-pickem-mobile-page select,
+    .g365-pickem-mobile-page input,
+    .g365-pickem-mobile-page textarea {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+    }
+
+    .g365-pickem-mobile-page button,
+    .g365-pickem-mobile-page a {
+      max-width: 100%;
+    }
+
+    .g365-pickem-mobile-page :not(button)[style*="grid-template-columns"] {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .g365-pickem-mobile-page [style*="margin-left: auto"],
+    .g365-pickem-mobile-page [style*="margin-left:auto"] {
+      margin-left: 0 !important;
+    }
+
+    .g365-pickem-mobile-page [style*="white-space: nowrap"],
+    .g365-pickem-mobile-page [style*="white-space:nowrap"] {
+      white-space: normal !important;
+    }
+
+    .g365-pickem-mobile-page [style*="overflow: auto"],
+    .g365-pickem-mobile-page [style*="overflow:auto"] {
+      max-width: 100%;
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+
+  @media (max-width: 430px) {
+    .g365-pickem-mobile-page {
+      padding: 12px 10px 26px !important;
+      gap: 12px !important;
+    }
+
+    .g365-pickem-mobile-page section,
+    .g365-pickem-mobile-page article {
+      border-radius: 13px !important;
+    }
+
+    .g365-pickem-mobile-page button {
+      min-height: 42px;
+    }
+  }
+`;
+
+
 export default function PickemStandings({
   leagueId,
   season,
@@ -630,6 +727,7 @@ export default function PickemStandings({
 
   return (
     <main
+      className="g365-pickem-mobile-page"
       style={{
         display:
           "grid",
@@ -641,6 +739,7 @@ export default function PickemStandings({
           "22px 18px 36px",
       }}
     >
+      <style>{PICKEM_MOBILE_CSS}</style>
       <section
         style={{
           padding:

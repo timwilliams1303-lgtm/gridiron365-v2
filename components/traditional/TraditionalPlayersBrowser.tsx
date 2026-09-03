@@ -3,6 +3,10 @@
 import Image from "next/image";
 
 import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -54,6 +58,9 @@ const positions = [
   "K",
   "DST",
 ];
+
+const INITIAL_PLAYER_COUNT = 50;
+const PLAYER_LOAD_INCREMENT = 50;
 
 
 function matchesPosition(
@@ -218,6 +225,21 @@ export default function TraditionalPlayersBrowser({
 
 
   const [
+    visiblePlayerCount,
+    setVisiblePlayerCount,
+  ] =
+    useState(
+      INITIAL_PLAYER_COUNT
+    );
+
+
+  const deferredSearch =
+    useDeferredValue(
+      search
+    );
+
+
+  const [
     selectedPlayerId,
     setSelectedPlayerId,
   ] =
@@ -283,7 +305,7 @@ export default function TraditionalPlayersBrowser({
     useMemo(
       () => {
         const normalizedSearch =
-          search
+          deferredSearch
             .trim()
             .toLowerCase();
 
@@ -390,12 +412,43 @@ export default function TraditionalPlayersBrowser({
       },
       [
         players,
-        search,
+        deferredSearch,
         position,
         nflTeam,
         ownership,
         injuryOnly,
         activeOnly,
+      ]
+    );
+
+
+  useEffect(
+    () => {
+      setVisiblePlayerCount(
+        INITIAL_PLAYER_COUNT
+      );
+    },
+    [
+      deferredSearch,
+      position,
+      nflTeam,
+      ownership,
+      injuryOnly,
+      activeOnly,
+    ]
+  );
+
+
+  const visiblePlayers =
+    useMemo(
+      () =>
+        filteredPlayers.slice(
+          0,
+          visiblePlayerCount
+        ),
+      [
+        filteredPlayers,
+        visiblePlayerCount,
       ]
     );
 
@@ -437,9 +490,11 @@ export default function TraditionalPlayersBrowser({
     null;
 
 
-  function openAddPanel(
-    playerId: number
-  ) {
+  const openAddPanel =
+    useCallback(
+      (
+        playerId: number
+      ) => {
     setSelectedPlayerId(
       playerId
     );
@@ -459,7 +514,9 @@ export default function TraditionalPlayersBrowser({
     setError(
       null
     );
-  }
+      },
+      []
+    );
 
 
   function closeAddPanel() {
@@ -668,14 +725,29 @@ export default function TraditionalPlayersBrowser({
       }
     >
       <style>{`
+        .g365-position-tabs{scrollbar-width:none}
+        .g365-position-tabs::-webkit-scrollbar{display:none}
+        .g365-players-row{content-visibility:auto;contain-intrinsic-size:76px}
         @media (max-width:760px){
-          .g365-players-filters{grid-template-columns:repeat(2,minmax(0,1fr))!important}
-          .g365-players-table{width:100%!important;max-width:100%!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
-          .g365-players-table-header,.g365-players-row{min-width:720px!important}
+          .g365-position-tabs{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;overflow:visible!important;gap:8px!important}
+          .g365-position-button{width:100%!important;padding:0 8px!important}
+          .g365-players-filters{grid-template-columns:minmax(0,1fr)!important;gap:12px!important}
+          .g365-checkbox-field{min-height:44px!important;padding:0 2px!important;gap:10px!important;white-space:normal!important}
+          .g365-checkbox-field input{width:20px;height:20px;flex:0 0 auto;margin:0}
+          .g365-players-table{width:100%!important;max-width:100%!important;overflow:hidden!important}
+          .g365-players-table-header{display:none!important}
+          .g365-players-row{min-width:0!important;width:100%!important;grid-template-columns:minmax(0,1fr) auto!important;grid-template-areas:"player action" "meta action"!important;gap:7px 12px!important;padding:12px!important;min-height:78px!important}
+          .g365-player-identity{grid-area:player!important;min-width:0!important}
+          .g365-player-mobile-meta{grid-area:meta!important;display:flex!important;align-items:center!important;gap:8px!important;min-width:0!important;padding-left:58px!important;flex-wrap:wrap!important}
+          .g365-player-desktop-cell{display:none!important}
+          .g365-player-action{grid-area:action!important;align-self:center!important}
+          .g365-player-name{max-width:100%!important}
+          .g365-player-headshot{width:46px!important;height:46px!important}
+          .g365-load-more{width:100%!important}
           .g365-players-modal{width:calc(100vw - 24px)!important;max-width:calc(100vw - 24px)!important;max-height:calc(100dvh - 24px)!important}
         }
-        @media (max-width:430px){
-          .g365-players-filters{grid-template-columns:minmax(0,1fr)!important}
+        @media (min-width:761px){
+          .g365-player-mobile-meta{display:none!important}
         }
 `}</style>
       {message ? (
@@ -895,6 +967,7 @@ export default function TraditionalPlayersBrowser({
 
 
         <div
+          className="g365-position-tabs"
           style={
             styles.positionTabs
           }
@@ -904,6 +977,7 @@ export default function TraditionalPlayersBrowser({
               item
             ) => (
               <button
+                className="g365-position-button"
                 key={
                   item
                 }
@@ -1043,6 +1117,7 @@ export default function TraditionalPlayersBrowser({
 
 
           <label
+            className="g365-checkbox-field"
             style={
               styles.checkboxField
             }
@@ -1068,6 +1143,7 @@ export default function TraditionalPlayersBrowser({
 
 
           <label
+            className="g365-checkbox-field"
             style={
               styles.checkboxField
             }
@@ -1109,7 +1185,10 @@ export default function TraditionalPlayersBrowser({
           1
             ? ""
             : "s"}{" "}
-          shown
+          found · showing {Math.min(
+            visiblePlayerCount,
+            filteredPlayers.length
+          )}
         </span>
       </div>
 
@@ -1152,7 +1231,7 @@ export default function TraditionalPlayersBrowser({
 
         {filteredPlayers.length >
         0 ? (
-          filteredPlayers.map(
+          visiblePlayers.map(
             (
               player
             ) => (
@@ -1187,12 +1266,36 @@ export default function TraditionalPlayersBrowser({
           </div>
         )}
       </section>
+
+
+      {visiblePlayerCount <
+      filteredPlayers.length ? (
+        <button
+          className="g365-load-more"
+          type="button"
+          onClick={() =>
+            setVisiblePlayerCount(
+              (current) =>
+                Math.min(
+                  current +
+                    PLAYER_LOAD_INCREMENT,
+                  filteredPlayers.length
+                )
+            )
+          }
+          style={
+            styles.loadMoreButton
+          }
+        >
+          Load More Players
+        </button>
+      ) : null}
     </div>
   );
 }
 
 
-function PlayerRow({
+const PlayerRow = memo(function PlayerRow({
   player,
   canManage,
   onAdd,
@@ -1221,6 +1324,7 @@ function PlayerRow({
           }
     >
       <div
+        className="g365-player-identity"
         style={
           styles.playerIdentity
         }
@@ -1232,6 +1336,7 @@ function PlayerRow({
         >
           {player.headshotUrl ? (
             <Image
+              className="g365-player-headshot"
               src={
                 player.headshotUrl
               }
@@ -1240,6 +1345,7 @@ function PlayerRow({
               }
               width={50}
               height={50}
+              loading="lazy"
               style={
                 styles.headshot
               }
@@ -1262,6 +1368,7 @@ function PlayerRow({
           }
         >
           <strong
+            className="g365-player-name"
             style={
               styles.playerName
             }
@@ -1290,6 +1397,7 @@ function PlayerRow({
 
 
       <strong
+        className="g365-player-desktop-cell"
         style={
           styles.position
         }
@@ -1299,6 +1407,7 @@ function PlayerRow({
 
 
       <span
+        className="g365-player-desktop-cell"
         style={
           styles.nflTeam
         }
@@ -1309,7 +1418,7 @@ function PlayerRow({
       </span>
 
 
-      <span>
+      <span className="g365-player-desktop-cell">
         {player.isActive ? (
           <span
             style={
@@ -1331,6 +1440,7 @@ function PlayerRow({
 
 
       <div
+        className="g365-player-desktop-cell"
         style={
           styles.fantasyStatus
         }
@@ -1394,7 +1504,32 @@ function PlayerRow({
       </div>
 
 
+      <div className="g365-player-mobile-meta">
+        <strong style={styles.position}>
+          {player.position}
+        </strong>
+        <span style={styles.nflTeam}>
+          {player.teamAbbreviation ?? "FA"}
+        </span>
+        {player.isActive ? (
+          <span style={styles.activeBadge}>ACTIVE</span>
+        ) : (
+          <span style={styles.inactiveBadge}>INACTIVE</span>
+        )}
+        {player.isMyPlayer ? (
+          <span style={styles.myTeamBadge}>MY TEAM</span>
+        ) : player.isRostered ? (
+          <span style={styles.rosteredBadge}>ROSTERED</span>
+        ) : player.isOnWaivers ? (
+          <span style={styles.waiverBadge}>WAIVERS</span>
+        ) : (
+          <span style={styles.freeAgentBadge}>FREE AGENT</span>
+        )}
+      </div>
+
+
       <div
+        className="g365-player-action"
         style={
           styles.actionCell
         }
@@ -1436,7 +1571,7 @@ function PlayerRow({
       </div>
     </article>
   );
-}
+});
 
 
 const styles = {
@@ -2476,6 +2611,20 @@ const styles = {
 
     fontSize:
       "13px",
+  },
+
+
+  loadMoreButton: {
+    minHeight: "44px",
+    padding: "0 18px",
+    justifySelf: "center",
+    border: "1px solid rgba(255,100,15,.30)",
+    borderRadius: "13px",
+    background: "linear-gradient(135deg,rgba(190,20,20,.20),rgba(255,80,0,.12))",
+    color: "#ffffff",
+    fontSize: "14px",
+    fontWeight: 900,
+    cursor: "pointer",
   },
 
 

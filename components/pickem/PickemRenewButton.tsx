@@ -139,11 +139,6 @@ export default function PickemRenewButton({
           : `${nextSeason} league created. Preparing the new season now...`
       );
 
-      /*
-       * Prepare the new season immediately.
-       * Failure here does NOT undo renewal because the global Pick'em
-       * lifecycle cron will automatically retry.
-       */
       try {
         await fetch(
           "/api/pickem/commissioner-sync",
@@ -196,6 +191,7 @@ export default function PickemRenewButton({
 
   return (
     <div
+      className="g365-pickem-renew"
       style={{
         display:
           "grid",
@@ -203,6 +199,24 @@ export default function PickemRenewButton({
           9,
       }}
     >
+      <style>{`
+        @media (max-width: 760px) {
+          .g365-pickem-renew {
+            width: 100%;
+            min-width: 0;
+          }
+
+          .g365-pickem-renew button {
+            width: 100% !important;
+            min-height: 46px !important;
+          }
+
+          .g365-pickem-renew p {
+            overflow-wrap: anywhere;
+          }
+        }
+      `}</style>
+
       <button
         type="button"
         onClick={() =>

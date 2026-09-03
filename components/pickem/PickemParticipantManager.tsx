@@ -37,6 +37,71 @@ type InviteResponse = {
 };
 
 
+
+const PICKEM_PARTICIPANTS_MOBILE_CSS = `
+  .g365-pickem-participants,
+  .g365-pickem-participants * {
+    box-sizing: border-box;
+  }
+
+  @media (max-width: 760px) {
+    .g365-pickem-participants {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      padding: 15px !important;
+      overflow-x: hidden;
+    }
+
+    .g365-pickem-participants-header {
+      display: grid !important;
+      grid-template-columns: minmax(0,1fr) !important;
+      gap: 12px !important;
+    }
+
+    .g365-pickem-add-entry {
+      width: 100% !important;
+      min-height: 44px !important;
+    }
+
+    .g365-pickem-participant-card {
+      grid-template-columns: minmax(0,1fr) !important;
+      align-items: stretch !important;
+      gap: 10px !important;
+      padding: 12px !important;
+    }
+
+    .g365-pickem-participant-card strong {
+      white-space: normal !important;
+      overflow-wrap: anywhere;
+    }
+
+    .g365-pickem-invite-row {
+      grid-template-columns: minmax(0,1fr) !important;
+      gap: 8px !important;
+    }
+
+    .g365-pickem-invite-row input,
+    .g365-pickem-invite-row button,
+    .g365-pickem-participant-card > button {
+      width: 100% !important;
+      min-width: 0 !important;
+      justify-self: stretch !important;
+    }
+
+    .g365-pickem-participants input {
+      font-size: 16px !important;
+    }
+  }
+
+  @media (max-width: 430px) {
+    .g365-pickem-participants {
+      padding: 13px !important;
+    }
+  }
+`;
+
+
 export default function PickemParticipantManager({
   leagueId,
 }: Props) {
@@ -467,8 +532,9 @@ export default function PickemParticipantManager({
 
 
   return (
-    <section style={styles.panel}>
-      <div style={styles.header}>
+    <section className="g365-pickem-participants" style={styles.panel}>
+      <style>{PICKEM_PARTICIPANTS_MOBILE_CSS}</style>
+      <div className="g365-pickem-participants-header" style={styles.header}>
         <div>
           <div style={styles.eyebrow}>
             PARTICIPANTS
@@ -489,6 +555,7 @@ export default function PickemParticipantManager({
           onClick={() =>
             void addOpenEntry()
           }
+          className="g365-pickem-add-entry"
           style={styles.addButton}
         >
           {adding
@@ -543,6 +610,7 @@ export default function PickemParticipantManager({
           return (
             <article
               key={team.id}
+              className="g365-pickem-participant-card"
               style={styles.teamCard}
             >
               <div
@@ -617,6 +685,7 @@ export default function PickemParticipantManager({
                 </button>
               ) : (
                 <div
+                  className="g365-pickem-invite-row"
                   style={styles.inviteRow}
                 >
                   <input
