@@ -23,10 +23,8 @@ import {
 import InjuryReportButton from "@/components/ui/InjuryReportButton";
 
 type PageProps = {
-  params:
-    Promise<{
-      leagueId: string;
-    }>;
+  params: Promise<{ leagueId: string }>;
+  searchParams: Promise<{ week?: string }>;
 };
 
 
@@ -144,12 +142,19 @@ function getInjuryDisplay(
 
 export default async function TraditionalTeamPage({
   params,
+  searchParams,
 }: PageProps) {
   const {
     leagueId,
   } =
     await params;
 
+
+  const query = await searchParams;
+  const requestedWeek = query.week ? Number(query.week) : null;
+  const selectedWeekInput = requestedWeek !== null && Number.isInteger(requestedWeek)
+    ? Math.min(18, Math.max(1, requestedWeek))
+    : null;
 
   const access =
     await requireTraditionalLeague(
@@ -297,7 +302,8 @@ export default async function TraditionalTeamPage({
       supabase,
       leagueId,
       access.league.season,
-      access.fantasyTeam.id
+      access.fantasyTeam.id,
+      selectedWeekInput
     );
 
 
@@ -352,7 +358,7 @@ export default async function TraditionalTeamPage({
               }
             >
               Week{" "}
-              {teamData.activeWeek}
+              {teamData.selectedWeek}
 
               {" • "}
 
@@ -380,14 +386,14 @@ export default async function TraditionalTeamPage({
 
             <Link
               href={
-                `/league/${leagueId}/matchups`
+                `/league/${leagueId}/matchups?week=${teamData.selectedWeek}`
               }
               style={
                 styles.primaryLink
               }
             >
               Week{" "}
-              {teamData.activeWeek}{" "}
+              {teamData.selectedWeek}{" "}
               Matchup
             </Link>
           </div>
@@ -415,7 +421,7 @@ export default async function TraditionalTeamPage({
             value={
               teamData.startersCount
             }
-            detail={`Week ${teamData.activeWeek}`}
+            detail={`Week ${teamData.selectedWeek}`}
           />
 
           <SummaryCard
@@ -445,6 +451,34 @@ export default async function TraditionalTeamPage({
         </section>
 
 
+        <section style={{ display: "grid", gap: "10px" }}>
+          <div className="g365-mobile-section-header" style={styles.sectionHeader}>
+            <div>
+              <p style={styles.sectionEyebrow}>LINEUP WEEK</p>
+              <h2 style={styles.sectionTitle}>Week {teamData.selectedWeek}</h2>
+            </div>
+            <span style={styles.sectionMeta}>Active Week: {teamData.activeWeek}</span>
+          </div>
+          <div className="g365-mobile-week-buttons" style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "3px" }}>
+            {Array.from({ length: 18 }, (_, index) => index + 1).map((week) => (
+              <Link
+                key={week}
+                href={`/league/${leagueId}/team?week=${week}`}
+                scroll={false}
+                style={{
+                  minWidth: "34px", height: "32px", padding: "0 8px", flex: "0 0 auto",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  border: week === teamData.selectedWeek ? "1px solid rgba(255,103,15,.55)" : "1px solid rgba(255,255,255,.09)",
+                  borderRadius: "7px",
+                  background: week === teamData.selectedWeek ? "linear-gradient(135deg,#cf1616,#ff5100,#ff8500)" : "rgba(255,255,255,.035)",
+                  color: week === teamData.selectedWeek ? "#fff" : "#969da7",
+                  fontSize: "9px", fontWeight: 900, textDecoration: "none",
+                }}
+              >{week}</Link>
+            ))}
+          </div>
+        </section>
+
         {/* ==========================================
             INTERACTIVE LINEUP MANAGER
         =========================================== */}
@@ -469,7 +503,7 @@ export default async function TraditionalTeamPage({
                 }
               >
                 Set Week{" "}
-                {teamData.activeWeek}{" "}
+                {teamData.selectedWeek}{" "}
                 Lineup
               </h2>
             </div>

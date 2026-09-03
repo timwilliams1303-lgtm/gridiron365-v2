@@ -73,6 +73,8 @@ export type TraditionalRosterSettings = {
 export type TraditionalTeamData = {
   activeWeek: number;
 
+  selectedWeek: number;
+
   phase: string;
 
   rosterCount: number;
@@ -229,7 +231,8 @@ export async function getTraditionalTeamData(
     SupabaseClient,
   leagueId: string,
   season: number,
-  fantasyTeamId: number
+  fantasyTeamId: number,
+  selectedWeekInput?: number | null
 ): Promise<TraditionalTeamData> {
   /*
    * =====================================================
@@ -284,6 +287,11 @@ export async function getTraditionalTeamData(
     seasonState
       ?.active_week ??
     1;
+
+  const requestedWeek = Number(selectedWeekInput ?? activeWeek);
+  const selectedWeek = Number.isInteger(requestedWeek)
+    ? Math.min(18, Math.max(1, requestedWeek))
+    : activeWeek;
 
 
   /*
@@ -490,7 +498,7 @@ export async function getTraditionalTeamData(
       )
       .eq(
         "week",
-        activeWeek
+        selectedWeek
       );
 
 
@@ -822,6 +830,8 @@ export async function getTraditionalTeamData(
 
   return {
     activeWeek,
+
+    selectedWeek,
 
     phase:
       seasonState

@@ -1356,11 +1356,31 @@ className="g365-headshotFallback" style={styles.headshotFallback}
       <div
 className="g365-playerText" style={styles.playerText}
       >
-        <strong
-className="g365-playerName" style={styles.playerName}
+        <div
+          className="g365-playerNameLine"
+          style={styles.playerNameLine}
         >
-          {player.fullName}
-        </strong>
+          <strong
+            className="g365-playerName"
+            style={styles.playerName}
+          >
+            {player.fullName}
+          </strong>
+
+          <InjuryReportButton
+            status={player.injuryStatus}
+            injuryDetail={player.injuryDetail}
+            playerName={player.fullName}
+            buttonStyle={{
+              minWidth: 0,
+              minHeight: 0,
+              padding: "2px 4px",
+              borderRadius: 4,
+              fontSize: 7,
+              lineHeight: 1,
+            }}
+          />
+        </div>
 
         <span
 className="g365-playerMeta" style={styles.playerMeta}
@@ -1373,11 +1393,6 @@ className="g365-playerMeta" style={styles.playerMeta}
             : ""}
         </span>
 
-        <InjuryReportButton
-          status={player.injuryStatus}
-          injuryDetail={player.injuryDetail}
-          playerName={player.fullName}
-        />
       </div>
     </div>
   );
@@ -1766,6 +1781,14 @@ const styles = {
 
     gap:
       "3px",
+  },
+
+
+  playerNameLine: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
   },
 
 
