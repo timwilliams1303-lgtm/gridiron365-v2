@@ -8,6 +8,12 @@ import {
   Geist_Mono,
 } from "next/font/google";
 
+import {
+  Suspense,
+} from "react";
+
+import Gridiron365ResumeTracker from "@/components/pwa/Gridiron365ResumeTracker";
+
 import "./globals.css";
 
 const geistSans =
@@ -128,6 +134,12 @@ export default function RootLayout({
       }
     >
       <body>
+        <Suspense
+          fallback={null}
+        >
+          <Gridiron365ResumeTracker />
+        </Suspense>
+
         {children}
       </body>
     </html>
