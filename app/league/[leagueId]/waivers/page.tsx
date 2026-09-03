@@ -580,13 +580,17 @@ function SummaryCard({
 const mobileCss = `
 @media (max-width: 760px) {
   .g365-waivers-page {
-    padding: 20px 10px 48px !important;
+    padding: 12px 8px 32px !important;
     overflow-x: hidden !important;
   }
 
+  .g365-waivers-header > div > p:first-child { font-size: 8px !important; letter-spacing: .11em !important; }
+  .g365-waivers-header h1 { font-size: 25px !important; line-height: 1.05 !important; margin-top: 4px !important; }
+  .g365-waivers-header > div > p:last-child { font-size: 10px !important; line-height: 1.35 !important; margin-top: 5px !important; max-width: 100% !important; }
+
   .g365-waivers-shell {
     min-width: 0 !important;
-    gap: 22px !important;
+    gap: 15px !important;
   }
 
   .g365-waivers-header {
@@ -597,16 +601,30 @@ const mobileCss = `
 
   .g365-waivers-header > a {
     width: 100% !important;
-    min-height: 44px !important;
+    min-height: 38px !important;
+    padding: 0 12px !important;
+    font-size: 9px !important;
   }
 
   .g365-waivers-summary {
     grid-template-columns: repeat(2,minmax(0,1fr)) !important;
+    gap: 7px !important;
   }
+
+  .g365-waivers-summary > * { min-height: 78px !important; padding: 10px !important; }
+  .g365-waivers-summary > * > span:first-child { font-size: 7px !important; letter-spacing: .07em !important; }
+  .g365-waivers-summary > * > strong { font-size: 18px !important; line-height: 1.05 !important; }
+  .g365-waivers-summary > * > span:last-child { font-size: 8px !important; line-height: 1.2 !important; }
 
   .g365-waivers-section-header {
     align-items: flex-start !important;
+    margin-bottom: 7px !important;
+    gap: 7px !important;
   }
+  .g365-waivers-section-header p:first-child { font-size: 7px !important; }
+  .g365-waivers-section-header h2 { font-size: 16px !important; line-height: 1.1 !important; margin-top: 2px !important; }
+  .g365-waivers-section-header h2 + p { font-size: 8px !important; line-height: 1.35 !important; margin-top: 3px !important; }
+  .g365-waivers-section-header > span { font-size: 8px !important; }
 
   .g365-waivers-results-scroll {
     display: block !important;
@@ -653,6 +671,16 @@ const mobileCss = `
     grid-template-columns: minmax(0,1fr) auto !important;
     align-items: end !important;
   }
+
+  .g365-waivers-header h1 { font-size: 24px !important; }
+  .g365-waivers-header > div > p:last-child { font-size: 10px !important; margin-top: 4px !important; }
+  .g365-waivers-header > a { min-height: 36px !important; font-size: 9px !important; padding: 0 12px !important; }
+  .g365-waivers-shell { gap: 14px !important; }
+  .g365-waivers-summary { gap: 7px !important; }
+  .g365-waivers-summary > * { min-height: 72px !important; padding: 9px !important; }
+  .g365-waivers-summary > * > strong { font-size: 17px !important; }
+  .g365-waivers-section-header { margin-bottom: 6px !important; }
+  .g365-waivers-section-header h2 { font-size: 15px !important; }
 
   .g365-waivers-summary {
     grid-template-columns: repeat(4,minmax(0,1fr)) !important;

@@ -340,25 +340,33 @@ className="g365-wrapper g365-waivers-root" style={styles.wrapper}
     >
       <style jsx global>{`
 @media (max-width: 760px) {
-  .g365-waivers-root { gap: 8px !important; min-width: 0 !important; }
+  .g365-waivers-root { gap: 6px !important; min-width: 0 !important; font-size: 10px !important; }
   .g365-waivers-root .g365-claimRow {
     grid-template-columns: 58px minmax(0,1fr) !important;
-    gap: 10px !important; padding: 12px 10px !important; min-height: 0 !important;
+    gap: 8px !important; padding: 8px !important; min-height: 0 !important;
     align-items: start !important;
   }
   .g365-waivers-root .g365-rankColumn { grid-row: 1 / span 3 !important; }
+  .g365-waivers-root .g365-rankLabel { font-size: 6px !important; }
+  .g365-waivers-root .g365-rankValue { font-size: 13px !important; }
+  .g365-waivers-root .g365-rankButton { width: 25px !important; height: 24px !important; font-size: 12px !important; }
+  .g365-waivers-root .g365-playerName { font-size: 11px !important; line-height: 1.15 !important; }
+  .g365-waivers-root .g365-playerMeta, .g365-waivers-root .g365-dropText { font-size: 8px !important; }
+  .g365-waivers-root .g365-infoLabel { font-size: 6px !important; }
+  .g365-waivers-root .g365-infoValue { font-size: 9px !important; }
   .g365-waivers-root .g365-playerIdentity { min-width: 0 !important; }
   .g365-waivers-root .g365-claimInfo,
   .g365-waivers-root .g365-actionCell { grid-column: 2 !important; width: 100% !important; min-width: 0 !important; }
-  .g365-waivers-root button { min-height: 40px !important; }
+  .g365-waivers-root button { min-height: 34px !important; }
+  .g365-waivers-root .g365-cancelButton { min-height: 34px !important; padding: 0 10px !important; font-size: 8px !important; }
 }
 @media (max-height: 600px) and (orientation: landscape) and (max-width: 950px) {
   .g365-waivers-root { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
-  .g365-waivers-root .g365-claimRow { grid-template-columns: 58px minmax(0,1fr) !important; gap: 10px !important; padding: 12px 10px !important; }
+  .g365-waivers-root .g365-claimRow { grid-template-columns: 52px minmax(0,1fr) !important; gap: 8px !important; padding: 8px !important; }
   .g365-waivers-root .g365-rankColumn { grid-row: 1 / span 3 !important; }
   .g365-waivers-root .g365-claimInfo, .g365-waivers-root .g365-actionCell { grid-column: 2 !important; width: 100% !important; min-width: 0 !important; }
   .g365-waivers-root .g365-actionCell { justify-content: flex-start !important; }
-  .g365-waivers-root .g365-cancelButton { min-height: 40px !important; min-width: 96px !important; }
+  .g365-waivers-root .g365-cancelButton { min-height: 34px !important; min-width: 82px !important; font-size: 8px !important; }
 }
 @media (max-width: 430px) {
   .g365-waivers-root .g365-headshotWrap { width: 40px !important; height: 40px !important; }
