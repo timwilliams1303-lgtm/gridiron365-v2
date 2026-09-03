@@ -1372,12 +1372,18 @@ className="g365-playerText" style={styles.playerText}
             injuryDetail={player.injuryDetail}
             playerName={player.fullName}
             buttonStyle={{
-              minWidth: 0,
-              minHeight: 0,
-              padding: "2px 4px",
+              width: 20,
+              minWidth: 20,
+              height: 20,
+              minHeight: 20,
+              padding: 0,
               borderRadius: 4,
               fontSize: 7,
               lineHeight: 1,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flex: "0 0 20px",
             }}
           />
         </div>
