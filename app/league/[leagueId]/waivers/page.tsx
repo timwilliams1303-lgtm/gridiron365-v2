@@ -580,8 +580,52 @@ function SummaryCard({
 const mobileCss = `
 @media (max-width: 760px) {
   .g365-waivers-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
     padding: 12px 8px 32px !important;
     overflow-x: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  .g365-waivers-page *,
+  .g365-waivers-page *::before,
+  .g365-waivers-page *::after {
+    box-sizing: border-box;
+  }
+
+  .g365-waivers-shell {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .g365-waivers-shell > *,
+  .g365-waivers-shell > section,
+  .g365-waivers-shell > section > *,
+  .g365-waivers-header,
+  .g365-waivers-summary,
+  .g365-waivers-section-header {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .g365-waivers-header > div,
+  .g365-waivers-section-header > div {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .g365-waivers-header p,
+  .g365-waivers-section-header p,
+  .g365-waivers-section-header h2 {
+    max-width: 100% !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
   }
 
   .g365-waivers-header > div > p:first-child { font-size: 8px !important; letter-spacing: .11em !important; }
@@ -601,6 +645,9 @@ const mobileCss = `
 
   .g365-waivers-header > a {
     width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
     min-height: 38px !important;
     padding: 0 12px !important;
     font-size: 9px !important;

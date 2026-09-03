@@ -340,7 +340,41 @@ className="g365-wrapper g365-waivers-root" style={styles.wrapper}
     >
       <style jsx global>{`
 @media (max-width: 760px) {
-  .g365-waivers-root { gap: 6px !important; min-width: 0 !important; font-size: 10px !important; }
+  .g365-waivers-root {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    gap: 6px !important;
+    font-size: 10px !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+  }
+  .g365-waivers-root *,
+  .g365-waivers-root *::before,
+  .g365-waivers-root *::after { box-sizing: border-box; }
+  .g365-waivers-root > *,
+  .g365-waivers-root .g365-claimList,
+  .g365-waivers-root .g365-emptyState {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .g365-waivers-root .g365-emptyState {
+    padding: 14px 12px !important;
+    min-height: 120px !important;
+    overflow: hidden !important;
+  }
+  .g365-waivers-root .g365-emptyState strong,
+  .g365-waivers-root .g365-emptyState span {
+    display: block !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+  }
+  .g365-waivers-root .g365-emptyState strong { font-size: 14px !important; line-height: 1.2 !important; }
+  .g365-waivers-root .g365-emptyState span { font-size: 10px !important; line-height: 1.35 !important; }
   .g365-waivers-root .g365-claimRow {
     grid-template-columns: 58px minmax(0,1fr) !important;
     gap: 8px !important; padding: 8px !important; min-height: 0 !important;
