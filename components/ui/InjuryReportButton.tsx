@@ -9,6 +9,7 @@ import type {
   CSSProperties,
   MouseEvent,
 } from "react";
+import { createPortal } from "react-dom";
 
 type Props = {
   status: string | null | undefined;
@@ -133,10 +134,11 @@ export default function InjuryReportButton({
           borderRadius: 999,
           background: "rgba(127,29,29,.28)",
           color: "#fecaca",
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: 900,
           lineHeight: 1,
-          padding: "6px 8px",
+          minHeight: 22,
+          padding: "4px 6px",
           cursor: "pointer",
           flexShrink: 0,
           ...buttonStyle,
@@ -145,72 +147,75 @@ export default function InjuryReportButton({
         {injury.code}
       </button>
 
-      {open ? (
-        <div
-          role="presentation"
-          onClick={closeReport}
-          style={styles.overlay}
-        >
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-label={`${playerName ?? "Player"} injury report`}
-            onClick={(event) => event.stopPropagation()}
-            style={styles.dialog}
-          >
-            <div style={styles.header}>
-              <div>
-                <div style={styles.eyebrow}>INJURY REPORT</div>
-                <h3 style={styles.title}>
-                  {playerName ?? "Player status"}
-                </h3>
-              </div>
-
-              <button
-                type="button"
-                aria-label="Close injury report"
-                onClick={closeReport}
-                style={styles.closeButton}
-              >
-                ×
-              </button>
-            </div>
-
-            <div style={styles.statusRow}>
-              <span style={styles.statusBadge}>{injury.code}</span>
-              <strong style={styles.statusLabel}>{injury.label}</strong>
-            </div>
-
-            <div style={styles.details}>
-              {injuryType ? (
-                <ReportRow label="Injury" value={injuryType} />
-              ) : null}
-
-              {injuryLocation && injuryLocation !== injuryType ? (
-                <ReportRow label="Location" value={injuryLocation} />
-              ) : null}
-
-              {injuryDetail ? (
-                <ReportRow label="Report" value={injuryDetail} />
-              ) : null}
-
-              {!injuryType && !injuryLocation && !injuryDetail ? (
-                <div style={styles.emptyDetail}>
-                  No additional injury details are currently available.
-                </div>
-              ) : null}
-            </div>
-
-            <button
-              type="button"
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              role="presentation"
               onClick={closeReport}
-              style={styles.doneButton}
+              style={styles.overlay}
             >
-              CLOSE
-            </button>
-          </section>
-        </div>
-      ) : null}
+              <section
+                role="dialog"
+                aria-modal="true"
+                aria-label={`${playerName ?? "Player"} injury report`}
+                onClick={(event) => event.stopPropagation()}
+                style={styles.dialog}
+              >
+                <div style={styles.header}>
+                  <div>
+                    <div style={styles.eyebrow}>INJURY REPORT</div>
+                    <h3 style={styles.title}>
+                      {playerName ?? "Player status"}
+                    </h3>
+                  </div>
+
+                  <button
+                    type="button"
+                    aria-label="Close injury report"
+                    onClick={closeReport}
+                    style={styles.closeButton}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div style={styles.statusRow}>
+                  <span style={styles.statusBadge}>{injury.code}</span>
+                  <strong style={styles.statusLabel}>{injury.label}</strong>
+                </div>
+
+                <div style={styles.details}>
+                  {injuryType ? (
+                    <ReportRow label="Injury" value={injuryType} />
+                  ) : null}
+
+                  {injuryLocation && injuryLocation !== injuryType ? (
+                    <ReportRow label="Location" value={injuryLocation} />
+                  ) : null}
+
+                  {injuryDetail ? (
+                    <ReportRow label="Report" value={injuryDetail} />
+                  ) : null}
+
+                  {!injuryType && !injuryLocation && !injuryDetail ? (
+                    <div style={styles.emptyDetail}>
+                      No additional injury details are currently available.
+                    </div>
+                  ) : null}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeReport}
+                  style={styles.doneButton}
+                >
+                  CLOSE
+                </button>
+              </section>
+            </div>,
+            document.body
+          )
+        : null}
     </>
   );
 }
@@ -238,14 +243,18 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: 18,
+    padding: "max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom))",
+    overflowY: "auto",
+    overscrollBehavior: "contain",
     background: "rgba(0,0,0,.72)",
     backdropFilter: "blur(3px)",
   },
   dialog: {
-    width: "min(460px, 100%)",
-    maxHeight: "min(680px, calc(100vh - 36px))",
+    width: "min(500px, 100%)",
+    maxHeight: "calc(100dvh - 24px)",
     overflowY: "auto",
+    WebkitOverflowScrolling: "touch",
+    overscrollBehavior: "contain",
     border: "1px solid rgba(249,115,22,.38)",
     borderRadius: 18,
     background: "linear-gradient(180deg,#18181b 0%,#09090b 100%)",
