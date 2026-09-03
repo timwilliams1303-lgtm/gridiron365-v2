@@ -683,13 +683,32 @@ function PlayerRow({
             styles.playerText
           }
         >
-          <strong
-            style={
-              styles.playerName
-            }
+          <div
+            style={styles.playerNameRow}
           >
-            {player.fullName}
-          </strong>
+            <strong
+              style={
+                styles.playerName
+              }
+            >
+              {player.fullName}
+            </strong>
+
+            {injury ? (
+              <InjuryReportButton
+                status={player.injuryStatus}
+                injuryDetail={player.injuryDetail}
+                playerName={player.fullName}
+                buttonStyle={{
+                  minWidth: 0,
+                  padding: "3px 5px",
+                  borderRadius: 5,
+                  fontSize: 8,
+                  lineHeight: 1,
+                }}
+              />
+            ) : null}
+          </div>
 
           <span
             style={
@@ -711,15 +730,6 @@ function PlayerRow({
         className="g365-mobile-status-column"
         style={styles.statusColumn}
       >
-        {injury ? (
-          <InjuryReportButton
-            status={player.injuryStatus}
-            injuryDetail={player.injuryDetail}
-            playerName={player.fullName}
-          />
-        ) : null}
-
-
         {player.isLocked ? (
           <span
             style={
@@ -1225,6 +1235,21 @@ const styles = {
 
     gap:
       "4px",
+  },
+
+
+  playerNameRow: {
+    minWidth:
+      0,
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "5px",
   },
 
 
