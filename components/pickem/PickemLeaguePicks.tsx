@@ -606,6 +606,12 @@ export default function PickemLeaguePicks({
     );
 
 
+  const collapsedInitializedWeekRef =
+    useRef<number | null>(
+      null
+    );
+
+
   const toggleTeamCollapsed =
     useCallback(
       (
@@ -742,6 +748,35 @@ export default function PickemLeaguePicks({
     }, [
       rows,
     ]);
+
+
+  useEffect(() => {
+    if (
+      selectedWeekId ===
+        null ||
+      teamGroups.length ===
+        0 ||
+      collapsedInitializedWeekRef.current ===
+        selectedWeekId
+    ) {
+      return;
+    }
+
+    setCollapsedTeamIds(
+      new Set(
+        teamGroups.map(
+          (group) =>
+            group.fantasyTeamId
+        )
+      )
+    );
+
+    collapsedInitializedWeekRef.current =
+      selectedWeekId;
+  }, [
+    selectedWeekId,
+    teamGroups,
+  ]);
 
 
   const loadWeeks =
