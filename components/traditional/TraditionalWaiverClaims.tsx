@@ -352,11 +352,13 @@ className="g365-wrapper g365-waivers-root" style={styles.wrapper}
   .g365-waivers-root .g365-actionCell { grid-column: 2 !important; width: 100% !important; min-width: 0 !important; }
   .g365-waivers-root button { min-height: 40px !important; }
 }
-@media (max-height: 500px) and (orientation: landscape) and (max-width: 950px) {
+@media (max-height: 600px) and (orientation: landscape) and (max-width: 950px) {
   .g365-waivers-root { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
   .g365-waivers-root .g365-claimRow { grid-template-columns: 58px minmax(0,1fr) !important; gap: 10px !important; padding: 12px 10px !important; }
   .g365-waivers-root .g365-rankColumn { grid-row: 1 / span 3 !important; }
   .g365-waivers-root .g365-claimInfo, .g365-waivers-root .g365-actionCell { grid-column: 2 !important; width: 100% !important; min-width: 0 !important; }
+  .g365-waivers-root .g365-actionCell { justify-content: flex-start !important; }
+  .g365-waivers-root .g365-cancelButton { min-height: 40px !important; min-width: 96px !important; }
 }
 @media (max-width: 430px) {
   .g365-waivers-root .g365-headshotWrap { width: 40px !important; height: 40px !important; }

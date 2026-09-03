@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { useParams, useRouter } from "next/navigation";
+import TraditionalScoring from "@/components/traditional/TraditionalScoring";
 
 type Tab =
   | "overview"
@@ -950,6 +951,24 @@ export default function TraditionalCommissionerPage() {
   if (loading) {
     return <main className="g365-page g365-commissioner-page" style={styles.page}>
       <style jsx global>{`
+@media (max-width: 980px) {
+  .g365-commissioner-page .g365-tabs,
+  .g365-commissioner-page .g365-scoringCategoryTabs {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
+    scrollbar-width: thin;
+  }
+  .g365-commissioner-page .g365-tab,
+  .g365-commissioner-page .g365-scoringCategoryTab {
+    flex: 0 0 auto !important;
+  }
+}
 @media (max-width: 760px) {
   .g365-commissioner-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
   .g365-commissioner-page .g365-shell { width: 100% !important; min-width: 0 !important; }
@@ -996,6 +1015,24 @@ export default function TraditionalCommissionerPage() {
     return (
       <main className="g365-page g365-commissioner-page" style={styles.page}>
       <style jsx global>{`
+@media (max-width: 980px) {
+  .g365-commissioner-page .g365-tabs,
+  .g365-commissioner-page .g365-scoringCategoryTabs {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
+    scrollbar-width: thin;
+  }
+  .g365-commissioner-page .g365-tab,
+  .g365-commissioner-page .g365-scoringCategoryTab {
+    flex: 0 0 auto !important;
+  }
+}
 @media (max-width: 760px) {
   .g365-commissioner-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
   .g365-commissioner-page .g365-shell { width: 100% !important; min-width: 0 !important; }
@@ -1061,6 +1098,24 @@ export default function TraditionalCommissionerPage() {
   return (
     <main className="g365-page g365-commissioner-page" style={styles.page}>
       <style jsx global>{`
+@media (max-width: 980px) {
+  .g365-commissioner-page .g365-tabs,
+  .g365-commissioner-page .g365-scoringCategoryTabs {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
+    scrollbar-width: thin;
+  }
+  .g365-commissioner-page .g365-tab,
+  .g365-commissioner-page .g365-scoringCategoryTab {
+    flex: 0 0 auto !important;
+  }
+}
 @media (max-width: 760px) {
   .g365-commissioner-page { padding: 12px 10px 32px !important; overflow-x: hidden !important; }
   .g365-commissioner-page .g365-shell { width: 100% !important; min-width: 0 !important; }
@@ -1268,211 +1323,8 @@ export default function TraditionalCommissionerPage() {
           </>
         ) : null}
 
-        {tab === "scoring" && scoring ? (
-          <Section
-            title="Scoring"
-            subtitle="Base scoring and category-specific bonuses include yardage milestones, multiple-TD bonuses, long-play/long-TD bonuses, kicking distance bonuses, and DST thresholds. Tiered bonuses use highest-only non-stacking logic."
-          >
-            <div className="g365-scoringCategoryTabs" style={styles.scoringCategoryTabs}>
-              {(Object.keys(scoringGroups) as ScoringCategoryKey[]).map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setScoringCategory(key)}
-                  style={{
-                    ...styles.scoringCategoryTab,
-                    ...(scoringCategory === key ? styles.scoringCategoryTabActive : {}),
-                  }}
-                >
-                  {scoringGroups[key].label}
-                </button>
-              ))}
-            </div>
-
-            <div className="g365-scoringCategoryPanel" style={styles.scoringCategoryPanel}>
-              <div className="g365-subsectionTitle" style={styles.subsectionTitle}>
-                {scoringGroups[scoringCategory].label.toUpperCase()} BASE SCORING
-              </div>
-              <div className="g365-scoringBaseGrid" style={styles.scoringBaseGrid}>
-                {scoringGroups[scoringCategory].baseFields.map(([key, label]) => (
-                  <Input
-                    key={key}
-                    label={label}
-                    value={scoring[key] === null ? "" : String(scoring[key])}
-                    onChange={(v) =>
-                      setScoring({
-                        ...scoring,
-                        [key]: v === "" ? null : n(v),
-                      } as Scoring)
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="g365-scoringCategoryPanel" style={styles.scoringCategoryPanel}>
-              <div className="g365-bonusHeader" style={styles.bonusHeader}>
-                <div>
-                  <div className="g365-subsectionTitle" style={styles.subsectionTitle}>
-                    {scoringGroups[scoringCategory].label.toUpperCase()} BONUS RULES
-                  </div>
-                  <p className="g365-sectionSub" style={styles.sectionSub}>
-                    Add yardage, multiple-touchdown, long-play/long-TD, kicking-distance, or defense threshold bonuses. Use Minimum for the threshold and Maximum when you want a range. If multiple enabled thresholds in the same stat family are reached, only the highest qualifying bonus is awarded.
-                  </p>
-                </div>
-                <Button onClick={addBonusRule}>+ ADD BONUS RULE</Button>
-              </div>
-
-              <div className="g365-bonusRuleList" style={styles.bonusRuleList}>
-                {scoringRules
-                  .filter((rule) => rule.category.toLowerCase() === scoringGroups[scoringCategory].label.toLowerCase())
-                  .map((rule) => (
-                    <div key={rule.id}className="g365-bonusRuleRow" style={styles.bonusRuleRow}>
-                      <label className="g365-field" style={styles.field}>
-                        <span className="g365-fieldLabel" style={styles.fieldLabel}>Rule Name</span>
-                        <input
-                          value={rule.label ?? ""}
-                          onChange={(e) =>
-                            setScoringRules((current) =>
-                              current.map((row) =>
-                                row.id === rule.id ? { ...row, label: e.target.value } : row
-                              )
-                            )
-                          }
-className="g365-input" style={styles.input}
-                        />
-                      </label>
-
-                      <label className="g365-field" style={styles.field}>
-                        <span className="g365-fieldLabel" style={styles.fieldLabel}>Statistic</span>
-                        <select
-                          value={rule.stat_key}
-                          onChange={(e) =>
-                            setScoringRules((current) =>
-                              current.map((row) =>
-                                row.id === rule.id ? { ...row, stat_key: e.target.value } : row
-                              )
-                            )
-                          }
-className="g365-input" style={styles.input}
-                        >
-                          {scoringGroups[scoringCategory].bonusStats.map(([key, label]) => (
-                            <option key={key} value={key}>{label}</option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <Input
-                        label="Minimum"
-                        value={rule.min_value ?? ""}
-                        onChange={(v) =>
-                          setScoringRules((current) =>
-                            current.map((row) =>
-                              row.id === rule.id ? { ...row, min_value: v === "" ? null : n(v) } : row
-                            )
-                          )
-                        }
-                      />
-
-                      <Input
-                        label="Maximum (optional)"
-                        value={rule.max_value ?? ""}
-                        onChange={(v) =>
-                          setScoringRules((current) =>
-                            current.map((row) =>
-                              row.id === rule.id ? { ...row, max_value: v === "" ? null : n(v) } : row
-                            )
-                          )
-                        }
-                      />
-
-                      <Input
-                        label="Bonus Points"
-                        value={String(rule.points)}
-                        onChange={(v) =>
-                          setScoringRules((current) =>
-                            current.map((row) =>
-                              row.id === rule.id ? { ...row, points: n(v) } : row
-                            )
-                          )
-                        }
-                      />
-
-                      <label className="g365-check" style={styles.check}>
-                        <input
-                          type="checkbox"
-                          checked={rule.is_enabled}
-                          onChange={(e) =>
-                            setScoringRules((current) =>
-                              current.map((row) =>
-                                row.id === rule.id ? { ...row, is_enabled: e.target.checked } : row
-                              )
-                            )
-                          }
-                        />
-                        ENABLED
-                      </label>
-
-                      <div className="g365-bonusActions" style={styles.bonusActions}>
-                        <Button disabled={saving} onClick={() => void saveBonusRule(rule)}>SAVE</Button>
-                        <Button danger disabled={saving} onClick={() => void deleteBonusRule(rule.id)}>DELETE</Button>
-                      </div>
-                    </div>
-                  ))}
-
-                {!scoringRules.some(
-                  (rule) => rule.category.toLowerCase() === scoringGroups[scoringCategory].label.toLowerCase()
-                ) ? (
-                  <div className="g365-empty" style={styles.empty}>
-                    No {scoringGroups[scoringCategory].label.toLowerCase()} bonus rules yet.
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="g365-scoringAdvanced" style={styles.scoringAdvanced}>
-              <label className="g365-field" style={styles.field}>
-                <span className="g365-fieldLabel" style={styles.fieldLabel}>Fractional Scoring</span>
-                <select
-                  value={scoring.fractional_scoring_enabled ? "true" : "false"}
-                  onChange={(e) =>
-                    setScoring({
-                      ...scoring,
-                      fractional_scoring_enabled: e.target.value === "true",
-                    })
-                  }
-className="g365-input" style={styles.input}
-                >
-                  <option value="true">Enabled</option>
-                  <option value="false">Disabled</option>
-                </select>
-              </label>
-              <Input
-                label="Decimal Places"
-                value={scoring.decimal_places}
-                onChange={(v) => setScoring({ ...scoring, decimal_places: n(v, 2) })}
-              />
-            </div>
-
-            <div className="g365-actions" style={styles.actions}>
-              <Button
-                disabled={saving}
-                onClick={() => {
-                  const { league_id: _ignore, ...payload } = scoring;
-                  void action(
-                    () =>
-                      supabase.rpc("save_traditional_base_scoring", {
-                        p_league_id: leagueId,
-                        p_settings: payload,
-                      }),
-                    "Base scoring settings saved."
-                  );
-                }}
-              >
-                SAVE BASE SCORING
-              </Button>
-            </div>
-          </Section>
+        {tab === "scoring" ? (
+          <TraditionalScoring leagueId={leagueId} embedded />
         ) : null}
 
         {tab === "draft" && draft ? (

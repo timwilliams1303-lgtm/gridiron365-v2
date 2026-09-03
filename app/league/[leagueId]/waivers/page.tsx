@@ -609,9 +609,11 @@ const mobileCss = `
   }
 
   .g365-waivers-results-scroll {
+    display: block !important;
     width: 100% !important;
     max-width: 100% !important;
-    overflow-x: auto !important;
+    min-width: 0 !important;
+    overflow-x: scroll !important;
     overflow-y: hidden !important;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
@@ -626,6 +628,50 @@ const mobileCss = `
 
   .g365-waivers-history-row > div {
     min-width: 0 !important;
+  }
+}
+
+
+@media (max-height: 600px) and (orientation: landscape) and (max-width: 950px) {
+  .g365-waivers-page {
+    width: 100% !important;
+    max-width: 100vw !important;
+    min-width: 0 !important;
+    padding: 14px 10px 34px !important;
+    overflow-x: hidden !important;
+  }
+
+  .g365-waivers-shell,
+  .g365-waivers-shell > section {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .g365-waivers-header {
+    display: grid !important;
+    grid-template-columns: minmax(0,1fr) auto !important;
+    align-items: end !important;
+  }
+
+  .g365-waivers-summary {
+    grid-template-columns: repeat(4,minmax(0,1fr)) !important;
+  }
+
+  .g365-waivers-results-scroll {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: scroll !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
+  }
+
+  .g365-waivers-history-row {
+    min-width: 720px !important;
   }
 }
 
@@ -921,7 +967,7 @@ const styles = {
       0,
 
     overflow:
-      "hidden",
+      "visible",
   },
 
 
