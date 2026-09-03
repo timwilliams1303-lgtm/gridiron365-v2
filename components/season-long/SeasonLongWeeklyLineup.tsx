@@ -424,7 +424,7 @@ function getInjuryDisplay(
     normalized === "O" ||
     normalized.includes("OUT")
   ) {
-    code = "OUT";
+    code = "O";
     label = "Out";
   } else if (
     normalized === "IR" ||
@@ -438,13 +438,6 @@ function getInjuryDisplay(
   ) {
     code = "PUP";
     label = "Physically Unable to Perform";
-  } else if (
-    normalized === "NFI" ||
-    normalized.includes("NON-FOOTBALL") ||
-    normalized.includes("NON FOOTBALL")
-  ) {
-    code = "NFI";
-    label = "Non-Football Injury";
   } else if (
     normalized === "SUSP" ||
     normalized === "SUS" ||
@@ -472,11 +465,14 @@ function getInjuryDisplay(
       Boolean(value?.trim())
   );
 
+  const tooltip =
+    details.join(" • ");
+
   return {
     code,
     label,
-    detail: details.join(" • "),
-    tooltip: details.join(" • "),
+    tooltip,
+    detailText: tooltip,
   };
 }
 
@@ -769,6 +765,13 @@ export default function SeasonLongWeeklyLineup({
     setIsError,
   ] =
     useState(false);
+
+
+  const [
+    expandedInjuryKey,
+    setExpandedInjuryKey,
+  ] =
+    useState<string | null>(null);
 
 
   const isSalary =
@@ -1744,6 +1747,64 @@ export default function SeasonLongWeeklyLineup({
                                 </>
                               ) : ""}
                             </span>
+
+                            {(() => {
+                              const injury =
+                                getInjuryDisplay(
+                                  player.injuryStatus,
+                                  player.injuryType,
+                                  player.injuryDetail
+                                );
+
+                              if (!injury) {
+                                return null;
+                              }
+
+                              const injuryKey =
+                                `lineup:${slotKey}`;
+
+                              const expanded =
+                                expandedInjuryKey ===
+                                injuryKey;
+
+                              return (
+                                <span
+                                  style={
+                                    styles.injuryLine
+                                  }
+                                >
+                                  <button
+                                    type="button"
+                                    aria-expanded={expanded}
+                                    aria-label={`${injury.label}. Tap for injury details.`}
+                                    title={injury.tooltip}
+                                    onClick={() =>
+                                      setExpandedInjuryKey(
+                                        expanded
+                                          ? null
+                                          : injuryKey
+                                      )
+                                    }
+                                    style={{
+                                      ...styles.injuryBadge,
+                                      ...styles.injuryButton,
+                                    }}
+                                  >
+                                    {injury.code}
+                                  </button>
+
+                                  {expanded ? (
+                                    <span
+                                      style={
+                                        styles.injuryExpandedDetail
+                                      }
+                                    >
+                                      {injury.detailText}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              );
+                            })()}
                           </div>
 
 
@@ -2128,33 +2189,48 @@ export default function SeasonLongWeeklyLineup({
                               return null;
                             }
 
+                            const injuryKey =
+                              `pool:${player.id}`;
+
+                            const expanded =
+                              expandedInjuryKey ===
+                              injuryKey;
+
                             return (
                               <span
                                 style={
                                   styles.injuryLine
                                 }
                               >
-                                <strong
-                                  style={
-                                    styles.injuryBadge
+                                <button
+                                  type="button"
+                                  aria-expanded={expanded}
+                                  aria-label={`${injury.label}. Tap for injury details.`}
+                                  title={injury.tooltip}
+                                  onClick={() =>
+                                    setExpandedInjuryKey(
+                                      expanded
+                                        ? null
+                                        : injuryKey
+                                    )
                                   }
-                                  title={
-                                    injury.tooltip
-                                  }
-                                  aria-label={
-                                    injury.tooltip
-                                  }
+                                  style={{
+                                    ...styles.injuryBadge,
+                                    ...styles.injuryButton,
+                                  }}
                                 >
                                   {injury.code}
-                                </strong>
+                                </button>
 
-                                <span
-                                  style={
-                                    styles.injuryDetailText
-                                  }
-                                >
-                                  {injury.detail}
-                                </span>
+                                {expanded ? (
+                                  <span
+                                    style={
+                                      styles.injuryExpandedDetail
+                                    }
+                                  >
+                                    {injury.detailText}
+                                  </span>
+                                ) : null}
                               </span>
                             );
                           })()}
@@ -3064,7 +3140,16 @@ const styles = {
 
   injuryLine: {
     display:
-      "block",
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "6px",
+
+    flexWrap:
+      "wrap" as const,
 
     marginTop:
       "2px",
@@ -3119,14 +3204,43 @@ const styles = {
     fontWeight:
       900,
   },
-  injuryDetailText: {
-    color: "#ffb08b",
-    fontSize: "11px",
-    fontWeight: 800,
-    lineHeight: 1.35,
+
+  injuryButton: {
+    appearance:
+      "none" as const,
+
+    margin:
+      0,
+
+    cursor:
+      "pointer",
+
+    fontFamily:
+      "inherit",
+
+    lineHeight:
+      1,
   },
 
+  injuryExpandedDetail: {
+    flex:
+      "1 1 150px",
 
+    minWidth:
+      0,
+
+    color:
+      "#ffd3a1",
+
+    fontSize:
+      "11px",
+
+    fontWeight:
+      800,
+
+    lineHeight:
+      1.35,
+  },
 
   poolSalary: {
     display:

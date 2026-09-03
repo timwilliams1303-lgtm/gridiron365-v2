@@ -12,10 +12,6 @@ import {
   useRouter,
 } from "next/navigation";
 
-import {
-  createBrowserClient,
-} from "@supabase/ssr";
-
 import type {
   TraditionalRankingPlayer,
 } from "@/lib/traditional/rankings.service";
@@ -29,87 +25,6 @@ type Props = {
     TraditionalRankingPlayer[];
   teams: string[];
 };
-
-
-type DraftPlayerProfile = {
-  playerId: number;
-
-  lastSeason: number;
-
-  projectionSeason: number;
-
-  projectedPoints:
-    number |
-    null;
-
-  actual: {
-    gamesPlayed: number;
-
-    passingAttempts: number;
-
-    passingCompletions: number;
-
-    passingYards: number;
-
-    passingTouchdowns: number;
-
-    passingInterceptions: number;
-
-    rushingAttempts: number;
-
-    rushingYards: number;
-
-    rushingTouchdowns: number;
-
-    receivingTargets: number;
-
-    receptions: number;
-
-    receivingYards: number;
-
-    receivingTouchdowns: number;
-
-    fumbles: number;
-
-    fumblesLost: number;
-
-    fieldGoalsMade: number;
-
-    fieldGoalsAttempted: number;
-
-    extraPointsMade: number;
-
-    extraPointsAttempted: number;
-
-    dstSacks: number;
-
-    dstInterceptions: number;
-
-    dstFumbleRecoveries: number;
-
-    dstTouchdowns: number;
-
-    dstSafeties: number;
-
-    dstBlockedKicks: number;
-
-    dstPointsAllowed: number;
-
-    dstYardsAllowed: number;
-  };
-};
-
-
-const supabase =
-  createBrowserClient(
-    process.env
-      .NEXT_PUBLIC_SUPABASE_URL!,
-
-    process.env
-      .NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-      process.env
-        .NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
 
 const positions = [
@@ -126,141 +41,83 @@ const positions = [
 function getInjuryDisplay(
   status:
     string |
+    null,
+  injuryType?:
+    string |
+    null,
+  injuryLocation?:
+    string |
+    null,
+  injuryDetail?:
+    string |
     null
 ) {
   const value =
-    (
-      status ??
-      ""
-    )
+    (status ?? "")
       .trim()
       .toUpperCase();
 
-
   if (
     !value ||
-    value === "ACTIVE" ||
-    value === "HEALTHY"
+    ["ACTIVE", "HEALTHY", "NORMAL"].includes(value)
   ) {
     return null;
   }
 
+  let code = value;
+  let label = status ?? "Injury status";
 
-  if (
-    value.includes(
-      "QUESTION"
-    )
+  if (value === "Q" || value.includes("QUESTION")) {
+    code = "Q";
+    label = "Questionable";
+  } else if (value === "D" || value.includes("DOUBT")) {
+    code = "D";
+    label = "Doubtful";
+  } else if (value === "O" || value.includes("OUT")) {
+    code = "OUT";
+    label = "Out";
+  } else if (value === "IR" || value.includes("INJURED RESERVE")) {
+    code = "IR";
+    label = "Injured Reserve";
+  } else if (value === "PUP" || value.includes("PHYSICALLY UNABLE")) {
+    code = "PUP";
+    label = "Physically Unable to Perform";
+  } else if (value === "NFI" || value.includes("NON-FOOTBALL")) {
+    code = "NFI";
+    label = "Non-Football Injury";
+  } else if (
+    value === "SUS" ||
+    value === "SUSP" ||
+    value.includes("SUSPEND")
   ) {
-    return {
-      code: "Q",
-      label:
-        "Questionable",
-    };
+    code = "SUSP";
+    label = "Suspended";
+  } else if (
+    value === "DTD" ||
+    value.includes("DAY-TO-DAY") ||
+    value.includes("DAY TO DAY")
+  ) {
+    code = "DTD";
+    label = "Day-to-Day";
+  } else if (value.length > 6) {
+    code = "INJ";
   }
 
+  const extras = [injuryType, injuryLocation, injuryDetail]
+    .map((item) => item?.trim() ?? "")
+    .filter((item, index, values) => item && values.indexOf(item) === index);
 
-  if (
-    value.includes(
-      "DOUBT"
-    )
-  ) {
-    return {
-      code: "D",
-      label:
-        "Doubtful",
-    };
-  }
-
-
-  if (
-    value === "O" ||
-    value.includes(
-      "OUT"
-    )
-  ) {
-    return {
-      code: "O",
-      label: "Out",
-    };
-  }
-
-
-  if (
-    value.includes(
-      "INJURED RESERVE"
-    ) ||
-    value === "IR"
-  ) {
-    return {
-      code: "IR",
-      label:
-        "Injured Reserve",
-    };
-  }
-
-
-  if (
-    value.includes(
-      "PUP"
-    ) ||
-    value.includes(
-      "PHYSICALLY UNABLE"
-    )
-  ) {
-    return {
-      code: "PUP",
-      label:
-        "Physically Unable to Perform",
-    };
-  }
-
-
-  if (
-    value.includes(
-      "SUSPEND"
-    ) ||
-    value ===
-      "SUS"
-  ) {
-    return {
-      code:
-        "SUS",
-
-      label:
-        "Suspended",
-    };
-  }
-
-
-  if (
-    value.includes(
-      "DAY-TO-DAY"
-    ) ||
-    value.includes(
-      "DAY TO DAY"
-    )
-  ) {
-    return {
-      code:
-        "DTD",
-
-      label:
-        "Day-to-Day",
-    };
-  }
-
+  const detailText = extras.length > 0
+    ? `${label} · ${extras.join(" · ")}`
+    : label;
 
   return {
-    code:
-      value.length <= 4
-        ? value
-        : "INJ",
-
-    label:
-      status ??
-      "Injury status",
+    code,
+    label,
+    detailText,
   };
 }
+
 
 
 export default function TraditionalRankingsManager({
@@ -272,39 +129,6 @@ export default function TraditionalRankingsManager({
 }: Props) {
   const router =
     useRouter();
-
-
-  const [
-    profilePlayerId,
-    setProfilePlayerId,
-  ] =
-    useState<
-      number |
-      null
-    >(
-      null
-    );
-
-
-  const [
-    playerProfile,
-    setPlayerProfile,
-  ] =
-    useState<
-      DraftPlayerProfile |
-      null
-    >(
-      null
-    );
-
-
-  const [
-    profileLoading,
-    setProfileLoading,
-  ] =
-    useState(
-      false
-    );
 
 
   const [
@@ -555,80 +379,6 @@ export default function TraditionalRankingsManager({
         nflTeam,
       ]
     );
-
-
-  const profilePlayer =
-    useMemo(
-      () =>
-        players.find(
-          (
-            player
-          ) =>
-            player.playerId ===
-            profilePlayerId
-        ) ??
-        null,
-      [
-        players,
-        profilePlayerId,
-      ]
-    );
-
-
-  async function openPlayerProfile(
-    playerId: number
-  ) {
-    setProfilePlayerId(
-      playerId
-    );
-
-    setPlayerProfile(
-      null
-    );
-
-    setProfileLoading(
-      true
-    );
-
-    setError(
-      null
-    );
-
-
-    const {
-      data,
-      error:
-        profileError,
-    } =
-      await supabase.rpc(
-        "get_traditional_draft_player_profile",
-        {
-          p_player_id:
-            playerId,
-
-          p_projection_season:
-            season,
-        }
-      );
-
-
-    if (
-      profileError
-    ) {
-      setError(
-        profileError.message
-      );
-    } else {
-      setPlayerProfile(
-        data as DraftPlayerProfile
-      );
-    }
-
-
-    setProfileLoading(
-      false
-    );
-  }
 
 
   async function movePlayer(
@@ -900,21 +650,6 @@ export default function TraditionalRankingsManager({
           styles.loadingCard
         }
       >
-      <style>{`
-        @media (max-width:760px){
-          .g365-rankings-toolbar{padding:12px!important}
-          .g365-rankings-toolbar-bottom{align-items:stretch!important;flex-direction:column!important}
-          .g365-rankings-toolbar-bottom>*{width:100%!important;min-width:0!important}
-          .g365-rankings-table-shell{width:100%!important;max-width:100%!important}
-          .g365-rankings-table-scroll{overflow-x:auto!important;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
-          .g365-rankings-table{min-width:900px!important}
-          .g365-rankings-profile-stats{grid-template-columns:repeat(2,minmax(0,1fr))!important}
-          .g365-rankings-move-controls{grid-template-columns:repeat(2,minmax(0,1fr))!important}
-        }
-        @media (max-width:430px){
-          .g365-rankings-profile-stats,.g365-rankings-move-controls{grid-template-columns:minmax(0,1fr)!important}
-        }
-`}</style>
         <strong
           style={
             styles.loadingTitle
@@ -955,40 +690,14 @@ export default function TraditionalRankingsManager({
       ) : null}
 
 
-      {profilePlayerId ? (
-        <PlayerProfileModal
-          player={
-            profilePlayer
-          }
-          profile={
-            playerProfile
-          }
-          loading={
-            profileLoading
-          }
-          onClose={
-            () => {
-              setProfilePlayerId(
-                null
-              );
-
-              setPlayerProfile(
-                null
-              );
-            }
-          }
-        />
-      ) : null}
-
-
       {/* ============================
           FILTERS
       ============================ */}
 
-      <section className="g365-rankings-toolbar"
+      <section
         style={
-            styles.toolbar
-          }
+          styles.toolbar
+        }
       >
         <input
           type="search"
@@ -1046,7 +755,7 @@ export default function TraditionalRankingsManager({
         </div>
 
 
-        <div className="g365-rankings-toolbar-bottom"
+        <div
           style={
             styles.toolbarBottom
           }
@@ -1158,20 +867,20 @@ export default function TraditionalRankingsManager({
           RANKINGS
       ============================ */}
 
-      <section className="g365-rankings-table-shell"
+      <section
         style={
-            styles.tableShell
-          }
+          styles.tableShell
+        }
       >
-        <div className="g365-rankings-table-scroll"
+        <div
           style={
             styles.tableScroll
           }
         >
-          <div className="g365-rankings-table"
+          <div
             style={
-            styles.table
-          }
+              styles.table
+            }
           >
             <div
               style={
@@ -1210,11 +919,7 @@ export default function TraditionalRankingsManager({
                 PROJ
               </span>
 
-              <span
-                style={
-                  styles.moveHeader
-                }
-              >
+              <span>
                 MOVE
               </span>
             </div>
@@ -1247,15 +952,6 @@ export default function TraditionalRankingsManager({
                         rank
                       )
                   }
-
-                  onOpenProfile={
-                    (
-                      playerId
-                    ) =>
-                      void openPlayerProfile(
-                        playerId
-                      )
-                  }
                 />
               )
             )}
@@ -1280,474 +976,11 @@ export default function TraditionalRankingsManager({
 }
 
 
-function PlayerProfileModal({
-  player,
-  profile,
-  loading,
-  onClose,
-}: {
-  player:
-    TraditionalRankingPlayer |
-    null;
-
-  profile:
-    DraftPlayerProfile |
-    null;
-
-  loading:
-    boolean;
-
-  onClose:
-    () => void;
-}) {
-  if (
-    !player
-  ) {
-    return null;
-  }
-
-
-  const actual =
-    profile
-      ?.actual ??
-    null;
-
-
-  const position =
-    player.position;
-
-
-  const statRows:
-    Array<[
-      string,
-      string |
-      number
-    ]> =
-      [];
-
-
-  if (
-    actual
-  ) {
-    if (
-      position ===
-        "QB"
-    ) {
-      statRows.push(
-        [
-          "Games",
-          actual.gamesPlayed,
-        ],
-        [
-          "Comp / Att",
-          `${actual.passingCompletions} / ${actual.passingAttempts}`,
-        ],
-        [
-          "Pass Yards",
-          actual.passingYards,
-        ],
-        [
-          "Pass TD",
-          actual.passingTouchdowns,
-        ],
-        [
-          "INT",
-          actual.passingInterceptions,
-        ],
-        [
-          "Rush Att",
-          actual.rushingAttempts,
-        ],
-        [
-          "Rush Yards",
-          actual.rushingYards,
-        ],
-        [
-          "Rush TD",
-          actual.rushingTouchdowns,
-        ]
-      );
-    } else if (
-      [
-        "RB",
-        "WR",
-        "TE",
-      ].includes(
-        position
-      )
-    ) {
-      statRows.push(
-        [
-          "Games",
-          actual.gamesPlayed,
-        ],
-        [
-          "Carries",
-          actual.rushingAttempts,
-        ],
-        [
-          "Rush Yards",
-          actual.rushingYards,
-        ],
-        [
-          "Rush TD",
-          actual.rushingTouchdowns,
-        ],
-        [
-          "Targets",
-          actual.receivingTargets,
-        ],
-        [
-          "Receptions",
-          actual.receptions,
-        ],
-        [
-          "Rec Yards",
-          actual.receivingYards,
-        ],
-        [
-          "Rec TD",
-          actual.receivingTouchdowns,
-        ]
-      );
-    } else if (
-      position ===
-        "K"
-    ) {
-      statRows.push(
-        [
-          "Games",
-          actual.gamesPlayed,
-        ],
-        [
-          "FG Made",
-          actual.fieldGoalsMade,
-        ],
-        [
-          "FG Att",
-          actual.fieldGoalsAttempted,
-        ],
-        [
-          "XP Made",
-          actual.extraPointsMade,
-        ],
-        [
-          "XP Att",
-          actual.extraPointsAttempted,
-        ]
-      );
-    } else if (
-      position ===
-        "DST"
-    ) {
-      statRows.push(
-        [
-          "Games",
-          actual.gamesPlayed,
-        ],
-        [
-          "Sacks",
-          actual.dstSacks,
-        ],
-        [
-          "INT",
-          actual.dstInterceptions,
-        ],
-        [
-          "Fumble Rec",
-          actual.dstFumbleRecoveries,
-        ],
-        [
-          "TD",
-          actual.dstTouchdowns,
-        ],
-        [
-          "Safeties",
-          actual.dstSafeties,
-        ],
-        [
-          "Blocked Kicks",
-          actual.dstBlockedKicks,
-        ],
-        [
-          "Pts Allowed",
-          actual.dstPointsAllowed,
-        ]
-      );
-    }
-  }
-
-
-  const injury =
-    getInjuryDisplay(
-      player.injuryStatus
-    );
-
-
-  return (
-    <div
-      style={
-        styles.profileOverlay
-      }
-      onMouseDown={
-        onClose
-      }
-    >
-      <div
-        style={
-          styles.profileModal
-        }
-        onMouseDown={
-          (
-            event
-          ) =>
-            event.stopPropagation()
-        }
-      >
-        <div
-          style={
-            styles.profileHeader
-          }
-        >
-          <div
-            style={
-              styles.profileIdentity
-            }
-          >
-            <div
-              style={
-                styles.profileAvatar
-              }
-            >
-              {player.headshotUrl ? (
-                <Image
-                  src={
-                    player.headshotUrl
-                  }
-                  alt={
-                    player.fullName
-                  }
-                  width={
-                    58
-                  }
-                  height={
-                    58
-                  }
-                  style={
-                    styles.profileAvatarImage
-                  }
-                />
-              ) : (
-                <div
-                  style={
-                    styles.profileAvatarFallback
-                  }
-                >
-                  {player.position}
-                </div>
-              )}
-            </div>
-
-
-            <div>
-              <strong
-                style={
-                  styles.profileName
-                }
-              >
-                {player.fullName}
-              </strong>
-
-
-              <div
-                style={
-                  styles.profileMeta
-                }
-              >
-                {player.position}
-                {" • "}
-                {player.teamAbbreviation ??
-                  "FA"}
-                {" • "}
-                BYE {player.byeWeek ?? "—"}
-              </div>
-
-
-              <div
-                style={
-                  styles.profileInjuryLine
-                }
-              >
-                <span>
-                  Injury:
-                </span>
-
-                {injury ? (
-                  <span
-                    title={`${injury.code} — ${injury.label}`}
-                    style={
-                      styles.injuryBadge
-                    }
-                  >
-                    {injury.code}
-                  </span>
-                ) : (
-                  <span
-                    style={
-                      styles.injuryHealthy
-                    }
-                    title="No injury designation"
-                  >
-                    —
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-
-          <button
-            type="button"
-            onClick={
-              onClose
-            }
-            style={
-              styles.profileClose
-            }
-            aria-label="Close player profile"
-          >
-            ×
-          </button>
-        </div>
-
-
-        {loading ? (
-          <div
-            style={
-              styles.profileLoading
-            }
-          >
-            Loading player stats…
-          </div>
-        ) : (
-          <div
-            style={
-              styles.profileContent
-            }
-          >
-            <section
-              style={
-                styles.profileSection
-              }
-            >
-              <div
-                style={
-                  styles.profileSectionHeader
-                }
-              >
-                {profile?.lastSeason ?? "LAST"} ACTUAL STATS
-              </div>
-
-
-              <div className="g365-rankings-profile-stats"
-                style={
-            styles.profileStatsGrid
-          }
-              >
-                {statRows.length >
-                0 ? (
-                  statRows.map(
-                    (
-                      [
-                        label,
-                        value,
-                      ]
-                    ) => (
-                      <div
-                        key={
-                          label
-                        }
-                        style={
-                          styles.profileStatCard
-                        }
-                      >
-                        <span>
-                          {label}
-                        </span>
-
-                        <strong>
-                          {value}
-                        </strong>
-                      </div>
-                    )
-                  )
-                ) : (
-                  <div
-                    style={
-                      styles.profileNoStats
-                    }
-                  >
-                    No completed regular-season stats are stored for this player.
-                  </div>
-                )}
-              </div>
-            </section>
-
-
-            <section
-              style={
-                styles.profileSection
-              }
-            >
-              <div
-                style={
-                  styles.profileSectionHeader
-                }
-              >
-                {profile?.projectionSeason ?? "CURRENT"} PROJECTION
-              </div>
-
-
-              <div
-                style={
-                  styles.projectionHero
-                }
-              >
-                <span>
-                  PROJECTED FANTASY POINTS
-                </span>
-
-                <strong>
-                  {profile
-                    ?.projectedPoints ??
-                    player.projectedPoints ??
-                    "—"}
-                </strong>
-              </div>
-
-
-              <div
-                style={
-                  styles.profileProjectionNote
-                }
-              >
-                Detailed projected passing, rushing, receiving, kicking, and DST stat lines are not stored in the current database yet. The current projection source contains projected fantasy points only.
-              </div>
-            </section>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-
 function RankingRow({
   player,
   totalPlayers,
   saving,
   onMove,
-  onOpenProfile,
 }: {
   player:
     TraditionalRankingPlayer;
@@ -1761,11 +994,6 @@ function RankingRow({
   onMove:
     (
       rank: number
-    ) => void;
-
-  onOpenProfile:
-    (
-      playerId: number
     ) => void;
 }) {
   const [
@@ -1793,9 +1021,18 @@ function RankingRow({
   );
 
 
+  const [
+    showInjuryDetail,
+    setShowInjuryDetail,
+  ] = useState(false);
+
+
   const injury =
     getInjuryDisplay(
-      player.injuryStatus
+      player.injuryStatus,
+      player.injuryType,
+      player.injuryLocation,
+      player.injuryDetail
     );
 
 
@@ -1908,21 +1145,13 @@ function RankingRow({
         </div>
 
 
-        <button
-          type="button"
-          onClick={
-            () =>
-              onOpenProfile(
-                player.playerId
-              )
-          }
+        <strong
           style={
-            styles.playerNameButton
+            styles.playerName
           }
-          title={`View ${player.fullName} stats`}
         >
           {player.fullName}
-        </button>
+        </strong>
       </div>
 
 
@@ -1955,16 +1184,41 @@ function RankingRow({
       </span>
 
 
-      <span>
+      <span
+        style={
+          styles.injuryCell
+        }
+      >
         {injury ? (
-          <span
-            title={`${injury.code} — ${injury.label}`}
-            style={
-              styles.injuryBadge
-            }
-          >
-            {injury.code}
-          </span>
+          <>
+            <button
+              type="button"
+              aria-expanded={showInjuryDetail}
+              aria-label={`${injury.label}. Tap for injury details.`}
+              title={injury.detailText}
+              onClick={() =>
+                setShowInjuryDetail(
+                  (current) => !current
+                )
+              }
+              style={{
+                ...styles.injuryBadge,
+                ...styles.injuryButton,
+              }}
+            >
+              {injury.code}
+            </button>
+
+            {showInjuryDetail ? (
+              <span
+                style={
+                  styles.injuryExpandedDetail
+                }
+              >
+                {injury.detailText}
+              </span>
+            ) : null}
+          </>
         ) : (
           <span
             style={
@@ -1991,10 +1245,10 @@ function RankingRow({
       </span>
 
 
-      <div className="g365-rankings-move-controls"
+      <div
         style={
-            styles.moveControls
-          }
+          styles.moveControls
+        }
       >
         <button
           type="button"
@@ -2471,7 +1725,7 @@ const styles = {
       "grid",
 
     gridTemplateColumns:
-      "50px 50px minmax(240px,2fr) 55px 55px 50px 50px 70px 190px",
+      "50px 50px minmax(240px,2fr) 55px 55px 50px 50px 70px minmax(190px,1fr)",
 
     alignItems:
       "center",
@@ -2510,7 +1764,7 @@ const styles = {
       "grid",
 
     gridTemplateColumns:
-      "50px 50px minmax(240px,2fr) 55px 55px 50px 50px 70px 190px",
+      "50px 50px minmax(240px,2fr) 55px 55px 50px 50px 70px minmax(190px,1fr)",
 
     alignItems:
       "center",
@@ -2622,468 +1876,6 @@ const styles = {
   },
 
 
-  playerNameButton: {
-    width:
-      "fit-content",
-
-    maxWidth:
-      "100%",
-
-    padding:
-      0,
-
-    overflow:
-      "hidden",
-
-    border:
-      0,
-
-    background:
-      "transparent",
-
-    color:
-      "#ffffff",
-
-    font:
-      "inherit",
-
-    fontSize:
-      "11px",
-
-    fontWeight:
-      900,
-
-    textAlign:
-      "left" as const,
-
-    textOverflow:
-      "ellipsis",
-
-    whiteSpace:
-      "nowrap" as const,
-
-    cursor:
-      "pointer",
-
-    textDecoration:
-      "underline",
-
-    textDecorationColor:
-      "rgba(255,120,35,.45)",
-
-    textUnderlineOffset:
-      "2px",
-  },
-
-
-  moveHeader: {
-    width:
-      "190px",
-
-    textAlign:
-      "left" as const,
-  },
-
-
-  profileOverlay: {
-    position:
-      "fixed" as const,
-
-    inset:
-      0,
-
-    zIndex:
-      1000,
-
-    padding:
-      "28px",
-
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "center",
-
-    background:
-      "rgba(0,0,0,.74)",
-
-    backdropFilter:
-      "blur(3px)",
-  },
-
-
-  profileModal: {
-    width:
-      "min(760px,96vw)",
-
-    maxHeight:
-      "88vh",
-
-    overflowY:
-      "auto" as const,
-
-    border:
-      "1px solid rgba(255,110,25,.18)",
-
-    borderRadius:
-      "10px",
-
-    background:
-      "linear-gradient(180deg,#17191c,#0f1113)",
-
-    boxShadow:
-      "0 24px 80px rgba(0,0,0,.5)",
-  },
-
-
-  profileHeader: {
-    padding:
-      "14px",
-
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "space-between",
-
-    gap:
-      "14px",
-
-    borderBottom:
-      "1px solid rgba(255,255,255,.06)",
-  },
-
-
-  profileIdentity: {
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    gap:
-      "12px",
-  },
-
-
-  profileAvatar: {
-    width:
-      "58px",
-
-    height:
-      "58px",
-
-    flex:
-      "0 0 auto",
-
-    overflow:
-      "hidden",
-
-    borderRadius:
-      "50%",
-
-    background:
-      "#18181a",
-  },
-
-
-  profileAvatarImage: {
-    width:
-      "58px",
-
-    height:
-      "58px",
-
-    objectFit:
-      "cover" as const,
-  },
-
-
-  profileAvatarFallback: {
-    width:
-      "100%",
-
-    height:
-      "100%",
-
-    display:
-      "grid",
-
-    placeItems:
-      "center",
-
-    color:
-      "#777f88",
-
-    fontSize:
-      "9px",
-
-    fontWeight:
-      900,
-  },
-
-
-  profileName: {
-    color:
-      "#f5f6f7",
-
-    fontSize:
-      "18px",
-
-    fontWeight:
-      1000,
-  },
-
-
-  profileMeta: {
-    marginTop:
-      "4px",
-
-    color:
-      "#9ba2aa",
-
-    fontSize:
-      "11px",
-  },
-
-
-  profileInjuryLine: {
-    marginTop:
-      "7px",
-
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    gap:
-      "7px",
-
-    color:
-      "#7d858e",
-
-    fontSize:
-      "10px",
-  },
-
-
-  injuryHealthy: {
-    color:
-      "#565c65",
-
-    fontSize:
-      "9px",
-  },
-
-
-  profileClose: {
-    width:
-      "34px",
-
-    height:
-      "34px",
-
-    border:
-      "1px solid rgba(255,255,255,.07)",
-
-    borderRadius:
-      "6px",
-
-    background:
-      "#1b1d20",
-
-    color:
-      "#c6cbd1",
-
-    fontSize:
-      "20px",
-
-    cursor:
-      "pointer",
-  },
-
-
-  profileLoading: {
-    padding:
-      "40px",
-
-    color:
-      "#8d949d",
-
-    fontSize:
-      "12px",
-
-    textAlign:
-      "center" as const,
-  },
-
-
-  profileContent: {
-    padding:
-      "12px",
-
-    display:
-      "grid",
-
-    gap:
-      "12px",
-  },
-
-
-  profileSection: {
-    overflow:
-      "hidden",
-
-    border:
-      "1px solid rgba(255,255,255,.055)",
-
-    borderRadius:
-      "7px",
-
-    background:
-      "#111315",
-  },
-
-
-  profileSectionHeader: {
-    padding:
-      "9px 10px",
-
-    borderBottom:
-      "1px solid rgba(255,255,255,.05)",
-
-    color:
-      "#ff7b22",
-
-    fontSize:
-      "10px",
-
-    fontWeight:
-      1000,
-  },
-
-
-  profileStatsGrid: {
-    padding:
-      "10px",
-
-    display:
-      "grid",
-
-    gridTemplateColumns:
-      "repeat(4,minmax(0,1fr))",
-
-    gap:
-      "7px",
-  },
-
-
-  profileStatCard: {
-    minHeight:
-      "68px",
-
-    padding:
-      "9px",
-
-    display:
-      "grid",
-
-    alignContent:
-      "center",
-
-    gap:
-      "5px",
-
-    border:
-      "1px solid rgba(255,255,255,.05)",
-
-    borderRadius:
-      "6px",
-
-    background:
-      "#0d0f11",
-
-    color:
-      "#7d858e",
-
-    fontSize:
-      "9px",
-  },
-
-
-  profileNoStats: {
-    gridColumn:
-      "1 / -1",
-
-    padding:
-      "25px",
-
-    color:
-      "#767e87",
-
-    fontSize:
-      "10px",
-
-    textAlign:
-      "center" as const,
-  },
-
-
-  projectionHero: {
-    margin:
-      "12px",
-
-    padding:
-      "18px",
-
-    display:
-      "grid",
-
-    gap:
-      "5px",
-
-    border:
-      "1px solid rgba(255,108,20,.13)",
-
-    borderRadius:
-      "7px",
-
-    background:
-      "linear-gradient(135deg,rgba(183,28,23,.12),rgba(255,102,12,.04))",
-
-    color:
-      "#9ca3ab",
-
-    fontSize:
-      "10px",
-
-    textAlign:
-      "center" as const,
-  },
-
-
-  profileProjectionNote: {
-    padding:
-      "0 12px 14px",
-
-    color:
-      "#737b84",
-
-    fontSize:
-      "9px",
-
-    lineHeight:
-      1.5,
-  },
-
-
   playerName: {
     overflow:
       "hidden",
@@ -3120,6 +1912,24 @@ const styles = {
   },
 
 
+  injuryCell: {
+    minWidth:
+      0,
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "5px",
+
+    flexWrap:
+      "wrap" as const,
+  },
+
+
   injuryBadge: {
     minWidth:
       "25px",
@@ -3152,7 +1962,37 @@ const styles = {
       900,
 
     cursor:
-      "help",
+      "pointer",
+  },
+
+
+  injuryButton: {
+    appearance:
+      "none" as const,
+
+    fontFamily:
+      "inherit",
+
+    lineHeight:
+      1,
+  },
+
+
+  injuryExpandedDetail: {
+    width:
+      "100%",
+
+    color:
+      "#ffd3a1",
+
+    fontSize:
+      "9px",
+
+    fontWeight:
+      800,
+
+    lineHeight:
+      1.3,
   },
 
 
@@ -3167,7 +2007,7 @@ const styles = {
       "5px",
 
     justifyContent:
-      "start",
+      "end",
   },
 
 
