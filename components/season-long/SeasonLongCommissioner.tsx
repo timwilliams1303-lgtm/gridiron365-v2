@@ -1065,6 +1065,7 @@ export default function SeasonLongCommissioner({
                     >
                       <input
                         type="checkbox"
+                        style={styles.toggleCheckbox}
                         checked={
                           settings.playoffs_enabled
                         }
@@ -1090,6 +1091,7 @@ export default function SeasonLongCommissioner({
                     >
                       <input
                         type="checkbox"
+                        style={styles.toggleCheckbox}
                         checked={
                           settings.reseed_playoffs
                         }
@@ -2684,10 +2686,16 @@ const styles:
         "42px",
       display:
         "flex",
+      flexDirection:
+        "row",
       alignItems:
         "center",
+      justifyContent:
+        "flex-start",
       gap:
         "9px",
+      whiteSpace:
+        "normal",
       padding:
         "9px 11px",
       border:
@@ -2702,6 +2710,23 @@ const styles:
         "12px",
       fontWeight:
         800,
+    },
+
+
+
+    toggleCheckbox: {
+      flex:
+        "0 0 auto",
+      width:
+        "16px",
+      height:
+        "16px",
+      margin:
+        0,
+      padding:
+        0,
+      accentColor:
+        "#ef531d",
     },
 
     h2hInfo: {
