@@ -17,6 +17,7 @@ type SeasonLongLeagueNavProps = {
 
 type NavItem = {
   label: string;
+  mobileLabel: string;
   href: string;
   exact?: boolean;
 };
@@ -37,11 +38,13 @@ export default function SeasonLongLeagueNav({
   const items: NavItem[] = [
     {
       label: "Home",
+      mobileLabel: "Home",
       href: `/league/${leagueId}`,
       exact: true,
     },
     {
       label: "My Entry",
+      mobileLabel: "Entry",
       href: `/league/${leagueId}/entry`,
     },
 
@@ -49,18 +52,21 @@ export default function SeasonLongLeagueNav({
       ? [
           {
             label: "League Teams",
+            mobileLabel: "Teams",
             href: `/league/${leagueId}/teams`,
           },
         ]
       : [
           {
             label: "Matchups",
+            mobileLabel: "Matchups",
             href: `/league/${leagueId}/season-long/matchups`,
           },
         ]),
 
     {
       label: "Standings",
+      mobileLabel: "Standings",
       href: `/league/${leagueId}/standings`,
     },
 
@@ -68,6 +74,7 @@ export default function SeasonLongLeagueNav({
       ? [
           {
             label: "Playoffs",
+            mobileLabel: "Playoffs",
             href: `/league/${leagueId}/season-long/playoffs`,
           },
         ]
@@ -75,14 +82,17 @@ export default function SeasonLongLeagueNav({
 
     {
       label: "Recap",
+      mobileLabel: "Recap",
       href: `/league/${leagueId}/season-long/recap`,
     },
     {
       label: "Trophy Case",
+      mobileLabel: "Trophies",
       href: `/league/${leagueId}/season-long/trophy-case`,
     },
     {
       label: "Settings",
+      mobileLabel: "Settings",
       href: `/league/${leagueId}/settings`,
     },
 
@@ -90,6 +100,7 @@ export default function SeasonLongLeagueNav({
       ? [
           {
             label: "Commissioner",
+            mobileLabel: "Commish",
             href: `/league/${leagueId}/commissioner`,
           },
         ]
@@ -103,6 +114,10 @@ export default function SeasonLongLeagueNav({
       style={styles.nav}
     >
       <style>{`
+        .g365-season-long-nav .g365-mobile-label {
+          display: none;
+        }
+
         @media (max-width: 760px) {
           .g365-season-long-nav > div {
             display: grid !important;
@@ -122,6 +137,14 @@ export default function SeasonLongLeagueNav({
             white-space: normal !important;
             text-align: center;
             line-height: 1.15;
+          }
+
+          .g365-season-long-nav .g365-desktop-label {
+            display: none;
+          }
+
+          .g365-season-long-nav .g365-mobile-label {
+            display: inline;
           }
         }
       `}</style>
@@ -143,7 +166,12 @@ export default function SeasonLongLeagueNav({
                 ...(active ? styles.linkActive : {}),
               }}
             >
-              {item.label}
+              <span className="g365-desktop-label">
+                {item.label}
+              </span>
+              <span className="g365-mobile-label">
+                {item.mobileLabel}
+              </span>
             </Link>
           );
         })}

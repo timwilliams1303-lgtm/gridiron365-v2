@@ -11,13 +11,13 @@ type Props = {
 
 
 const links = [
-  ["Home", ""],
-  ["My Picks", "/pickem/my-picks"],
-  ["League Picks", "/pickem/league-picks"],
-  ["Games", "/pickem/games"],
-  ["Standings", "/pickem/standings"],
-  ["Recap", "/pickem/recap"],
-  ["Settings", "/pickem/settings"],
+  ["Home", "Home", ""],
+  ["My Picks", "Picks", "/pickem/my-picks"],
+  ["League Picks", "League", "/pickem/league-picks"],
+  ["Games", "Games", "/pickem/games"],
+  ["Standings", "Standings", "/pickem/standings"],
+  ["Recap", "Recap", "/pickem/recap"],
+  ["Settings", "Settings", "/pickem/settings"],
 ] as const;
 
 
@@ -83,6 +83,10 @@ export default function PickemLeagueNav({
           background: rgba(8,8,10,0.96);
         }
 
+        .g365-pickem-nav .g365-mobile-label {
+          display: none;
+        }
+
         @media (max-width: 760px) {
           .g365-pickem-nav {
             display: grid;
@@ -101,6 +105,14 @@ export default function PickemLeagueNav({
             line-height: 1.15;
             white-space: normal;
           }
+
+          .g365-pickem-nav .g365-desktop-label {
+            display: none;
+          }
+
+          .g365-pickem-nav .g365-mobile-label {
+            display: inline;
+          }
         }
 
         @media (max-width: 390px) {
@@ -116,7 +128,7 @@ export default function PickemLeagueNav({
         aria-label="G365 Football Pick'em Navigation"
         className="g365-pickem-nav"
       >
-        {links.map(([label, suffix]) => {
+        {links.map(([label, mobileLabel, suffix]) => {
           const href =
             suffix === ""
               ? `/league/${leagueId}`
@@ -138,7 +150,12 @@ export default function PickemLeagueNav({
                   : {}),
               }}
             >
-              {label}
+              <span className="g365-desktop-label">
+                {label}
+              </span>
+              <span className="g365-mobile-label">
+                {mobileLabel}
+              </span>
             </Link>
           );
         })}
@@ -158,7 +175,12 @@ export default function PickemLeagueNav({
                 : {}),
             }}
           >
-            Commissioner
+            <span className="g365-desktop-label">
+              Commissioner
+            </span>
+            <span className="g365-mobile-label">
+              Commish
+            </span>
           </Link>
         ) : null}
       </nav>

@@ -120,6 +120,80 @@ function getSelectionModeLabel(
 }
 
 
+
+function getMobileLeagueTypeLabel(
+  leagueType:
+    string,
+  seasonLongCompetitionFormat:
+    | "total_points"
+    | "head_to_head"
+) {
+  if (
+    leagueType ===
+    "traditional"
+  ) {
+    return "TRAD";
+  }
+
+  if (
+    leagueType ===
+    "season_long"
+  ) {
+    return seasonLongCompetitionFormat ===
+      "head_to_head"
+      ? "SL-H2H"
+      : "SL-TP";
+  }
+
+  if (
+    leagueType ===
+    "nfl_playoffs"
+  ) {
+    return "NFLP";
+  }
+
+  if (
+    leagueType ===
+    "pickem"
+  ) {
+    return "PICK'EM";
+  }
+
+  return "G365";
+}
+
+
+function getMobileSelectionModeLabel(
+  leagueType:
+    string,
+  playerSelectionMode:
+    string
+) {
+  if (
+    leagueType ===
+    "traditional"
+  ) {
+    return null;
+  }
+
+  if (
+    playerSelectionMode ===
+    "salary"
+  ) {
+    return "SAL";
+  }
+
+  if (
+    playerSelectionMode ===
+    "no_salary"
+  ) {
+    return "NO SAL";
+  }
+
+  return null;
+}
+
+
 export default async function LeagueLayout({
   children,
   params,
@@ -285,6 +359,20 @@ export default async function LeagueLayout({
     );
 
 
+  const mobileLeagueTypeLabel =
+    getMobileLeagueTypeLabel(
+      league.leagueType,
+      seasonLongCompetitionFormat
+    );
+
+
+  const mobileSelectionModeLabel =
+    getMobileSelectionModeLabel(
+      league.leagueType,
+      league.playerSelectionMode
+    );
+
+
   const primaryActionLabel =
     isTraditional
       ? "My Team"
@@ -362,7 +450,12 @@ export default async function LeagueLayout({
             <span
               className="g365-league-badge"
             >
-              {leagueTypeLabel}
+              <span className="g365-header-label-desktop">
+                {leagueTypeLabel}
+              </span>
+              <span className="g365-header-label-mobile">
+                {mobileLeagueTypeLabel}
+              </span>
             </span>
 
 
@@ -373,7 +466,12 @@ export default async function LeagueLayout({
                   g365-league-badge-muted
                 "
               >
-                {selectionModeLabel}
+                <span className="g365-header-label-desktop">
+                  {selectionModeLabel}
+                </span>
+                <span className="g365-header-label-mobile">
+                  {mobileSelectionModeLabel}
+                </span>
               </span>
             ) : null}
 
@@ -392,7 +490,12 @@ export default async function LeagueLayout({
               <span
                 className="g365-league-badge"
               >
-                COMMISSIONER
+                <span className="g365-header-label-desktop">
+                  COMMISSIONER
+                </span>
+                <span className="g365-header-label-mobile">
+                  COMMISH
+                </span>
               </span>
             ) : null}
           </div>

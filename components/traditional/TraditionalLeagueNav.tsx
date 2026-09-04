@@ -10,6 +10,7 @@ type Props = {
 
 type NavItem = {
   label: string;
+  mobileLabel: string;
   href: string;
   exact?: boolean;
 };
@@ -22,24 +23,25 @@ export default function TraditionalLeagueNav({
   const base = `/league/${leagueId}`;
 
   const items: NavItem[] = [
-    { label: "Home", href: base, exact: true },
-    { label: "My Team", href: `${base}/team` },
-    { label: "Players", href: `${base}/players` },
-    { label: "My Rankings", href: `${base}/rankings` },
-    { label: "Matchups", href: `${base}/matchups` },
-    { label: "Standings", href: `${base}/standings` },
-    { label: "Waivers", href: `${base}/waivers` },
-    { label: "Trades", href: `${base}/trades` },
-    { label: "Playoffs", href: `${base}/playoffs` },
-    { label: "Season Recap", href: `${base}/season-recap` },
-    { label: "League History", href: `${base}/history` },
-    { label: "Draft", href: `${base}/draft` },
-    { label: "Settings", href: `${base}/settings` },
+    { label: "Home", mobileLabel: "Home", href: base, exact: true },
+    { label: "My Team", mobileLabel: "Team", href: `${base}/team` },
+    { label: "Players", mobileLabel: "Players", href: `${base}/players` },
+    { label: "My Rankings", mobileLabel: "Rankings", href: `${base}/rankings` },
+    { label: "Matchups", mobileLabel: "Matchups", href: `${base}/matchups` },
+    { label: "Standings", mobileLabel: "Standings", href: `${base}/standings` },
+    { label: "Waivers", mobileLabel: "Waivers", href: `${base}/waivers` },
+    { label: "Trades", mobileLabel: "Trades", href: `${base}/trades` },
+    { label: "Playoffs", mobileLabel: "Playoffs", href: `${base}/playoffs` },
+    { label: "Season Recap", mobileLabel: "Recap", href: `${base}/season-recap` },
+    { label: "League History", mobileLabel: "History", href: `${base}/history` },
+    { label: "Draft", mobileLabel: "Draft", href: `${base}/draft` },
+    { label: "Settings", mobileLabel: "Settings", href: `${base}/settings` },
   ];
 
   if (isCommissioner) {
     items.push({
       label: "Commissioner",
+      mobileLabel: "Commish",
       href: `${base}/commissioner`,
     });
   }
@@ -70,7 +72,12 @@ export default function TraditionalLeagueNav({
                 .filter(Boolean)
                 .join(" ")}
             >
-              {item.label}
+              <span className="g365-nav-label-desktop">
+                {item.label}
+              </span>
+              <span className="g365-nav-label-mobile">
+                {item.mobileLabel}
+              </span>
             </Link>
           );
         })}
