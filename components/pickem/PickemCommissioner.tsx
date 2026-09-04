@@ -50,6 +50,12 @@ type MissingPickPolicy =
   | "disqualify_week";
 
 
+type PickMarketMode =
+  | "spread_only"
+  | "total_only"
+  | "spread_total";
+
+
 type SettingsRow = {
   season: number;
   football_scope:
@@ -74,6 +80,8 @@ type SettingsRow = {
     number | string;
   missing_pick_policy:
     MissingPickPolicy;
+  pick_market_mode:
+    PickMarketMode;
 };
 
 
@@ -359,6 +367,14 @@ export default function PickemCommissioner({
     );
 
   const [
+    pickMarketMode,
+    setPickMarketMode,
+  ] =
+    useState<PickMarketMode>(
+      "spread_only"
+    );
+
+  const [
     picksPerWeek,
     setPicksPerWeek,
   ] =
@@ -599,7 +615,7 @@ export default function PickemCommissioner({
                 "pickem_settings"
               )
               .select(
-                "season,football_scope,picks_per_week,pick_lock_mode,minimum_source_books,scoring_mode,win_points,push_points,loss_points,confidence_points,confidence_push_multiplier,missing_pick_policy"
+                "season,football_scope,picks_per_week,pick_lock_mode,minimum_source_books,scoring_mode,win_points,push_points,loss_points,confidence_points,confidence_push_multiplier,missing_pick_policy,pick_market_mode"
               )
               .eq(
                 "league_id",
@@ -732,6 +748,10 @@ export default function PickemCommissioner({
         ) {
           setFootballScope(
             nextSettings.football_scope
+          );
+          setPickMarketMode(
+            nextSettings.pick_market_mode ??
+              "spread_only"
           );
           setPicksPerWeek(
             nextSettings.picks_per_week
@@ -1101,7 +1121,7 @@ export default function PickemCommissioner({
         error,
       } =
         await supabase.rpc(
-          "save_pickem_settings_v3",
+          "save_pickem_settings_v4",
           {
             p_league_id:
               leagueId,
@@ -1127,6 +1147,8 @@ export default function PickemCommissioner({
               confidencePushMultiplier,
             p_missing_pick_policy:
               missingPickPolicy,
+            p_pick_market_mode:
+              pickMarketMode,
           }
         );
 
@@ -1508,7 +1530,7 @@ export default function PickemCommissioner({
               1.6,
           }}
         >
-          Configure the contest, initialize weekly cards, review source sportsbook lines, and freeze the official G365 Spread.
+          Configure the contest, initialize weekly cards, review sportsbook lines, and freeze the official G365 Spread and G365 Total.
         </p>
       </section>
 
@@ -1588,6 +1610,47 @@ export default function PickemCommissioner({
                 NFL only
               </option>
             </select>
+          </label>
+
+          <label
+            style={
+              styles.label
+            }
+          >
+            Pick Markets
+            <select
+              value={
+                pickMarketMode
+              }
+              onChange={(
+                event
+              ) =>
+                setPickMarketMode(
+                  event.target
+                    .value as PickMarketMode
+                )
+              }
+              style={
+                styles.input
+              }
+            >
+              <option value="spread_only">
+                Spread only
+              </option>
+              <option value="total_only">
+                Over / Under only
+              </option>
+              <option value="spread_total">
+                Spread + Over / Under
+              </option>
+            </select>
+            <span
+              style={
+                styles.help
+              }
+            >
+              Spread + Over / Under lets each weekly selection use either market. One game still counts as one pick.
+            </span>
           </label>
 
           <label

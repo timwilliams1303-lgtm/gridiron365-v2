@@ -14,7 +14,6 @@ type RequestBody = {
   leagueId?: string;
   week?: number;
   preview?: boolean;
-  lineWindow?: "early" | "weekend";
 };
 
 
@@ -410,6 +409,109 @@ function getBookmakerSpreads(
 }
 
 
+
+function getBookmakerTotals(
+  event: OddsEvent
+) {
+  const totals:
+    Array<{
+      sportsbookKey: string;
+      sportsbookName: string;
+      total: number;
+      overPrice: number | null;
+      underPrice: number | null;
+      marketLastUpdate: string | null;
+      bookmakerLastUpdate: string | null;
+    }> = [];
+
+  for (
+    const bookmaker of
+    event.bookmakers ?? []
+  ) {
+    const totalMarket =
+      (
+        bookmaker.markets ??
+        []
+      ).find(
+        (market) =>
+          market.key ===
+          "totals"
+      );
+
+    if (!totalMarket) {
+      continue;
+    }
+
+    const overOutcome =
+      (
+        totalMarket.outcomes ??
+        []
+      ).find(
+        (outcome) =>
+          outcome.name
+            ?.toLowerCase() ===
+          "over"
+      );
+
+    const underOutcome =
+      (
+        totalMarket.outcomes ??
+        []
+      ).find(
+        (outcome) =>
+          outcome.name
+            ?.toLowerCase() ===
+          "under"
+      );
+
+    const point =
+      typeof overOutcome?.point ===
+        "number"
+        ? overOutcome.point
+        : typeof underOutcome?.point ===
+            "number"
+          ? underOutcome.point
+          : null;
+
+    if (
+      !bookmaker.key ||
+      point === null ||
+      !Number.isFinite(point)
+    ) {
+      continue;
+    }
+
+    totals.push({
+      sportsbookKey:
+        bookmaker.key,
+      sportsbookName:
+        bookmaker.title ??
+        bookmaker.key,
+      total:
+        point,
+      overPrice:
+        typeof overOutcome?.price ===
+          "number"
+          ? overOutcome.price
+          : null,
+      underPrice:
+        typeof underOutcome?.price ===
+          "number"
+          ? underOutcome.price
+          : null,
+      marketLastUpdate:
+        totalMarket.last_update ??
+        null,
+      bookmakerLastUpdate:
+        bookmaker.last_update ??
+        null,
+    });
+  }
+
+  return totals;
+}
+
+
 function median(
   values: number[]
 ) {
@@ -486,7 +588,7 @@ async function fetchOdds(
   );
   url.searchParams.set(
     "markets",
-    "spreads"
+    "spreads,totals"
   );
   url.searchParams.set(
     "oddsFormat",
@@ -557,174 +659,6 @@ async function fetchOdds(
 }
 
 
-
-type LineWindow =
-  | "early"
-  | "weekend";
-
-
-function getEasternParts(
-  value: Date
-) {
-  const parts =
-    new Intl.DateTimeFormat(
-      "en-US",
-      {
-        timeZone:
-          "America/New_York",
-        weekday:
-          "short",
-        hour:
-          "2-digit",
-        minute:
-          "2-digit",
-        hourCycle:
-          "h23",
-      }
-    ).formatToParts(
-      value
-    );
-
-  const get =
-    (type: string) =>
-      parts.find(
-        (part) =>
-          part.type === type
-      )?.value ?? "";
-
-  return {
-    weekday:
-      get("weekday"),
-    hour:
-      Number(get("hour")),
-    minute:
-      Number(get("minute")),
-  };
-}
-
-
-function getKickoffWindow(
-  kickoffAt: string
-): LineWindow | null {
-  const kickoff =
-    new Date(kickoffAt);
-
-  if (
-    !Number.isFinite(
-      kickoff.getTime()
-    )
-  ) {
-    return null;
-  }
-
-  const {
-    weekday,
-  } =
-    getEasternParts(
-      kickoff
-    );
-
-  if (
-    weekday === "Tue" ||
-    weekday === "Wed" ||
-    weekday === "Thu"
-  ) {
-    return "early";
-  }
-
-  if (
-    weekday === "Fri" ||
-    weekday === "Sat" ||
-    weekday === "Sun" ||
-    weekday === "Mon"
-  ) {
-    return "weekend";
-  }
-
-  return null;
-}
-
-
-function getAutomaticWindows(
-  now: Date
-): LineWindow[] {
-  const {
-    weekday,
-    hour,
-  } =
-    getEasternParts(now);
-
-  // The Supabase cron calls this route hourly at minute 7.
-  // To keep sportsbook usage controlled, automatic retries
-  // are allowed only every six hours at 4/10/16/22 ET.
-  //
-  // Early window:
-  //   Tuesday 10 AM ET initial pull, then retries through Thursday.
-  //
-  // Weekend window:
-  //   Thursday 10 AM ET initial pull, then retries through Monday.
-  //
-  // Once Thursday 10 AM arrives, both unresolved early games and
-  // unresolved weekend games may be processed in the same run.
-  if (
-    ![4, 10, 16, 22].includes(
-      hour
-    )
-  ) {
-    return [];
-  }
-
-  if (weekday === "Tue") {
-    return hour >= 10
-      ? ["early"]
-      : [];
-  }
-
-  if (weekday === "Wed") {
-    return ["early"];
-  }
-
-  if (weekday === "Thu") {
-    return hour >= 10
-      ? ["early", "weekend"]
-      : ["early"];
-  }
-
-  if (
-    weekday === "Fri" ||
-    weekday === "Sat" ||
-    weekday === "Sun" ||
-    weekday === "Mon"
-  ) {
-    return ["weekend"];
-  }
-
-  return [];
-}
-
-
-function getWindowLabel(
-  lineWindow: LineWindow
-) {
-  return lineWindow === "early"
-    ? "Tuesday-Thursday"
-    : "Friday-Monday";
-}
-
-
-function getWindowsLabel(
-  lineWindows: LineWindow[]
-) {
-  if (lineWindows.length === 0) {
-    return "All games";
-  }
-
-  return lineWindows
-    .map(getWindowLabel)
-    .join(" + ");
-}
-
-
 export async function POST(
   request: Request
 ) {
@@ -770,13 +704,6 @@ export async function POST(
 
     const preview =
       body.preview === true;
-
-    const requestedLineWindow:
-      LineWindow | null =
-        body.lineWindow === "early" ||
-        body.lineWindow === "weekend"
-          ? body.lineWindow
-          : null;
 
     const requestedWeek =
       typeof body.week ===
@@ -824,36 +751,6 @@ export async function POST(
     const nowIso =
       now.toISOString();
 
-    const activeLineWindows:
-      LineWindow[] =
-      preview
-        ? (
-            requestedLineWindow
-              ? [requestedLineWindow]
-              : []
-          )
-        : (
-            requestedLineWindow
-              ? [requestedLineWindow]
-              : getAutomaticWindows(now)
-          );
-
-    if (
-      !preview &&
-      activeLineWindows.length === 0
-    ) {
-      return NextResponse.json({
-        success: true,
-        provider:
-          "the-odds-api",
-        skipped: true,
-        providerRequests: 0,
-        lineWindows: [],
-        message:
-          "No automatic G365 sportsbook retry window is scheduled for this hour. Automatic pulls run every six hours at 4/10/16/22 ET after each line window opens.",
-      });
-    }
-
     let weeksQuery =
       supabase
         .from(
@@ -878,6 +775,10 @@ export async function POST(
           .lte(
             "line_day_at",
             nowIso
+          )
+          .is(
+            "line_sync_completed_at",
+            null
           );
     }
 
@@ -890,6 +791,7 @@ export async function POST(
     }
 
     if (
+      preview &&
       requestedWeek !== null
     ) {
       weeksQuery =
@@ -985,59 +887,11 @@ export async function POST(
       );
     }
 
-    const allGames =
+    const games =
       (
         gamesData ??
         []
       ) as PickemGameRow[];
-
-    const games =
-      allGames.filter(
-        (game) => {
-          if (
-            game.spread_status ===
-              "frozen"
-          ) {
-            return false;
-          }
-
-          const kickoffMs =
-            new Date(
-              game.kickoff_at
-            ).getTime();
-
-          if (
-            !Number.isFinite(
-              kickoffMs
-            ) ||
-            kickoffMs <=
-              now.getTime()
-          ) {
-            return false;
-          }
-
-          // Preview with no explicit lineWindow intentionally
-          // reviews every unresolved future game in the week.
-          if (
-            activeLineWindows.length ===
-              0
-          ) {
-            return true;
-          }
-
-          const kickoffWindow =
-            getKickoffWindow(
-              game.kickoff_at
-            );
-
-          return (
-            kickoffWindow !== null &&
-            activeLineWindows.includes(
-              kickoffWindow
-            )
-          );
-        }
-      );
 
     const result:
       SyncResult = {
@@ -1068,85 +922,19 @@ export async function POST(
     if (
       games.length === 0
     ) {
-      if (
-        !preview &&
-        activeLineWindows.includes(
-          "weekend"
-        )
-      ) {
-        for (
-          const week of weeks
-        ) {
-          const hasUnresolvedFutureGame =
-            allGames.some(
-              (game) =>
-                game.pickem_week_id ===
-                  week.id &&
-                (
-                  game.spread_status ===
-                    "pending" ||
-                  game.spread_status ===
-                    "published"
-                ) &&
-                new Date(
-                  game.kickoff_at
-                ).getTime() >
-                  now.getTime()
-            );
-
-          if (
-            !hasUnresolvedFutureGame
-          ) {
-            const {
-              error: completeError,
-            } =
-              await supabase
-                .from(
-                  "pickem_weeks"
-                )
-                .update({
-                  line_sync_completed_at:
-                    nowIso,
-                  line_sync_provider:
-                    "the-odds-api",
-                  updated_at:
-                    nowIso,
-                })
-                .eq(
-                  "id",
-                  week.id
-                );
-
-            if (!completeError) {
-              result.weeksCompleted +=
-                1;
-            }
-          }
+      return NextResponse.json(
+        {
+          success: false,
+          provider:
+            "the-odds-api",
+          error:
+            "A Pick'em week reached Line Day before its ESPN game slate was available. The cron will retry automatically.",
+          ...result,
+        },
+        {
+          status: 409,
         }
-      }
-
-      return NextResponse.json({
-        success: true,
-        provider:
-          "the-odds-api",
-        preview,
-        lineWindow:
-          activeLineWindows.length === 1
-            ? activeLineWindows[0]
-            : null,
-        lineWindows:
-          activeLineWindows,
-        lineWindowLabel:
-          getWindowsLabel(
-            activeLineWindows
-          ),
-        skipped: true,
-        message:
-          activeLineWindows.length > 0
-            ? `No unresolved ${getWindowsLabel(activeLineWindows)} games need a sportsbook line pull.`
-            : "No unresolved games need a sportsbook matching preview.",
-        ...result,
-      });
+      );
     }
 
     if (!preview) {
@@ -1306,6 +1094,11 @@ export async function POST(
                 match.event
               );
 
+            const totals =
+              getBookmakerTotals(
+                match.event
+              );
+
             return {
               gameId:
                 game.id,
@@ -1354,11 +1147,20 @@ export async function POST(
                 ),
               sportsbookCount:
                 spreads.length,
+              totalSportsbookCount:
+                totals.length,
               proposedG365HomeSpread:
                 median(
                   spreads.map(
                     (spread) =>
                       spread.homeSpread
+                  )
+                ),
+              proposedG365Total:
+                median(
+                  totals.map(
+                    (total) =>
+                      total.total
                   )
                 ),
             };
@@ -1382,16 +1184,6 @@ export async function POST(
           leagueId:
             body.leagueId,
           requestedWeek,
-          lineWindow:
-            activeLineWindows.length === 1
-              ? activeLineWindows[0]
-              : null,
-          lineWindows:
-            activeLineWindows,
-          lineWindowLabel:
-            getWindowsLabel(
-              activeLineWindows
-            ),
           weeksReviewed:
             weeks.map(
               (week) => ({
@@ -1461,12 +1253,29 @@ export async function POST(
         null;
 
       if (!event) {
-        // A missing sportsbook market is not treated as a
-        // permanent exclusion. The game remains pending.
-        // This prevents an early Tuesday/Thursday snapshot
-        // from destroying eligibility simply because a book
-        // has not posted the market yet.
         result.unmatchedGames +=
+          1;
+
+        await supabase
+          .from(
+            "pickem_games"
+          )
+          .update({
+            spread_status:
+              "excluded",
+            is_eligible:
+              false,
+            exclusion_reason:
+              "No trustworthy matching sportsbook event was available from The Odds API on G365 Line Day.",
+            updated_at:
+              nowIso,
+          })
+          .eq(
+            "id",
+            game.id
+          );
+
+        result.gamesExcluded +=
           1;
         continue;
       }
@@ -1481,8 +1290,9 @@ export async function POST(
           source_provider: string;
           sportsbook_key: string;
           sportsbook_name: string | null;
-          home_spread: number;
+          home_spread: number | null;
           away_spread: number | null;
+          total_points: number | null;
           source_event_id: string | null;
           source_market_key: string;
           raw_audit: Record<string, unknown>;
@@ -1556,6 +1366,8 @@ export async function POST(
               "number"
               ? awayOutcome.point
               : -homeOutcome.point,
+          total_points:
+            null,
           source_event_id:
             event.id ??
             null,
@@ -1596,6 +1408,70 @@ export async function POST(
           },
         });
       }
+
+      const totals =
+        getBookmakerTotals(
+          event
+        );
+
+      for (
+        const total of
+        totals
+      ) {
+        sourceRows.push({
+          pickem_game_id:
+            game.id,
+          captured_at:
+            nowIso,
+          source_provider:
+            "the-odds-api",
+          sportsbook_key:
+            total.sportsbookKey,
+          sportsbook_name:
+            total.sportsbookName,
+          home_spread:
+            null,
+          away_spread:
+            null,
+          total_points:
+            total.total,
+          source_event_id:
+            event.id ??
+            null,
+          source_market_key:
+            "totals",
+          raw_audit: {
+            provider:
+              "the-odds-api",
+            providerSportKey:
+              event.sport_key ??
+              ODDS_SPORT_KEYS[
+                game.sport
+              ],
+            providerEventId:
+              event.id ??
+              null,
+            providerCommenceTime:
+              event.commence_time ??
+              null,
+            providerHomeTeam:
+              event.home_team ??
+              null,
+            providerAwayTeam:
+              event.away_team ??
+              null,
+            bookmakerLastUpdate:
+              total.bookmakerLastUpdate,
+            marketLastUpdate:
+              total.marketLastUpdate,
+            overPrice:
+              total.overPrice,
+            underPrice:
+              total.underPrice,
+          },
+        });
+      }
+
 
       if (
         sourceRows.length > 0
@@ -1658,64 +1534,25 @@ export async function POST(
         result.gamesFrozen +=
           1;
       }
-    }
 
-    const {
-      data: remainingGamesData,
-      error: remainingGamesError,
-    } =
-      await supabase
-        .from(
-          "pickem_games"
-        )
-        .select(
-          "pickem_week_id,kickoff_at,spread_status,is_started,is_final"
-        )
-        .in(
-          "pickem_week_id",
-          weekIds
-        )
-        .eq(
-          "is_started",
-          false
-        )
-        .eq(
-          "is_final",
-          false
+      const {
+        error: totalFreezeError,
+      } =
+        await supabase.rpc(
+          "freeze_pickem_g365_total",
+          {
+            p_pickem_game_id:
+              game.id,
+          }
         );
 
-    if (remainingGamesError) {
-      throw new Error(
-        remainingGamesError.message
-      );
+      if (totalFreezeError) {
+        weekFailures.add(
+          game.pickem_week_id
+        );
+        continue;
+      }
     }
-
-    const unresolvedWeekIds =
-      new Set<number>(
-        (
-          remainingGamesData ??
-          []
-        )
-          .filter(
-            (game) =>
-              (
-                game.spread_status ===
-                  "pending" ||
-                game.spread_status ===
-                  "published"
-              ) &&
-              new Date(
-                game.kickoff_at
-              ).getTime() >
-                now.getTime()
-          )
-          .map(
-            (game) =>
-              Number(
-                game.pickem_week_id
-              )
-          )
-      );
 
     for (
       const week of weeks
@@ -1728,40 +1565,6 @@ export async function POST(
         continue;
       }
 
-      const completionUpdate:
-        Record<string, unknown> = {
-          line_sync_provider:
-            "the-odds-api",
-          updated_at:
-            nowIso,
-        };
-
-      // A week can only be considered line-sync complete after
-      // the weekend window has opened AND no future pending/
-      // published game still needs a trustworthy G365 spread.
-      //
-      // If a previously completed week gains a newly unresolved
-      // game, clear the marker so automatic catch-up can continue.
-      if (
-        activeLineWindows.includes(
-          "weekend"
-        )
-      ) {
-        if (
-          unresolvedWeekIds.has(
-            week.id
-          )
-        ) {
-          completionUpdate
-            .line_sync_completed_at =
-              null;
-        } else {
-          completionUpdate
-            .line_sync_completed_at =
-              nowIso;
-        }
-      }
-
       const {
         error: completeError,
       } =
@@ -1769,23 +1572,20 @@ export async function POST(
           .from(
             "pickem_weeks"
           )
-          .update(
-            completionUpdate
-          )
+          .update({
+            line_sync_completed_at:
+              nowIso,
+            line_sync_provider:
+              "the-odds-api",
+            updated_at:
+              nowIso,
+          })
           .eq(
             "id",
             week.id
           );
 
-      if (
-        !completeError &&
-        activeLineWindows.includes(
-          "weekend"
-        ) &&
-        !unresolvedWeekIds.has(
-          week.id
-        )
-      ) {
+      if (!completeError) {
         result.weeksCompleted +=
           1;
       }
@@ -1798,16 +1598,6 @@ export async function POST(
           0,
         provider:
           "the-odds-api",
-        lineWindow:
-          activeLineWindows.length === 1
-            ? activeLineWindows[0]
-            : null,
-        lineWindows:
-          activeLineWindows,
-        lineWindowLabel:
-          getWindowsLabel(
-            activeLineWindows
-          ),
         ...result,
       },
       {

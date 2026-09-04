@@ -8,6 +8,7 @@ import {
 
 import SeasonLongLeagueNav from "@/components/season-long/SeasonLongLeagueNav";
 import PickemLeagueNav from "@/components/pickem/PickemLeagueNav";
+import NflPlayoffsLeagueNav from "@/components/nfl-playoffs/NflPlayoffsLeagueNav";
 
 import TraditionalLeagueNav from "@/components/traditional/TraditionalLeagueNav";
 import TraditionalLiveRefresh from "@/components/traditional/TraditionalLiveRefresh";
@@ -376,7 +377,8 @@ export default async function LeagueLayout({
   const primaryActionLabel =
     isTraditional
       ? "My Team"
-      : isSeasonLong
+      : isSeasonLong ||
+          isNflPlayoffs
         ? "My Entry"
         : isPickem
           ? "My Picks"
@@ -386,7 +388,8 @@ export default async function LeagueLayout({
   const primaryActionHref =
     isTraditional
       ? `/league/${leagueId}/team`
-      : isSeasonLong
+      : isSeasonLong ||
+          isNflPlayoffs
         ? `/league/${leagueId}/entry`
         : isPickem
           ? `/league/${leagueId}/pickem/my-picks`
@@ -599,38 +602,17 @@ export default async function LeagueLayout({
 
 
       {isNflPlayoffs ? (
-        <nav
-          aria-label="NFL Playoffs League Navigation"
-          style={{
-            display:
-              "flex",
-
-            flexWrap:
-              "wrap",
-
-            gap:
-              "10px",
-
-            padding:
-              "10px 18px",
-
-            borderTop:
-              "1px solid rgba(255,255,255,0.07)",
-
-            borderBottom:
-              "1px solid rgba(255,255,255,0.08)",
-
-            background:
-              "rgba(8,8,10,0.94)",
-          }}
-        >
-          <Link
-            href={`/league/${leagueId}`}
-            className="g365-league-action"
-          >
-            Home
-          </Link>
-        </nav>
+        <NflPlayoffsLeagueNav
+          leagueId={
+            leagueId
+          }
+          season={
+            league.season
+          }
+          isCommissioner={
+            isCommissioner
+          }
+        />
       ) : null}
 
 
