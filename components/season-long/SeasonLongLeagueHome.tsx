@@ -128,12 +128,51 @@ export default async function SeasonLongLeagueHome({
     null;
 
 
+  /*
+   * Keep the home dashboard on the exact same lifecycle week as My Entry.
+   * Future prepared entries must never become the dashboard's "current" week.
+   */
+  const activeWeekResult =
+    await supabase.rpc(
+      "get_active_season_long_week",
+      {
+        p_season:
+          access.league.season,
+      }
+    );
+
+
+  if (
+    activeWeekResult.error
+  ) {
+    throw new Error(
+      `Could not resolve active Season-Long week: ${activeWeekResult.error.message}`
+    );
+  }
+
+
+  const activeWeekValue =
+    Number(
+      activeWeekResult.data
+    );
+
+
+  const currentWeek =
+    Number.isInteger(
+      activeWeekValue
+    ) &&
+    activeWeekValue > 0
+      ? activeWeekValue
+      : 1;
+
+
   const [
     settingsResult,
     entryResult,
     standingsResult,
     scoreResult,
     teamCountResult,
+    lineupProjectionResult,
   ] =
     await Promise.all([
       supabase
@@ -183,15 +222,9 @@ export default async function SeasonLongLeagueHome({
               "season",
               access.league.season
             )
-            .order(
+            .eq(
               "week",
-              {
-                ascending:
-                  false,
-              }
-            )
-            .limit(
-              1
+              currentWeek
             )
             .maybeSingle()
         : Promise.resolve({
@@ -258,15 +291,9 @@ export default async function SeasonLongLeagueHome({
               "season",
               access.league.season
             )
-            .order(
+            .eq(
               "week",
-              {
-                ascending:
-                  false,
-              }
-            )
-            .limit(
-              1
+              currentWeek
             )
             .maybeSingle()
         : Promise.resolve({
@@ -297,6 +324,37 @@ export default async function SeasonLongLeagueHome({
           "active",
           true
         ),
+
+      fantasyTeamId
+        ? supabase
+            .from(
+              "season_long_weekly_lineups"
+            )
+            .select(
+              "projected_points_at_selection"
+            )
+            .eq(
+              "league_id",
+              leagueId
+            )
+            .eq(
+              "fantasy_team_id",
+              fantasyTeamId
+            )
+            .eq(
+              "season",
+              access.league.season
+            )
+            .eq(
+              "week",
+              currentWeek
+            )
+        : Promise.resolve({
+            data:
+              [],
+            error:
+              null,
+          }),
     ]);
 
 
@@ -345,6 +403,15 @@ export default async function SeasonLongLeagueHome({
   }
 
 
+  if (
+    lineupProjectionResult.error
+  ) {
+    throw new Error(
+      `Could not load current lineup projections: ${lineupProjectionResult.error.message}`
+    );
+  }
+
+
   const settings =
     settingsResult.data;
 
@@ -357,10 +424,35 @@ export default async function SeasonLongLeagueHome({
   const latestScore =
     scoreResult.data;
 
-  const currentWeek =
-    entry?.week ??
-    latestScore?.week ??
-    1;
+  const lineupProjectedPoints =
+    (
+      lineupProjectionResult.data ??
+      []
+    ).reduce(
+      (
+        total,
+        row
+      ) =>
+        total +
+        Number(
+          row.projected_points_at_selection ??
+          0
+        ),
+      0
+    );
+
+
+  const projectedPoints =
+    (
+      lineupProjectionResult.data ??
+      []
+    ).length > 0
+      ? lineupProjectedPoints
+      : Number(
+          entry
+            ?.projected_points ??
+          0
+        );
 
   const isSalary =
     access.league
@@ -742,8 +834,7 @@ export default async function SeasonLongLeagueHome({
               }
             >
               {formatPoints(
-                entry
-                  ?.projected_points
+                projectedPoints
               )}
             </strong>
 
@@ -830,8 +921,7 @@ export default async function SeasonLongLeagueHome({
                 label="Projected Points"
                 value={
                   formatPoints(
-                    entry
-                      ?.projected_points
+                    projectedPoints
                   )
                 }
               />

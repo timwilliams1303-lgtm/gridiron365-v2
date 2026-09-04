@@ -10,6 +10,10 @@ import {
 } from "@/lib/supabase/admin";
 
 import {
+  createSupabaseServerClient,
+} from "@/lib/supabase/server";
+
+import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
 
@@ -270,6 +274,14 @@ export default async function SeasonLongSeasonSummary({
   const supabase =
     createSupabaseAdminClient();
 
+  /*
+   * Trophy-case RPCs validate auth.uid().
+   * Keep the admin client for league-wide table reads, but call
+   * member-facing RPCs with the signed-in server client.
+   */
+  const memberSupabase =
+    await createSupabaseServerClient();
+
   const season =
     access.league.season;
 
@@ -434,7 +446,7 @@ export default async function SeasonLongSeasonSummary({
           "id,full_name,primary_position"
         ),
 
-      supabase.rpc(
+      memberSupabase.rpc(
         "get_season_long_trophy_case",
         {
           p_league_id:

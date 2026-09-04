@@ -5,6 +5,10 @@ import {
 } from "@/lib/supabase/admin";
 
 import {
+  createSupabaseServerClient,
+} from "@/lib/supabase/server";
+
+import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
 
@@ -149,6 +153,14 @@ export default async function SeasonLongTrophyCasePage({
   const supabase =
     createSupabaseAdminClient();
 
+  /*
+   * Continuous-history RPCs enforce membership through auth.uid().
+   * The admin/service-role client has no user auth.uid(), so call those
+   * RPCs with the authenticated server client instead.
+   */
+  const memberSupabase =
+    await createSupabaseServerClient();
+
   const [
     historyResult,
     summaryResult,
@@ -156,7 +168,7 @@ export default async function SeasonLongTrophyCasePage({
     settingsResult,
   ] =
     await Promise.all([
-      supabase.rpc(
+      memberSupabase.rpc(
         "get_season_long_history_trophy_case",
         {
           p_league_id:
@@ -164,7 +176,7 @@ export default async function SeasonLongTrophyCasePage({
         }
       ),
 
-      supabase.rpc(
+      memberSupabase.rpc(
         "get_season_long_history_summary",
         {
           p_league_id:

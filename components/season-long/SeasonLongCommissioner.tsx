@@ -2198,7 +2198,7 @@ const styles:
       background:
         "linear-gradient(135deg,rgba(140,14,14,.22),rgba(255,90,30,.08),rgba(255,255,255,.02))",
       flexWrap:
-        "wrap",
+        "nowrap",
     },
 
     eyebrow: {
@@ -2258,9 +2258,21 @@ const styles:
         "12px",
       background:
         "rgba(15,17,22,.88)",
+      overflowX:
+        "auto",
+      overflowY:
+        "hidden",
+      WebkitOverflowScrolling:
+        "touch",
+      scrollbarGutter:
+        "stable",
     },
 
     tab: {
+      flex:
+        "0 0 auto",
+      whiteSpace:
+        "nowrap",
       border:
         "1px solid transparent",
       borderRadius:
@@ -2299,6 +2311,10 @@ const styles:
         "13px",
       background:
         "rgba(15,18,24,.9)",
+      overflowX:
+        "auto",
+      WebkitOverflowScrolling:
+        "touch",
     },
 
     sectionHead: {
@@ -2827,4 +2843,3 @@ const styles:
         "rgba(20,20,24,.94)",
     },
   };
-

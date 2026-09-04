@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import SeasonLongSeasonSummary from "@/components/season-long/SeasonLongSeasonSummary";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireLeagueMember } from "@/lib/leagues/requireLeagueMember";
 import {
   getSeasonLongTeamLiveLineupData,
@@ -317,6 +318,14 @@ export default async function SeasonLongRecap({
   const supabase =
     createSupabaseAdminClient();
 
+  /*
+   * Member-facing badge/trophy RPCs validate auth.uid().
+   * Use the authenticated server client for those RPC calls while keeping
+   * the admin client for league-shared table reads/live-lineup assembly.
+   */
+  const memberSupabase =
+    await createSupabaseServerClient();
+
   const season =
     access.league.season;
 
@@ -366,11 +375,11 @@ export default async function SeasonLongRecap({
     "head_to_head";
 
   const activeWeekResult =
-    await supabase.rpc(
+    await memberSupabase.rpc(
       "get_active_season_long_week",
       {
-        p_league_id:
-          leagueId,
+        p_season:
+          season,
       }
     );
 
@@ -526,7 +535,7 @@ export default async function SeasonLongRecap({
           }
         ),
 
-      supabase.rpc(
+      memberSupabase.rpc(
         "get_season_long_week_badges",
         {
           p_league_id:
@@ -538,7 +547,7 @@ export default async function SeasonLongRecap({
         }
       ),
 
-      supabase.rpc(
+      memberSupabase.rpc(
         "get_season_long_trophy_case",
         {
           p_league_id:

@@ -1481,6 +1481,18 @@ export default async function SeasonLongEntryPage({
     );
 
 
+  const selectedLineupProjectedPoints =
+    lineupForClient.reduce(
+      (
+        total,
+        player
+      ) =>
+        total +
+        player.projectedPoints,
+      0
+    );
+
+
   const poolForClient =
     players
       .filter(
@@ -1722,9 +1734,7 @@ export default async function SeasonLongEntryPage({
                     ),
 
               projectedPoints:
-                projectionNumber(
-                  currentEntry.projected_points
-                ),
+                selectedLineupProjectedPoints,
 
               submittedAt:
                 currentEntry.submitted_at,
