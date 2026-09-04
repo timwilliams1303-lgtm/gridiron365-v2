@@ -4,6 +4,7 @@ import {
 } from "next/navigation";
 
 import SeasonLongWeeklyLineup from "@/components/season-long/SeasonLongWeeklyLineup";
+import NflPlayoffsEntry from "@/components/nfl-playoffs/NflPlayoffsEntry";
 
 import {
   requireLeagueMember,
@@ -312,6 +313,20 @@ export default async function SeasonLongEntryPage({
     await requireLeagueMember(
       leagueId
     );
+
+
+  if (
+    access.league.leagueType ===
+    "nfl_playoffs"
+  ) {
+    return (
+      <NflPlayoffsEntry
+        leagueId={
+          leagueId
+        }
+      />
+    );
+  }
 
 
   if (
@@ -1481,18 +1496,6 @@ export default async function SeasonLongEntryPage({
     );
 
 
-  const selectedLineupProjectedPoints =
-    lineupForClient.reduce(
-      (
-        total,
-        player
-      ) =>
-        total +
-        player.projectedPoints,
-      0
-    );
-
-
   const poolForClient =
     players
       .filter(
@@ -1734,7 +1737,9 @@ export default async function SeasonLongEntryPage({
                     ),
 
               projectedPoints:
-                selectedLineupProjectedPoints,
+                projectionNumber(
+                  currentEntry.projected_points
+                ),
 
               submittedAt:
                 currentEntry.submitted_at,
@@ -1746,9 +1751,6 @@ export default async function SeasonLongEntryPage({
       }
       playerPool={
         poolForClient
-      }
-      matchupHref={
-        currentMatchupHref
       }
     />
   );
