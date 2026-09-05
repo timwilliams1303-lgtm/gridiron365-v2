@@ -1,322 +1,252 @@
 "use client";
 
 import Link from "next/link";
-
-import {
-  usePathname,
-} from "next/navigation";
-
+import { usePathname } from "next/navigation";
 
 type Props = {
   leagueId: string;
   season: number;
-  isCommissioner: boolean;
+  isCommissioner?: boolean;
 };
-
 
 type NavItem = {
   label: string;
   mobileLabel: string;
   href: string;
+  exact?: boolean;
 };
-
 
 export default function NflPlayoffsLeagueNav({
   leagueId,
   season,
-  isCommissioner,
+  isCommissioner = false,
 }: Props) {
-  const pathname =
-    usePathname();
+  const pathname = usePathname();
+  const base = `/league/${leagueId}`;
 
+  const items: NavItem[] = [
+    {
+      label: "Home",
+      mobileLabel: "Home",
+      href: base,
+      exact: true,
+    },
+    {
+      label: "My Entry",
+      mobileLabel: "Entry",
+      href: `${base}/entry`,
+    },
+    {
+      label: "League Teams",
+      mobileLabel: "Teams",
+      href: `${base}/teams`,
+    },
+    {
+      label: "Standings",
+      mobileLabel: "Standings",
+      href: `${base}/standings`,
+    },
+    {
+      label: `${season} NFL Playoffs`,
+      mobileLabel: "NFL Playoffs",
+      href: `${base}/nfl-playoffs/playoffs`,
+    },
+    {
+      label: "Recap",
+      mobileLabel: "Recap",
+      href: `${base}/nfl-playoffs/recap`,
+    },
+    {
+      label: "Trophy Case",
+      mobileLabel: "Trophies",
+      href: `${base}/nfl-playoffs/trophy-case`,
+    },
+    {
+      label: "Settings",
+      mobileLabel: "Settings",
+      href: `${base}/nfl-playoffs/settings`,
+    },
 
-  const base =
-    `/league/${leagueId}`;
-
-
-  const navItems:
-    NavItem[] = [
-      {
-        label:
-          "Home",
-
-        mobileLabel:
-          "Home",
-
-        href:
-          base,
-      },
-
-      {
-        label:
-          "My Entry",
-
-        mobileLabel:
-          "Entry",
-
-        href:
-          `${base}/entry`,
-      },
-
-      {
-        label:
-          "League Teams",
-
-        mobileLabel:
-          "Teams",
-
-        href:
-          `${base}/nfl-playoffs/teams`,
-      },
-
-      {
-        label:
-          "Standings",
-
-        mobileLabel:
-          "Standings",
-
-        href:
-          `${base}/nfl-playoffs/standings`,
-      },
-
-      {
-        label:
-          "Playoffs",
-
-        mobileLabel:
-          "Bracket",
-
-        href:
-          `${base}/nfl-playoffs/playoffs`,
-      },
-
-      {
-        label:
-          "Recap",
-
-        mobileLabel:
-          "Recap",
-
-        href:
-          `${base}/nfl-playoffs/recap`,
-      },
-
-      {
-        label:
-          "Trophy Case",
-
-        mobileLabel:
-          "Trophies",
-
-        href:
-          `${base}/nfl-playoffs/trophy-case`,
-      },
-    ];
-
-
-  if (
-    isCommissioner
-  ) {
-    navItems.push(
-      {
-        label:
-          "Commissioner",
-
-        mobileLabel:
-          "Commish",
-
-        href:
-          `${base}/commissioner`,
-      },
-
-      {
-        label:
-          "Settings",
-
-        mobileLabel:
-          "Settings",
-
-        href:
-          `${base}/nfl-playoffs/settings`,
-      }
-    );
-  }
-
+    ...(isCommissioner
+      ? [
+          {
+            label: "Commissioner",
+            mobileLabel: "Commish",
+            href: `${base}/commissioner`,
+          },
+        ]
+      : []),
+  ];
 
   function isActive(
-    item:
-      NavItem
+    item: NavItem
   ) {
-    if (
-      item.href ===
-      base
-    ) {
-      return (
-        pathname ===
-          base ||
-        pathname ===
-          `${base}/`
-      );
+    if (item.exact) {
+      return pathname === item.href;
     }
 
-
     return (
-      pathname ===
-        item.href ||
+      pathname === item.href ||
       pathname.startsWith(
         `${item.href}/`
       )
     );
   }
 
-
   return (
     <nav
+      aria-label="NFL Playoffs League Navigation"
       className="g365-nfl-playoffs-nav"
-      aria-label={`${season} NFL Playoffs league navigation`}
+      style={styles.nav}
     >
       <style>{`
-        .g365-nfl-playoffs-nav {
-          position: relative;
-          width: 100%;
-          overflow: hidden;
-          border-top: 1px solid rgba(255,255,255,.07);
-          border-bottom: 1px solid rgba(255,255,255,.09);
-          background:
-            linear-gradient(
-              180deg,
-              rgba(21,21,24,.98),
-              rgba(12,12,14,.98)
-            );
-        }
-
-        .g365-nfl-playoffs-nav *,
-        .g365-nfl-playoffs-nav *::before,
-        .g365-nfl-playoffs-nav *::after {
+        .g365-nfl-playoffs-nav,
+        .g365-nfl-playoffs-nav * {
           box-sizing: border-box;
         }
 
-        .g365-nfl-playoffs-nav-scroll {
-          display: flex;
-          align-items: stretch;
-          gap: 4px;
-          width: 100%;
-          overflow-x: auto;
-          overflow-y: hidden;
-          padding: 8px 12px;
-          scrollbar-width: thin;
-          scrollbar-color:
-            rgba(255,92,28,.55)
-            rgba(255,255,255,.04);
-          -webkit-overflow-scrolling: touch;
-        }
-
-        .g365-nfl-playoffs-nav-scroll::-webkit-scrollbar {
-          height: 5px;
-        }
-
-        .g365-nfl-playoffs-nav-scroll::-webkit-scrollbar-track {
-          background:
-            rgba(255,255,255,.04);
-        }
-
-        .g365-nfl-playoffs-nav-scroll::-webkit-scrollbar-thumb {
-          border-radius: 999px;
-          background:
-            rgba(255,92,28,.55);
-        }
-
-        .g365-nfl-playoffs-nav-link {
+        .g365-nfl-playoffs-nav {
           position: relative;
-          display: inline-flex;
-          flex: 0 0 auto;
-          align-items: center;
-          justify-content: center;
-          min-height: 40px;
-          padding: 9px 14px;
-          border: 1px solid transparent;
-          border-radius: 9px;
-          color: #a9adb5;
-          font-size: 12px;
-          font-weight: 800;
-          letter-spacing: .035em;
-          line-height: 1;
-          text-decoration: none;
-          white-space: nowrap;
-          transition:
-            color .18s ease,
-            border-color .18s ease,
-            background .18s ease,
-            transform .18s ease;
+          z-index: 20;
         }
 
-        .g365-nfl-playoffs-nav-link:hover {
-          color: #ffffff;
-          border-color:
-            rgba(255,94,28,.24);
-          background:
-            rgba(255,82,18,.07);
-        }
-
-        .g365-nfl-playoffs-nav-link:active {
-          transform:
-            translateY(1px);
-        }
-
-        .g365-nfl-playoffs-nav-link-active {
-          color: #ffffff;
-          border-color:
-            rgba(255,93,25,.48);
-          background:
-            linear-gradient(
-              135deg,
-              rgba(189,28,16,.32),
-              rgba(255,90,18,.20)
-            );
-          box-shadow:
-            inset 0 -2px 0
-            rgba(255,92,26,.95);
-        }
-
-        .g365-nfl-playoffs-nav-desktop {
-          display: inline;
-        }
-
-        .g365-nfl-playoffs-nav-mobile {
+        .g365-nfl-playoffs-nav .g365-nflp-mobile-label {
           display: none;
         }
 
+        .g365-nfl-playoffs-nav .g365-nflp-nav-link {
+          position: relative;
+          z-index: 21;
+          pointer-events: auto;
+          touch-action: manipulation;
+        }
+
         @media (max-width: 760px) {
-          .g365-nfl-playoffs-nav-scroll {
-            gap: 3px;
-            padding:
-              7px 8px;
+          .g365-nfl-playoffs-nav {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow: visible !important;
+            position: relative !important;
+            z-index: 100 !important;
           }
 
-          .g365-nfl-playoffs-nav-link {
-            min-height: 38px;
+          .g365-nfl-playoffs-nav > div {
+            width: 100% !important;
+            max-width: 100% !important;
+
+            display: grid !important;
+
+            grid-template-columns:
+              repeat(
+                2,
+                minmax(0, 1fr)
+              ) !important;
+
+            gap: 7px !important;
+
             padding:
-              8px 11px;
-            font-size:
-              11px;
+              9px
+              10px !important;
+
+            overflow-x:
+              visible !important;
+
+            overflow-y:
+              visible !important;
+
+            position:
+              relative !important;
+
+            z-index:
+              101 !important;
           }
 
-          .g365-nfl-playoffs-nav-desktop {
+          .g365-nfl-playoffs-nav a,
+          .g365-nfl-playoffs-nav .g365-nflp-nav-link {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+
+            min-height:
+              44px !important;
+
+            padding:
+              8px
+              7px !important;
+
+            border:
+              1px solid
+              rgba(
+                255,
+                255,
+                255,
+                .08
+              );
+
+            border-radius:
+              9px;
+
+            white-space:
+              normal !important;
+
+            text-align:
+              center;
+
+            line-height:
+              1.15;
+
+            position:
+              relative !important;
+
+            z-index:
+              102 !important;
+
+            pointer-events:
+              auto !important;
+
+            touch-action:
+              manipulation !important;
+          }
+
+          .g365-nfl-playoffs-nav .g365-nflp-desktop-label {
             display: none;
           }
 
-          .g365-nfl-playoffs-nav-mobile {
+          .g365-nfl-playoffs-nav .g365-nflp-mobile-label {
             display: inline;
+          }
+        }
+
+        @media (max-width: 390px) {
+          .g365-nfl-playoffs-nav > div {
+            gap:
+              6px !important;
+
+            padding:
+              8px !important;
+          }
+
+          .g365-nfl-playoffs-nav a,
+          .g365-nfl-playoffs-nav .g365-nflp-nav-link {
+            min-height:
+              42px !important;
+
+            padding:
+              7px
+              6px !important;
+
+            font-size:
+              10px !important;
           }
         }
       `}</style>
 
-
       <div
-        className="g365-nfl-playoffs-nav-scroll"
+        style={
+          styles.inner
+        }
       >
-        {navItems.map(
+        {items.map(
           (
             item
           ) => {
@@ -325,36 +255,40 @@ export default function NflPlayoffsLeagueNav({
                 item
               );
 
-
             return (
               <Link
-                key={
-                  item.href
-                }
+                key={`${item.label}-${item.href}`}
                 href={
                   item.href
                 }
-                className={[
-                  "g365-nfl-playoffs-nav-link",
-
-                  active
-                    ? "g365-nfl-playoffs-nav-link-active"
-                    : "",
-                ]
-                  .filter(
-                    Boolean
-                  )
-                  .join(
-                    " "
-                  )}
+                prefetch={
+                  false
+                }
+                className="g365-nflp-nav-link"
                 aria-current={
                   active
                     ? "page"
                     : undefined
                 }
+                style={{
+                  ...styles.link,
+
+                  ...(active
+                    ? styles.linkActive
+                    : {}),
+
+                  position:
+                    "relative",
+
+                  zIndex:
+                    2,
+
+                  pointerEvents:
+                    "auto",
+                }}
               >
                 <span
-                  className="g365-nfl-playoffs-nav-desktop"
+                  className="g365-nflp-desktop-label"
                 >
                   {
                     item.label
@@ -362,7 +296,7 @@ export default function NflPlayoffsLeagueNav({
                 </span>
 
                 <span
-                  className="g365-nfl-playoffs-nav-mobile"
+                  className="g365-nflp-mobile-label"
                 >
                   {
                     item.mobileLabel
@@ -376,3 +310,112 @@ export default function NflPlayoffsLeagueNav({
     </nav>
   );
 }
+
+const styles = {
+  nav: {
+    width:
+      "100%",
+
+    borderTop:
+      "1px solid rgba(255,255,255,.06)",
+
+    borderBottom:
+      "1px solid rgba(255,255,255,.08)",
+
+    background:
+      "linear-gradient(180deg,rgba(15,15,17,.98),rgba(8,8,10,.98))",
+
+    position:
+      "relative",
+
+    zIndex:
+      20,
+  },
+
+  inner: {
+    width:
+      "min(1420px,100%)",
+
+    margin:
+      "0 auto",
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "4px",
+
+    padding:
+      "0 18px",
+
+    overflowX:
+      "auto" as const,
+
+    position:
+      "relative",
+  },
+
+  link: {
+    flex:
+      "0 0 auto",
+
+    minHeight:
+      "48px",
+
+    display:
+      "inline-flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "center",
+
+    padding:
+      "0 15px",
+
+    borderBottom:
+      "2px solid transparent",
+
+    color:
+      "#c7cbd2",
+
+    fontSize:
+      "11px",
+
+    fontWeight:
+      900,
+
+    letterSpacing:
+      ".025em",
+
+    textDecoration:
+      "none",
+
+    whiteSpace:
+      "nowrap" as const,
+
+    cursor:
+      "pointer",
+
+    transition:
+      "border-color .15s ease, color .15s ease, background .15s ease",
+  },
+
+  linkActive: {
+    borderBottomColor:
+      "#ff5d22",
+
+    color:
+      "#ffffff",
+
+    background:
+      "linear-gradient(180deg,rgba(210,42,24,.11),rgba(255,92,28,.04))",
+  },
+} satisfies Record<
+  string,
+  React.CSSProperties
+>;
