@@ -14,126 +14,82 @@ type Props = {
 };
 
 
-type LeagueStateRow = {
-  active_round:
-    number |
-    null;
-
-  status:
-    string |
-    null;
-
-  champion_fantasy_team_id:
-    number |
-    null;
-
-  completed_at:
-    string |
-    null;
+type StateRow = {
+  active_round: number | null;
+  status: string | null;
+  completed_at: string | null;
 };
 
 
 type RoundRow = {
-  round_number:
-    number;
-
-  round_name:
-    string |
-    null;
-
-  status:
-    string |
-    null;
-
-  first_kickoff_at:
-    string |
-    null;
-
-  last_scheduled_kickoff_at:
-    string |
-    null;
-
-  finalized_at:
-    string |
-    null;
+  round_number: number;
+  round_name: string | null;
+  status: string | null;
+  first_kickoff_at: string | null;
+  last_scheduled_kickoff_at: string | null;
+  finalized_at: string | null;
 };
 
 
 type EntryRow = {
-  fantasy_team_id:
-    number;
+  fantasy_team_id: number;
+  status: string | null;
+  salary_used: number | string | null;
+  projected_points: number | string | null;
+  submitted_at: string | null;
+};
 
-  round_number:
-    number;
 
-  status:
-    string |
-    null;
-
-  fantasy_points:
-    number |
-    string |
-    null;
-
-  projected_points:
-    number |
-    string |
-    null;
+type RoundScoreRow = {
+  fantasy_team_id: number;
+  fantasy_points: number | string | null;
 };
 
 
 type StandingRow = {
-  fantasy_team_id:
-    number;
-
-  total_points:
-    number |
-    string |
-    null;
-
-  rank:
-    number |
-    null;
+  fantasy_team_id: number;
+  total_points: number | string | null;
+  current_rank: number | null;
 };
 
 
 type TeamRow = {
-  id:
-    number;
-
-  team_name:
-    string;
+  id: number;
+  team_name: string;
 };
 
 
-function safeNumber(
+function n(
   value:
-    number |
-    string |
-    null |
-    undefined
+    | number
+    | string
+    | null
+    | undefined
 ) {
   const parsed =
-    Number(
-      value ??
-      0
-    );
+    Number(value ?? 0);
 
-  return Number.isFinite(
-    parsed
-  )
+  return Number.isFinite(parsed)
     ? parsed
     : 0;
 }
 
 
-function roundName(
-  roundNumber:
-    number
+function points(
+  value:
+    | number
+    | string
+    | null
+    | undefined
 ) {
-  switch (
-    roundNumber
-  ) {
+  return n(value).toFixed(2);
+}
+
+
+function roundName(
+  roundNumber: number
+) {
+  switch (roundNumber) {
     case 1:
       return "Wild Card";
 
@@ -154,24 +110,19 @@ function roundName(
 
 function prettyStatus(
   value:
-    string |
-    null |
-    undefined
+    | string
+    | null
+    | undefined
 ) {
   if (!value) {
     return "Setup";
   }
 
   return value
-    .replace(
-      /_/g,
-      " "
-    )
+    .replaceAll("_", " ")
     .replace(
       /\b\w/g,
-      (
-        character
-      ) =>
+      (character) =>
         character.toUpperCase()
     );
 }
@@ -179,18 +130,16 @@ function prettyStatus(
 
 function formatDate(
   value:
-    string |
-    null |
-    undefined
+    | string
+    | null
+    | undefined
 ) {
   if (!value) {
     return "TBD";
   }
 
   const date =
-    new Date(
-      value
-    );
+    new Date(value);
 
   if (
     Number.isNaN(
@@ -203,24 +152,13 @@ function formatDate(
   return new Intl.DateTimeFormat(
     "en-US",
     {
-      weekday:
-        "short",
-
-      month:
-        "short",
-
-      day:
-        "numeric",
-
-      hour:
-        "numeric",
-
-      minute:
-        "2-digit",
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
     }
-  ).format(
-    date
-  );
+  ).format(date);
 }
 
 
@@ -232,19 +170,24 @@ export default async function NflPlayoffsLeagueHome({
       leagueId
     );
 
+  if (
+    access.league.leagueType !==
+    "nfl_playoffs"
+  ) {
+    throw new Error(
+      "This page is only available for NFL Playoffs leagues."
+    );
+  }
 
   const supabase =
     await createSupabaseServerClient();
 
-
   const season =
     access.league.season;
-
 
   const fantasyTeamId =
     access.fantasyTeam?.id ??
     null;
-
 
   const isSalary =
     access.league
@@ -266,7 +209,6 @@ export default async function NflPlayoffsLeagueHome({
         .select(`
           active_round,
           status,
-          champion_fantasy_team_id,
           completed_at
         `)
         .eq(
@@ -302,8 +244,7 @@ export default async function NflPlayoffsLeagueHome({
         .order(
           "round_number",
           {
-            ascending:
-              true,
+            ascending: true,
           }
         ),
 
@@ -326,8 +267,7 @@ export default async function NflPlayoffsLeagueHome({
         .order(
           "team_name",
           {
-            ascending:
-              true,
+            ascending: true,
           }
         ),
 
@@ -338,7 +278,7 @@ export default async function NflPlayoffsLeagueHome({
         .select(`
           fantasy_team_id,
           total_points,
-          rank
+          current_rank
         `)
         .eq(
           "league_id",
@@ -351,64 +291,41 @@ export default async function NflPlayoffsLeagueHome({
     ]);
 
 
-  if (
-    stateResult.error
-  ) {
+  const firstError =
+    [
+      stateResult,
+      roundsResult,
+      teamsResult,
+      standingsResult,
+    ].find(
+      (result) =>
+        result.error
+    )?.error;
+
+
+  if (firstError) {
     throw new Error(
-      `Could not load NFL Playoffs league state: ${stateResult.error.message}`
-    );
-  }
-
-
-  if (
-    roundsResult.error
-  ) {
-    throw new Error(
-      `Could not load NFL Playoffs rounds: ${roundsResult.error.message}`
-    );
-  }
-
-
-  if (
-    teamsResult.error
-  ) {
-    throw new Error(
-      `Could not load NFL Playoffs teams: ${teamsResult.error.message}`
-    );
-  }
-
-
-  if (
-    standingsResult.error
-  ) {
-    throw new Error(
-      `Could not load NFL Playoffs standings: ${standingsResult.error.message}`
+      `NFL Playoffs Home could not be loaded: ${firstError.message}`
     );
   }
 
 
   const state =
     stateResult.data as
-      LeagueStateRow |
-      null;
-
+      | StateRow
+      | null;
 
   const rounds =
     (roundsResult.data ??
-      []) as
-      RoundRow[];
-
+      []) as RoundRow[];
 
   const teams =
     (teamsResult.data ??
-      []) as
-      TeamRow[];
-
+      []) as TeamRow[];
 
   const standings =
     (standingsResult.data ??
-      []) as
-      StandingRow[];
+      []) as StandingRow[];
 
 
   const activeRound =
@@ -417,8 +334,7 @@ export default async function NflPlayoffsLeagueHome({
       Math.max(
         1,
         Number(
-          state
-            ?.active_round ??
+          state?.active_round ??
             1
         )
       )
@@ -427,9 +343,7 @@ export default async function NflPlayoffsLeagueHome({
 
   const activeRoundRow =
     rounds.find(
-      (
-        round
-      ) =>
+      (round) =>
         round.round_number ===
         activeRound
     ) ??
@@ -438,9 +352,7 @@ export default async function NflPlayoffsLeagueHome({
 
   const finalizedRounds =
     rounds.filter(
-      (
-        round
-      ) =>
+      (round) =>
         Boolean(
           round.finalized_at
         ) ||
@@ -450,88 +362,126 @@ export default async function NflPlayoffsLeagueHome({
 
 
   let myEntry:
-    EntryRow |
-    null =
+    | EntryRow
+    | null =
+    null;
+
+  let myRoundScore:
+    | RoundScoreRow
+    | null =
     null;
 
 
-  if (
-    fantasyTeamId
-  ) {
-    const {
-      data:
-        entryData,
+  if (fantasyTeamId) {
+    const [
+      entryResult,
+      scoreResult,
+    ] =
+      await Promise.all([
+        supabase
+          .from(
+            "nfl_playoff_round_entries"
+          )
+          .select(`
+            fantasy_team_id,
+            status,
+            salary_used,
+            projected_points,
+            submitted_at
+          `)
+          .eq(
+            "league_id",
+            leagueId
+          )
+          .eq(
+            "fantasy_team_id",
+            fantasyTeamId
+          )
+          .eq(
+            "season",
+            season
+          )
+          .eq(
+            "round_number",
+            activeRound
+          )
+          .maybeSingle(),
 
-      error:
-        entryError,
-    } =
-      await supabase
-        .from(
-          "nfl_playoff_round_entries"
-        )
-        .select(`
-          fantasy_team_id,
-          round_number,
-          status,
-          fantasy_points,
-          projected_points
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "season",
-          season
-        )
-        .eq(
-          "round_number",
-          activeRound
-        )
-        .eq(
-          "fantasy_team_id",
-          fantasyTeamId
-        )
-        .maybeSingle();
+        supabase
+          .from(
+            "nfl_playoff_round_scores"
+          )
+          .select(`
+            fantasy_team_id,
+            fantasy_points
+          `)
+          .eq(
+            "league_id",
+            leagueId
+          )
+          .eq(
+            "fantasy_team_id",
+            fantasyTeamId
+          )
+          .eq(
+            "season",
+            season
+          )
+          .eq(
+            "round_number",
+            activeRound
+          )
+          .maybeSingle(),
+      ]);
 
 
     if (
-      entryError
+      entryResult.error
     ) {
       throw new Error(
-        `Could not load your NFL Playoffs entry: ${entryError.message}`
+        `NFL Playoffs Home could not load your entry: ${entryResult.error.message}`
+      );
+    }
+
+
+    if (
+      scoreResult.error
+    ) {
+      throw new Error(
+        `NFL Playoffs Home could not load your round score: ${scoreResult.error.message}`
       );
     }
 
 
     myEntry =
-      entryData as
-        EntryRow |
-        null;
+      entryResult.data as
+        | EntryRow
+        | null;
+
+    myRoundScore =
+      scoreResult.data as
+        | RoundScoreRow
+        | null;
   }
 
 
-  const myStanding =
+  const myTeam =
     fantasyTeamId
-      ? standings.find(
-          (
-            row
-          ) =>
-            row
-              .fantasy_team_id ===
+      ? teams.find(
+          (team) =>
+            team.id ===
             fantasyTeamId
         ) ??
         null
       : null;
 
 
-  const myTeam =
+  const myStanding =
     fantasyTeamId
-      ? teams.find(
-          (
-            team
-          ) =>
-            team.id ===
+      ? standings.find(
+          (standing) =>
+            standing
+              .fantasy_team_id ===
             fantasyTeamId
         ) ??
         null
@@ -544,7 +494,7 @@ export default async function NflPlayoffsLeagueHome({
     ) ||
     state?.status ===
       "complete" ||
-    finalizedRounds.length >=
+    finalizedRounds.length ===
       4;
 
 
@@ -552,20 +502,12 @@ export default async function NflPlayoffsLeagueHome({
     <main
       className="g365-nflp-home"
       style={{
-        display:
-          "grid",
-
-        gap:
-          18,
-
-        width:
-          "100%",
-
+        width: "100%",
+        minWidth: 0,
+        display: "grid",
+        gap: 18,
         padding:
           "22px 18px 40px",
-
-        boxSizing:
-          "border-box",
       }}
     >
       <style>{`
@@ -573,34 +515,24 @@ export default async function NflPlayoffsLeagueHome({
           box-sizing: border-box;
         }
 
-        .g365-nflp-home-hero {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 22px;
-        }
-
-        .g365-nflp-home-actions {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-        }
-
         .g365-nflp-home-stats {
           display: grid;
-          grid-template-columns: repeat(4,minmax(0,1fr));
+          grid-template-columns:
+            repeat(4,minmax(0,1fr));
           gap: 12px;
         }
 
         .g365-nflp-home-rounds {
           display: grid;
-          grid-template-columns: repeat(4,minmax(0,1fr));
+          grid-template-columns:
+            repeat(4,minmax(0,1fr));
           gap: 12px;
         }
 
         .g365-nflp-home-links {
           display: grid;
-          grid-template-columns: repeat(3,minmax(0,1fr));
+          grid-template-columns:
+            repeat(3,minmax(0,1fr));
           gap: 12px;
         }
 
@@ -617,27 +549,10 @@ export default async function NflPlayoffsLeagueHome({
           }
         }
 
-        @media (max-width: 700px) {
+        @media (max-width: 650px) {
           .g365-nflp-home {
             padding:
-              14px 11px 34px !important;
-          }
-
-          .g365-nflp-home-hero {
-            flex-direction:
-              column;
-          }
-
-          .g365-nflp-home-actions {
-            width:
-              100%;
-          }
-
-          .g365-nflp-home-actions a {
-            flex:
-              1 1 145px;
-            text-align:
-              center;
+              14px 10px 34px !important;
           }
 
           .g365-nflp-home-stats,
@@ -651,124 +566,65 @@ export default async function NflPlayoffsLeagueHome({
 
 
       <section
-        className="g365-nflp-home-hero"
         style={{
-          padding:
-            22,
-
+          padding: 22,
+          borderRadius: 18,
           border:
-            "1px solid rgba(255,91,26,.34)",
-
-          borderRadius:
-            18,
-
+            "1px solid rgba(255,105,28,.32)",
           background:
-            "linear-gradient(135deg,rgba(120,8,12,.48),rgba(16,16,19,.98) 54%,rgba(145,50,0,.32))",
-
-          boxShadow:
-            "0 20px 50px rgba(0,0,0,.28)",
+            "linear-gradient(135deg,rgba(111,9,14,.5),rgba(17,17,20,.98) 52%,rgba(136,47,0,.3))",
         }}
       >
-        <div>
-          <div
-            style={{
-              color:
-                "#ff7627",
-
-              fontSize:
-                12,
-
-              fontWeight:
-                1000,
-
-              letterSpacing:
-                ".13em",
-
-              textTransform:
-                "uppercase",
-            }}
-          >
-            G365 NFL PLAYOFFS
-          </div>
-
-
-          <h2
-            style={{
-              margin:
-                "7px 0 8px",
-
-              color:
-                "#fff",
-
-              fontSize:
-                "clamp(30px,5vw,48px)",
-
-              lineHeight:
-                1,
-            }}
-          >
-            {
-              access.league
-                .name
-            }
-          </h2>
-
-
-          <p
-            style={{
-              margin:
-                0,
-
-              color:
-                "#b7bac2",
-
-              lineHeight:
-                1.65,
-            }}
-          >
-            {season}
-            {" · "}
-            {isSalary
-              ? "Salary Cap"
-              : "No Salary Cap"}
-            {" · "}
-            {leagueComplete
-              ? "Postseason Complete"
-              : `${roundName(
-                  activeRound
-                )} is the active round`}
-          </p>
-        </div>
-
-
-        <div
-          className="g365-nflp-home-actions"
+        <p
+          style={{
+            margin: 0,
+            color: "#ff7627",
+            fontWeight: 1000,
+            fontSize: 11,
+            letterSpacing:
+              ".12em",
+          }}
         >
-          <Link
-            href={`/league/${leagueId}/entry`}
-            style={
-              styles.secondaryButton
-            }
-          >
-            MY ENTRY
-          </Link>
+          G365 NFL PLAYOFFS
+        </p>
 
-          <Link
-            href={`/league/${leagueId}/nfl-playoffs/teams`}
-            style={
-              styles.primaryButton
-            }
-          >
-            LEAGUE TEAMS
-          </Link>
-        </div>
+        <h2
+          style={{
+            margin:
+              "8px 0",
+            color: "#fff",
+            fontSize:
+              "clamp(30px,5vw,48px)",
+          }}
+        >
+          {access.league.name}
+        </h2>
+
+        <p
+          style={{
+            margin: 0,
+            color: "#aeb2bb",
+          }}
+        >
+          {season}
+          {" · "}
+          {isSalary
+            ? "Salary Cap"
+            : "No Salary Cap"}
+          {" · "}
+          {leagueComplete
+            ? "Postseason Complete"
+            : `${roundName(
+                activeRound
+              )} · Active`}
+        </p>
       </section>
 
 
       <section
         className="g365-nflp-home-stats"
       >
-        <StatCard
+        <Stat
           label="ACTIVE ROUND"
           value={
             leagueComplete
@@ -777,174 +633,114 @@ export default async function NflPlayoffsLeagueHome({
                   activeRound
                 )
           }
-          detail={
-            leagueComplete
-              ? "All four rounds finished"
-              : `Round ${activeRound} of 4`
-          }
+          detail={`Round ${activeRound} of 4`}
         />
 
-        <StatCard
+        <Stat
           label="LEAGUE STATUS"
           value={
             prettyStatus(
               state?.status
             )
           }
-          detail="NFL Playoffs lifecycle"
+          detail="Automatic postseason lifecycle"
         />
 
-        <StatCard
+        <Stat
           label="ACTIVE TEAMS"
-          value={
-            String(
-              teams.length
-            )
-          }
-          detail="Accepted league teams"
+          value={String(
+            teams.length
+          )}
+          detail="Accepted league entries"
         />
 
-        <StatCard
+        <Stat
           label="ROUNDS FINAL"
           value={`${finalizedRounds.length} / 4`}
-          detail="Official finalized rounds"
+          detail="Official completed rounds"
         />
 
-        <StatCard
+        <Stat
           label="MY TEAM"
           value={
-            myTeam
-              ?.team_name ??
+            myTeam?.team_name ??
             "League Member"
           }
           detail={
-            myEntry
-              ? prettyStatus(
-                  myEntry.status
-                )
-              : "Entry not loaded"
+            prettyStatus(
+              myEntry?.status
+            )
           }
         />
 
-        <StatCard
+        <Stat
           label="MY ROUND POINTS"
-          value={
-            safeNumber(
-              myEntry
-                ?.fantasy_points
-            ).toFixed(
-              2
-            )
-          }
-          detail={
-            `Projected ${safeNumber(
-              myEntry
-                ?.projected_points
-            ).toFixed(
-              2
-            )}`
-          }
+          value={points(
+            myRoundScore
+              ?.fantasy_points
+          )}
+          detail={`Projected ${points(
+            myEntry
+              ?.projected_points
+          )}`}
         />
 
-        <StatCard
+        <Stat
           label="MY TOTAL"
-          value={
-            safeNumber(
-              myStanding
-                ?.total_points
-            ).toFixed(
-              2
-            )
-          }
-          detail="Cumulative postseason points"
+          value={points(
+            myStanding
+              ?.total_points
+          )}
+          detail="Cumulative playoff points"
         />
 
-        <StatCard
+        <Stat
           label="MY RANK"
           value={
             myStanding
-              ?.rank
-              ? `#${myStanding.rank}`
+              ?.current_rank
+              ? `#${myStanding.current_rank}`
               : "—"
           }
-          detail={
-            teams.length > 0
-              ? `of ${teams.length} teams`
-              : "No standings yet"
-          }
+          detail={`of ${teams.length} teams`}
         />
       </section>
 
 
       <section
-        style={
-          styles.section
-        }
+        style={styles.section}
       >
-        <div
-          style={
-            styles.sectionHeader
-          }
-        >
-          <div>
-            <div
-              style={
-                styles.eyebrow
-              }
-            >
-              POSTSEASON PROGRESS
-            </div>
+        <p style={styles.eyebrow}>
+          POSTSEASON PROGRESS
+        </p>
 
-            <h3
-              style={
-                styles.sectionTitle
-              }
-            >
-              Four-Round NFL Playoffs
-            </h3>
-          </div>
-        </div>
-
+        <h3 style={styles.heading}>
+          NFL Playoff Rounds
+        </h3>
 
         <div
           className="g365-nflp-home-rounds"
         >
-          {[
-            1,
-            2,
-            3,
-            4,
-          ].map(
-            (
-              roundNumber
-            ) => {
+          {[1, 2, 3, 4].map(
+            (roundNumber) => {
               const round =
                 rounds.find(
-                  (
-                    item
-                  ) =>
-                    item
-                      .round_number ===
+                  (row) =>
+                    row.round_number ===
                     roundNumber
-                ) ??
-                null;
-
-
-              const isActive =
-                !leagueComplete &&
-                roundNumber ===
-                  activeRound;
-
+                );
 
               const isFinal =
                 Boolean(
-                  round
-                    ?.finalized_at
+                  round?.finalized_at
                 ) ||
-                round
-                  ?.status ===
+                round?.status ===
                   "final";
 
+              const isActive =
+                !leagueComplete &&
+                activeRound ===
+                  roundNumber;
 
               return (
                 <article
@@ -952,30 +748,21 @@ export default async function NflPlayoffsLeagueHome({
                     roundNumber
                   }
                   style={{
-                    ...styles.roundCard,
-
+                    ...styles.card,
                     ...(isActive
-                      ? styles.roundCardActive
+                      ? styles.activeCard
                       : {}),
                   }}
                 >
-                  <div
+                  <span
                     style={{
+                      ...styles.eyebrow,
                       color:
                         isFinal
-                          ? "#72df8a"
+                          ? "#64df80"
                           : isActive
-                            ? "#ff7a2a"
-                            : "#8f949e",
-
-                      fontSize:
-                        11,
-
-                      fontWeight:
-                        1000,
-
-                      letterSpacing:
-                        ".1em",
+                            ? "#ff7627"
+                            : "#858994",
                     }}
                   >
                     {isFinal
@@ -983,38 +770,28 @@ export default async function NflPlayoffsLeagueHome({
                       : isActive
                         ? "ACTIVE"
                         : "UPCOMING"}
-                  </div>
-
+                  </span>
 
                   <strong
                     style={{
-                      color:
-                        "#fff",
-
-                      fontSize:
-                        18,
+                      color: "#fff",
+                      fontSize: 17,
                     }}
                   >
-                    {
-                      roundName(
-                        roundNumber
-                      )
-                    }
+                    {roundName(
+                      roundNumber
+                    )}
                   </strong>
-
 
                   <span
                     style={
                       styles.detail
                     }
                   >
-                    {round
-                      ?.first_kickoff_at
-                      ? `Starts ${formatDate(
-                          round
-                            .first_kickoff_at
-                        )}`
-                      : "Schedule pending"}
+                    {formatDate(
+                      round
+                        ?.first_kickoff_at
+                    )}
                   </span>
                 </article>
               );
@@ -1025,101 +802,13 @@ export default async function NflPlayoffsLeagueHome({
 
 
       <section
-        style={
-          styles.section
-        }
+        style={styles.section}
       >
-        <div
-          style={
-            styles.sectionHeader
-          }
-        >
-          <div>
-            <div
-              style={
-                styles.eyebrow
-              }
-            >
-              LEAGUE ACCESS
-            </div>
-
-            <h3
-              style={
-                styles.sectionTitle
-              }
-            >
-              Quick Links
-            </h3>
-          </div>
-        </div>
-
-
-        <div
-          className="g365-nflp-home-links"
-        >
-          <QuickLink
-            href={`/league/${leagueId}/entry`}
-            title="My Entry"
-            description="Build and manage your current postseason lineup."
-          />
-
-          <QuickLink
-            href={`/league/${leagueId}/nfl-playoffs/teams`}
-            title="League Teams"
-            description="View every active league team and current-round lineup."
-          />
-
-          <QuickLink
-            href={`/league/${leagueId}/nfl-playoffs/standings`}
-            title="Standings"
-            description="See cumulative scoring and current league rank."
-          />
-
-          <QuickLink
-            href={`/league/${leagueId}/nfl-playoffs/playoffs`}
-            title="NFL Playoffs"
-            description="Follow Wild Card through the Super Bowl bracket."
-          />
-
-          <QuickLink
-            href={`/league/${leagueId}/nfl-playoffs/recap`}
-            title="Recap"
-            description="Review round results, leaders and postseason highlights."
-          />
-
-          <QuickLink
-            href={`/league/${leagueId}/nfl-playoffs/trophy-case`}
-            title="Trophy Case"
-            description="View postseason awards and completed achievements."
-          />
-        </div>
-      </section>
-
-
-      <section
-        style={{
-          ...styles.section,
-
-          borderColor:
-            "rgba(255,115,35,.18)",
-
-          background:
-            "linear-gradient(180deg,rgba(34,20,14,.8),rgba(14,14,16,.95))",
-        }}
-      >
-        <div
-          style={
-            styles.eyebrow
-          }
-        >
+        <p style={styles.eyebrow}>
           CURRENT ROUND
-        </div>
+        </p>
 
-        <h3
-          style={
-            styles.sectionTitle
-          }
-        >
+        <h3 style={styles.heading}>
           {leagueComplete
             ? "Postseason Complete"
             : roundName(
@@ -1129,69 +818,105 @@ export default async function NflPlayoffsLeagueHome({
 
         <div
           style={{
-            display:
-              "grid",
-
-            gap:
-              8,
-
-            marginTop:
-              14,
-
-            color:
-              "#b8bbc3",
-
-            lineHeight:
-              1.6,
+            display: "grid",
+            gap: 7,
+            color: "#afb2ba",
           }}
         >
-          <div>
+          <span>
+            Status:{" "}
             <strong
               style={{
-                color:
-                  "#fff",
+                color: "#fff",
               }}
             >
-              Status:
+              {prettyStatus(
+                activeRoundRow
+                  ?.status
+              )}
             </strong>
-            {" "}
-            {prettyStatus(
-              activeRoundRow
-                ?.status
-            )}
-          </div>
+          </span>
 
-          <div>
+          <span>
+            First kickoff:{" "}
             <strong
               style={{
-                color:
-                  "#fff",
+                color: "#fff",
               }}
             >
-              First kickoff:
+              {formatDate(
+                activeRoundRow
+                  ?.first_kickoff_at
+              )}
             </strong>
-            {" "}
-            {formatDate(
-              activeRoundRow
-                ?.first_kickoff_at
-            )}
-          </div>
+          </span>
 
-          <div>
+          <span>
+            Last scheduled kickoff:{" "}
             <strong
               style={{
-                color:
-                  "#fff",
+                color: "#fff",
               }}
             >
-              Last scheduled kickoff:
+              {formatDate(
+                activeRoundRow
+                  ?.last_scheduled_kickoff_at
+              )}
             </strong>
-            {" "}
-            {formatDate(
-              activeRoundRow
-                ?.last_scheduled_kickoff_at
-            )}
-          </div>
+          </span>
+        </div>
+      </section>
+
+
+      <section
+        style={styles.section}
+      >
+        <p style={styles.eyebrow}>
+          LEAGUE
+        </p>
+
+        <h3 style={styles.heading}>
+          Quick Links
+        </h3>
+
+        <div
+          className="g365-nflp-home-links"
+        >
+          <QuickLink
+            href={`/league/${leagueId}/entry`}
+            title="My Entry"
+            text="Build and manage your current-round lineup."
+          />
+
+          <QuickLink
+            href={`/league/${leagueId}/nfl-playoffs/teams`}
+            title="League Teams"
+            text="See every team's current postseason lineup."
+          />
+
+          <QuickLink
+            href={`/league/${leagueId}/nfl-playoffs/standings`}
+            title="Standings"
+            text="View live cumulative postseason standings."
+          />
+
+          <QuickLink
+            href={`/league/${leagueId}/nfl-playoffs/playoffs`}
+            title="NFL Playoffs"
+            text="Follow the playoff bracket through the Super Bowl."
+          />
+
+          <QuickLink
+            href={`/league/${leagueId}/nfl-playoffs/recap`}
+            title="Recap"
+            text="Review round leaders and results."
+          />
+
+          <QuickLink
+            href={`/league/${leagueId}/nfl-playoffs/trophy-case`}
+            title="Trophy Case"
+            text="View postseason awards and achievements."
+          />
         </div>
       </section>
     </main>
@@ -1199,54 +924,33 @@ export default async function NflPlayoffsLeagueHome({
 }
 
 
-function StatCard({
+function Stat({
   label,
   value,
   detail,
 }: {
-  label:
-    string;
-
-  value:
-    string;
-
-  detail:
-    string;
+  label: string;
+  value: string;
+  detail: string;
 }) {
   return (
     <article
-      style={
-        styles.statCard
-      }
+      style={styles.card}
     >
-      <span
-        style={
-          styles.eyebrow
-        }
-      >
+      <span style={styles.eyebrow}>
         {label}
       </span>
 
       <strong
         style={{
-          color:
-            "#fff",
-
-          fontSize:
-            23,
-
-          lineHeight:
-            1.15,
+          color: "#fff",
+          fontSize: 22,
         }}
       >
         {value}
       </strong>
 
-      <span
-        style={
-          styles.detail
-        }
-      >
+      <span style={styles.detail}>
         {detail}
       </span>
     </article>
@@ -1257,59 +961,38 @@ function StatCard({
 function QuickLink({
   href,
   title,
-  description,
+  text,
 }: {
-  href:
-    string;
-
-  title:
-    string;
-
-  description:
-    string;
+  href: string;
+  title: string;
+  text: string;
 }) {
   return (
     <Link
-      href={
-        href
-      }
-      style={
-        styles.quickLink
-      }
+      href={href}
+      style={{
+        ...styles.card,
+        textDecoration: "none",
+      }}
     >
       <strong
         style={{
-          color:
-            "#fff",
-
-          fontSize:
-            16,
+          color: "#fff",
+          fontSize: 16,
         }}
       >
         {title}
       </strong>
 
-      <span
-        style={
-          styles.detail
-        }
-      >
-        {description}
+      <span style={styles.detail}>
+        {text}
       </span>
 
       <span
         style={{
-          color:
-            "#ff7627",
-
-          fontSize:
-            12,
-
-          fontWeight:
-            900,
-
-          marginTop:
-            4,
+          color: "#ff7627",
+          fontWeight: 900,
+          fontSize: 11,
         }}
       >
         OPEN →
@@ -1321,225 +1004,53 @@ function QuickLink({
 
 const styles = {
   section: {
-    padding:
-      18,
-
+    padding: 18,
     border:
       "1px solid rgba(255,255,255,.08)",
-
-    borderRadius:
-      16,
-
+    borderRadius: 15,
     background:
-      "linear-gradient(180deg,rgba(20,20,23,.98),rgba(12,12,14,.98))",
+      "linear-gradient(180deg,rgba(20,20,23,.98),rgba(11,11,13,.98))",
   },
 
-  sectionHeader: {
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "space-between",
-
-    gap:
-      12,
-
-    marginBottom:
-      14,
+  card: {
+    display: "grid",
+    gap: 7,
+    padding: 16,
+    border:
+      "1px solid rgba(255,255,255,.08)",
+    borderRadius: 13,
+    background:
+      "linear-gradient(180deg,rgba(22,22,25,.97),rgba(12,12,14,.97))",
   },
 
-  sectionTitle: {
-    margin:
-      "5px 0 0",
-
-    color:
-      "#fff",
-
-    fontSize:
-      22,
+  activeCard: {
+    border:
+      "1px solid rgba(255,105,28,.55)",
+    background:
+      "linear-gradient(180deg,rgba(91,28,10,.46),rgba(12,12,14,.97))",
   },
 
   eyebrow: {
-    color:
-      "#ff7627",
-
-    fontSize:
-      10,
-
-    fontWeight:
-      1000,
-
+    margin: 0,
+    color: "#ff7627",
+    fontSize: 10,
+    fontWeight: 1000,
     letterSpacing:
-      ".11em",
-
+      ".1em",
     textTransform:
       "uppercase" as const,
   },
 
+  heading: {
+    margin:
+      "5px 0 15px",
+    color: "#fff",
+    fontSize: 22,
+  },
+
   detail: {
-    color:
-      "#9297a1",
-
-    fontSize:
-      12,
-
-    lineHeight:
-      1.5,
-  },
-
-  statCard: {
-    display:
-      "grid",
-
-    gap:
-      7,
-
-    padding:
-      16,
-
-    border:
-      "1px solid rgba(255,255,255,.08)",
-
-    borderRadius:
-      14,
-
-    background:
-      "linear-gradient(180deg,rgba(22,22,25,.96),rgba(12,12,14,.96))",
-  },
-
-  roundCard: {
-    display:
-      "grid",
-
-    gap:
-      8,
-
-    padding:
-      16,
-
-    border:
-      "1px solid rgba(255,255,255,.08)",
-
-    borderRadius:
-      14,
-
-    background:
-      "rgba(11,11,13,.82)",
-  },
-
-  roundCardActive: {
-    border:
-      "1px solid rgba(255,103,29,.56)",
-
-    background:
-      "linear-gradient(180deg,rgba(84,25,12,.5),rgba(13,13,15,.96))",
-
-    boxShadow:
-      "inset 0 0 0 1px rgba(255,103,29,.08)",
-  },
-
-  quickLink: {
-    display:
-      "grid",
-
-    gap:
-      7,
-
-    minHeight:
-      120,
-
-    padding:
-      17,
-
-    border:
-      "1px solid rgba(255,255,255,.08)",
-
-    borderRadius:
-      14,
-
-    background:
-      "linear-gradient(180deg,rgba(20,20,23,.98),rgba(11,11,13,.98))",
-
-    textDecoration:
-      "none",
-  },
-
-  primaryButton: {
-    display:
-      "inline-flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "center",
-
-    minHeight:
-      42,
-
-    padding:
-      "0 16px",
-
-    borderRadius:
-      10,
-
-    border:
-      "1px solid rgba(255,101,28,.72)",
-
-    background:
-      "linear-gradient(135deg,#b51b11,#ff6a18)",
-
-    color:
-      "#fff",
-
-    fontSize:
-      12,
-
-    fontWeight:
-      1000,
-
-    textDecoration:
-      "none",
-  },
-
-  secondaryButton: {
-    display:
-      "inline-flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "center",
-
-    minHeight:
-      42,
-
-    padding:
-      "0 16px",
-
-    borderRadius:
-      10,
-
-    border:
-      "1px solid rgba(255,255,255,.14)",
-
-    background:
-      "rgba(255,255,255,.04)",
-
-    color:
-      "#fff",
-
-    fontSize:
-      12,
-
-    fontWeight:
-      1000,
-
-    textDecoration:
-      "none",
+    color: "#9297a1",
+    fontSize: 12,
+    lineHeight: 1.5,
   },
 };
