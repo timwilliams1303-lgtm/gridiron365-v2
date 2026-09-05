@@ -1434,7 +1434,7 @@ const styles:
       minHeight:
         "100vh",
       padding:
-        "20px",
+        "20px 20px 48px",
       background:
         "linear-gradient(180deg,#07080c,#0b0d12 50%,#07080b)",
       color:
@@ -1772,7 +1772,7 @@ const styles:
       gap:
         "11px",
       minHeight:
-        "100%",
+        0,
       padding:
         "11px",
     },
