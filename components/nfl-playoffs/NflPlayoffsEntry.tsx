@@ -477,35 +477,6 @@ export default async function NflPlayoffsEntry({
     );
 
 
-  /*
-   * Refresh individual kickoff locks before rendering.
-   *
-   * This does not advance the round. It only locks players whose
-   * actual NFL postseason games have reached kickoff.
-   */
-  const lockResult =
-    await supabase.rpc(
-      "lock_nfl_playoff_started_players",
-      {
-        p_league_id:
-          leagueId,
-        p_season:
-          season,
-        p_round_number:
-          activeRound,
-      }
-    );
-
-  if (
-    lockResult.error
-  ) {
-    throw new Error(
-      lockResult
-        .error.message
-    );
-  }
-
-
   const [
     entryResult,
     lineupResult,

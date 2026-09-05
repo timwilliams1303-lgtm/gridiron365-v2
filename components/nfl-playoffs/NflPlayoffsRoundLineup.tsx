@@ -704,6 +704,34 @@ export default function NflPlayoffsRoundLineup({
     );
 
 
+  const [
+    currentTeamName,
+    setCurrentTeamName,
+  ] = useState(
+    fantasyTeamName
+  );
+
+
+  const [
+    teamNameDraft,
+    setTeamNameDraft,
+  ] = useState(
+    fantasyTeamName
+  );
+
+
+  const [
+    editingTeamName,
+    setEditingTeamName,
+  ] = useState(false);
+
+
+  const [
+    savingTeamName,
+    setSavingTeamName,
+  ] = useState(false);
+
+
   const slots =
     useMemo(
       () =>
@@ -966,6 +994,100 @@ export default function NflPlayoffsRoundLineup({
         0,
         250
       );
+
+
+  async function saveTeamName() {
+    const normalizedName =
+      teamNameDraft
+        .trim()
+        .replace(/\s+/g, " ");
+
+    if (normalizedName.length < 2) {
+      setIsError(true);
+      setMessage(
+        "Team name must contain at least 2 characters."
+      );
+      return;
+    }
+
+    if (normalizedName.length > 50) {
+      setIsError(true);
+      setMessage(
+        "Team name cannot exceed 50 characters."
+      );
+      return;
+    }
+
+    if (normalizedName === currentTeamName) {
+      setTeamNameDraft(
+        currentTeamName
+      );
+      setEditingTeamName(false);
+      return;
+    }
+
+    setSavingTeamName(true);
+    setMessage("");
+    setIsError(false);
+
+    try {
+      const {
+        data,
+        error,
+      } = await supabase.rpc(
+        "update_my_nfl_playoff_team_name",
+        {
+          p_league_id:
+            leagueId,
+          p_team_name:
+            normalizedName,
+        }
+      );
+
+      if (error) {
+        throw new Error(
+          error.message
+        );
+      }
+
+      const result = data as {
+        success?: boolean;
+        teamName?: string;
+      } | null;
+
+      if (!result?.success) {
+        throw new Error(
+          "The team name could not be saved."
+        );
+      }
+
+      const savedName =
+        result.teamName ??
+        normalizedName;
+
+      setCurrentTeamName(
+        savedName
+      );
+      setTeamNameDraft(
+        savedName
+      );
+      setEditingTeamName(false);
+      setMessage(
+        "Team name saved."
+      );
+
+      router.refresh();
+    } catch (error) {
+      setIsError(true);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "The team name could not be saved."
+      );
+    } finally {
+      setSavingTeamName(false);
+    }
+  }
 
 
   async function addPlayer(
@@ -1482,13 +1604,119 @@ export default function NflPlayoffsRoundLineup({
               My Entry
             </h1>
 
-            <p
+            <div
               style={
-                styles.subtitle
+                styles.teamNameArea
               }
             >
-              {fantasyTeamName} • {leagueName}
-            </p>
+              {editingTeamName ? (
+                <div
+                  style={
+                    styles.teamNameEditor
+                  }
+                >
+                  <input
+                    type="text"
+                    value={
+                      teamNameDraft
+                    }
+                    maxLength={50}
+                    autoFocus
+                    disabled={
+                      savingTeamName
+                    }
+                    onChange={(event) =>
+                      setTeamNameDraft(
+                        event.target.value
+                      )
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void saveTeamName();
+                      }
+
+                      if (event.key === "Escape") {
+                        setTeamNameDraft(
+                          currentTeamName
+                        );
+                        setEditingTeamName(false);
+                      }
+                    }}
+                    aria-label="Team name"
+                    style={
+                      styles.teamNameInput
+                    }
+                  />
+
+                  <button
+                    type="button"
+                    disabled={
+                      savingTeamName
+                    }
+                    onClick={() =>
+                      void saveTeamName()
+                    }
+                    style={
+                      styles.teamNameSaveButton
+                    }
+                  >
+                    {savingTeamName
+                      ? "SAVING..."
+                      : "SAVE"}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      savingTeamName
+                    }
+                    onClick={() => {
+                      setTeamNameDraft(
+                        currentTeamName
+                      );
+                      setEditingTeamName(false);
+                    }}
+                    style={
+                      styles.teamNameCancelButton
+                    }
+                  >
+                    CANCEL
+                  </button>
+                </div>
+              ) : (
+                <div
+                  style={
+                    styles.teamNameDisplay
+                  }
+                >
+                  <p
+                    style={
+                      styles.subtitle
+                    }
+                  >
+                    {currentTeamName} • {leagueName}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTeamNameDraft(
+                        currentTeamName
+                      );
+                      setEditingTeamName(true);
+                      setMessage("");
+                      setIsError(false);
+                    }}
+                    style={
+                      styles.changeTeamNameButton
+                    }
+                  >
+                    CHANGE TEAM NAME
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
 
@@ -2384,6 +2612,161 @@ const styles = {
 
     fontSize:
       "13px",
+  },
+
+  teamNameArea: {
+    marginTop:
+      "8px",
+  },
+
+  teamNameDisplay: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "10px",
+
+    flexWrap:
+      "wrap" as const,
+  },
+
+  teamNameEditor: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "8px",
+
+    flexWrap:
+      "wrap" as const,
+  },
+
+  teamNameInput: {
+    width:
+      "min(320px,100%)",
+
+    minHeight:
+      "38px",
+
+    padding:
+      "8px 11px",
+
+    border:
+      "1px solid rgba(255,118,0,.45)",
+
+    borderRadius:
+      "8px",
+
+    outline:
+      "none",
+
+    background:
+      "#0d0e10",
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "13px",
+
+    fontWeight:
+      800,
+  },
+
+  changeTeamNameButton: {
+    minHeight:
+      "30px",
+
+    padding:
+      "5px 9px",
+
+    border:
+      "1px solid rgba(255,118,0,.30)",
+
+    borderRadius:
+      "7px",
+
+    background:
+      "rgba(255,82,0,.07)",
+
+    color:
+      "#ff8c00",
+
+    cursor:
+      "pointer",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      900,
+
+    letterSpacing:
+      ".06em",
+  },
+
+  teamNameSaveButton: {
+    minHeight:
+      "38px",
+
+    padding:
+      "7px 12px",
+
+    border:
+      "1px solid rgba(255,117,0,.60)",
+
+    borderRadius:
+      "8px",
+
+    background:
+      "linear-gradient(90deg,#e52818,#ff7a00)",
+
+    color:
+      "#ffffff",
+
+    cursor:
+      "pointer",
+
+    fontSize:
+      "9px",
+
+    fontWeight:
+      900,
+  },
+
+  teamNameCancelButton: {
+    minHeight:
+      "38px",
+
+    padding:
+      "7px 12px",
+
+    border:
+      "1px solid rgba(255,255,255,.11)",
+
+    borderRadius:
+      "8px",
+
+    background:
+      "#17181b",
+
+    color:
+      "#b7bdc7",
+
+    cursor:
+      "pointer",
+
+    fontSize:
+      "9px",
+
+    fontWeight:
+      900,
   },
 
   headerBadges: {

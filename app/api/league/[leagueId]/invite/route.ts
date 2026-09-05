@@ -398,11 +398,17 @@ export async function POST(
           ""
       );
 
-    const fantasyTeamId =
+    const requestedFantasyTeamId =
       Number(
         body
           .fantasyTeamId
       );
+
+    const hasRequestedFantasyTeamId =
+      Number.isInteger(
+        requestedFantasyTeamId
+      ) &&
+      requestedFantasyTeamId > 0;
 
     if (!firstName) {
       return jsonError(
@@ -426,18 +432,6 @@ export async function POST(
     ) {
       return jsonError(
         "Enter a valid email address.",
-        400
-      );
-    }
-
-    if (
-      !Number.isInteger(
-        fantasyTeamId
-      ) ||
-      fantasyTeamId <= 0
-    ) {
-      return jsonError(
-        "A valid fantasy team is required.",
         400
       );
     }
@@ -548,7 +542,7 @@ export async function POST(
           "leagues"
         )
         .select(
-          "id,name"
+          "id,name,league_type,season"
         )
         .eq(
           "id",
@@ -567,42 +561,255 @@ export async function POST(
       );
     }
 
-    const {
-      data:
-        team,
+    let fantasyTeamId:
+      number;
 
-      error:
-        teamError,
-    } =
-      await admin
-        .from(
-          "fantasy_teams"
-        )
-        .select(
-          "id,league_id,team_name,owner_id,active"
-        )
-        .eq(
-          "id",
-          fantasyTeamId
-        )
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .maybeSingle();
+    let team:
+      {
+        id: number;
+        league_id: string;
+        team_name: string;
+        owner_id: string | null;
+        active: boolean;
+      };
+
+    let autoCreatedTeam =
+      false;
+
+    /* =========================================================
+       RESOLVE THE RESERVED FANTASY TEAM
+
+       - Traditional / Season-Long flows can continue sending an
+         explicit fantasyTeamId.
+       - NFL Playoffs can send a normal invitation without first
+         creating an open team slot. The API creates the reserved
+         vacant fantasy team automatically.
+       - If the same NFL Playoffs email already has a pending
+         invitation, reuse that invitation's reserved team so the
+         commissioner can safely resend from the global form.
+    ========================================================= */
 
     if (
-      teamError ||
-      !team
+      hasRequestedFantasyTeamId
     ) {
-      return jsonError(
-        teamError?.message ??
-          "Fantasy team not found.",
-        404
-      );
+      fantasyTeamId =
+        requestedFantasyTeamId;
+
+      const {
+        data:
+          requestedTeam,
+
+        error:
+          teamError,
+      } =
+        await admin
+          .from(
+            "fantasy_teams"
+          )
+          .select(
+            "id,league_id,team_name,owner_id,active"
+          )
+          .eq(
+            "id",
+            fantasyTeamId
+          )
+          .eq(
+            "league_id",
+            leagueId
+          )
+          .maybeSingle();
+
+      if (
+        teamError ||
+        !requestedTeam
+      ) {
+        return jsonError(
+          teamError?.message ??
+            "Fantasy team not found.",
+          404
+        );
+      }
+
+      team =
+        requestedTeam;
+    } else {
+      if (
+        league.league_type !==
+        "nfl_playoffs"
+      ) {
+        return jsonError(
+          "A valid fantasy team is required.",
+          400
+        );
+      }
+
+      const {
+        data:
+          existingEmailInvite,
+
+        error:
+          existingEmailInviteError,
+      } =
+        await admin
+          .from(
+            "league_invitations"
+          )
+          .select(
+            "id,fantasy_team_id,email,status"
+          )
+          .eq(
+            "league_id",
+            leagueId
+          )
+          .ilike(
+            "email",
+            email
+          )
+          .eq(
+            "status",
+            "pending"
+          )
+          .maybeSingle();
+
+      if (
+        existingEmailInviteError
+      ) {
+        return jsonError(
+          existingEmailInviteError.message,
+          500
+        );
+      }
+
+      if (
+        existingEmailInvite
+          ?.fantasy_team_id
+      ) {
+        fantasyTeamId =
+          Number(
+            existingEmailInvite
+              .fantasy_team_id
+          );
+
+        const {
+          data:
+            reservedTeam,
+
+          error:
+            reservedTeamError,
+        } =
+          await admin
+            .from(
+              "fantasy_teams"
+            )
+            .select(
+              "id,league_id,team_name,owner_id,active"
+            )
+            .eq(
+              "id",
+              fantasyTeamId
+            )
+            .eq(
+              "league_id",
+              leagueId
+            )
+            .maybeSingle();
+
+        if (
+          reservedTeamError ||
+          !reservedTeam
+        ) {
+          return jsonError(
+            reservedTeamError?.message ??
+              "The pending invitation's reserved fantasy team could not be found.",
+            409
+          );
+        }
+
+        team =
+          reservedTeam;
+      } else {
+        const baseTeamName =
+          `${firstName} ${lastName} Playoff Entry`
+            .trim()
+            .replace(
+              /\s+/g,
+              " "
+            )
+            .slice(
+              0,
+              50
+            );
+
+        const {
+          data:
+            createdTeam,
+
+          error:
+            createTeamError,
+        } =
+          await admin
+            .from(
+              "fantasy_teams"
+            )
+            .insert({
+              league_id:
+                leagueId,
+
+              owner_id:
+                null,
+
+              team_name:
+                baseTeamName ||
+                "Playoff Entry",
+
+              active:
+                true,
+
+              is_cpu:
+                false,
+            })
+            .select(
+              "id,league_id,team_name,owner_id,active"
+            )
+            .single();
+
+        if (
+          createTeamError ||
+          !createdTeam
+        ) {
+          return jsonError(
+            createTeamError?.message ??
+              "The reserved NFL Playoffs fantasy team could not be created.",
+            500
+          );
+        }
+
+        fantasyTeamId =
+          Number(
+            createdTeam.id
+          );
+
+        team =
+          createdTeam;
+
+        autoCreatedTeam =
+          true;
+      }
     }
 
     if (!team.active) {
+      if (autoCreatedTeam) {
+        await admin
+          .from(
+            "fantasy_teams"
+          )
+          .delete()
+          .eq(
+            "id",
+            team.id
+          );
+      }
+
       return jsonError(
         "This fantasy team is not active.",
         409
@@ -612,6 +819,18 @@ export async function POST(
     if (
       team.owner_id
     ) {
+      if (autoCreatedTeam) {
+        await admin
+          .from(
+            "fantasy_teams"
+          )
+          .delete()
+          .eq(
+            "id",
+            team.id
+          );
+      }
+
       return jsonError(
         `${team.team_name} already has an owner.`,
         409
@@ -679,6 +898,18 @@ export async function POST(
         pendingEmail !==
         email
       ) {
+        if (autoCreatedTeam) {
+          await admin
+            .from(
+              "fantasy_teams"
+            )
+            .delete()
+            .eq(
+              "id",
+              fantasyTeamId
+            );
+        }
+
         return jsonError(
           `A pending invitation already reserves ${team.team_name} for ${pendingTeamInvite.email}.`,
           409
@@ -743,6 +974,18 @@ export async function POST(
       if (
         pendingEmailInvite
       ) {
+        if (autoCreatedTeam) {
+          await admin
+            .from(
+              "fantasy_teams"
+            )
+            .delete()
+            .eq(
+              "id",
+              fantasyTeamId
+            );
+        }
+
         return jsonError(
           "This email already has a pending invitation to another team in this league.",
           409
@@ -890,6 +1133,18 @@ export async function POST(
         invitationError ||
         !createdInvitation
       ) {
+        if (autoCreatedTeam) {
+          await admin
+            .from(
+              "fantasy_teams"
+            )
+            .delete()
+            .eq(
+              "id",
+              fantasyTeamId
+            );
+        }
+
         return jsonError(
           invitationError
             ?.message ??
@@ -1037,6 +1292,18 @@ export async function POST(
             "id",
             invitation.id
           );
+
+        if (autoCreatedTeam) {
+          await admin
+            .from(
+              "fantasy_teams"
+            )
+            .delete()
+            .eq(
+              "id",
+              fantasyTeamId
+            );
+        }
       }
 
       return jsonError(

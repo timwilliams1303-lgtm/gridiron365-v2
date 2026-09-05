@@ -21,13 +21,17 @@ type PageProps = {
 export default async function LeagueHomePage({
   params,
 }: PageProps) {
-  const { leagueId } =
+  const {
+    leagueId,
+  } =
     await params;
+
 
   const access =
     await requireLeagueMember(
       leagueId
     );
+
 
   switch (
     access.league.leagueType
@@ -35,28 +39,42 @@ export default async function LeagueHomePage({
     case "traditional":
       return (
         <TraditionalLeagueHome
-          leagueId={leagueId}
+          leagueId={
+            leagueId
+          }
         />
       );
+
 
     case "season_long":
       return (
         <SeasonLongLeagueHome
-          leagueId={leagueId}
+          leagueId={
+            leagueId
+          }
         />
       );
+
 
     case "pickem":
       return (
         <PickemLeagueHome
-          leagueId={leagueId}
+          leagueId={
+            leagueId
+          }
         />
       );
 
+
     case "nfl_playoffs":
-    default:
       redirect(
-        "/my-leagues"
+        `/league/${leagueId}/entry`
+      );
+
+
+    default:
+      throw new Error(
+        `Unsupported league type: ${access.league.leagueType}`
       );
   }
 }
