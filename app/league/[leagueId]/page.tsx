@@ -1,10 +1,7 @@
-import {
-  redirect,
-} from "next/navigation";
-
 import PickemLeagueHome from "@/components/pickem/PickemLeagueHome";
 import SeasonLongLeagueHome from "@/components/season-long/SeasonLongLeagueHome";
 import TraditionalLeagueHome from "@/components/traditional/TraditionalLeagueHome";
+import NflPlayoffsLeagueHome from "@/components/nfl-playoffs/NflPlayoffsLeagueHome";
 
 import {
   requireLeagueMember,
@@ -67,8 +64,12 @@ export default async function LeagueHomePage({
 
 
     case "nfl_playoffs":
-      redirect(
-        `/league/${leagueId}/entry`
+      return (
+        <NflPlayoffsLeagueHome
+          leagueId={
+            leagueId
+          }
+        />
       );
 
 
