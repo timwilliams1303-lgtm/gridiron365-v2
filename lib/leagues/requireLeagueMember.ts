@@ -151,19 +151,65 @@ function isLeagueMemberRole(
 export async function requireLeagueMember(
   leagueId: string
 ): Promise<LeagueAccess> {
+  console.log(
+    "[LEAGUE ACCESS] 1 START",
+    {
+      leagueId,
+    }
+  );
+
+
+  /*
+   * =========================================
+   * AUTHENTICATED USER
+   * =========================================
+   */
   const user =
     await requireUser();
 
 
+  console.log(
+    "[LEAGUE ACCESS] 2 USER",
+    {
+      leagueId,
+      userId:
+        user.id,
+    }
+  );
+
+
   if (!leagueId) {
+    console.log(
+      "[LEAGUE ACCESS] REDIRECT - NO LEAGUE ID",
+      {
+        userId:
+          user.id,
+      }
+    );
+
     redirect(
       "/my-leagues"
     );
   }
 
 
+  /*
+   * =========================================
+   * SUPABASE CLIENT
+   * =========================================
+   */
   const supabase =
     await createSupabaseServerClient();
+
+
+  console.log(
+    "[LEAGUE ACCESS] 3 CLIENT READY",
+    {
+      leagueId,
+      userId:
+        user.id,
+    }
+  );
 
 
   /*
@@ -196,9 +242,42 @@ export async function requireLeagueMember(
       .maybeSingle();
 
 
+  console.log(
+    "[LEAGUE ACCESS] 4 MEMBERSHIP",
+    {
+      leagueId,
+
+      userId:
+        user.id,
+
+      membership:
+        membershipData,
+
+      error:
+        membershipError
+          ?.message ??
+        null,
+    }
+  );
+
+
   if (
     membershipError
   ) {
+    console.error(
+      "[LEAGUE ACCESS] MEMBERSHIP ERROR",
+      {
+        leagueId,
+
+        userId:
+          user.id,
+
+        error:
+          membershipError
+            .message,
+      }
+    );
+
     throw new Error(
       `Could not verify league membership: ${membershipError.message}`
     );
@@ -208,6 +287,16 @@ export async function requireLeagueMember(
   if (
     !membershipData
   ) {
+    console.log(
+      "[LEAGUE ACCESS] REDIRECT - NOT A MEMBER",
+      {
+        leagueId,
+
+        userId:
+          user.id,
+      }
+    );
+
     redirect(
       "/my-leagues"
     );
@@ -226,6 +315,19 @@ export async function requireLeagueMember(
       rawMembership.role
     )
   ) {
+    console.error(
+      "[LEAGUE ACCESS] INVALID MEMBERSHIP ROLE",
+      {
+        leagueId,
+
+        userId:
+          user.id,
+
+        role:
+          rawMembership.role,
+      }
+    );
+
     throw new Error(
       "League membership has an invalid role."
     );
@@ -271,9 +373,42 @@ export async function requireLeagueMember(
       .maybeSingle();
 
 
+  console.log(
+    "[LEAGUE ACCESS] 5 LEAGUE",
+    {
+      leagueId,
+
+      userId:
+        user.id,
+
+      league:
+        leagueData,
+
+      error:
+        leagueError
+          ?.message ??
+        null,
+    }
+  );
+
+
   if (
     leagueError
   ) {
+    console.error(
+      "[LEAGUE ACCESS] LEAGUE ERROR",
+      {
+        leagueId,
+
+        userId:
+          user.id,
+
+        error:
+          leagueError
+            .message,
+      }
+    );
+
     throw new Error(
       `Could not load league: ${leagueError.message}`
     );
@@ -283,6 +418,16 @@ export async function requireLeagueMember(
   if (
     !leagueData
   ) {
+    console.log(
+      "[LEAGUE ACCESS] REDIRECT - LEAGUE NOT VISIBLE",
+      {
+        leagueId,
+
+        userId:
+          user.id,
+      }
+    );
+
     redirect(
       "/my-leagues"
     );
@@ -327,6 +472,19 @@ export async function requireLeagueMember(
       .commissioner_user_id !==
       "string"
   ) {
+    console.error(
+      "[LEAGUE ACCESS] INVALID LEAGUE DATA",
+      {
+        leagueId,
+
+        userId:
+          user.id,
+
+        league:
+          leagueData,
+      }
+    );
+
     throw new Error(
       "League returned invalid data."
     );
@@ -338,6 +496,20 @@ export async function requireLeagueMember(
       rawLeague.league_type
     )
   ) {
+    console.error(
+      "[LEAGUE ACCESS] INVALID LEAGUE TYPE",
+      {
+        leagueId,
+
+        userId:
+          user.id,
+
+        leagueType:
+          rawLeague
+            .league_type,
+      }
+    );
+
     throw new Error(
       `Unsupported league type: ${String(
         rawLeague.league_type
@@ -352,6 +524,20 @@ export async function requireLeagueMember(
         .player_selection_mode
     )
   ) {
+    console.error(
+      "[LEAGUE ACCESS] INVALID SELECTION MODE",
+      {
+        leagueId,
+
+        userId:
+          user.id,
+
+        playerSelectionMode:
+          rawLeague
+            .player_selection_mode,
+      }
+    );
+
     throw new Error(
       `Unsupported player selection mode: ${String(
         rawLeague
@@ -402,11 +588,12 @@ export async function requireLeagueMember(
    *   Participant identity and weekly
    *   lineup ownership.
    *
+   * - NFL Playoffs leagues
+   *   Participant identity and playoff
+   *   round lineup ownership.
+   *
    * - G365 Football Pick'em
    *   Participant / entry identity.
-   *
-   * NFL Playoffs can use its own entry
-   * model when that league type is wired.
    * =========================================
    */
   let fantasyTeam:
@@ -420,8 +607,25 @@ export async function requireLeagueMember(
     league.league_type ===
       "season_long" ||
     league.league_type ===
+      "nfl_playoffs" ||
+    league.league_type ===
       "pickem"
   ) {
+    console.log(
+      "[LEAGUE ACCESS] 6A TEAM QUERY START",
+      {
+        leagueId,
+
+        userId:
+          user.id,
+
+        leagueType:
+          league
+            .league_type,
+      }
+    );
+
+
     const {
       data:
         fantasyTeamData,
@@ -451,9 +655,42 @@ export async function requireLeagueMember(
         .maybeSingle();
 
 
+    console.log(
+      "[LEAGUE ACCESS] 6 TEAM",
+      {
+        leagueId,
+
+        userId:
+          user.id,
+
+        fantasyTeam:
+          fantasyTeamData,
+
+        error:
+          teamError
+            ?.message ??
+          null,
+      }
+    );
+
+
     if (
       teamError
     ) {
+      console.error(
+        "[LEAGUE ACCESS] TEAM ERROR",
+        {
+          leagueId,
+
+          userId:
+            user.id,
+
+          error:
+            teamError
+              .message,
+        }
+      );
+
       throw new Error(
         `Could not load fantasy team: ${teamError.message}`
       );
@@ -490,6 +727,19 @@ export async function requireLeagueMember(
           .team_name !==
           "string"
       ) {
+        console.error(
+          "[LEAGUE ACCESS] INVALID FANTASY TEAM DATA",
+          {
+            leagueId,
+
+            userId:
+              user.id,
+
+            fantasyTeam:
+              fantasyTeamData,
+          }
+        );
+
         throw new Error(
           "Fantasy team returned invalid data."
         );
@@ -514,6 +764,43 @@ export async function requireLeagueMember(
    */
   const role =
     membership.role;
+
+
+  console.log(
+    "[LEAGUE ACCESS] 7 COMPLETE",
+    {
+      leagueId,
+
+      userId:
+        user.id,
+
+      role,
+
+      leagueType:
+        league
+          .league_type,
+
+      playerSelectionMode:
+        league
+          .player_selection_mode,
+
+      fantasyTeamId:
+        fantasyTeam
+          ?.id ??
+        null,
+
+      fantasyTeamName:
+        fantasyTeam
+          ?.team_name ??
+        null,
+
+      isCommissioner:
+        role ===
+          "commissioner" ||
+        role ===
+          "co_commissioner",
+    }
+  );
 
 
   return {
