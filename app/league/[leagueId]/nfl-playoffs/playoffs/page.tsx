@@ -1,253 +1,439 @@
-import type {
-  CSSProperties,
-} from "react";
-
 import Link from "next/link";
-
-import {
-  redirect,
-} from "next/navigation";
-
-import {
-  createSupabaseServerClient,
-} from "@/lib/supabase/server";
 
 import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
 
-import NflPlayoffsCommissionerOperations
-  from "@/components/nfl-playoffs/NflPlayoffsCommissionerOperations";
+import {
+  createSupabaseServerClient,
+} from "@/lib/supabase/server";
 
-
-export const dynamic =
-  "force-dynamic";
-
-export const revalidate = 0;
+import NflPlayoffsBracketRealtime
+  from "@/components/nfl-playoffs/NflPlayoffsBracketRealtime";
 
 
 type PageProps = {
   params:
     Promise<{
-      leagueId:
-        string;
+      leagueId: string;
     }>;
 };
 
 
-type StateRow = {
-  active_round:
-    number |
-    null;
-
-  status:
-    string |
-    null;
-
-  champion_fantasy_team_id:
-    number |
-    null;
-
-  completed_at:
-    string |
-    null;
-};
-
-
-type RoundRow = {
-  round_number:
-    number;
-
-  round_key:
-    string |
-    null;
-
-  round_name:
-    string |
-    null;
-
-  nfl_week:
-    number |
-    null;
-
-  status:
-    string |
-    null;
-
-  opens_at:
-    string |
-    null;
-
-  first_kickoff_at:
-    string |
-    null;
-
-  last_scheduled_kickoff_at:
-    string |
-    null;
-
-  finalized_at:
-    string |
-    null;
-};
-
-
-type SettingsRow = {
-  weekly_salary_cap:
-    number |
-    string |
-    null;
-
-  starting_qb:
-    number;
-
-  starting_rb:
-    number;
-
-  starting_wr:
-    number;
-
-  starting_te:
-    number;
-
-  starting_flex:
-    number;
-
-  starting_superflex:
-    number;
-
-  starting_k:
-    number;
-
-  starting_dst:
-    number;
-};
-
-
 type TeamRow = {
-  id:
-    number;
-
-  team_name:
-    string;
-
-  active:
-    boolean;
+  id: number;
+  abbreviation:
+    string |
+    null;
+  name:
+    string |
+    null;
 };
 
 
-type EntryRow = {
-  fantasy_team_id:
-    number;
+type BracketGame = {
+  bracketOrder: number;
+  nflGameId: number;
+  espnEventId:
+    string |
+    null;
+  kickoffAt:
+    string |
+    null;
+  awayTeamId:
+    number |
+    null;
+  homeTeamId:
+    number |
+    null;
+  awayScore:
+    number |
+    null;
+  homeScore:
+    number |
+    null;
+  statusType:
+    string |
+    null;
+  statusName:
+    string |
+    null;
+  statusDetail:
+    string |
+    null;
+  isFinal: boolean;
+  winnerTeamId:
+    number |
+    null;
+};
 
-  round_number:
-    number;
 
+type BracketRound = {
+  roundNumber: number;
+  roundName: string;
+  nflWeek:
+    number |
+    null;
   status:
     string |
     null;
-
-  submitted_at:
+  firstKickoffAt:
     string |
     null;
+  lastScheduledKickoffAt:
+    string |
+    null;
+  games: BracketGame[];
 };
 
 
-function normalizedStatus(
-  value:
-    string |
-    null |
-    undefined
-) {
-  return (
-    value ??
-    ""
-  )
-    .trim()
-    .toLowerCase();
-}
+type BracketPayload = {
+  success?: boolean;
+  leagueId?: string;
+  season?: number;
+  title?: string;
+  rounds?: BracketRound[];
+};
 
 
-function prettyStatus(
-  value:
-    string |
-    null |
-    undefined
-) {
-  if (
-    !value
-  ) {
-    return "Setup";
-  }
-
-  return value
-    .replaceAll(
-      "_",
-      " "
-    )
-    .replace(
-      /\b\w/g,
-      (
-        character
-      ) =>
-        character.toUpperCase()
-    );
-}
-
-
-function isFinalRound(
-  round:
-    RoundRow
-) {
-  return Boolean(
-    round.finalized_at
-  ) ||
-    [
-      "final",
-      "finalized",
-      "complete",
-      "completed",
-    ].includes(
-      normalizedStatus(
-        round.status
-      )
-    );
-}
-
-
-function roundName(
-  roundNumber:
+const EXPECTED_GAMES:
+  Record<
+    number,
     number
-) {
-  switch (
-    roundNumber
+  > = {
+    1: 6,
+    2: 4,
+    3: 2,
+    4: 1,
+  };
+
+
+const ROUND_NAMES:
+  Record<
+    number,
+    string
+  > = {
+    1: "Wild Card",
+    2: "Divisional",
+    3: "Conference Championships",
+    4: "Super Bowl",
+  };
+
+
+function safeNumber(
+  value:
+    unknown
+):
+  number |
+  null {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
   ) {
-    case 1:
-      return "Wild Card";
-
-    case 2:
-      return "Divisional";
-
-    case 3:
-      return "Conference Championships";
-
-    case 4:
-      return "Super Bowl";
-
-    default:
-      return `Round ${roundNumber}`;
+    return null;
   }
+
+  const parsed =
+    Number(
+      value
+    );
+
+  return Number.isFinite(
+    parsed
+  )
+    ? parsed
+    : null;
 }
 
 
-function formatDate(
+function asObject(
+  value:
+    unknown
+):
+  Record<
+    string,
+    unknown
+  > {
+  return value &&
+    typeof value ===
+      "object" &&
+    !Array.isArray(
+      value
+    )
+    ? value as Record<
+        string,
+        unknown
+      >
+    : {};
+}
+
+
+function parseGame(
+  value:
+    unknown
+):
+  BracketGame {
+  const row =
+    asObject(
+      value
+    );
+
+  return {
+    bracketOrder:
+      safeNumber(
+        row.bracketOrder ??
+        row.bracket_order
+      ) ??
+      1,
+
+    nflGameId:
+      safeNumber(
+        row.nflGameId ??
+        row.nfl_game_id
+      ) ??
+      0,
+
+    espnEventId:
+      typeof (
+        row.espnEventId ??
+        row.espn_event_id
+      ) === "string"
+        ? String(
+            row.espnEventId ??
+            row.espn_event_id
+          )
+        : null,
+
+    kickoffAt:
+      typeof (
+        row.kickoffAt ??
+        row.kickoff_at
+      ) === "string"
+        ? String(
+            row.kickoffAt ??
+            row.kickoff_at
+          )
+        : null,
+
+    awayTeamId:
+      safeNumber(
+        row.awayTeamId ??
+        row.away_team_id
+      ),
+
+    homeTeamId:
+      safeNumber(
+        row.homeTeamId ??
+        row.home_team_id
+      ),
+
+    awayScore:
+      safeNumber(
+        row.awayScore ??
+        row.away_score
+      ),
+
+    homeScore:
+      safeNumber(
+        row.homeScore ??
+        row.home_score
+      ),
+
+    statusType:
+      typeof (
+        row.statusType ??
+        row.status_type
+      ) === "string"
+        ? String(
+            row.statusType ??
+            row.status_type
+          )
+        : null,
+
+    statusName:
+      typeof (
+        row.statusName ??
+        row.status_name
+      ) === "string"
+        ? String(
+            row.statusName ??
+            row.status_name
+          )
+        : null,
+
+    statusDetail:
+      typeof (
+        row.statusDetail ??
+        row.status_detail
+      ) === "string"
+        ? String(
+            row.statusDetail ??
+            row.status_detail
+          )
+        : null,
+
+    isFinal:
+      Boolean(
+        row.isFinal ??
+        row.is_final
+      ),
+
+    winnerTeamId:
+      safeNumber(
+        row.winnerTeamId ??
+        row.winner_team_id
+      ),
+  };
+}
+
+
+function parseRound(
+  value:
+    unknown
+):
+  BracketRound {
+  const row =
+    asObject(
+      value
+    );
+
+  const roundNumber =
+    safeNumber(
+      row.roundNumber ??
+      row.round_number
+    ) ??
+    1;
+
+  const games =
+    Array.isArray(
+      row.games
+    )
+      ? row.games.map(
+          parseGame
+        )
+      : [];
+
+  return {
+    roundNumber,
+
+    roundName:
+      typeof (
+        row.roundName ??
+        row.round_name
+      ) === "string"
+        ? String(
+            row.roundName ??
+            row.round_name
+          )
+        : ROUND_NAMES[
+            roundNumber
+          ] ??
+          `Round ${roundNumber}`,
+
+    nflWeek:
+      safeNumber(
+        row.nflWeek ??
+        row.nfl_week
+      ),
+
+    status:
+      typeof row.status ===
+        "string"
+        ? row.status
+        : null,
+
+    firstKickoffAt:
+      typeof (
+        row.firstKickoffAt ??
+        row.first_kickoff_at
+      ) === "string"
+        ? String(
+            row.firstKickoffAt ??
+            row.first_kickoff_at
+          )
+        : null,
+
+    lastScheduledKickoffAt:
+      typeof (
+        row.lastScheduledKickoffAt ??
+        row.last_scheduled_kickoff_at
+      ) === "string"
+        ? String(
+            row.lastScheduledKickoffAt ??
+            row.last_scheduled_kickoff_at
+          )
+        : null,
+
+    games:
+      games.sort(
+        (
+          a,
+          b
+        ) =>
+          a.bracketOrder -
+          b.bracketOrder
+      ),
+  };
+}
+
+
+function parsePayload(
+  value:
+    unknown
+):
+  BracketPayload {
+  const row =
+    asObject(
+      value
+    );
+
+  return {
+    success:
+      typeof row.success ===
+        "boolean"
+        ? row.success
+        : undefined,
+
+    leagueId:
+      typeof row.leagueId ===
+        "string"
+        ? row.leagueId
+        : typeof row.league_id ===
+            "string"
+          ? row.league_id
+          : undefined,
+
+    season:
+      safeNumber(
+        row.season
+      ) ??
+      undefined,
+
+    title:
+      typeof row.title ===
+        "string"
+        ? row.title
+        : undefined,
+
+    rounds:
+      Array.isArray(
+        row.rounds
+      )
+        ? row.rounds.map(
+            parseRound
+          )
+        : [],
+  };
+}
+
+
+function formatKickoff(
   value:
     string |
     null
 ) {
-  if (
-    !value
-  ) {
+  if (!value) {
     return "TBD";
   }
 
@@ -269,19 +455,14 @@ function formatDate(
     {
       weekday:
         "short",
-
       month:
         "short",
-
       day:
         "numeric",
-
       hour:
         "numeric",
-
       minute:
         "2-digit",
-
       timeZoneName:
         "short",
     }
@@ -291,42 +472,30 @@ function formatDate(
 }
 
 
-function money(
-  value:
-    number |
-    string |
-    null |
-    undefined
+function gameStatus(
+  game:
+    BracketGame
 ) {
-  const amount =
-    Number(
-      value ??
-      0
-    );
+  if (
+    game.isFinal
+  ) {
+    return "FINAL";
+  }
 
-  return new Intl.NumberFormat(
-    "en-US",
-    {
-      style:
-        "currency",
+  const raw =
+    (
+      game.statusDetail ??
+      game.statusName ??
+      game.statusType ??
+      "SCHEDULED"
+    ).trim();
 
-      currency:
-        "USD",
-
-      maximumFractionDigits:
-        0,
-    }
-  ).format(
-    Number.isFinite(
-      amount
-    )
-      ? amount
-      : 0
-  );
+  return raw ||
+    "SCHEDULED";
 }
 
 
-export default async function NflPlayoffsCommissionerPage({
+export default async function NflPlayoffsBracketPage({
   params,
 }: PageProps) {
   const {
@@ -334,32 +503,17 @@ export default async function NflPlayoffsCommissionerPage({
   } =
     await params;
 
-  /*
-   * ============================================================
-   * ACCESS
-   * ============================================================
-   */
-
   const access =
     await requireLeagueMember(
       leagueId
     );
 
   if (
-    !access.isCommissioner
-  ) {
-    redirect(
-      `/league/${leagueId}`
-    );
-  }
-
-  if (
-    access.league
-      .leagueType !==
+    access.league.leagueType !==
     "nfl_playoffs"
   ) {
-    redirect(
-      `/league/${leagueId}/commissioner`
+    throw new Error(
+      "This page is only available for NFL Playoffs leagues."
     );
   }
 
@@ -367,29 +521,32 @@ export default async function NflPlayoffsCommissionerPage({
     await createSupabaseServerClient();
 
   const season =
-    access.league
-      .season;
-
-  const isSalary =
-    access.league
-      .playerSelectionMode ===
-    "salary";
-
-
-  /*
-   * ============================================================
-   * LOAD COMMISSIONER STATE
-   * ============================================================
-   */
+    access.league.season;
 
   const [
+    bracketResult,
+    teamResult,
     stateResult,
-    roundsResult,
-    settingsResult,
-    teamsResult,
-    entriesResult,
   ] =
     await Promise.all([
+      supabase.rpc(
+        "get_nfl_playoff_bracket",
+        {
+          p_league_id:
+            leagueId,
+          p_season:
+            season,
+        }
+      ),
+
+      supabase
+        .from(
+          "nfl_teams"
+        )
+        .select(
+          "id, abbreviation, name"
+        ),
+
       supabase
         .from(
           "nfl_playoff_league_state"
@@ -409,400 +566,328 @@ export default async function NflPlayoffsCommissionerPage({
           season
         )
         .maybeSingle(),
-
-      supabase
-        .from(
-          "nfl_playoff_rounds"
-        )
-        .select(`
-          round_number,
-          round_key,
-          round_name,
-          nfl_week,
-          status,
-          opens_at,
-          first_kickoff_at,
-          last_scheduled_kickoff_at,
-          finalized_at
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "season",
-          season
-        )
-        .order(
-          "round_number",
-          {
-            ascending:
-              true,
-          }
-        ),
-
-      supabase
-        .from(
-          "nfl_playoff_settings"
-        )
-        .select(`
-          weekly_salary_cap,
-          starting_qb,
-          starting_rb,
-          starting_wr,
-          starting_te,
-          starting_flex,
-          starting_superflex,
-          starting_k,
-          starting_dst
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "season",
-          season
-        )
-        .maybeSingle(),
-
-      supabase
-        .from(
-          "fantasy_teams"
-        )
-        .select(`
-          id,
-          team_name,
-          active
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "active",
-          true
-        )
-        .order(
-          "team_name",
-          {
-            ascending:
-              true,
-          }
-        ),
-
-      supabase
-        .from(
-          "nfl_playoff_round_entries"
-        )
-        .select(`
-          fantasy_team_id,
-          round_number,
-          status,
-          submitted_at
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "season",
-          season
-        ),
     ]);
 
+  if (
+    bracketResult.error
+  ) {
+    throw new Error(
+      `Could not load NFL Playoffs bracket: ${bracketResult.error.message}`
+    );
+  }
+
+  if (
+    teamResult.error
+  ) {
+    throw new Error(
+      `Could not load NFL teams: ${teamResult.error.message}`
+    );
+  }
 
   if (
     stateResult.error
   ) {
     throw new Error(
-      `Could not load NFL Playoffs state: ${stateResult.error.message}`
+      `Could not load NFL Playoffs league state: ${stateResult.error.message}`
     );
   }
 
-  if (
-    roundsResult.error
-  ) {
-    throw new Error(
-      `Could not load NFL Playoffs rounds: ${roundsResult.error.message}`
+  const payload =
+    parsePayload(
+      bracketResult.data
     );
-  }
-
-  if (
-    settingsResult.error
-  ) {
-    throw new Error(
-      `Could not load NFL Playoffs settings: ${settingsResult.error.message}`
-    );
-  }
-
-  if (
-    teamsResult.error
-  ) {
-    throw new Error(
-      `Could not load NFL Playoffs teams: ${teamsResult.error.message}`
-    );
-  }
-
-  if (
-    entriesResult.error
-  ) {
-    throw new Error(
-      `Could not load NFL Playoffs entries: ${entriesResult.error.message}`
-    );
-  }
-
-
-  const state =
-    stateResult.data as
-      StateRow |
-      null;
-
-  const rounds =
-    (
-      roundsResult.data ??
-      []
-    ) as RoundRow[];
-
-  const settings =
-    settingsResult.data as
-      SettingsRow |
-      null;
 
   const teams =
     (
-      teamsResult.data ??
+      teamResult.data ??
       []
     ) as TeamRow[];
 
-  const entries =
-    (
-      entriesResult.data ??
-      []
-    ) as EntryRow[];
+  const teamMap =
+    new Map<
+      number,
+      TeamRow
+    >(
+      teams.map(
+        (
+          team
+        ) => [
+          team.id,
+          team,
+        ]
+      )
+    );
 
+  const rawRounds =
+    payload.rounds ??
+    [];
+
+  const roundByNumber =
+    new Map<
+      number,
+      BracketRound
+    >(
+      rawRounds.map(
+        (
+          round
+        ) => [
+          round.roundNumber,
+          round,
+        ]
+      )
+    );
+
+  const rounds:
+    BracketRound[] =
+    [
+      1,
+      2,
+      3,
+      4,
+    ].map(
+      (
+        roundNumber
+      ) =>
+        roundByNumber.get(
+          roundNumber
+        ) ?? {
+          roundNumber,
+          roundName:
+            ROUND_NAMES[
+              roundNumber
+            ],
+          nflWeek:
+            roundNumber === 4
+              ? 5
+              : roundNumber,
+          status:
+            null,
+          firstKickoffAt:
+            null,
+          lastScheduledKickoffAt:
+            null,
+          games:
+            [],
+        }
+    );
+
+  const leagueState =
+    stateResult.data;
+
+  const activeRound =
+    Number(
+      leagueState
+        ?.active_round ??
+      1
+    );
+
+  const mappedGames =
+    rounds.reduce(
+      (
+        total,
+        round
+      ) =>
+        total +
+        round.games.length,
+      0
+    );
+
+  const finalGames =
+    rounds.reduce(
+      (
+        total,
+        round
+      ) =>
+        total +
+        round.games.filter(
+          (
+            game
+          ) =>
+            game.isFinal
+        ).length,
+      0
+    );
 
   /*
    * ============================================================
-   * DERIVED STATE
+   * REALTIME NFL GAME IDS
    * ============================================================
+   *
+   * Subscribe only to the authoritative nfl_games rows that are
+   * actually mapped into this league's postseason bracket.
    */
-
-  const activeRound =
-    Number.isInteger(
-      Number(
-        state
-          ?.active_round
-      )
-    ) &&
-    Number(
-      state
-        ?.active_round
-    ) >= 1 &&
-    Number(
-      state
-        ?.active_round
-    ) <= 4
-      ? Number(
-          state
-            ?.active_round
-        )
-      : 1;
-
-
-  const activeRoundRow =
-    rounds.find(
-      (
-        round
-      ) =>
-        round.round_number ===
-        activeRound
-    ) ??
-    null;
-
-
-  const finalizedRounds =
-    rounds.filter(
-      isFinalRound
-    );
-
-
-  const leagueComplete =
-    finalizedRounds.length >=
-      4 ||
-    Boolean(
-      state
-        ?.completed_at
-    ) ||
-    [
-      "complete",
-      "completed",
-      "final",
-      "finalized",
-    ].includes(
-      normalizedStatus(
-        state
-          ?.status
-      )
-    );
-
-
-  const activeEntries =
-    entries.filter(
-      (
-        entry
-      ) =>
-        entry.round_number ===
-        activeRound
-    );
-
-
-  const submittedEntries =
-    activeEntries.filter(
-      (
-        entry
-      ) =>
-        Boolean(
-          entry.submitted_at
-        ) ||
-        [
-          "submitted",
-          "locked",
-          "final",
-          "finalized",
-          "complete",
-          "completed",
-        ].includes(
-          normalizedStatus(
-            entry.status
-          )
-        )
-    ).length;
-
-
-  const starterCount =
-    settings
-      ? settings.starting_qb +
-        settings.starting_rb +
-        settings.starting_wr +
-        settings.starting_te +
-        settings.starting_flex +
-        settings.starting_superflex +
-        settings.starting_k +
-        settings.starting_dst
-      : 0;
-
-
-  const championTeam =
-    state
-      ?.champion_fantasy_team_id
-      ? teams.find(
+  const bracketNflGameIds =
+    Array.from(
+      new Set(
+        rounds.flatMap(
           (
-            team
+            round
           ) =>
-            team.id ===
-            state
-              .champion_fantasy_team_id
-        ) ??
-        null
-      : null;
-
-
-  const activeRoundDisplay =
-    leagueComplete
-      ? "Complete"
-      : activeRoundRow
-          ?.round_name ??
-        roundName(
-          activeRound
-        );
-
+            round.games
+              .map(
+                (
+                  game
+                ) =>
+                  game.nflGameId
+              )
+              .filter(
+                (
+                  nflGameId
+                ) =>
+                  Number.isInteger(
+                    nflGameId
+                  ) &&
+                  nflGameId >
+                    0
+              )
+        )
+      )
+    );
 
   return (
     <main
-      className="g365-nflp-commissioner"
+      className="g365-nflp-bracket-page"
       style={
         styles.page
       }
     >
+      <NflPlayoffsBracketRealtime
+        leagueId={
+          leagueId
+        }
+        nflGameIds={
+          bracketNflGameIds
+        }
+      />
+
       <style>{`
-        .g365-nflp-commissioner,
-        .g365-nflp-commissioner * {
+        .g365-nflp-bracket-page,
+        .g365-nflp-bracket-page * {
           box-sizing: border-box;
         }
 
-        @media (max-width: 950px) {
-          .g365-nflp-commissioner .hero {
-            flex-direction: column !important;
-            align-items: flex-start !important;
+        .g365-nflp-bracket-grid {
+          display: grid;
+          grid-template-columns:
+            minmax(265px,1.5fr)
+            minmax(250px,1fr)
+            minmax(250px,1fr)
+            minmax(250px,1fr);
+          gap: 14px;
+          align-items: stretch;
+        }
+
+        .g365-nflp-round {
+          min-width: 0;
+        }
+
+        .g365-nflp-game-team-name {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        @media (max-width: 1120px) {
+          .g365-nflp-bracket-viewport {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 8px;
           }
 
-          .g365-nflp-commissioner .summary-grid {
-            grid-template-columns: repeat(2,minmax(0,1fr)) !important;
-          }
-
-          .g365-nflp-commissioner .tool-grid,
-          .g365-nflp-commissioner .round-grid {
-            grid-template-columns: repeat(2,minmax(0,1fr)) !important;
-          }
-
-          .g365-nflp-commissioner .two-col {
-            grid-template-columns: 1fr !important;
+          .g365-nflp-bracket-grid {
+            min-width: 1080px;
           }
         }
 
-        @media (max-width: 600px) {
-          .g365-nflp-commissioner {
+        @media (max-width: 760px) {
+          .g365-nflp-bracket-page {
             padding: 12px 10px !important;
           }
 
-          .g365-nflp-commissioner .summary-grid,
-          .g365-nflp-commissioner .tool-grid,
-          .g365-nflp-commissioner .round-grid {
-            grid-template-columns: 1fr !important;
+          .g365-nflp-hero {
+            padding: 16px !important;
           }
 
-          .g365-nflp-commissioner .hero-actions {
-            width: 100% !important;
+          .g365-nflp-hero h1 {
+            font-size: 28px !important;
           }
 
-          .g365-nflp-commissioner .hero-actions a {
-            flex: 1 1 auto !important;
-            text-align: center !important;
+          .g365-nflp-summary {
+            grid-template-columns:
+              repeat(2,minmax(0,1fr)) !important;
+          }
+
+          .g365-nflp-bracket-viewport {
+            overflow-x: visible;
+            padding-bottom: 0;
+          }
+
+          .g365-nflp-bracket-grid {
+            min-width: 0;
+            display: grid;
+            grid-template-columns: minmax(0,1fr);
+            gap: 12px;
+          }
+
+          .g365-nflp-round {
+            width: 100%;
+          }
+
+          .g365-nflp-round-body {
+            gap: 9px !important;
+          }
+
+          .g365-nflp-game-card {
+            border-radius: 11px !important;
+          }
+
+          .g365-nflp-game-team-row {
+            min-height: 48px;
+          }
+
+          .g365-nflp-mobile-note {
+            display: block !important;
+          }
+        }
+
+        @media (max-width: 430px) {
+          .g365-nflp-summary {
+            grid-template-columns:
+              minmax(0,1fr) !important;
+          }
+
+          .g365-nflp-hero h1 {
+            font-size: 25px !important;
           }
         }
       `}</style>
 
-      <section
+      <div
         style={
           styles.shell
         }
       >
-        {/* =====================================================
-            HERO
-            ===================================================== */}
-
         <header
-          className="hero"
+          className="g365-nflp-hero"
           style={
             styles.hero
           }
         >
           <div>
-            <p
+            <div
               style={
                 styles.eyebrow
               }
             >
-              G365 NFL PLAYOFFS · COMMISSIONER
-            </p>
+              G365 • REAL NFL POSTSEASON
+            </div>
 
             <h1
               style={
                 styles.title
               }
             >
-              Commissioner Center
+              {season} NFL Playoffs
             </h1>
 
             <p
@@ -810,877 +895,519 @@ export default async function NflPlayoffsCommissionerPage({
                 styles.subtitle
               }
             >
-              {
-                access.league
-                  .name
-              }
-              {" · "}
-              {
-                season
-              }
-              {" · "}
-              {isSalary
-                ? "Salary Cap"
-                : "No Salary Cap"}
+              Wild Card → Divisional → Conference Championships → Super Bowl
             </p>
           </div>
 
-          <div
-            className="hero-actions"
+          <Link
+            href={
+              `/league/${leagueId}/standings`
+            }
             style={
-              styles.actions
+              styles.button
             }
           >
-            <Link
-              href={`/league/${leagueId}/nfl-playoffs/settings`}
-              style={
-                styles.secondaryButton
-              }
-            >
-              VIEW SETTINGS
-            </Link>
-
-            <Link
-              href={`/league/${leagueId}/nfl-playoffs/standings`}
-              style={
-                styles.primaryButton
-              }
-            >
-              VIEW STANDINGS
-            </Link>
-          </div>
+            FANTASY STANDINGS
+          </Link>
         </header>
 
-
-        {/* =====================================================
-            STATUS SUMMARY
-            ===================================================== */}
-
         <section
-          className="summary-grid"
           style={
-            styles.summaryGrid
+            styles.section
           }
         >
-          <Summary
-            label="LEAGUE STATUS"
-            value={
-              prettyStatus(
-                state
-                  ?.status
-              )
+          <div
+            className="g365-nflp-summary"
+            style={
+              styles.summary
             }
-            detail={
-              leagueComplete
-                ? "Postseason complete"
-                : "NFL Playoffs lifecycle"
-            }
-          />
-
-          <Summary
-            label="ACTIVE ROUND"
-            value={
-              activeRoundDisplay
-            }
-            detail={
-              leagueComplete
-                ? "All four rounds finished"
-                : `Round ${activeRound}`
-            }
-          />
-
-          <Summary
-            label="ROUNDS FINAL"
-            value={`${finalizedRounds.length} / 4`}
-            detail="Official finalized rounds"
-          />
-
-          <Summary
-            label="ACTIVE TEAMS"
-            value={
-              String(
-                teams.length
-              )
-            }
-            detail="Teams currently in league"
-          />
-
-          <Summary
-            label="ROUND ENTRIES"
-            value={`${submittedEntries} / ${teams.length}`}
-            detail={
-              leagueComplete
-                ? "Postseason completed"
-                : "Submitted for active round"
-            }
-          />
-
-          <Summary
-            label="LINEUP SIZE"
-            value={
-              String(
-                starterCount
-              )
-            }
-            detail="Required starters each round"
-          />
-
-          {isSalary ? (
-            <Summary
-              label="SALARY CAP"
+          >
+            <Stat
+              label="Fantasy League"
               value={
-                money(
-                  settings
-                    ?.weekly_salary_cap
-                )
+                access.league.name
               }
-              detail="Per postseason lineup"
-            />
-          ) : (
-            <Summary
-              label="SELECTION MODE"
-              value="No Salary"
-              detail="No player salary restriction"
-            />
-          )}
-
-          <Summary
-            label="CHAMPION"
-            value={
-              championTeam
-                ?.team_name ??
-              "Not Yet"
-            }
-            detail={
-              state
-                ?.completed_at
-                ? `Completed ${formatDate(
-                    state.completed_at
-                  )}`
-                : "Awarded after Super Bowl finalization"
-            }
-          />
-        </section>
-
-
-        {/* =====================================================
-            COMMISSIONER TOOLS
-            ===================================================== */}
-
-        <section
-          style={
-            styles.section
-          }
-        >
-          <SectionHead
-            eyebrow="LEAGUE MANAGEMENT"
-            title="NFL Playoffs Controls"
-            badge="COMMISSIONER ONLY"
-          />
-
-          <div
-            className="tool-grid"
-            style={
-              styles.toolGrid
-            }
-          >
-            <ToolCard
-              title="League & Lineup Settings"
-              description="Manage the official Salary/No-Salary mode, roster construction, salary cap, and four-round league rules."
-              href={`/league/${leagueId}/commissioner/nfl-playoffs/settings`}
-              action="MANAGE LINEUP"
             />
 
-            {isSalary ? (
-              <ToolCard
-                title="Salary & Pricing"
-                description="Manage NFL Playoffs salary ranges, position multipliers, movement limits, injury adjustments, and pricing behavior."
-                href={`/league/${leagueId}/commissioner/nfl-playoffs/salary`}
-                action="MANAGE SALARY"
-              />
-            ) : null}
-
-            <ToolCard
-              title="Scoring Settings"
-              description="Manage the fantasy scoring rules used to score players throughout the NFL postseason."
-              href={`/league/${leagueId}/commissioner/scoring`}
-              action="MANAGE SCORING"
+            <Stat
+              label="Active Round"
+              value={
+                ROUND_NAMES[
+                  activeRound
+                ] ??
+                `Round ${activeRound}`
+              }
             />
 
-            <ToolCard
-              title="Teams & Members"
-              description="Manage league ownership, invitations, team information, and member access."
-              href={`/league/${leagueId}/commissioner/teams`}
-              action="MANAGE TEAMS"
+            <Stat
+              label="NFL Games Mapped"
+              value={
+                mappedGames
+              }
             />
 
-            <ToolCard
-              title="League Administration"
-              description="Access commissioner-level administrative tools for the league."
-              href={`/league/${leagueId}/commissioner/admin`}
-              action="OPEN ADMIN"
-              danger
+            <Stat
+              label="NFL Games Final"
+              value={
+                finalGames
+              }
             />
           </div>
         </section>
 
-
-        {/* =====================================================
-            COMMISSIONER OPERATIONS
-            ===================================================== */}
-
-        <NflPlayoffsCommissionerOperations
-          leagueId={leagueId}
-        />
-
-
-        {/* =====================================================
-            ROUND LIFECYCLE
-            ===================================================== */}
-
         <section
           style={
             styles.section
           }
         >
-          <SectionHead
-            eyebrow="POSTSEASON LIFECYCLE"
-            title="Round Status"
-            badge={`${finalizedRounds.length}/4 FINAL`}
-          />
-
           <div
-            className="round-grid"
             style={
-              styles.roundGrid
+              styles.sectionHead
             }
           >
-            {[
-              1,
-              2,
-              3,
-              4,
-            ].map(
-              (
-                roundNumber
-              ) => {
-                const round =
-                  rounds.find(
-                    (
-                      row
-                    ) =>
-                      row.round_number ===
-                      roundNumber
-                  ) ??
-                  null;
+            <div>
+              <div
+                style={
+                  styles.sectionEyebrow
+                }
+              >
+                LIVE NFL BRACKET
+              </div>
 
-                const final =
+              <h2
+                style={
+                  styles.sectionTitle
+                }
+              >
+                Road to the Super Bowl
+              </h2>
+            </div>
+
+            <span
+              style={
+                styles.sectionMeta
+              }
+            >
+              Winners are shown only after their NFL game is final. Future matchups remain TBD until the actual NFL playoff field is known.
+            </span>
+          </div>
+
+          <div
+            className="g365-nflp-mobile-note"
+            style={
+              styles.mobileNote
+            }
+          >
+            On mobile, each playoff round is stacked vertically for easier reading and tapping.
+          </div>
+
+          <div
+            className="g365-nflp-bracket-viewport"
+          >
+            <div
+              className="g365-nflp-bracket-grid"
+            >
+              {rounds.map(
+                (
                   round
-                    ? isFinalRound(
-                        round
-                      )
-                    : false;
-
-                const active =
-                  !leagueComplete &&
-                  !final &&
-                  roundNumber ===
-                    activeRound;
-
-                const roundEntries =
-                  entries.filter(
-                    (
-                      entry
-                    ) =>
-                      entry.round_number ===
-                      roundNumber
-                  );
-
-                const submitted =
-                  roundEntries.filter(
-                    (
-                      entry
-                    ) =>
-                      Boolean(
-                        entry.submitted_at
-                      ) ||
-                      [
-                        "submitted",
-                        "locked",
-                        "final",
-                        "finalized",
-                        "complete",
-                        "completed",
-                      ].includes(
-                        normalizedStatus(
-                          entry.status
-                        )
-                      )
-                  ).length;
-
-                return (
-                  <article
+                ) => (
+                  <RoundColumn
                     key={
-                      roundNumber
+                      round.roundNumber
                     }
-                    style={{
-                      ...styles.roundCard,
-
-                      ...(active
-                        ? styles.activeRound
-                        : {}),
-
-                      ...(final
-                        ? styles.finalRound
-                        : {}),
-                    }}
-                  >
-                    <div
-                      style={
-                        styles.roundTop
-                      }
-                    >
-                      <div>
-                        <span
-                          style={
-                            styles.roundNumber
-                          }
-                        >
-                          ROUND {
-                            roundNumber
-                          }
-                        </span>
-
-                        <h3
-                          style={
-                            styles.roundTitle
-                          }
-                        >
-                          {
-                            round
-                              ?.round_name ??
-                            roundName(
-                              roundNumber
-                            )
-                          }
-                        </h3>
-                      </div>
-
-                      <span
-                        style={{
-                          ...styles.statusBadge,
-
-                          ...(active
-                            ? styles.activeBadge
-                            : {}),
-
-                          ...(final
-                            ? styles.finalBadge
-                            : {}),
-                        }}
-                      >
-                        {final
-                          ? "FINAL"
-                          : active
-                            ? "ACTIVE"
-                            : "UPCOMING"}
-                      </span>
-                    </div>
-
-                    <div
-                      style={
-                        styles.roundStats
-                      }
-                    >
-                      <Detail
-                        label="NFL WEEK"
-                        value={
-                          round
-                            ?.nfl_week
-                            ? String(
-                                round.nfl_week
-                              )
-                            : "TBD"
-                        }
-                      />
-
-                      <Detail
-                        label="ENTRIES"
-                        value={`${submitted} / ${teams.length}`}
-                      />
-
-                      <Detail
-                        label="OPENS"
-                        value={
-                          formatDate(
-                            round
-                              ?.opens_at ??
-                            null
-                          )
-                        }
-                      />
-
-                      <Detail
-                        label="FIRST KICKOFF"
-                        value={
-                          formatDate(
-                            round
-                              ?.first_kickoff_at ??
-                            null
-                          )
-                        }
-                      />
-
-                      <Detail
-                        label="LAST GAME"
-                        value={
-                          formatDate(
-                            round
-                              ?.last_scheduled_kickoff_at ??
-                            null
-                          )
-                        }
-                      />
-
-                      <Detail
-                        label="FINALIZED"
-                        value={
-                          round
-                            ?.finalized_at
-                            ? formatDate(
-                                round.finalized_at
-                              )
-                            : "—"
-                        }
-                      />
-                    </div>
-                  </article>
-                );
-              }
-            )}
+                    round={
+                      round
+                    }
+                    teamMap={
+                      teamMap
+                    }
+                    isActive={
+                      activeRound ===
+                      round.roundNumber
+                    }
+                  />
+                )
+              )}
+            </div>
           </div>
         </section>
 
-
-        {/* =====================================================
-            ACTIVE ROUND HEALTH
-            ===================================================== */}
-
         <section
-          className="two-col"
-          style={
-            styles.twoColumn
-          }
-        >
-          <article
-            style={
-              styles.section
-            }
-          >
-            <SectionHead
-              eyebrow="ACTIVE ROUND"
-              title={
-                leagueComplete
-                  ? "Postseason Complete"
-                  : activeRoundDisplay
-              }
-            />
-
-            <div
-              style={
-                styles.infoList
-              }
-            >
-              <InfoRow
-                title="Round Number"
-                value={
-                  leagueComplete
-                    ? "—"
-                    : String(
-                        activeRound
-                      )
-                }
-              />
-
-              <InfoRow
-                title="Round Status"
-                value={
-                  leagueComplete
-                    ? "Completed"
-                    : prettyStatus(
-                        activeRoundRow
-                          ?.status
-                      )
-                }
-              />
-
-              <InfoRow
-                title="Submitted Entries"
-                value={`${submittedEntries} of ${teams.length}`}
-              />
-
-              <InfoRow
-                title="First Kickoff"
-                value={
-                  leagueComplete
-                    ? "—"
-                    : formatDate(
-                        activeRoundRow
-                          ?.first_kickoff_at ??
-                        null
-                      )
-                }
-              />
-
-              <InfoRow
-                title="Last Scheduled Game"
-                value={
-                  leagueComplete
-                    ? "—"
-                    : formatDate(
-                        activeRoundRow
-                          ?.last_scheduled_kickoff_at ??
-                        null
-                      )
-                }
-              />
-            </div>
-          </article>
-
-
-          <article
-            style={
-              styles.section
-            }
-          >
-            <SectionHead
-              eyebrow="LIFECYCLE SAFETY"
-              title="Automatic Progression"
-            />
-
-            <div
-              style={
-                styles.ruleList
-              }
-            >
-              <Rule
-                title="Player Locks"
-                text="Selected players lock individually when their NFL postseason games begin."
-              />
-
-              <Rule
-                title="Round Results"
-                text="Official standings and permanent Trophy Case awards rely on finalized postseason scoring."
-              />
-
-              <Rule
-                title="No Force-Finalize Shortcut"
-                text="This commissioner page does not bypass NFL game completion safeguards or manually mark a round final."
-              />
-
-              <Rule
-                title="Four-Round Completion"
-                text="The league completes after Wild Card, Divisional, Conference Championships, and Super Bowl results are finalized."
-              />
-            </div>
-          </article>
-        </section>
-
-
-        {/* =====================================================
-            QUICK LINKS
-            ===================================================== */}
-
-        <section
-          style={
-            styles.section
-          }
-        >
-          <SectionHead
-            eyebrow="VERIFY LEAGUE"
-            title="Commissioner Review"
-          />
-
-          <div
-            style={
-              styles.quickLinks
-            }
-          >
-            <Link
-              href={`/league/${leagueId}/entry`}
-              style={
-                styles.quickLink
-              }
-            >
-              MY ENTRY
-            </Link>
-
-            <Link
-              href={`/league/${leagueId}/teams`}
-              style={
-                styles.quickLink
-              }
-            >
-              LEAGUE TEAMS
-            </Link>
-
-            <Link
-              href={`/league/${leagueId}/nfl-playoffs/standings`}
-              style={
-                styles.quickLink
-              }
-            >
-              STANDINGS
-            </Link>
-
-            <Link
-              href={`/league/${leagueId}/nfl-playoffs/playoffs`}
-              style={
-                styles.quickLink
-              }
-            >
-              NFL PLAYOFF BRACKET
-            </Link>
-
-            <Link
-              href={`/league/${leagueId}/nfl-playoffs/recap`}
-              style={
-                styles.quickLink
-              }
-            >
-              RECAP
-            </Link>
-
-            <Link
-              href={`/league/${leagueId}/nfl-playoffs/trophy-case`}
-              style={
-                styles.quickLink
-              }
-            >
-              TROPHY CASE
-            </Link>
-          </div>
-        </section>
-
-
-        <div
           style={
             styles.notice
           }
         >
-          G365 NFL Playoffs uses its
-          own four-round postseason
-          lifecycle. Traditional
-          fantasy playoff seeding,
-          reseeding, consolation
-          brackets, waivers, trades,
-          and draft controls do not
-          apply to this league type.
-        </div>
-      </section>
+          <strong>
+            REAL NFL BRACKET
+          </strong>
+
+          <span>
+            This page follows the actual NFL postseason. It does not create a fantasy head-to-head bracket. The same mapped games determine which NFL teams remain alive and which players are eligible for the next G365 playoff round.
+          </span>
+        </section>
+      </div>
     </main>
   );
 }
 
 
-function Summary({
-  label,
-  value,
-  detail,
+function RoundColumn({
+  round,
+  teamMap,
+  isActive,
 }: {
-  label:
-    string;
+  round:
+    BracketRound;
+  teamMap:
+    Map<
+      number,
+      TeamRow
+    >;
+  isActive:
+    boolean;
+}) {
+  const expected =
+    EXPECTED_GAMES[
+      round.roundNumber
+    ] ??
+    0;
 
-  value:
-    string;
+  const slots =
+    Array.from(
+      {
+        length:
+          expected,
+      },
+      (
+        _,
+        index
+      ) =>
+        round.games[
+          index
+        ] ??
+        null
+    );
 
-  detail:
-    string;
+  return (
+    <section
+      className="g365-nflp-round"
+      style={{
+        ...styles.round,
+        ...(isActive
+          ? styles.roundActive
+          : {}),
+      }}
+    >
+      <div
+        style={
+          styles.roundHead
+        }
+      >
+        <div>
+          <span
+            style={
+              styles.roundKicker
+            }
+          >
+            ROUND {round.roundNumber}
+          </span>
+
+          <strong
+            style={
+              styles.roundTitle
+            }
+          >
+            {round.roundName}
+          </strong>
+        </div>
+
+        <span
+          style={{
+            ...styles.roundStatus,
+            ...(isActive
+              ? styles.roundStatusActive
+              : {}),
+          }}
+        >
+          {isActive
+            ? "ACTIVE"
+            : round.status
+              ? round.status.toUpperCase()
+              : "—"}
+        </span>
+      </div>
+
+      <div
+        className="g365-nflp-round-body"
+        style={
+          styles.roundBody
+        }
+      >
+        {slots.map(
+          (
+            game,
+            index
+          ) =>
+            game
+              ? (
+                <GameCard
+                  key={
+                    game.nflGameId ||
+                    `${round.roundNumber}-${index}`
+                  }
+                  game={
+                    game
+                  }
+                  teamMap={
+                    teamMap
+                  }
+                />
+              )
+              : (
+                <TbdGame
+                  key={
+                    `${round.roundNumber}-tbd-${index}`
+                  }
+                  slot={
+                    index + 1
+                  }
+                />
+              )
+        )}
+      </div>
+    </section>
+  );
+}
+
+
+function GameCard({
+  game,
+  teamMap,
+}: {
+  game:
+    BracketGame;
+  teamMap:
+    Map<
+      number,
+      TeamRow
+    >;
 }) {
   return (
     <article
+      className="g365-nflp-game-card"
       style={
-        styles.summary
+        styles.game
+      }
+    >
+      <div
+        style={
+          styles.gameTop
+        }
+      >
+        <span>
+          {formatKickoff(
+            game.kickoffAt
+          )}
+        </span>
+
+        <strong
+          style={
+            game.isFinal
+              ? styles.statusFinal
+              : styles.status
+          }
+        >
+          {gameStatus(
+            game
+          )}
+        </strong>
+      </div>
+
+      <TeamLine
+        teamId={
+          game.awayTeamId
+        }
+        score={
+          game.awayScore
+        }
+        winner={
+          Boolean(
+            game.isFinal &&
+            game.winnerTeamId ===
+              game.awayTeamId
+          )
+        }
+        teamMap={
+          teamMap
+        }
+      />
+
+      <TeamLine
+        teamId={
+          game.homeTeamId
+        }
+        score={
+          game.homeScore
+        }
+        winner={
+          Boolean(
+            game.isFinal &&
+            game.winnerTeamId ===
+              game.homeTeamId
+          )
+        }
+        teamMap={
+          teamMap
+        }
+      />
+    </article>
+  );
+}
+
+
+function TeamLine({
+  teamId,
+  score,
+  winner,
+  teamMap,
+}: {
+  teamId:
+    number |
+    null;
+  score:
+    number |
+    null;
+  winner:
+    boolean;
+  teamMap:
+    Map<
+      number,
+      TeamRow
+    >;
+}) {
+  const team =
+    teamId
+      ? teamMap.get(
+          teamId
+        )
+      : null;
+
+  const abbreviation =
+    team
+      ?.abbreviation ??
+    "TBD";
+
+  const name =
+    team
+      ?.name ??
+    (
+      teamId
+        ? `NFL Team ${teamId}`
+        : "TBD"
+    );
+
+  return (
+    <div
+      className="g365-nflp-game-team-row"
+      style={{
+        ...styles.teamLine,
+        ...(winner
+          ? styles.teamLineWinner
+          : {}),
+      }}
+    >
+      <div
+        style={
+          styles.teamIdentity
+        }
+      >
+        <span
+          style={
+            styles.teamAbbreviation
+          }
+        >
+          {abbreviation}
+        </span>
+
+        <strong
+          className="g365-nflp-game-team-name"
+          title={
+            name
+          }
+        >
+          {name}
+        </strong>
+      </div>
+
+      <strong
+        style={
+          styles.gameScore
+        }
+      >
+        {score ??
+          "—"}
+      </strong>
+    </div>
+  );
+}
+
+
+function TbdGame({
+  slot,
+}: {
+  slot:
+    number;
+}) {
+  return (
+    <article
+      className="g365-nflp-game-card"
+      style={
+        styles.tbdGame
       }
     >
       <span
         style={
-          styles.summaryLabel
+          styles.tbdLabel
         }
       >
-        {label}
+        MATCHUP {slot}
       </span>
 
-      <strong
-        style={
-          styles.summaryValue
-        }
-      >
-        {value}
+      <strong>
+        TBD
       </strong>
 
       <span
         style={
-          styles.summaryDetail
+          styles.tbdCopy
         }
       >
-        {detail}
+        Waiting for the NFL playoff matchup to be determined.
       </span>
     </article>
   );
 }
 
 
-function SectionHead({
-  eyebrow,
-  title,
-  badge,
-}: {
-  eyebrow:
-    string;
-
-  title:
-    string;
-
-  badge?:
-    string;
-}) {
-  return (
-    <div
-      style={
-        styles.sectionHead
-      }
-    >
-      <div>
-        <p
-          style={
-            styles.sectionEyebrow
-          }
-        >
-          {eyebrow}
-        </p>
-
-        <h2
-          style={
-            styles.sectionTitle
-          }
-        >
-          {title}
-        </h2>
-      </div>
-
-      {badge ? (
-        <span
-          style={
-            styles.countBadge
-          }
-        >
-          {badge}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-
-function ToolCard({
-  title,
-  description,
-  href,
-  action,
-  danger = false,
-}: {
-  title:
-    string;
-
-  description:
-    string;
-
-  href:
-    string;
-
-  action:
-    string;
-
-  danger?:
-    boolean;
-}) {
-  return (
-    <Link
-      href={
-        href
-      }
-      style={{
-        ...styles.toolCard,
-
-        ...(danger
-          ? styles.dangerCard
-          : {}),
-      }}
-    >
-      <span
-        style={{
-          ...styles.toolEyebrow,
-
-          ...(danger
-            ? styles.dangerText
-            : {}),
-        }}
-      >
-        COMMISSIONER TOOL
-      </span>
-
-      <h3
-        style={
-          styles.toolTitle
-        }
-      >
-        {title}
-      </h3>
-
-      <p
-        style={
-          styles.toolText
-        }
-      >
-        {description}
-      </p>
-
-      <div
-        style={{
-          ...styles.toolAction,
-
-          ...(danger
-            ? styles.dangerText
-            : {}),
-        }}
-      >
-        {action} →
-      </div>
-    </Link>
-  );
-}
-
-
-function Detail({
+function Stat({
   label,
   value,
 }: {
   label:
     string;
-
   value:
-    string;
+    string |
+    number;
 }) {
   return (
     <div
       style={
-        styles.detail
+        styles.stat
       }
     >
       <span
         style={
-          styles.detailLabel
+          styles.statLabel
         }
       >
         {label}
@@ -1688,83 +1415,11 @@ function Detail({
 
       <strong
         style={
-          styles.detailValue
+          styles.statValue
         }
       >
         {value}
       </strong>
-    </div>
-  );
-}
-
-
-function InfoRow({
-  title,
-  value,
-}: {
-  title:
-    string;
-
-  value:
-    string;
-}) {
-  return (
-    <div
-      style={
-        styles.infoRow
-      }
-    >
-      <span
-        style={
-          styles.infoLabel
-        }
-      >
-        {title}
-      </span>
-
-      <strong
-        style={
-          styles.infoValue
-        }
-      >
-        {value}
-      </strong>
-    </div>
-  );
-}
-
-
-function Rule({
-  title,
-  text,
-}: {
-  title:
-    string;
-
-  text:
-    string;
-}) {
-  return (
-    <div
-      style={
-        styles.rule
-      }
-    >
-      <strong
-        style={
-          styles.ruleTitle
-        }
-      >
-        {title}
-      </strong>
-
-      <p
-        style={
-          styles.ruleText
-        }
-      >
-        {text}
-      </p>
     </div>
   );
 }
@@ -1773,744 +1428,551 @@ function Rule({
 const styles:
   Record<
     string,
-    CSSProperties
+    React.CSSProperties
   > = {
-  page: {
-    minHeight:
-      "100vh",
-
-    padding:
-      22,
-
-    color:
-      "#f5f5f5",
-
-    background:
-      "linear-gradient(180deg,#080808,#101010)",
-  },
-
-  shell: {
-    width:
-      "100%",
-
-    maxWidth:
-      1320,
-
-    margin:
-      "0 auto",
-  },
-
-  hero: {
-    display:
-      "flex",
-
-    justifyContent:
-      "space-between",
-
-    alignItems:
-      "center",
-
-    gap:
-      18,
-
-    marginBottom:
-      16,
-
-    padding:
-      24,
-
-    border:
-      "1px solid #2c2c2c",
-
-    borderRadius:
-      20,
-
-    background:
-      "linear-gradient(135deg,rgba(139,24,10,.28),rgba(241,94,20,.08),#111)",
-  },
-
-  eyebrow: {
-    margin:
-      0,
-
-    color:
-      "#ff671e",
-
-    fontSize:
-      9,
-
-    fontWeight:
-      900,
-
-    letterSpacing:
-      ".13em",
-  },
-
-  title: {
-    margin:
-      "5px 0",
-
-    fontSize:
-      32,
-
-    lineHeight:
-      1,
-  },
-
-  subtitle: {
-    margin:
-      0,
-
-    color:
-      "#808080",
-
-    fontSize:
-      11,
-  },
-
-  actions: {
-    display:
-      "flex",
-
-    gap:
-      8,
-
-    flexWrap:
-      "wrap",
-  },
-
-  primaryButton: {
-    padding:
-      "10px 14px",
-
-    borderRadius:
-      9,
-
-    color:
-      "#fff",
-
-    textDecoration:
-      "none",
-
-    background:
-      "linear-gradient(135deg,#a32412,#ee6517)",
-
-    fontSize:
-      8,
-
-    fontWeight:
-      900,
-  },
-
-  secondaryButton: {
-    padding:
-      "10px 14px",
-
-    border:
-      "1px solid #373737",
-
-    borderRadius:
-      9,
-
-    color:
-      "#bdbdbd",
-
-    textDecoration:
-      "none",
-
-    background:
-      "#151515",
-
-    fontSize:
-      8,
-
-    fontWeight:
-      900,
-  },
-
-  summaryGrid: {
-    display:
-      "grid",
-
-    gridTemplateColumns:
-      "repeat(4,minmax(0,1fr))",
-
-    gap:
-      10,
-
-    marginBottom:
-      16,
-  },
-
-  summary: {
-    padding:
-      14,
-
-    border:
-      "1px solid #292929",
-
-    borderRadius:
-      13,
-
-    background:
-      "#121212",
-  },
-
-  summaryLabel: {
-    display:
-      "block",
-
-    color:
-      "#df5c20",
-
-    fontSize:
-      7,
-
-    fontWeight:
-      900,
-
-    letterSpacing:
-      ".09em",
-  },
-
-  summaryValue: {
-    display:
-      "block",
-
-    margin:
-      "4px 0",
-
-    fontSize:
-      17,
-  },
-
-  summaryDetail: {
-    display:
-      "block",
-
-    color:
-      "#666",
-
-    fontSize:
-      8,
-
-    lineHeight:
-      1.35,
-  },
-
-  section: {
-    marginBottom:
-      16,
-
-    overflow:
-      "hidden",
-
-    border:
-      "1px solid #292929",
-
-    borderRadius:
-      15,
-
-    background:
-      "#111",
-  },
-
-  sectionHead: {
-    display:
-      "flex",
-
-    justifyContent:
-      "space-between",
-
-    alignItems:
-      "center",
-
-    gap:
-      12,
-
-    padding:
-      "15px 17px",
-
-    borderBottom:
-      "1px solid #242424",
-  },
-
-  sectionEyebrow: {
-    margin:
-      0,
-
-    color:
-      "#dc5d21",
-
-    fontSize:
-      7,
-
-    fontWeight:
-      900,
-
-    letterSpacing:
-      ".1em",
-  },
-
-  sectionTitle: {
-    margin:
-      "4px 0 0",
-
-    fontSize:
-      18,
-  },
-
-  countBadge: {
-    padding:
-      "6px 8px",
-
-    border:
-      "1px solid #48301f",
-
-    borderRadius:
-      999,
-
-    color:
-      "#df7939",
-
-    background:
-      "#1d140e",
-
-    fontSize:
-      7,
-
-    fontWeight:
-      900,
-  },
-
-  toolGrid: {
-    display:
-      "grid",
-
-    gridTemplateColumns:
-      "repeat(4,minmax(0,1fr))",
-
-    gap:
-      10,
-
-    padding:
-      14,
-  },
-
-  toolCard: {
-    display:
-      "flex",
-
-    flexDirection:
-      "column",
-
-    minHeight:
-      175,
-
-    padding:
-      14,
-
-    border:
-      "1px solid #303030",
-
-    borderRadius:
-      12,
-
-    color:
-      "#fff",
-
-    textDecoration:
-      "none",
-
-    background:
-      "#151515",
-  },
-
-  dangerCard: {
-    border:
-      "1px solid #54272a",
-
-    background:
-      "#191011",
-  },
-
-  toolEyebrow: {
-    color:
-      "#df621f",
-
-    fontSize:
-      7,
-
-    fontWeight:
-      900,
-
-    letterSpacing:
-      ".09em",
-  },
-
-  toolTitle: {
-    margin:
-      "7px 0",
-
-    fontSize:
-      14,
-  },
-
-  toolText: {
-    flex:
-      1,
-
-    margin:
-      0,
-
-    color:
-      "#727272",
-
-    fontSize:
-      8,
-
-    lineHeight:
-      1.5,
-  },
-
-  toolAction: {
-    marginTop:
-      12,
-
-    color:
-      "#e16b2c",
-
-    fontSize:
-      7,
-
-    fontWeight:
-      900,
-  },
-
-  dangerText: {
-    color:
-      "#e1696c",
-  },
-
-  roundGrid: {
-    display:
-      "grid",
-
-    gridTemplateColumns:
-      "repeat(4,minmax(0,1fr))",
-
-    gap:
-      10,
-
-    padding:
-      14,
-  },
-
-  roundCard: {
-    padding:
-      13,
-
-    border:
-      "1px solid #2b2b2b",
-
-    borderRadius:
-      11,
-
-    background:
-      "#141414",
-  },
-
-  activeRound: {
-    border:
-      "1px solid #91411c",
-
-    background:
-      "linear-gradient(135deg,#22140e,#151311)",
-  },
-
-  finalRound: {
-    border:
-      "1px solid #324b39",
-
-    background:
-      "#111813",
-  },
-
-  roundTop: {
-    display:
-      "flex",
-
-    justifyContent:
-      "space-between",
-
-    alignItems:
-      "flex-start",
-
-    gap:
-      8,
-
-    marginBottom:
-      12,
-  },
-
-  roundNumber: {
-    color:
-      "#d65d24",
-
-    fontSize:
-      6,
-
-    fontWeight:
-      900,
-
-    letterSpacing:
-      ".08em",
-  },
-
-  roundTitle: {
-    margin:
-      "4px 0 0",
-
-    fontSize:
-      12,
-  },
-
-  statusBadge: {
-    padding:
-      "4px 6px",
-
-    borderRadius:
-      999,
-
-    color:
-      "#747474",
-
-    background:
-      "#222",
-
-    fontSize:
-      6,
-
-    fontWeight:
-      900,
-  },
-
-  activeBadge: {
-    color:
-      "#ff8d47",
-
-    background:
-      "#2d190f",
-  },
-
-  finalBadge: {
-    color:
-      "#72d690",
-
-    background:
-      "#142018",
-  },
-
-  roundStats: {
-    display:
-      "grid",
-
-    gap:
-      7,
-  },
-
-  detail: {
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "space-between",
-
-    gap:
-      8,
-
-    paddingBottom:
-      6,
-
-    borderBottom:
-      "1px solid #202020",
-  },
-
-  detailLabel: {
-    color:
-      "#5e5e5e",
-
-    fontSize:
-      6,
-
-    fontWeight:
-      900,
-  },
-
-  detailValue: {
-    color:
-      "#999",
-
-    textAlign:
-      "right",
-
-    fontSize:
-      7,
-  },
-
-  twoColumn: {
-    display:
-      "grid",
-
-    gridTemplateColumns:
-      "repeat(2,minmax(0,1fr))",
-
-    gap:
-      12,
-
-    marginBottom:
-      16,
-  },
-
-  infoList: {
-    padding:
-      "5px 15px 14px",
-  },
-
-  infoRow: {
-    display:
-      "flex",
-
-    alignItems:
-      "center",
-
-    justifyContent:
-      "space-between",
-
-    gap:
-      12,
-
-    padding:
-      "11px 0",
-
-    borderBottom:
-      "1px solid #222",
-  },
-
-  infoLabel: {
-    color:
-      "#777",
-
-    fontSize:
-      8,
-  },
-
-  infoValue: {
-    fontSize:
-      9,
-
-    textAlign:
-      "right",
-  },
-
-  ruleList: {
-    padding:
-      "4px 15px 14px",
-  },
-
-  rule: {
-    padding:
-      "10px 0",
-
-    borderBottom:
-      "1px solid #222",
-  },
-
-  ruleTitle: {
-    display:
-      "block",
-
-    fontSize:
-      9,
-  },
-
-  ruleText: {
-    margin:
-      "4px 0 0",
-
-    color:
-      "#717171",
-
-    fontSize:
-      8,
-
-    lineHeight:
-      1.45,
-  },
-
-  quickLinks: {
-    display:
-      "flex",
-
-    flexWrap:
-      "wrap",
-
-    gap:
-      8,
-
-    padding:
-      14,
-  },
-
-  quickLink: {
-    padding:
-      "9px 11px",
-
-    border:
-      "1px solid #323232",
-
-    borderRadius:
-      8,
-
-    color:
-      "#bdbdbd",
-
-    textDecoration:
-      "none",
-
-    background:
-      "#151515",
-
-    fontSize:
-      7,
-
-    fontWeight:
-      900,
-  },
-
-  notice: {
-    padding:
-      13,
-
-    border:
-      "1px solid #332a26",
-
-    borderRadius:
-      11,
-
-    color:
-      "#7d716b",
-
-    background:
-      "#13100f",
-
-    fontSize:
-      8,
-
-    lineHeight:
-      1.5,
-  },
-};
+    page: {
+      minHeight:
+        "100vh",
+      padding:
+        "20px",
+      background:
+        "linear-gradient(180deg,#07080c,#0b0d12 50%,#07080b)",
+      color:
+        "#f5f7fa",
+    },
+
+    shell: {
+      width:
+        "min(1500px,100%)",
+      margin:
+        "0 auto",
+    },
+
+    hero: {
+      display:
+        "flex",
+      alignItems:
+        "center",
+      justifyContent:
+        "space-between",
+      gap:
+        "16px",
+      flexWrap:
+        "wrap",
+      padding:
+        "20px",
+      marginBottom:
+        "14px",
+      border:
+        "1px solid rgba(255,88,28,.28)",
+      borderRadius:
+        "16px",
+      background:
+        "linear-gradient(135deg,rgba(147,15,15,.24),rgba(255,91,27,.09),rgba(255,255,255,.02))",
+    },
+
+    eyebrow: {
+      color:
+        "#ff6a2b",
+      fontSize:
+        "11px",
+      fontWeight:
+        950,
+      letterSpacing:
+        ".14em",
+    },
+
+    title: {
+      margin:
+        "5px 0 0",
+      fontSize:
+        "34px",
+      fontWeight:
+        950,
+      letterSpacing:
+        "-.03em",
+    },
+
+    subtitle: {
+      margin:
+        "7px 0 0",
+      color:
+        "#969da8",
+      fontSize:
+        "13px",
+      lineHeight:
+        1.5,
+    },
+
+    button: {
+      display:
+        "inline-flex",
+      alignItems:
+        "center",
+      justifyContent:
+        "center",
+      minHeight:
+        "44px",
+      padding:
+        "10px 14px",
+      border:
+        "1px solid rgba(255,100,40,.35)",
+      borderRadius:
+        "9px",
+      background:
+        "linear-gradient(135deg,#b51b18,#ef531d)",
+      color:
+        "#fff",
+      fontSize:
+        "11px",
+      fontWeight:
+        900,
+      textDecoration:
+        "none",
+    },
+
+    section: {
+      padding:
+        "17px",
+      marginBottom:
+        "14px",
+      border:
+        "1px solid rgba(255,255,255,.08)",
+      borderRadius:
+        "14px",
+      background:
+        "rgba(14,17,23,.92)",
+    },
+
+    summary: {
+      display:
+        "grid",
+      gridTemplateColumns:
+        "repeat(4,minmax(0,1fr))",
+      gap:
+        "8px",
+    },
+
+    stat: {
+      minWidth:
+        0,
+      padding:
+        "12px",
+      border:
+        "1px solid rgba(255,255,255,.07)",
+      borderRadius:
+        "10px",
+      background:
+        "#0a0d12",
+      display:
+        "flex",
+      flexDirection:
+        "column",
+      gap:
+        "4px",
+    },
+
+    statLabel: {
+      color:
+        "#7f8793",
+      fontSize:
+        "9px",
+      fontWeight:
+        900,
+      letterSpacing:
+        ".08em",
+      textTransform:
+        "uppercase",
+    },
+
+    statValue: {
+      overflow:
+        "hidden",
+      textOverflow:
+        "ellipsis",
+      color:
+        "#fff",
+      fontSize:
+        "14px",
+      fontWeight:
+        950,
+    },
+
+    sectionHead: {
+      display:
+        "flex",
+      justifyContent:
+        "space-between",
+      gap:
+        "14px",
+      alignItems:
+        "flex-end",
+      flexWrap:
+        "wrap",
+      marginBottom:
+        "14px",
+    },
+
+    sectionEyebrow: {
+      color:
+        "#ff6a2b",
+      fontSize:
+        "10px",
+      fontWeight:
+        900,
+      letterSpacing:
+        ".12em",
+    },
+
+    sectionTitle: {
+      margin:
+        "3px 0 0",
+      fontSize:
+        "21px",
+      fontWeight:
+        950,
+    },
+
+    sectionMeta: {
+      color:
+        "#858d99",
+      fontSize:
+        "11px",
+      lineHeight:
+        1.45,
+      maxWidth:
+        "590px",
+    },
+
+    mobileNote: {
+      display:
+        "none",
+      marginBottom:
+        "10px",
+      padding:
+        "9px 10px",
+      border:
+        "1px solid rgba(255,255,255,.07)",
+      borderRadius:
+        "9px",
+      background:
+        "#0a0d12",
+      color:
+        "#8f97a3",
+      fontSize:
+        "10px",
+      lineHeight:
+        1.4,
+    },
+
+    round: {
+      minWidth:
+        0,
+      border:
+        "1px solid rgba(255,255,255,.08)",
+      borderRadius:
+        "13px",
+      overflow:
+        "hidden",
+      background:
+        "#090c11",
+    },
+
+    roundActive: {
+      border:
+        "1px solid rgba(255,91,30,.35)",
+      boxShadow:
+        "0 0 0 1px rgba(255,91,30,.06) inset",
+    },
+
+    roundHead: {
+      minHeight:
+        "62px",
+      display:
+        "flex",
+      alignItems:
+        "center",
+      justifyContent:
+        "space-between",
+      gap:
+        "10px",
+      padding:
+        "11px 12px",
+      borderBottom:
+        "1px solid rgba(255,255,255,.07)",
+      background:
+        "linear-gradient(135deg,rgba(142,18,18,.30),rgba(255,92,28,.08))",
+    },
+
+    roundKicker: {
+      display:
+        "block",
+      marginBottom:
+        "3px",
+      color:
+        "#8b929e",
+      fontSize:
+        "8px",
+      fontWeight:
+        900,
+      letterSpacing:
+        ".11em",
+    },
+
+    roundTitle: {
+      display:
+        "block",
+      color:
+        "#fff",
+      fontSize:
+        "13px",
+      fontWeight:
+        950,
+      lineHeight:
+        1.15,
+    },
+
+    roundStatus: {
+      flex:
+        "0 0 auto",
+      padding:
+        "4px 6px",
+      border:
+        "1px solid rgba(255,255,255,.08)",
+      borderRadius:
+        "999px",
+      color:
+        "#808894",
+      background:
+        "rgba(255,255,255,.025)",
+      fontSize:
+        "8px",
+      fontWeight:
+        900,
+      letterSpacing:
+        ".07em",
+    },
+
+    roundStatusActive: {
+      border:
+        "1px solid rgba(255,92,29,.26)",
+      color:
+        "#ff7840",
+      background:
+        "rgba(255,92,29,.08)",
+    },
+
+    roundBody: {
+      display:
+        "flex",
+      flexDirection:
+        "column",
+      justifyContent:
+        "space-around",
+      gap:
+        "11px",
+      minHeight:
+        "100%",
+      padding:
+        "11px",
+    },
+
+    game: {
+      overflow:
+        "hidden",
+      border:
+        "1px solid rgba(255,255,255,.10)",
+      borderRadius:
+        "10px",
+      background:
+        "#0d1016",
+    },
+
+    gameTop: {
+      display:
+        "flex",
+      alignItems:
+        "center",
+      justifyContent:
+        "space-between",
+      gap:
+        "8px",
+      minHeight:
+        "32px",
+      padding:
+        "7px 9px",
+      borderBottom:
+        "1px solid rgba(255,255,255,.06)",
+      color:
+        "#7e8692",
+      fontSize:
+        "8px",
+      fontWeight:
+        800,
+      lineHeight:
+        1.2,
+    },
+
+    status: {
+      flex:
+        "0 0 auto",
+      color:
+        "#9ea5af",
+      fontSize:
+        "8px",
+      fontWeight:
+        950,
+      letterSpacing:
+        ".05em",
+      textTransform:
+        "uppercase",
+    },
+
+    statusFinal: {
+      flex:
+        "0 0 auto",
+      color:
+        "#65d08d",
+      fontSize:
+        "8px",
+      fontWeight:
+        950,
+      letterSpacing:
+        ".06em",
+    },
+
+    teamLine: {
+      minWidth:
+        0,
+      display:
+        "flex",
+      alignItems:
+        "center",
+      justifyContent:
+        "space-between",
+      gap:
+        "8px",
+      padding:
+        "10px 9px",
+      borderBottom:
+        "1px solid rgba(255,255,255,.05)",
+    },
+
+    teamLineWinner: {
+      background:
+        "rgba(31,132,77,.14)",
+    },
+
+    teamIdentity: {
+      minWidth:
+        0,
+      display:
+        "flex",
+      alignItems:
+        "center",
+      gap:
+        "8px",
+    },
+
+    teamAbbreviation: {
+      flex:
+        "0 0 auto",
+      minWidth:
+        "34px",
+      color:
+        "#ff7437",
+      fontSize:
+        "10px",
+      fontWeight:
+        950,
+      letterSpacing:
+        ".03em",
+    },
+
+    gameScore: {
+      flex:
+        "0 0 auto",
+      color:
+        "#fff",
+      fontSize:
+        "16px",
+      fontWeight:
+        950,
+      fontVariantNumeric:
+        "tabular-nums",
+    },
+
+    tbdGame: {
+      minHeight:
+        "92px",
+      display:
+        "flex",
+      flexDirection:
+        "column",
+      alignItems:
+        "center",
+      justifyContent:
+        "center",
+      gap:
+        "3px",
+      padding:
+        "12px",
+      border:
+        "1px dashed rgba(255,255,255,.11)",
+      borderRadius:
+        "10px",
+      background:
+        "#090b10",
+      color:
+        "#929aa5",
+      textAlign:
+        "center",
+    },
+
+    tbdLabel: {
+      color:
+        "#6f7782",
+      fontSize:
+        "8px",
+      fontWeight:
+        900,
+      letterSpacing:
+        ".09em",
+    },
+
+    tbdCopy: {
+      maxWidth:
+        "190px",
+      color:
+        "#69717c",
+      fontSize:
+        "8px",
+      lineHeight:
+        1.35,
+    },
+
+    notice: {
+      display:
+        "flex",
+      flexDirection:
+        "column",
+      gap:
+        "5px",
+      padding:
+        "14px",
+      marginBottom:
+        "14px",
+      border:
+        "1px solid rgba(255,100,40,.18)",
+      borderRadius:
+        "11px",
+      background:
+        "rgba(102,29,14,.12)",
+      color:
+        "#c7cbd2",
+      fontSize:
+        "11px",
+      lineHeight:
+        1.5,
+    },
+  };
