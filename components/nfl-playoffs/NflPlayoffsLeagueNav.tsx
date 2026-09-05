@@ -38,6 +38,17 @@ export default function NflPlayoffsLeagueNav({
     NavItem[] = [
       {
         label:
+          "Home",
+
+        mobileLabel:
+          "Home",
+
+        href:
+          base,
+      },
+
+      {
+        label:
           "My Entry",
 
         mobileLabel:
@@ -139,11 +150,9 @@ export default function NflPlayoffsLeagueNav({
   ) {
     if (
       item.href ===
-      `${base}/entry`
+      base
     ) {
       return (
-        pathname ===
-          item.href ||
         pathname ===
           base ||
         pathname ===
