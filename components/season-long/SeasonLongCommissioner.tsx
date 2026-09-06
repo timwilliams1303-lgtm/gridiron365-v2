@@ -227,14 +227,6 @@ export default function SeasonLongCommissioner({
 
   const [addingInviteSlots, setAddingInviteSlots] =
     useState(false);
-
-  const [deleteLeagueName, setDeleteLeagueName] =
-    useState("");
-
-  const [deletingLeague, setDeletingLeague] =
-    useState(false);
-
-
   const loadPendingInvitations =
     useCallback(
       async () => {
@@ -717,76 +709,6 @@ export default function SeasonLongCommissioner({
     } finally {
       setRemovingOwnerTeamId(
         null
-      );
-    }
-  }
-
-
-  async function deleteLeague() {
-    if (
-      !data?.league ||
-      deletingLeague
-    ) {
-      return;
-    }
-
-    if (
-      deleteLeagueName.trim() !==
-      data.league.name
-    ) {
-      setError(
-        `Type "${data.league.name}" exactly before deleting this league.`
-      );
-      return;
-    }
-
-    if (
-      !window.confirm(
-        `Permanently delete ${data.league.name}? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
-
-    setDeletingLeague(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const {
-        error:
-          deleteError,
-      } =
-        await supabase.rpc(
-          "commissioner_delete_league",
-          {
-            p_league_id:
-              leagueId,
-          }
-        );
-
-      if (deleteError) {
-        throw new Error(
-          deleteError.message
-        );
-      }
-
-      router.replace(
-        "/my-leagues"
-      );
-
-      router.refresh();
-    } catch (
-      actionError
-    ) {
-      setError(
-        actionError instanceof Error
-          ? actionError.message
-          : "The league could not be deleted."
-      );
-
-      setDeletingLeague(
-        false
       );
     }
   }
@@ -1673,86 +1595,6 @@ export default function SeasonLongCommissioner({
                 )}
               </div>
             </Section>
-
-            <Section
-              title="Danger Zone"
-              subtitle="Only the primary commissioner can permanently delete the league."
-            >
-              <div
-                style={
-                  styles.dangerZone
-                }
-              >
-                <div>
-                  <strong>
-                    DELETE LEAGUE
-                  </strong>
-
-                  <p
-                    style={
-                      styles.dangerText
-                    }
-                  >
-                    Permanently deletes this league and all league-owned data.
-                    This action cannot be undone.
-                  </p>
-                </div>
-
-                <label
-                  style={
-                    styles.field
-                  }
-                >
-                  <span
-                    style={
-                      styles.fieldLabel
-                    }
-                  >
-                    Type {data.league.name} to confirm
-                  </span>
-
-                  <input
-                    type="text"
-                    value={
-                      deleteLeagueName
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setDeleteLeagueName(
-                        event.target.value
-                      )
-                    }
-                    placeholder={
-                      data.league.name
-                    }
-                    style={
-                      styles.input
-                    }
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  disabled={
-                    deletingLeague ||
-                    deleteLeagueName.trim() !==
-                      data.league.name
-                  }
-                  onClick={() =>
-                    void deleteLeague()
-                  }
-                  style={{
-                    ...styles.button,
-                    ...styles.dangerButton,
-                  }}
-                >
-                  {deletingLeague
-                    ? "DELETING…"
-                    : "PERMANENTLY DELETE LEAGUE"}
-                </button>
-              </div>
-            </Section>
           </>
         ) : null}
 
@@ -2562,28 +2404,5 @@ const styles:
         "14px",
       background:
         "rgba(20,20,24,.94)",
-    },
-  
-    dangerZone: {
-      display: "grid",
-      gap: "12px",
-      marginTop: "8px",
-      padding: "16px",
-      border: "1px solid rgba(255,75,75,.32)",
-      borderRadius: "12px",
-      background: "rgba(135,15,15,.12)",
-    },
-
-    dangerText: {
-      margin: "6px 0 0",
-      color: "#a7adb7",
-      fontSize: "12px",
-      lineHeight: 1.55,
-    },
-
-    dangerButton: {
-      border: "1px solid rgba(255,75,75,.5)",
-      background: "linear-gradient(135deg,#7d1111,#b51c14)",
-      color: "#fff",
     },
 };

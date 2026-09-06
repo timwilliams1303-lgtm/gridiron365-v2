@@ -163,6 +163,9 @@ export default function DeleteLeagueButton({
 
 const styles = {
   wrap: {
+    width:
+      "100%",
+
     display:
       "flex",
 
@@ -170,7 +173,7 @@ const styles = {
       "column" as const,
 
     alignItems:
-      "flex-end",
+      "stretch",
 
     gap:
       "8px",
@@ -178,6 +181,12 @@ const styles = {
 
 
   button: {
+    width:
+      "100%",
+
+    minHeight:
+      "42px",
+
     appearance:
       "none" as const,
 
@@ -194,7 +203,7 @@ const styles = {
       "#fca5a5",
 
     padding:
-      "9px 13px",
+      "10px 14px",
 
     fontSize:
       "12px",
@@ -224,6 +233,6 @@ const styles = {
       1.4,
 
     textAlign:
-      "right" as const,
+      "center" as const,
   },
 };

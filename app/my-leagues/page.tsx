@@ -481,34 +481,35 @@ export default async function MyLeaguesPage() {
                         </div>
                       ) : null}
                     </div>
-
-
-                    <div
-                      style={
-                        styles.openRow
-                      }
-                    >
-                      <span>
-                        Open League
-                      </span>
-
-
-                      <span
-                        aria-hidden="true"
-                      >
-                        →
-                      </span>
-                    </div>
                   </Link>
 
-
-                  {league.role ===
-                  "commissioner" ? (
-                    <div
+                  <div
+                    style={{
+                      ...styles.cardActions,
+                      gridTemplateColumns:
+                        league.role ===
+                        "commissioner"
+                          ? "repeat(2, minmax(0, 1fr))"
+                          : "1fr",
+                    }}
+                  >
+                    <Link
+                      href={
+                        getLeagueParticipantHomePath(
+                          league.leagueType,
+                          league.id
+                        )
+                      }
                       style={
-                        styles.cardAdminRow
+                        styles.openAction
                       }
                     >
+                      Open League
+                    </Link>
+
+
+                    {league.role ===
+                    "commissioner" ? (
                       <DeleteLeagueButton
                         leagueId={
                           league.id
@@ -517,8 +518,8 @@ export default async function MyLeaguesPage() {
                           league.name
                         }
                       />
-                    </div>
-                  ) : null}
+                    ) : null}
+                  </div>
                 </Card>
               )
             )}
@@ -768,15 +769,66 @@ const styles = {
   },
 
 
-  cardAdminRow: {
+  cardActions: {
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "repeat(2, minmax(0, 1fr))",
+
+    gap:
+      "10px",
+
     padding:
       "0 18px 18px",
 
+    alignItems:
+      "stretch",
+  },
+
+
+  openAction: {
+    minHeight:
+      "42px",
+
     display:
-      "flex",
+      "inline-flex",
+
+    alignItems:
+      "center",
 
     justifyContent:
-      "flex-end",
+      "center",
+
+    padding:
+      "10px 14px",
+
+    borderRadius:
+      "10px",
+
+    border:
+      "1px solid rgba(249,115,22,.55)",
+
+    background:
+      "linear-gradient(135deg, rgba(220,38,38,.24), rgba(249,115,22,.20))",
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "12px",
+
+    fontWeight:
+      800,
+
+    letterSpacing:
+      ".04em",
+
+    textDecoration:
+      "none",
+
+    textAlign:
+      "center" as const,
   },
 
 

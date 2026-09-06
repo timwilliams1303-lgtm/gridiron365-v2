@@ -1147,6 +1147,33 @@ export default function NhlPickemLeaguePicks({
     }
 
 
+    function refreshShellAndPeriod() {
+      if (
+        !active ||
+        document.visibilityState ===
+          "hidden"
+      ) {
+        return;
+      }
+
+      void loadShell()
+        .then(() => {
+          scheduleRefresh();
+        })
+        .catch((error) => {
+          if (!active) {
+            return;
+          }
+
+          setMessage(
+            error instanceof Error
+              ? error.message
+              : "NHL League Picks membership could not be refreshed."
+          );
+        });
+    }
+
+
     void run();
 
 
@@ -1206,6 +1233,19 @@ export default function NhlPickemLeaguePicks({
               `league_id=eq.${leagueId}`,
           },
           scheduleRefresh
+        )
+
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table:
+              "nhl_pickem_entries",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          refreshShellAndPeriod
         )
 
         .subscribe(
@@ -1280,6 +1320,7 @@ export default function NhlPickemLeaguePicks({
   }, [
     leagueId,
     loadPeriodData,
+    loadShell,
     loading,
     season,
     selectedPeriod,

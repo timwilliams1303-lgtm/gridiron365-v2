@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -440,6 +441,16 @@ export default function NhlPickemMyPicks({
         createSupabaseBrowserClient(),
       []
     );
+
+
+  const refreshTimerRef =
+    useRef<number | null>(null);
+
+  const refreshBlockedRef =
+    useRef(false);
+
+  const refreshPendingRef =
+    useRef(false);
 
 
   const [
@@ -1283,32 +1294,255 @@ export default function NhlPickemMyPicks({
       }
     }
 
+
+    function performRefresh() {
+      if (
+        !active ||
+        document.visibilityState ===
+          "hidden"
+      ) {
+        return;
+      }
+
+      if (
+        refreshBlockedRef.current
+      ) {
+        refreshPendingRef.current =
+          true;
+
+        return;
+      }
+
+      refreshBlockedRef.current =
+        true;
+
+      refreshPendingRef.current =
+        false;
+
+      void run().finally(
+        () => {
+          window.setTimeout(
+            () => {
+              if (!active) {
+                return;
+              }
+
+              refreshBlockedRef.current =
+                false;
+
+              if (
+                refreshPendingRef.current
+              ) {
+                refreshPendingRef.current =
+                  false;
+
+                performRefresh();
+              }
+            },
+            500
+          );
+        }
+      );
+    }
+
+
+    function scheduleRefresh() {
+      if (
+        !active ||
+        document.visibilityState ===
+          "hidden"
+      ) {
+        return;
+      }
+
+      if (
+        refreshTimerRef.current !==
+        null
+      ) {
+        window.clearTimeout(
+          refreshTimerRef.current
+        );
+      }
+
+      refreshTimerRef.current =
+        window.setTimeout(
+          () => {
+            refreshTimerRef.current =
+              null;
+
+            performRefresh();
+          },
+          150
+        );
+    }
+
+
+    /*
+     * Initial period load.
+     */
     void run();
 
 
     /*
-     * NHL score/game-state refresh.
+     * Live NHL Pick'em synchronization.
+     *
+     * Realtime database changes immediately
+     * reload the current user's active card.
      */
-    const timer =
+    const channel =
+      supabase
+        .channel(
+          `nhl-pickem-my-picks-${leagueId}-${fantasyTeamId}-${selectedPeriod?.id ?? "none"}`
+        )
+
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table:
+              "nhl_pickem_picks",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          scheduleRefresh
+        )
+
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table:
+              "nhl_pickem_games",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          scheduleRefresh
+        )
+
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table:
+              "nhl_pickem_periods",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          scheduleRefresh
+        )
+
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table:
+              "nhl_pickem_period_results",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          scheduleRefresh
+        )
+
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table:
+              "nhl_pickem_entries",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          scheduleRefresh
+        )
+
+        .subscribe(
+          (status) => {
+            if (
+              status ===
+                "CHANNEL_ERROR" ||
+              status ===
+                "TIMED_OUT"
+            ) {
+              console.error(
+                "NHL Pick'em My Picks realtime error:",
+                status,
+                leagueId,
+                fantasyTeamId
+              );
+            }
+          }
+        );
+
+
+    /*
+     * Safety fallback. Realtime should normally
+     * refresh first; this covers brief websocket
+     * interruptions without requiring a browser
+     * refresh.
+     */
+    const fallbackTimer =
       window.setInterval(
-        () => {
-          void run();
-        },
-        15000
+        performRefresh,
+        10_000
       );
+
+
+    function handleVisibilityChange() {
+      if (
+        document.visibilityState ===
+          "visible"
+      ) {
+        performRefresh();
+      }
+    }
+
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
 
 
     return () => {
       active = false;
 
+      if (
+        refreshTimerRef.current !==
+        null
+      ) {
+        window.clearTimeout(
+          refreshTimerRef.current
+        );
+
+        refreshTimerRef.current =
+          null;
+      }
+
       window.clearInterval(
-        timer
+        fallbackTimer
+      );
+
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+
+      void supabase.removeChannel(
+        channel
       );
     };
   }, [
+    fantasyTeamId,
+    leagueId,
     loadPeriod,
     loading,
     selectedPeriod,
+    supabase,
   ]);
 
 

@@ -216,7 +216,6 @@ type ScoringRule = {
 
 type InviteApiResponse = {
   success?: boolean;
-  resent?: boolean;
   error?: string;
   message?: string;
   inviteUrl?: string;
@@ -226,25 +225,6 @@ type InviteApiResponse = {
   url?: string;
 };
 
-type PendingInviteApiResponse = {
-  success?: boolean;
-  error?: string;
-  pendingCount?: number;
-  invitations?: Array<{
-    id: string;
-    leagueId: string;
-    fantasyTeamId: number | null;
-    firstName: string | null;
-    lastName: string | null;
-    email: string;
-    status: string;
-    expiresAt: string | null;
-    emailSentAt: string | null;
-    createdAt: string | null;
-    updatedAt: string | null;
-  }>;
-};
-
 type LeagueInvitation = {
   id: string;
   league_id: string;
@@ -252,9 +232,6 @@ type LeagueInvitation = {
   email: string;
   status: string;
   expires_at: string | null;
-  email_sent_at: string | null;
-  created_at: string | null;
-  updated_at: string | null;
 };
 
 type ScoringCategoryKey =
@@ -463,24 +440,6 @@ function localDate(value: string | null) {
   return shifted.toISOString().slice(0, 16);
 }
 
-function invitationDate(value: string | null | undefined) {
-  if (!value) return "Not available";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Not available";
-  }
-
-  return date.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 function playoffRounds(teamCount: number) {
   const count = Math.max(2, teamCount);
   return Math.ceil(Math.log2(count));
@@ -594,7 +553,6 @@ export default function TraditionalCommissioner({
   const [invitations, setInvitations] = useState<LeagueInvitation[]>([]);
   const [cpuBusy, setCpuBusy] = useState(false);
   const [removingOwnerTeamId, setRemovingOwnerTeamId] = useState<number | null>(null);
-  const [deletingLeague, setDeletingLeague] = useState(false);
 
   const [rosterTeamId, setRosterTeamId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
@@ -651,6 +609,11 @@ export default function TraditionalCommissioner({
       supabase.from("league_scoring_rules").select("id,league_id,category,rule_type,stat_key,min_value,max_value,points,is_enabled,stacking_mode,priority,label").eq("league_id", leagueId).order("category").order("priority"),
       supabase.from("traditional_waiver_claims").select("*").eq("league_id", leagueId).order("submitted_at", { ascending: false }).limit(100),
       supabase.from("traditional_trade_offers").select("*").eq("league_id", leagueId).order("created_at", { ascending: false }).limit(100),
+      supabase
+        .from("league_invitations")
+        .select("id,league_id,fantasy_team_id,email,status,expires_at")
+        .eq("league_id", leagueId)
+        .eq("status", "pending"),
     ]);
 
     const failed = results.find((r) => r.error);
@@ -659,64 +622,6 @@ export default function TraditionalCommissioner({
       if (showLoading) setLoading(false);
       return;
     }
-
-    const sessionResult = await supabase.auth.getSession();
-
-    if (sessionResult.error) {
-      setError(sessionResult.error.message);
-      if (showLoading) setLoading(false);
-      return;
-    }
-
-    const accessToken = sessionResult.data.session?.access_token;
-
-    if (!accessToken) {
-      setError("Your login session is missing. Sign in again and retry.");
-      if (showLoading) setLoading(false);
-      return;
-    }
-
-    const invitationResponse = await fetch(
-      `/api/league/${leagueId}/invite`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        cache: "no-store",
-      }
-    );
-
-    let invitationPayload: PendingInviteApiResponse = {};
-
-    try {
-      invitationPayload =
-        (await invitationResponse.json()) as PendingInviteApiResponse;
-    } catch {
-      invitationPayload = {};
-    }
-
-    if (!invitationResponse.ok || invitationPayload.success === false) {
-      setError(
-        invitationPayload.error ??
-          "Pending league invitations could not be loaded."
-      );
-      if (showLoading) setLoading(false);
-      return;
-    }
-
-    const loadedInvitations: LeagueInvitation[] =
-      (invitationPayload.invitations ?? []).map((invite) => ({
-        id: invite.id,
-        league_id: invite.leagueId,
-        fantasy_team_id: invite.fantasyTeamId,
-        email: invite.email,
-        status: invite.status,
-        expires_at: invite.expiresAt,
-        email_sent_at: invite.emailSentAt,
-        created_at: invite.createdAt,
-        updated_at: invite.updatedAt,
-      }));
 
     setLeague(results[0].data as League);
     setLeagueSettings(results[1].data as LeagueSettings | null);
@@ -793,7 +698,7 @@ export default function TraditionalCommissioner({
     setScoringRules((results[13].data ?? []) as ScoringRule[]);
     setClaims((results[14].data ?? []) as WaiverClaim[]);
     setOffers((results[15].data ?? []) as TradeOffer[]);
-    setInvitations(loadedInvitations);
+    setInvitations((results[16].data ?? []) as LeagueInvitation[]);
 
     const activeTeams = ((results[9].data ?? []) as Team[]).filter((team) => team.active);
 
@@ -1187,15 +1092,12 @@ export default function TraditionalCommissioner({
 
   async function sendTeamInvite(
     team: Team | null,
-    slotIndex: number,
-    resendEmail?: string
+    slotIndex: number
   ) {
     if (!league || invitingTeamId !== null) return;
 
     const inviteKey = team?.id ?? -(slotIndex + 1);
-    const email = (resendEmail ?? teamInviteEmails[inviteKey] ?? "")
-      .trim()
-      .toLowerCase();
+    const email = (teamInviteEmails[inviteKey] ?? "").trim().toLowerCase();
 
     if (!email || !email.includes("@")) {
       setError(`Enter a valid email address for Team ${slotIndex + 1}.`);
@@ -1280,12 +1182,7 @@ export default function TraditionalCommissioner({
         );
       }
 
-      setSuccess(
-        result.message ??
-          (result.resent
-            ? `Invitation resent to ${email} for ${teamName}.`
-            : `Invitation sent to ${email} for ${teamName}.`)
-      );
+      setSuccess(`Invitation sent to ${email} for ${teamName}.`);
       setTeamInviteEmails((current) => ({
         ...current,
         [inviteKey]: "",
@@ -1536,45 +1433,6 @@ export default function TraditionalCommissioner({
       );
     } finally {
       setRemovingOwnerTeamId(null);
-    }
-  }
-
-  async function deleteLeague() {
-    if (!league || deletingLeague) return;
-
-    if (
-      !window.confirm(
-        `Permanently delete ${league.name}? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
-
-    setDeletingLeague(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const { error: deleteError } = await supabase.rpc(
-        "commissioner_delete_league",
-        {
-          p_league_id: leagueId,
-        }
-      );
-
-      if (deleteError) {
-        throw new Error(deleteError.message);
-      }
-
-      router.replace("/my-leagues");
-      router.refresh();
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "The league could not be deleted."
-      );
-      setDeletingLeague(false);
     }
   }
 
@@ -2237,17 +2095,6 @@ export default function TraditionalCommissioner({
                                 <>
                                   <strong>INVITE PENDING</strong>
                                   <span>{pendingInvite.email}</span>
-                                  <span>
-                                    Sent:{" "}
-                                    {invitationDate(
-                                      pendingInvite.email_sent_at ??
-                                        pendingInvite.created_at
-                                    )}
-                                  </span>
-                                  <span>
-                                    Expires:{" "}
-                                    {invitationDate(pendingInvite.expires_at)}
-                                  </span>
                                 </>
                               ) : isVacant ? (
                                 <>
@@ -2273,23 +2120,6 @@ export default function TraditionalCommissioner({
                                   {invitingTeamId === inviteKey
                                     ? "SENDING…"
                                     : "✉ INVITE"}
-                                </Button>
-                              ) : null}
-
-                              {team && !isCpu && !hasOwner && pendingInvite ? (
-                                <Button
-                                  disabled={invitingTeamId !== null}
-                                  onClick={() =>
-                                    void sendTeamInvite(
-                                      team,
-                                      index,
-                                      pendingInvite.email
-                                    )
-                                  }
-                                >
-                                  {invitingTeamId === inviteKey
-                                    ? "RESENDING…"
-                                    : "RESEND INVITE"}
                                 </Button>
                               ) : null}
 
@@ -2357,31 +2187,6 @@ export default function TraditionalCommissioner({
                           </div>
                         );
                       })}
-                    </div>
-                  </Section>
-
-                  <Section
-                    title="Danger Zone"
-                    subtitle="Only the primary commissioner can permanently delete the league."
-                  >
-                    <div style={styles.dangerZone}>
-                      <div>
-                        <strong>DELETE LEAGUE</strong>
-                        <p style={styles.smallMuted}>
-                          This permanently deletes the league and all league-owned data.
-                          This action cannot be undone.
-                        </p>
-                      </div>
-
-                      <Button
-                        danger
-                        disabled={deletingLeague || !league}
-                        onClick={() => void deleteLeague()}
-                      >
-                        {deletingLeague
-                          ? "DELETING…"
-                          : "PERMANENTLY DELETE LEAGUE"}
-                      </Button>
                     </div>
                   </Section>
                 </>
@@ -2943,5 +2748,4 @@ const styles: Record<string, React.CSSProperties> = {
   teamToolbar: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap", marginBottom: "12px", padding: "12px", border: "1px solid rgba(255,95,40,.18)", borderRadius: "10px", background: "rgba(255,80,25,.045)" },
   vacantField: { display: "flex", flexDirection: "column", gap: "6px", minHeight: "40px", justifyContent: "center", color: "#d8dce3" },
   smallMuted: { margin: "5px 0 0", color: "#8f96a2", fontSize: "11px", lineHeight: 1.5 },
-  dangerZone: { display: "grid", gap: "12px", padding: "14px", border: "1px solid rgba(255,75,75,.34)", borderRadius: "10px", background: "rgba(130,10,10,.12)" },
 };
