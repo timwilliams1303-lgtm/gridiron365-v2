@@ -4,6 +4,7 @@ import Link from "next/link";
 import Card from "@/components/ui/Card";
 import LogoutButton from "@/components/auth/LogoutButton";
 import InstallGridiron365 from "@/components/pwa/InstallGridiron365";
+import DeleteLeagueButton from "@/components/leagues/DeleteLeagueButton";
 
 import {
   requireUser,
@@ -292,23 +293,23 @@ export default async function MyLeaguesPage() {
               (
                 league
               ) => (
-                <Link
+                <Card
                   key={
                     league.id
                   }
-                  href={
-                    getLeagueParticipantHomePath(
-                      league.leagueType,
-                      league.id
-                    )
-                  }
                   style={
-                    styles.leagueLink
+                    styles.leagueCard
                   }
                 >
-                  <Card
+                  <Link
+                    href={
+                      getLeagueParticipantHomePath(
+                        league.leagueType,
+                        league.id
+                      )
+                    }
                     style={
-                      styles.leagueCard
+                      styles.leagueLink
                     }
                   >
                     <div
@@ -376,7 +377,9 @@ export default async function MyLeaguesPage() {
                             {league.leagueType ===
                               "season_long" ||
                             league.leagueType ===
-                              "pickem"
+                              "pickem" ||
+                            league.leagueType ===
+                              "nhl_pickem"
                               ? "My Entry"
                               : "My Team"}
                           </span>
@@ -496,8 +499,27 @@ export default async function MyLeaguesPage() {
                         →
                       </span>
                     </div>
-                  </Card>
-                </Link>
+                  </Link>
+
+
+                  {league.role ===
+                  "commissioner" ? (
+                    <div
+                      style={
+                        styles.cardAdminRow
+                      }
+                    >
+                      <DeleteLeagueButton
+                        leagueId={
+                          league.id
+                        }
+                        leagueName={
+                          league.name
+                        }
+                      />
+                    </div>
+                  ) : null}
+                </Card>
               )
             )}
           </section>
@@ -743,6 +765,18 @@ const styles = {
 
     textDecoration:
       "none",
+  },
+
+
+  cardAdminRow: {
+    padding:
+      "0 18px 18px",
+
+    display:
+      "flex",
+
+    justifyContent:
+      "flex-end",
   },
 
 
