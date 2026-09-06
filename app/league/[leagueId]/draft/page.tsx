@@ -2691,6 +2691,106 @@ export default function TraditionalDraftPage() {
     );
 
 
+  const loadAllActiveDraftPlayers =
+    useCallback(
+      async () => {
+        const pageSize =
+          1000;
+
+        let from =
+          0;
+
+        const allPlayers:
+          PlayerRow[] =
+            [];
+
+        while (
+          true
+        ) {
+          const {
+            data,
+            error,
+          } =
+            await supabase
+              .from(
+                "nfl_players"
+              )
+              .select(
+                "id, full_name, first_name, last_name, primary_position, team_abbreviation, status, is_active, headshot_url"
+              )
+              .eq(
+                "is_active",
+                true
+              )
+              .order(
+                "id",
+                {
+                  ascending:
+                    true,
+                }
+              )
+              .range(
+                from,
+                from +
+                  pageSize -
+                  1
+              );
+
+          if (
+            error
+          ) {
+            return {
+              data:
+                [] as PlayerRow[],
+
+              error,
+            };
+          }
+
+          const page =
+            (
+              data ??
+              []
+            ).map(
+              (
+                raw
+              ) => ({
+                ...(raw as PlayerRow),
+
+                id:
+                  Number(
+                    raw.id
+                  ),
+              })
+            ) as PlayerRow[];
+
+          allPlayers.push(
+            ...page
+          );
+
+          if (
+            page.length <
+            pageSize
+          ) {
+            break;
+          }
+
+          from +=
+            pageSize;
+        }
+
+        return {
+          data:
+            allPlayers,
+
+          error:
+            null,
+        };
+      },
+      []
+    );
+
+
   const loadStaticData =
     useCallback(
       async () => {
@@ -2852,17 +2952,7 @@ export default function TraditionalDraftPage() {
                 true
               ),
 
-            supabase
-              .from(
-                "nfl_players"
-              )
-              .select(
-                "id, full_name, first_name, last_name, primary_position, team_abbreviation, status, is_active, headshot_url"
-              )
-              .eq(
-                "is_active",
-                true
-              ),
+            loadAllActiveDraftPlayers(),
 
             supabase
               .from(
@@ -3138,6 +3228,7 @@ export default function TraditionalDraftPage() {
       },
       [
         leagueId,
+        loadAllActiveDraftPlayers,
       ]
     );
 
