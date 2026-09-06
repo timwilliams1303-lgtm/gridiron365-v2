@@ -1830,6 +1830,24 @@ export default function TraditionalDraftPage() {
     );
 
 
+  /*
+   * Realtime is the fast path, but the database remains authoritative.
+   * CPU picks can happen only a few seconds apart, so if one Realtime INSERT
+   * is delayed or missed we reconcile the complete pick list without allowing
+   * overlapping reconciliation queries to overwrite newer state.
+   */
+  const reconcilePicksInFlightRef =
+    useRef(
+      false
+    );
+
+
+  const reconcilePicksPendingRef =
+    useRef(
+      false
+    );
+
+
   const zeroRetryTimerRef =
     useRef<
       number |
@@ -3017,6 +3035,165 @@ export default function TraditionalDraftPage() {
     );
 
 
+  const reconcileDraftPicks =
+    useCallback(
+      async (
+        draftId: string
+      ) => {
+        if (
+          reconcilePicksInFlightRef.current
+        ) {
+          reconcilePicksPendingRef.current =
+            true;
+
+          return;
+        }
+
+
+        reconcilePicksInFlightRef.current =
+          true;
+
+
+        try {
+          do {
+            reconcilePicksPendingRef.current =
+              false;
+
+
+            const {
+              data,
+              error,
+            } =
+              await supabase
+                .from(
+                  "league_draft_picks"
+                )
+                .select(
+                  "*"
+                )
+                .eq(
+                  "draft_id",
+                  draftId
+                )
+                .order(
+                  "overall_pick"
+                );
+
+
+            if (
+              error
+            ) {
+              console.error(
+                "Live draft pick reconciliation failed:",
+                error
+              );
+
+              setError(
+                error.message
+              );
+
+              return;
+            }
+
+
+            const authoritativePicks =
+              (
+                data ??
+                []
+              ).map(
+                (raw) => {
+                  const pick =
+                    raw as DraftPickRow;
+
+
+                  return {
+                    ...pick,
+
+                    id:
+                      Number(
+                        pick.id
+                      ),
+
+                    player_id:
+                      Number(
+                        pick.player_id
+                      ),
+
+                    fantasy_team_id:
+                      Number(
+                        pick.fantasy_team_id
+                      ),
+
+                    draft_slot:
+                      Number(
+                        pick.draft_slot
+                      ),
+
+                    overall_pick:
+                      Number(
+                        pick.overall_pick
+                      ),
+
+                    round_number:
+                      Number(
+                        pick.round_number
+                      ),
+
+                    pick_in_round:
+                      Number(
+                        pick.pick_in_round
+                      ),
+                  } as DraftPickRow;
+                }
+              );
+
+
+            const draftedIds =
+              new Set(
+                authoritativePicks.map(
+                  (pick) =>
+                    pick.player_id
+                )
+              );
+
+
+            setPicks(
+              authoritativePicks
+            );
+
+
+            setSelectedPlayerId(
+              (current) =>
+                current !== null &&
+                draftedIds.has(
+                  current
+                )
+                  ? null
+                  : current
+            );
+
+
+            setQueueIds(
+              (current) =>
+                current.filter(
+                  (playerId) =>
+                    !draftedIds.has(
+                      playerId
+                    )
+                )
+            );
+          } while (
+            reconcilePicksPendingRef.current
+          );
+        } finally {
+          reconcilePicksInFlightRef.current =
+            false;
+        }
+      },
+      []
+    );
+
+
   const driveDraftNow =
     useCallback(
       async () => {
@@ -3096,6 +3273,15 @@ export default function TraditionalDraftPage() {
           }
 
 
+          if (
+            result?.pickProcessed
+          ) {
+            await reconcileDraftPicks(
+              draft.id
+            );
+          }
+
+
           return result;
         } finally {
           driveInFlightRef.current =
@@ -3105,6 +3291,7 @@ export default function TraditionalDraftPage() {
       [
         draft?.id,
         updateServerClockOffset,
+        reconcileDraftPicks,
       ]
     );
 
@@ -3380,6 +3567,16 @@ export default function TraditionalDraftPage() {
 
               setDraft(
                 updatedDraft
+              );
+
+
+              /*
+               * A draft-row advance is authoritative evidence that the turn
+               * changed. Reconcile all picks here as a safety net in case one
+               * or more rapid CPU-pick INSERT events were missed by Realtime.
+               */
+              void reconcileDraftPicks(
+                draftId
               );
 
 
@@ -3683,6 +3880,7 @@ export default function TraditionalDraftPage() {
     },
     [
       draft?.id,
+      reconcileDraftPicks,
     ]
   );
 
@@ -14849,6 +15047,7 @@ const styles = {
   },
 
 } as const;
+
 
 
 
