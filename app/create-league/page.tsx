@@ -36,7 +36,8 @@ type LeagueFormat = {
     | "season_long_no_salary"
     | "playoffs_salary"
     | "playoffs_no_salary"
-    | "pickem";
+    | "pickem"
+    | "nhl_pickem";
 
   title:
     string;
@@ -155,6 +156,23 @@ const leagueFormats:
       playerSelectionMode:
         "pickem",
     },
+
+    {
+      id:
+        "nhl_pickem",
+
+      title:
+        "G365 NHL Pick'em",
+
+      description:
+        "Make weekly NHL picks against frozen G365 Puck Lines and G365 Totals. Official lines are frozen and audited before picks lock at puck drop.",
+
+      leagueType:
+        "nhl_pickem",
+
+      playerSelectionMode:
+        "standard",
+    },
   ];
 
 
@@ -259,10 +277,16 @@ export default function CreateLeaguePage() {
     "pickem";
 
 
+  const isNhlPickem =
+    selectedFormat.leagueType ===
+    "nhl_pickem";
+
+
   const requiresTeamName =
     isTraditional ||
     isSeasonLong ||
-    isPickem;
+    isPickem ||
+    isNhlPickem;
 
 
   const isSalary =
@@ -349,7 +373,10 @@ export default function CreateLeaguePage() {
        * commissioner directly there.
        */
       router.replace(
-        "/my-leagues"
+        result.leagueType ===
+        "nhl_pickem"
+          ? `/league/${result.leagueId}/nhl-pickem`
+          : "/my-leagues"
       );
 
       router.refresh();
@@ -430,7 +457,7 @@ export default function CreateLeaguePage() {
               styles.subtitle
             }
           >
-            Choose the fantasy football format you want to play.
+            Choose the G365 fantasy or pick'em format you want to play.
           </p>
         </div>
 
@@ -708,6 +735,31 @@ export default function CreateLeaguePage() {
                   Individual players lock when their NFL games
                   begin. Players in later games remain editable
                   until their own kickoff.
+                </span>
+              </div>
+            ) : null}
+
+
+            {isNhlPickem ? (
+              <div
+                style={
+                  styles.contestInfo
+                }
+              >
+                <strong>
+                  G365 NHL Pick'em
+                </strong>
+
+                <span>
+                  Make weekly NHL selections using the frozen G365
+                  Puck Line, G365 Total, or both, depending on the
+                  commissioner settings.
+                </span>
+
+                <span>
+                  Picks lock at each game's puck drop. Official G365
+                  lines are frozen from the configured sportsbook
+                  source coverage and remain auditable for grading.
                 </span>
               </div>
             ) : null}

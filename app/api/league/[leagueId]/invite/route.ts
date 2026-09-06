@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+import {
+  leagueAllowsAutomaticParticipantSlot,
+} from "@/lib/leagues/participant-standard";
+
 type RouteContext = {
   params: Promise<{
     leagueId: string;
@@ -295,21 +299,497 @@ async function sendInvitationEmail({
 
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: RouteContext
 ) {
-  const {
-    leagueId,
-  } =
-    await context.params;
+  try {
+    const {
+      leagueId:
+        rawLeagueId,
+    } =
+      await context.params;
 
-  return NextResponse.json({
-    success: true,
-    leagueId,
+    const leagueId =
+      rawLeagueId
+        ?.trim();
 
-    message:
-      "Gridiron365 league invitation API is running.",
-  });
+    if (!leagueId) {
+      return jsonError(
+        "League ID is required.",
+        400
+      );
+    }
+
+    const authorization =
+      request.headers.get(
+        "authorization"
+      );
+
+    if (
+      !authorization
+        ?.startsWith(
+          "Bearer "
+        )
+    ) {
+      return jsonError(
+        "You must be signed in to view league invitations.",
+        401
+      );
+    }
+
+    const accessToken =
+      authorization
+        .slice(
+          "Bearer ".length
+        )
+        .trim();
+
+    if (!accessToken) {
+      return jsonError(
+        "Your login token is missing.",
+        401
+      );
+    }
+
+    const {
+      supabaseUrl,
+      publishableKey,
+      adminKey,
+    } =
+      getEnvironment();
+
+    const userClient =
+      createUserClient(
+        supabaseUrl,
+        publishableKey,
+        accessToken
+      );
+
+    const admin =
+      createAdminClient(
+        supabaseUrl,
+        adminKey
+      );
+
+    const {
+      data: {
+        user,
+      },
+      error:
+        userError,
+    } =
+      await userClient
+        .auth
+        .getUser(
+          accessToken
+        );
+
+    if (
+      userError ||
+      !user
+    ) {
+      return jsonError(
+        userError
+          ?.message ??
+          "Your login session is invalid.",
+        401
+      );
+    }
+
+    const {
+      data:
+        membership,
+      error:
+        membershipError,
+    } =
+      await admin
+        .from(
+          "league_members"
+        )
+        .select(
+          "id,role"
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "user_id",
+          user.id
+        )
+        .maybeSingle();
+
+    if (membershipError) {
+      return jsonError(
+        membershipError.message,
+        500
+      );
+    }
+
+    if (
+      !membership ||
+      ![
+        "commissioner",
+        "co_commissioner",
+      ].includes(
+        membership.role
+      )
+    ) {
+      return jsonError(
+        "You do not have permission to view league invitations.",
+        403
+      );
+    }
+
+    const {
+      data:
+        league,
+      error:
+        leagueError,
+    } =
+      await admin
+        .from(
+          "leagues"
+        )
+        .select(
+          "id,name,league_type,season"
+        )
+        .eq(
+          "id",
+          leagueId
+        )
+        .maybeSingle();
+
+    if (
+      leagueError ||
+      !league
+    ) {
+      return jsonError(
+        leagueError
+          ?.message ??
+          "League not found.",
+        404
+      );
+    }
+
+    const {
+      data:
+        pendingRows,
+      error:
+        pendingError,
+    } =
+      await admin
+        .from(
+          "league_invitations"
+        )
+        .select(
+          `
+            id,
+            league_id,
+            fantasy_team_id,
+            first_name,
+            last_name,
+            email,
+            status,
+            expires_at,
+            email_sent_at,
+            created_at,
+            updated_at
+          `
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "status",
+          "pending"
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        );
+
+    if (pendingError) {
+      return jsonError(
+        pendingError.message,
+        500
+      );
+    }
+
+    const now =
+      Date.now();
+
+    const expiredIds:
+      string[] =
+        [];
+
+    const activePendingRows =
+      (
+        pendingRows ??
+        []
+      ).filter(
+        (
+          invitation
+        ) => {
+          const expiresAt =
+            new Date(
+              invitation.expires_at
+            ).getTime();
+
+          const expired =
+            Number.isNaN(
+              expiresAt
+            ) ||
+            expiresAt <=
+              now;
+
+          if (expired) {
+            expiredIds.push(
+              invitation.id
+            );
+
+            return false;
+          }
+
+          return true;
+        }
+      );
+
+    if (
+      expiredIds.length >
+      0
+    ) {
+      const {
+        error:
+          expireError,
+      } =
+        await admin
+          .from(
+            "league_invitations"
+          )
+          .update({
+            status:
+              "expired",
+            updated_at:
+              new Date()
+                .toISOString(),
+          })
+          .in(
+            "id",
+            expiredIds
+          )
+          .eq(
+            "status",
+            "pending"
+          );
+
+      if (expireError) {
+        console.warn(
+          "Unable to expire stale league invitations:",
+          expireError.message
+        );
+      }
+    }
+
+    const fantasyTeamIds =
+      Array.from(
+        new Set(
+          activePendingRows
+            .map(
+              (
+                row
+              ) =>
+                row.fantasy_team_id
+            )
+            .filter(
+              (
+                value
+              ): value is number =>
+                typeof value ===
+                  "number" &&
+                Number.isFinite(
+                  value
+                )
+            )
+        )
+      );
+
+    let teamRows:
+      {
+        id: number;
+        team_name: string;
+        owner_id:
+          | string
+          | null;
+        active: boolean;
+      }[] =
+        [];
+
+    if (
+      fantasyTeamIds.length >
+      0
+    ) {
+      const {
+        data:
+          teams,
+        error:
+          teamsError,
+      } =
+        await admin
+          .from(
+            "fantasy_teams"
+          )
+          .select(
+            `
+              id,
+              team_name,
+              owner_id,
+              active
+            `
+          )
+          .eq(
+            "league_id",
+            leagueId
+          )
+          .in(
+            "id",
+            fantasyTeamIds
+          );
+
+      if (teamsError) {
+        return jsonError(
+          teamsError.message,
+          500
+        );
+      }
+
+      teamRows =
+        (
+          teams ??
+          []
+        ) as {
+          id: number;
+          team_name: string;
+          owner_id:
+            | string
+            | null;
+          active: boolean;
+        }[];
+    }
+
+    const teamMap =
+      new Map<
+        number,
+        {
+          id: number;
+          teamName: string;
+          ownerId:
+            | string
+            | null;
+          active: boolean;
+        }
+      >();
+
+    for (
+      const team of
+      teamRows
+    ) {
+      teamMap.set(
+        Number(
+          team.id
+        ),
+        {
+          id:
+            Number(
+              team.id
+            ),
+          teamName:
+            team.team_name,
+          ownerId:
+            team.owner_id,
+          active:
+            team.active,
+        }
+      );
+    }
+
+    const invitations =
+      activePendingRows.map(
+        (
+          invitation
+        ) => {
+          const fantasyTeamId =
+            invitation.fantasy_team_id !==
+            null
+              ? Number(
+                  invitation.fantasy_team_id
+                )
+              : null;
+
+          const team =
+            fantasyTeamId !==
+            null
+              ? teamMap.get(
+                  fantasyTeamId
+                ) ??
+                null
+              : null;
+
+          return {
+            id:
+              invitation.id,
+            leagueId:
+              invitation.league_id,
+            fantasyTeamId,
+            firstName:
+              invitation.first_name,
+            lastName:
+              invitation.last_name,
+            email:
+              invitation.email,
+            status:
+              invitation.status,
+            expiresAt:
+              invitation.expires_at,
+            emailSentAt:
+              invitation.email_sent_at,
+            createdAt:
+              invitation.created_at,
+            updatedAt:
+              invitation.updated_at,
+            team,
+          };
+        }
+      );
+
+    return NextResponse.json({
+      success: true,
+      league: {
+        id:
+          league.id,
+        name:
+          league.name,
+        leagueType:
+          league.league_type,
+        season:
+          league.season,
+      },
+      pendingCount:
+        invitations.length,
+      invitations,
+    });
+  } catch (error) {
+    return jsonError(
+      error instanceof Error
+        ? error.message
+        : "An unexpected invitation lookup error occurred.",
+      500
+    );
+  }
 }
 
 
@@ -634,11 +1114,12 @@ export async function POST(
         requestedTeam;
     } else {
       if (
-        league.league_type !==
-        "nfl_playoffs"
+        !leagueAllowsAutomaticParticipantSlot(
+          league.league_type
+        )
       ) {
         return jsonError(
-          "A valid fantasy team is required.",
+          "A valid fantasy team is required for this league type.",
           400
         );
       }
@@ -728,8 +1209,24 @@ export async function POST(
         team =
           reservedTeam;
       } else {
+        const participantName =
+          `${firstName} ${lastName}`
+            .trim()
+            .replace(
+              /\s+/g,
+              " "
+            );
+
+        const isNhlPickem =
+          league.league_type ===
+          "nhl_pickem";
+
         const baseTeamName =
-          `${firstName} ${lastName} Playoff Entry`
+          (
+            isNhlPickem
+              ? `${participantName} NHL Pick'em`
+              : `${participantName} Playoff Entry`
+          )
             .trim()
             .replace(
               /\s+/g,
@@ -760,7 +1257,11 @@ export async function POST(
 
               team_name:
                 baseTeamName ||
-                "Playoff Entry",
+                (
+                  isNhlPickem
+                    ? "NHL Pick'em Entry"
+                    : "Playoff Entry"
+                ),
 
               active:
                 true,
@@ -779,7 +1280,11 @@ export async function POST(
         ) {
           return jsonError(
             createTeamError?.message ??
-              "The reserved NFL Playoffs fantasy team could not be created.",
+              (
+                isNhlPickem
+                  ? "The reserved NHL Pick'em fantasy team could not be created."
+                  : "The reserved NFL Playoffs fantasy team could not be created."
+              ),
             500
           );
         }

@@ -7,14 +7,16 @@ export type LeagueType =
   | "traditional"
   | "season_long"
   | "nfl_playoffs"
-  | "pickem";
+  | "pickem"
+  | "nhl_pickem";
 
 
 export type PlayerSelectionMode =
   | "draft"
   | "salary"
   | "no_salary"
-  | "pickem";
+  | "pickem"
+  | "standard";
 
 
 export type LeagueMemberRole =
@@ -253,6 +255,16 @@ function validateLeagueCombination(
 
 
   if (
+    leagueType === "nhl_pickem" &&
+    playerSelectionMode !== "standard"
+  ) {
+    throw new Error(
+      "G365 NHL Pick'em leagues must use Standard mode."
+    );
+  }
+
+
+  if (
     leagueType !== "traditional" &&
     playerSelectionMode === "draft"
   ) {
@@ -268,6 +280,16 @@ function validateLeagueCombination(
   ) {
     throw new Error(
       "Pick'em mode can only be used by G365 Football Pick'em leagues."
+    );
+  }
+
+
+  if (
+    leagueType !== "nhl_pickem" &&
+    playerSelectionMode === "standard"
+  ) {
+    throw new Error(
+      "Standard mode can only be used by G365 NHL Pick'em leagues."
     );
   }
 }
@@ -357,6 +379,58 @@ async function initializeNewPickemLeagueImmediately(
 }
 
 
+async function initializeNewNhlPickemLeagueImmediately(
+  supabase:
+    SupabaseClient,
+  leagueId:
+    string,
+  season:
+    number
+) {
+  /*
+   * NHL Pick'em periods are Monday-Sunday Eastern.
+   * Starting from October 1 guarantees the first contest week covers
+   * the beginning of the NHL regular season, while 30 periods carries
+   * the league through the regular-season calendar.
+   *
+   * League creation remains successful if period initialization is
+   * temporarily unavailable; the commissioner can safely run the same
+   * idempotent period initializer again later.
+   */
+  const anchorDate =
+    `${season}-10-01`;
+
+  try {
+    const { error } =
+      await supabase.rpc(
+        "ensure_nhl_pickem_season_periods",
+        {
+          p_league_id:
+            leagueId,
+          p_season:
+            season,
+          p_anchor_date:
+            anchorDate,
+          p_period_count:
+            30,
+        }
+      );
+
+    if (error) {
+      console.warn(
+        `NHL Pick'em league ${leagueId} was created, but immediate period initialization failed. The periods can be safely initialized again from Commissioner controls.`,
+        error
+      );
+    }
+  } catch (error) {
+    console.warn(
+      `NHL Pick'em league ${leagueId} was created, but immediate period initialization failed. The periods can be safely initialized again from Commissioner controls.`,
+      error
+    );
+  }
+}
+
+
 export async function createLeague(
   supabase:
     SupabaseClient,
@@ -408,7 +482,9 @@ export async function createLeague(
     input.leagueType ===
       "season_long" ||
     input.leagueType ===
-      "pickem"
+      "pickem" ||
+    input.leagueType ===
+      "nhl_pickem"
   ) {
     teamName =
       cleanRequiredText(
@@ -461,17 +537,26 @@ export async function createLeague(
             p_entry_name: teamName,
           }
         )
-      : await supabase.rpc(
-          "create_league_transaction",
-          {
-            p_name: name,
-            p_league_type: input.leagueType,
-            p_player_selection_mode: input.playerSelectionMode,
-            p_season: season,
-            p_team_name: teamName,
-            p_regular_season_weeks: regularSeasonWeeks,
-          }
-        );
+      : input.leagueType === "nhl_pickem"
+        ? await supabase.rpc(
+            "create_nhl_pickem_league_transaction",
+            {
+              p_name: name,
+              p_season: season,
+              p_entry_name: teamName,
+            }
+          )
+        : await supabase.rpc(
+            "create_league_transaction",
+            {
+              p_name: name,
+              p_league_type: input.leagueType,
+              p_player_selection_mode: input.playerSelectionMode,
+              p_season: season,
+              p_team_name: teamName,
+              p_regular_season_weeks: regularSeasonWeeks,
+            }
+          );
 
 
   if (error) {
@@ -518,7 +603,11 @@ export async function createLeague(
 
 
   const returnedSelectionMode =
-    result.playerSelectionMode;
+    result.playerSelectionMode ??
+    (returnedLeagueType ===
+    "nhl_pickem"
+      ? "standard"
+      : undefined);
 
 
   if (
@@ -529,7 +618,9 @@ export async function createLeague(
     returnedLeagueType !==
       "nfl_playoffs" &&
     returnedLeagueType !==
-      "pickem"
+      "pickem" &&
+    returnedLeagueType !==
+      "nhl_pickem"
   ) {
     throw new Error(
       "League creation returned an invalid league type."
@@ -545,7 +636,9 @@ export async function createLeague(
     returnedSelectionMode !==
       "no_salary" &&
     returnedSelectionMode !==
-      "pickem"
+      "pickem" &&
+    returnedSelectionMode !==
+      "standard"
   ) {
     throw new Error(
       "League creation returned an invalid player selection mode."
@@ -554,7 +647,13 @@ export async function createLeague(
 
 
   const returnedRole =
-    result.role;
+    result.role ??
+    (returnedLeagueType ===
+      "nhl_pickem" &&
+    result.success ===
+      true
+      ? "commissioner"
+      : undefined);
 
 
   if (
@@ -617,6 +716,20 @@ export async function createLeague(
     await initializeNewPickemLeagueImmediately(
       supabase,
       leagueId
+    );
+  }
+
+
+  if (
+    returnedLeagueType ===
+      "nhl_pickem" &&
+    result.success ===
+      true
+  ) {
+    await initializeNewNhlPickemLeagueImmediately(
+      supabase,
+      leagueId,
+      season
     );
   }
 

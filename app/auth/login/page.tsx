@@ -15,6 +15,10 @@ import {
   useSearchParams,
 } from "next/navigation";
 
+import {
+  getLeagueParticipantHomePath,
+} from "@/lib/leagues/participant-standard";
+
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import FormField from "@/components/ui/FormField";
@@ -218,6 +222,23 @@ function LoginContent() {
             success?: boolean;
             error?: string;
             message?: string;
+
+            league?: {
+              id: string;
+              name: string;
+              leagueType: string;
+              season: number;
+            };
+
+            fantasyTeam?: {
+              id: number;
+              teamName:
+                | string
+                | null;
+            } | null;
+
+            nhlPickemInitialized?:
+              boolean;
           } =
           {};
 
@@ -227,6 +248,23 @@ function LoginContent() {
               success?: boolean;
               error?: string;
               message?: string;
+
+              league?: {
+                id: string;
+                name: string;
+                leagueType: string;
+                season: number;
+              };
+
+              fantasyTeam?: {
+                id: number;
+                teamName:
+                  | string
+                  | null;
+              } | null;
+
+              nhlPickemInitialized?:
+                boolean;
             };
         } catch {
           result =
@@ -262,8 +300,18 @@ function LoginContent() {
           );
         }
 
+        const destination =
+          result.league?.id &&
+          result.league?.leagueType
+            ? getLeagueParticipantHomePath(
+                result.league
+                  .leagueType,
+                result.league.id
+              )
+            : "/my-leagues";
+
         router.replace(
-          "/my-leagues"
+          destination
         );
 
         router.refresh();

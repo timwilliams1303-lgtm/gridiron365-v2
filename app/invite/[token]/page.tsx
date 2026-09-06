@@ -4,17 +4,20 @@ import Link from "next/link";
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
 import {
-  createSupabaseBrowserClient,
-} from "@/lib/supabase/browser";
+  createBrowserClient,
+} from "@supabase/ssr";
 import {
   useParams,
   useRouter,
 } from "next/navigation";
+
+import {
+  getLeagueParticipantHomePath,
+} from "@/lib/leagues/participant-standard";
 
 type InvitationResponse = {
   success?: boolean;
@@ -49,13 +52,28 @@ type AcceptResponse = {
   league?: {
     id: string;
     name: string;
+    leagueType: string;
+    season: number;
   };
 
   fantasyTeam?: {
     id: number;
     teamName: string | null;
   } | null;
+
+  nhlPickemInitialized?: boolean;
 };
+
+const supabase =
+  createBrowserClient(
+    process.env
+      .NEXT_PUBLIC_SUPABASE_URL!,
+
+    process.env
+      .NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+      process.env
+        .NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
 export default function InviteAcceptancePage() {
   const params =
@@ -65,13 +83,6 @@ export default function InviteAcceptancePage() {
 
   const router =
     useRouter();
-
-  const supabase =
-    useMemo(
-      () =>
-        createSupabaseBrowserClient(),
-      []
-    );
 
   const autoAcceptStarted =
     useRef(
@@ -227,7 +238,6 @@ export default function InviteAcceptancePage() {
         }
       },
       [
-        supabase,
         token,
       ]
     );
@@ -368,10 +378,20 @@ export default function InviteAcceptancePage() {
               "Invitation accepted."
           );
 
+          const destination =
+            result.league?.id &&
+            result.league?.leagueType
+              ? getLeagueParticipantHomePath(
+                  result.league
+                    .leagueType,
+                  result.league.id
+                )
+              : "/my-leagues";
+
           window.setTimeout(
             () => {
               router.replace(
-                "/my-leagues"
+                destination
               );
 
               router.refresh();
@@ -399,7 +419,6 @@ export default function InviteAcceptancePage() {
         accepting,
         invitation,
         router,
-        supabase,
         token,
       ]
     );
@@ -901,25 +920,15 @@ export default function InviteAcceptancePage() {
               {!success ? (
                 <button
                   type="button"
-                  disabled={accepting}
-                  style={
-                    accepting
-                      ? {
-                          ...styles.primaryButton,
-                          ...styles.disabled,
-                        }
-                      : styles.primaryButton
-                  }
-                  onClick={() => {
-                    autoAcceptStarted.current =
-                      true;
-
-                    void acceptInvitation();
+                  disabled
+                  style={{
+                    ...styles.primaryButton,
+                    ...styles.disabled,
                   }}
                 >
                   {accepting
                     ? "JOINING LEAGUE…"
-                    : "JOIN LEAGUE"}
+                    : "PREPARING INVITATION…"}
                 </button>
               ) : null}
             </div>
