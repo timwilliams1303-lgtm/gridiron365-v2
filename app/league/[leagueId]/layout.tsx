@@ -83,6 +83,14 @@ function getLeagueTypeLabel(
   }
 
 
+  if (
+    leagueType ===
+    "nhl_pickem"
+  ) {
+    return "G365 NHL PICK'EM";
+  }
+
+
   return "GRIDIRON365";
 }
 
@@ -273,6 +281,11 @@ export default async function LeagueLayout({
   const isPickem =
     league.leagueType ===
     "pickem";
+
+
+  const isNhlPickem =
+    league.leagueType ===
+    "nhl_pickem";
 
 
   /*

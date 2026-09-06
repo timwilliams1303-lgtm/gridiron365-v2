@@ -17,6 +17,10 @@ import {
   getMyLeagues,
 } from "@/lib/leagues/league.service";
 
+import {
+  getLeagueParticipantHomePath,
+} from "@/lib/leagues/participant-standard";
+
 
 function formatLeagueType(
   leagueType: string,
@@ -75,6 +79,14 @@ function formatLeagueType(
       "pickem"
   ) {
     return "G365 Football Pick'em";
+  }
+
+
+  if (
+    leagueType ===
+      "nhl_pickem"
+  ) {
+    return "G365 NHL Pick'em";
   }
 
 
@@ -285,7 +297,10 @@ export default async function MyLeaguesPage() {
                     league.id
                   }
                   href={
-                    `/league/${league.id}`
+                    getLeagueParticipantHomePath(
+                      league.leagueType,
+                      league.id
+                    )
                   }
                   style={
                     styles.leagueLink
