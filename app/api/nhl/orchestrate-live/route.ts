@@ -1,4 +1,4 @@
-import {
+﻿import {
   NextResponse,
 } from "next/server";
 
@@ -60,10 +60,7 @@ function isAuthorized(
   }
 
   const expectedSecret =
-    process.env
-      .GRIDIRON_SYNC_SECRET ??
-    process.env
-      .NFL_SYNC_SECRET;
+    process.env.NHL_SYNC_SECRET;
 
   if (!expectedSecret) {
     return false;
@@ -200,10 +197,7 @@ export async function POST(
       getBaseUrl(request);
 
     const syncSecret =
-      process.env
-        .GRIDIRON_SYNC_SECRET ??
-      process.env
-        .NFL_SYNC_SECRET;
+      process.env.NHL_SYNC_SECRET;
 
     /*
      * --------------------------------------------------
@@ -555,3 +549,4 @@ export async function POST(
     );
   }
 }
+
