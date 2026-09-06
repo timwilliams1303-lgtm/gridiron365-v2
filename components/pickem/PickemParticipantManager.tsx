@@ -32,10 +32,57 @@ type LeagueRow = {
 
 type InviteResponse = {
   success?: boolean;
+  resent?: boolean;
   message?: string;
   error?: string;
+
+  invitation?: {
+    id?: string;
+    leagueId?: string;
+    fantasyTeamId?: number | null;
+    teamName?: string;
+    email?: string;
+    expiresAt?: string;
+  };
 };
 
+
+type PendingInvitation = {
+  id: string;
+  leagueId: string;
+  fantasyTeamId: number | null;
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+  status: string;
+  expiresAt: string;
+  emailSentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+
+  team: {
+    id: number;
+    teamName: string;
+    ownerId: string | null;
+    active: boolean;
+  } | null;
+};
+
+
+type PendingInviteResponse = {
+  success?: boolean;
+  error?: string;
+  pendingCount?: number;
+
+  league?: {
+    id: string;
+    name: string;
+    leagueType: string;
+    season: number;
+  };
+
+  invitations?: PendingInvitation[];
+};
 
 
 const PICKEM_PARTICIPANTS_MOBILE_CSS = `
@@ -53,7 +100,8 @@ const PICKEM_PARTICIPANTS_MOBILE_CSS = `
       overflow-x: hidden;
     }
 
-    .g365-pickem-participants-header {
+    .g365-pickem-participants-header,
+    .g365-pickem-summary-grid {
       display: grid !important;
       grid-template-columns: minmax(0,1fr) !important;
       gap: 12px !important;
@@ -76,13 +124,15 @@ const PICKEM_PARTICIPANTS_MOBILE_CSS = `
       overflow-wrap: anywhere;
     }
 
-    .g365-pickem-invite-row {
+    .g365-pickem-invite-row,
+    .g365-pickem-pending-actions {
       grid-template-columns: minmax(0,1fr) !important;
       gap: 8px !important;
     }
 
     .g365-pickem-invite-row input,
     .g365-pickem-invite-row button,
+    .g365-pickem-pending-actions button,
     .g365-pickem-participant-card > button {
       width: 100% !important;
       min-width: 0 !important;
@@ -102,6 +152,37 @@ const PICKEM_PARTICIPANTS_MOBILE_CSS = `
 `;
 
 
+function formatDateTime(
+  value: string | null | undefined
+) {
+  if (!value) {
+    return "Not available";
+  }
+
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "Not available";
+  }
+
+  return date.toLocaleString(
+    "en-US",
+    {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }
+  );
+}
+
+
 export default function PickemParticipantManager({
   leagueId,
 }: Props) {
@@ -119,16 +200,28 @@ export default function PickemParticipantManager({
     useState<TeamRow[]>([]);
 
   const [
+    pendingInvitations,
+    setPendingInvitations,
+  ] =
+    useState<
+      PendingInvitation[]
+    >([]);
+
+  const [
     commissionerUserId,
     setCommissionerUserId,
   ] =
-    useState<string | null>(null);
+    useState<string | null>(
+      null
+    );
 
   const [
     inviteEmails,
     setInviteEmails,
   ] =
-    useState<Record<number, string>>({});
+    useState<
+      Record<number, string>
+    >({});
 
   const [adding, setAdding] =
     useState(false);
@@ -137,31 +230,82 @@ export default function PickemParticipantManager({
     invitingTeamId,
     setInvitingTeamId,
   ] =
-    useState<number | null>(null);
+    useState<number | null>(
+      null
+    );
 
   const [
     removingTeamId,
     setRemovingTeamId,
   ] =
-    useState<number | null>(null);
+    useState<number | null>(
+      null
+    );
 
-  const [message, setMessage] =
+  const [
+    message,
+    setMessage,
+  ] =
     useState("");
 
-  const [isError, setIsError] =
+  const [
+    isError,
+    setIsError,
+  ] =
     useState(false);
+
+
+  const getAccessToken =
+    useCallback(
+      async () => {
+        const sessionResult =
+          await supabase.auth
+            .getSession();
+
+        if (
+          sessionResult.error
+        ) {
+          throw new Error(
+            sessionResult
+              .error
+              .message
+          );
+        }
+
+        const token =
+          sessionResult
+            .data
+            .session
+            ?.access_token;
+
+        if (!token) {
+          throw new Error(
+            "Your login session is missing. Sign in again and retry."
+          );
+        }
+
+        return token;
+      },
+      [supabase]
+    );
 
 
   const load =
     useCallback(
       async () => {
+        const token =
+          await getAccessToken();
+
         const [
           leagueResult,
           teamResult,
+          inviteResponse,
         ] =
           await Promise.all([
             supabase
-              .from("leagues")
+              .from(
+                "leagues"
+              )
               .select(
                 "commissioner_user_id"
               )
@@ -172,7 +316,9 @@ export default function PickemParticipantManager({
               .maybeSingle(),
 
             supabase
-              .from("fantasy_teams")
+              .from(
+                "fantasy_teams"
+              )
               .select(
                 "id,owner_id,team_name,active"
               )
@@ -187,20 +333,71 @@ export default function PickemParticipantManager({
               .order(
                 "id",
                 {
-                  ascending: true,
+                  ascending:
+                    true,
                 }
               ),
+
+            fetch(
+              `/api/league/${leagueId}/invite`,
+              {
+                method:
+                  "GET",
+
+                headers: {
+                  Authorization:
+                    `Bearer ${token}`,
+                },
+
+                cache:
+                  "no-store",
+              }
+            ),
           ]);
 
-        if (leagueResult.error) {
+        if (
+          leagueResult.error
+        ) {
           throw new Error(
-            leagueResult.error.message
+            leagueResult
+              .error
+              .message
           );
         }
 
-        if (teamResult.error) {
+        if (
+          teamResult.error
+        ) {
           throw new Error(
-            teamResult.error.message
+            teamResult
+              .error
+              .message
+          );
+        }
+
+        let invitePayload:
+          PendingInviteResponse =
+            {};
+
+        try {
+          invitePayload =
+            (
+              await inviteResponse
+                .json()
+            ) as PendingInviteResponse;
+        } catch {
+          invitePayload =
+            {};
+        }
+
+        if (
+          !inviteResponse.ok ||
+          invitePayload.success ===
+            false
+        ) {
+          throw new Error(
+            invitePayload.error ??
+              "Pending invitations could not be loaded."
           );
         }
 
@@ -220,8 +417,15 @@ export default function PickemParticipantManager({
             []
           ) as TeamRow[]
         );
+
+        setPendingInvitations(
+          invitePayload
+            .invitations ??
+            []
+        );
       },
       [
+        getAccessToken,
         leagueId,
         supabase,
       ]
@@ -242,6 +446,7 @@ export default function PickemParticipantManager({
         }
 
         setIsError(true);
+
         setMessage(
           error instanceof Error
             ? error.message
@@ -256,10 +461,137 @@ export default function PickemParticipantManager({
 
     void run();
 
+    const timer =
+      window.setInterval(
+        () => {
+          void load().catch(
+            () => {
+              /*
+               * Keep the current participant view visible if a
+               * background refresh fails. User-initiated actions
+               * still surface their own errors.
+               */
+            }
+          );
+        },
+        20000
+      );
+
     return () => {
       active = false;
+
+      window.clearInterval(
+        timer
+      );
     };
   }, [load]);
+
+
+  useEffect(() => {
+    const channel =
+      supabase
+        .channel(
+          `pickem-participants-${leagueId}`
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema:
+              "public",
+            table:
+              "fantasy_teams",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          () => {
+            void load().catch(
+              () => undefined
+            );
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema:
+              "public",
+            table:
+              "league_invitations",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          () => {
+            void load().catch(
+              () => undefined
+            );
+          }
+        )
+        .subscribe();
+
+    return () => {
+      void supabase
+        .removeChannel(
+          channel
+        );
+    };
+  }, [
+    leagueId,
+    load,
+    supabase,
+  ]);
+
+
+  const pendingByTeam =
+    useMemo(
+      () => {
+        const map =
+          new Map<
+            number,
+            PendingInvitation
+          >();
+
+        for (
+          const invitation of
+          pendingInvitations
+        ) {
+          if (
+            invitation
+              .fantasyTeamId !==
+            null
+          ) {
+            map.set(
+              invitation
+                .fantasyTeamId,
+              invitation
+            );
+          }
+        }
+
+        return map;
+      },
+      [
+        pendingInvitations,
+      ]
+    );
+
+
+  const activeOwnerCount =
+    teams.filter(
+      (team) =>
+        Boolean(
+          team.owner_id
+        )
+    ).length;
+
+  const vacantCount =
+    teams.filter(
+      (team) =>
+        !team.owner_id &&
+        !pendingByTeam.has(
+          team.id
+        )
+    ).length;
 
 
   async function addOpenEntry() {
@@ -278,6 +610,7 @@ export default function PickemParticipantManager({
           {
             p_league_id:
               leagueId,
+
             p_team_name:
               `Open Pick'em Entry ${teams.length + 1}`,
           }
@@ -296,6 +629,7 @@ export default function PickemParticipantManager({
       );
     } catch (error) {
       setIsError(true);
+
       setMessage(
         error instanceof Error
           ? error.message
@@ -308,18 +642,23 @@ export default function PickemParticipantManager({
 
 
   async function sendInvite(
-    team: TeamRow
+    team: TeamRow,
+    resendEmail?: string
   ) {
     if (
       team.owner_id ||
-      invitingTeamId !== null
+      invitingTeamId !==
+        null
     ) {
       return;
     }
 
     const email =
       (
-        inviteEmails[team.id] ??
+        resendEmail ??
+        inviteEmails[
+          team.id
+        ] ??
         ""
       )
         .trim()
@@ -327,77 +666,80 @@ export default function PickemParticipantManager({
 
     if (
       !email ||
-      !email.includes("@")
+      !email.includes(
+        "@"
+      )
     ) {
       setIsError(true);
+
       setMessage(
         `Enter a valid email address for ${team.team_name}.`
       );
+
       return;
     }
 
     setInvitingTeamId(
       team.id
     );
+
     setMessage("");
     setIsError(false);
 
     try {
-      const sessionResult =
-        await supabase.auth.getSession();
-
-      if (sessionResult.error) {
-        throw new Error(
-          sessionResult.error.message
-        );
-      }
-
       const token =
-        sessionResult.data.session
-          ?.access_token;
-
-      if (!token) {
-        throw new Error(
-          "Your login session is missing. Sign in again and retry."
-        );
-      }
+        await getAccessToken();
 
       const response =
         await fetch(
           `/api/league/${leagueId}/invite`,
           {
-            method: "POST",
+            method:
+              "POST",
+
             headers: {
               "Content-Type":
                 "application/json",
+
               Authorization:
                 `Bearer ${token}`,
             },
-            body: JSON.stringify({
-              email,
-              firstName:
-                team.team_name,
-              lastName:
-                "Pick'em",
-              fantasyTeamId:
-                team.id,
-            }),
+
+            body:
+              JSON.stringify({
+                email,
+
+                firstName:
+                  team.team_name,
+
+                lastName:
+                  "Pick'em",
+
+                fantasyTeamId:
+                  team.id,
+              }),
           }
         );
 
       let payload:
-        InviteResponse = {};
+        InviteResponse =
+          {};
 
       try {
         payload =
-          (await response.json()) as InviteResponse;
+          (
+            await response
+              .json()
+          ) as InviteResponse;
       } catch {
-        payload = {};
+        payload =
+          {};
       }
 
       if (
         !response.ok ||
-        payload.success === false
+        payload.success ===
+          false
       ) {
         throw new Error(
           payload.error ??
@@ -414,19 +756,27 @@ export default function PickemParticipantManager({
       );
 
       setMessage(
-        `Invitation sent to ${email} for ${team.team_name}.`
+        payload.message ??
+          (
+            payload.resent
+              ? `Invitation resent to ${email} for ${team.team_name}.`
+              : `Invitation sent to ${email} for ${team.team_name}.`
+          )
       );
 
       await load();
     } catch (error) {
       setIsError(true);
+
       setMessage(
         error instanceof Error
           ? error.message
           : "The invitation could not be sent."
       );
     } finally {
-      setInvitingTeamId(null);
+      setInvitingTeamId(
+        null
+      );
     }
   }
 
@@ -436,7 +786,8 @@ export default function PickemParticipantManager({
   ) {
     if (
       !team.owner_id ||
-      removingTeamId !== null
+      removingTeamId !==
+        null
     ) {
       return;
     }
@@ -446,9 +797,11 @@ export default function PickemParticipantManager({
       commissionerUserId
     ) {
       setIsError(true);
+
       setMessage(
         "The primary commissioner cannot be removed before commissioner ownership is transferred."
       );
+
       return;
     }
 
@@ -463,16 +816,21 @@ export default function PickemParticipantManager({
     setRemovingTeamId(
       team.id
     );
+
     setMessage("");
     setIsError(false);
 
     try {
-      const { data, error } =
+      const {
+        data,
+        error,
+      } =
         await supabase.rpc(
           "remove_pickem_entry_owner",
           {
             p_league_id:
               leagueId,
+
             p_fantasy_team_id:
               team.id,
           }
@@ -487,6 +845,7 @@ export default function PickemParticipantManager({
       const response =
         data as {
           success?: boolean;
+          historyPreserved?: boolean;
         };
 
       if (
@@ -505,23 +864,31 @@ export default function PickemParticipantManager({
       );
     } catch (error) {
       setIsError(true);
+
       setMessage(
         error instanceof Error
           ? error.message
           : "The participant could not be removed."
       );
     } finally {
-      setRemovingTeamId(null);
+      setRemovingTeamId(
+        null
+      );
     }
   }
 
 
   if (loading) {
     return (
-      <section style={styles.panel}>
+      <section
+        style={
+          styles.panel
+        }
+      >
         <div
           style={{
-            color: "#8f8f98",
+            color:
+              "#8f8f98",
           }}
         >
           Loading participants…
@@ -532,209 +899,548 @@ export default function PickemParticipantManager({
 
 
   return (
-    <section className="g365-pickem-participants" style={styles.panel}>
-      <style>{PICKEM_PARTICIPANTS_MOBILE_CSS}</style>
-      <div className="g365-pickem-participants-header" style={styles.header}>
+    <section
+      className="g365-pickem-participants"
+      style={
+        styles.panel
+      }
+    >
+      <style>
+        {
+          PICKEM_PARTICIPANTS_MOBILE_CSS
+        }
+      </style>
+
+      <div
+        className="g365-pickem-participants-header"
+        style={
+          styles.header
+        }
+      >
         <div>
-          <div style={styles.eyebrow}>
+          <div
+            style={
+              styles.eyebrow
+            }
+          >
             PARTICIPANTS
           </div>
 
-          <h2 style={styles.title}>
+          <h2
+            style={
+              styles.title
+            }
+          >
             Entries & Owners
           </h2>
 
-          <p style={styles.description}>
-            Add open Pick&apos;em entries, email invitations, or remove an owner while preserving that entry&apos;s historical picks, results, standings and badges.
+          <p
+            style={
+              styles.description
+            }
+          >
+            Invite owners,
+            track pending
+            invitations,
+            resend invitations,
+            remove owners, and
+            place replacements
+            into the same
+            Pick&apos;em entry
+            while preserving
+            historical picks,
+            results, standings
+            and badges.
           </p>
         </div>
 
         <button
           type="button"
-          disabled={adding}
+          disabled={
+            adding
+          }
           onClick={() =>
             void addOpenEntry()
           }
           className="g365-pickem-add-entry"
-          style={styles.addButton}
+          style={
+            styles.addButton
+          }
         >
-          {adding
-            ? "ADDING…"
-            : "+ ADD OPEN ENTRY"}
+          {
+            adding
+              ? "ADDING…"
+              : "+ ADD OPEN ENTRY"
+          }
         </button>
       </div>
 
 
-      {message ? (
-        <div
-          style={{
-            padding: "11px 12px",
-            marginTop: 14,
-            borderRadius: 10,
-            border: `1px solid ${
-              isError
-                ? "rgba(248,113,113,.25)"
-                : "rgba(74,222,128,.22)"
-            }`,
-            background:
-              isError
-                ? "rgba(127,29,29,.20)"
-                : "rgba(20,83,45,.18)",
-            color:
-              isError
-                ? "#fecaca"
-                : "#bbf7d0",
-            fontSize: 12,
-          }}
-        >
-          {message}
-        </div>
-      ) : null}
+      <div
+        className="g365-pickem-summary-grid"
+        style={
+          styles.summaryGrid
+        }
+      >
+        <SummaryCard
+          label="ACTIVE ENTRIES"
+          value={
+            teams.length
+          }
+        />
+
+        <SummaryCard
+          label="OWNERS"
+          value={
+            activeOwnerCount
+          }
+        />
+
+        <SummaryCard
+          label="VACANT"
+          value={
+            vacantCount
+          }
+        />
+
+        <SummaryCard
+          label="PENDING INVITES"
+          value={
+            pendingInvitations.length
+          }
+        />
+      </div>
+
+
+      {
+        message ? (
+          <div
+            style={{
+              padding:
+                "11px 12px",
+
+              marginTop:
+                14,
+
+              borderRadius:
+                10,
+
+              border:
+                `1px solid ${
+                  isError
+                    ? "rgba(248,113,113,.25)"
+                    : "rgba(74,222,128,.22)"
+                }`,
+
+              background:
+                isError
+                  ? "rgba(127,29,29,.20)"
+                  : "rgba(20,83,45,.18)",
+
+              color:
+                isError
+                  ? "#fecaca"
+                  : "#bbf7d0",
+
+              fontSize:
+                12,
+            }}
+          >
+            {
+              message
+            }
+          </div>
+        ) : null
+      }
 
 
       <div
         style={{
-          display: "grid",
-          gap: 10,
-          marginTop: 14,
+          display:
+            "grid",
+
+          gap:
+            10,
+
+          marginTop:
+            14,
         }}
       >
-        {teams.map((team) => {
-          const isPrimary =
-            Boolean(
-              team.owner_id &&
-              team.owner_id ===
-                commissionerUserId
-            );
+        {
+          teams.map(
+            (
+              team
+            ) => {
+              const isPrimary =
+                Boolean(
+                  team.owner_id &&
+                  team.owner_id ===
+                    commissionerUserId
+                );
 
-          return (
-            <article
-              key={team.id}
-              className="g365-pickem-participant-card"
-              style={styles.teamCard}
-            >
-              <div
-                style={{
-                  minWidth: 0,
-                }}
-              >
-                <strong
-                  style={{
-                    display: "block",
-                    overflow: "hidden",
-                    textOverflow:
-                      "ellipsis",
-                    color: "#fff",
-                    fontSize: 14,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {team.team_name}
-                </strong>
+              const pendingInvite =
+                pendingByTeam.get(
+                  team.id
+                );
 
-                <div
-                  style={{
-                    marginTop: 4,
-                    color:
-                      team.owner_id
-                        ? "#7ee2a3"
-                        : "#a1a1aa",
-                    fontSize: 11,
-                    fontWeight: 800,
-                  }}
-                >
-                  {isPrimary
-                    ? "PRIMARY COMMISSIONER"
-                    : team.owner_id
-                      ? "OWNER ASSIGNED"
-                      : "VACANT ENTRY"}
-                </div>
-              </div>
-
-              {team.owner_id ? (
-                <button
-                  type="button"
-                  disabled={
-                    isPrimary ||
-                    removingTeamId ===
-                      team.id
+              return (
+                <article
+                  key={
+                    team.id
                   }
-                  onClick={() =>
-                    void removeOwner(
-                      team
+                  className="g365-pickem-participant-card"
+                  style={
+                    styles.teamCard
+                  }
+                >
+                  <div
+                    style={{
+                      minWidth:
+                        0,
+                    }}
+                  >
+                    <strong
+                      style={{
+                        display:
+                          "block",
+
+                        overflow:
+                          "hidden",
+
+                        textOverflow:
+                          "ellipsis",
+
+                        color:
+                          "#fff",
+
+                        fontSize:
+                          14,
+
+                        whiteSpace:
+                          "nowrap",
+                      }}
+                    >
+                      {
+                        team.team_name
+                      }
+                    </strong>
+
+                    <div
+                      style={{
+                        marginTop:
+                          4,
+
+                        color:
+                          isPrimary
+                            ? "#ffad66"
+                            : team.owner_id
+                              ? "#7ee2a3"
+                              : pendingInvite
+                                ? "#ffd27a"
+                                : "#a1a1aa",
+
+                        fontSize:
+                          11,
+
+                        fontWeight:
+                          800,
+                      }}
+                    >
+                      {
+                        isPrimary
+                          ? "PRIMARY COMMISSIONER"
+                          : team.owner_id
+                            ? "OWNER ASSIGNED"
+                            : pendingInvite
+                              ? "INVITE PENDING"
+                              : "VACANT ENTRY"
+                      }
+                    </div>
+
+                    {
+                      pendingInvite ? (
+                        <div
+                          style={
+                            styles.pendingDetails
+                          }
+                        >
+                          <div>
+                            <span
+                              style={
+                                styles.pendingLabel
+                              }
+                            >
+                              INVITED
+                            </span>
+
+                            <span>
+                              {
+                                pendingInvite.email
+                              }
+                            </span>
+                          </div>
+
+                          <div>
+                            <span
+                              style={
+                                styles.pendingLabel
+                              }
+                            >
+                              SENT
+                            </span>
+
+                            <span>
+                              {
+                                formatDateTime(
+                                  pendingInvite
+                                    .emailSentAt ??
+                                    pendingInvite
+                                      .createdAt
+                                )
+                              }
+                            </span>
+                          </div>
+
+                          <div>
+                            <span
+                              style={
+                                styles.pendingLabel
+                              }
+                            >
+                              EXPIRES
+                            </span>
+
+                            <span>
+                              {
+                                formatDateTime(
+                                  pendingInvite
+                                    .expiresAt
+                                )
+                              }
+                            </span>
+                          </div>
+                        </div>
+                      ) : null
+                    }
+                  </div>
+
+                  {
+                    team.owner_id ? (
+                      <button
+                        type="button"
+                        disabled={
+                          isPrimary ||
+                          removingTeamId ===
+                            team.id
+                        }
+                        onClick={() =>
+                          void removeOwner(
+                            team
+                          )
+                        }
+                        style={{
+                          ...styles.removeButton,
+
+                          opacity:
+                            isPrimary
+                              ? 0.45
+                              : 1,
+
+                          cursor:
+                            isPrimary
+                              ? "not-allowed"
+                              : "pointer",
+                        }}
+                      >
+                        {
+                          removingTeamId ===
+                          team.id
+                            ? "REMOVING…"
+                            : isPrimary
+                              ? "PRIMARY OWNER"
+                              : "REMOVE OWNER"
+                        }
+                      </button>
+                    ) : pendingInvite ? (
+                      <div
+                        className="g365-pickem-pending-actions"
+                        style={
+                          styles.pendingActions
+                        }
+                      >
+                        <div
+                          style={
+                            styles.pendingNotice
+                          }
+                        >
+                          This entry is
+                          reserved for
+                          {
+                            " "
+                          }
+                          <strong>
+                            {
+                              pendingInvite.email
+                            }
+                          </strong>
+                          . Resending issues
+                          a new secure link
+                          and invalidates the
+                          previous link.
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={
+                            invitingTeamId !==
+                            null
+                          }
+                          onClick={() =>
+                            void sendInvite(
+                              team,
+                              pendingInvite.email
+                            )
+                          }
+                          style={
+                            styles.resendButton
+                          }
+                        >
+                          {
+                            invitingTeamId ===
+                            team.id
+                              ? "RESENDING…"
+                              : "RESEND INVITATION"
+                          }
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        className="g365-pickem-invite-row"
+                        style={
+                          styles.inviteRow
+                        }
+                      >
+                        <input
+                          type="email"
+                          value={
+                            inviteEmails[
+                              team.id
+                            ] ??
+                            ""
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setInviteEmails(
+                              (
+                                current
+                              ) => ({
+                                ...current,
+
+                                [team.id]:
+                                  event
+                                    .target
+                                    .value,
+                              })
+                            )
+                          }
+                          placeholder="owner@email.com"
+                          style={
+                            styles.input
+                          }
+                        />
+
+                        <button
+                          type="button"
+                          disabled={
+                            invitingTeamId !==
+                            null
+                          }
+                          onClick={() =>
+                            void sendInvite(
+                              team
+                            )
+                          }
+                          style={
+                            styles.inviteButton
+                          }
+                        >
+                          {
+                            invitingTeamId ===
+                            team.id
+                              ? "SENDING…"
+                              : "EMAIL INVITE"
+                          }
+                        </button>
+                      </div>
                     )
                   }
-                  style={{
-                    ...styles.removeButton,
-                    opacity:
-                      isPrimary
-                        ? 0.45
-                        : 1,
-                    cursor:
-                      isPrimary
-                        ? "not-allowed"
-                        : "pointer",
-                  }}
-                >
-                  {removingTeamId ===
-                  team.id
-                    ? "REMOVING…"
-                    : isPrimary
-                      ? "PRIMARY OWNER"
-                      : "REMOVE OWNER"}
-                </button>
-              ) : (
-                <div
-                  className="g365-pickem-invite-row"
-                  style={styles.inviteRow}
-                >
-                  <input
-                    type="email"
-                    value={
-                      inviteEmails[
-                        team.id
-                      ] ??
-                      ""
-                    }
-                    onChange={(event) =>
-                      setInviteEmails(
-                        (current) => ({
-                          ...current,
-                          [team.id]:
-                            event.target
-                              .value,
-                        })
-                      )
-                    }
-                    placeholder="owner@email.com"
-                    style={styles.input}
-                  />
+                </article>
+              );
+            }
+          )
+        }
+      </div>
 
-                  <button
-                    type="button"
-                    disabled={
-                      invitingTeamId !==
-                      null
-                    }
-                    onClick={() =>
-                      void sendInvite(
-                        team
-                      )
-                    }
-                    style={styles.inviteButton}
-                  >
-                    {invitingTeamId ===
-                    team.id
-                      ? "SENDING…"
-                      : "EMAIL INVITE"}
-                  </button>
-                </div>
-              )}
-            </article>
-          );
-        })}
+
+      <div
+        style={
+          styles.historyNotice
+        }
+      >
+        <strong>
+          HISTORY PRESERVATION
+        </strong>
+
+        <span>
+          Removing an owner does
+          not delete the
+          Pick&apos;em entry,
+          historical picks,
+          results, standings or
+          badges. The same entry
+          becomes available for a
+          replacement owner.
+        </span>
       </div>
     </section>
+  );
+}
+
+
+function SummaryCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <div
+      style={
+        styles.summaryCard
+      }
+    >
+      <div
+        style={
+          styles.summaryLabel
+        }
+      >
+        {
+          label
+        }
+      </div>
+
+      <div
+        style={
+          styles.summaryValue
+        }
+      >
+        {
+          value
+        }
+      </div>
+    </div>
   );
 }
 
@@ -745,115 +1451,416 @@ const styles:
     React.CSSProperties
   > = {
   panel: {
-    padding: 20,
-    borderRadius: 16,
+    padding:
+      20,
+
+    borderRadius:
+      16,
+
     border:
       "1px solid rgba(255,102,0,.22)",
-    background: "#111115",
+
+    background:
+      "#111115",
   },
 
   header: {
-    display: "flex",
+    display:
+      "flex",
+
     justifyContent:
       "space-between",
-    gap: 14,
+
+    gap:
+      14,
+
     alignItems:
       "flex-start",
-    flexWrap: "wrap",
+
+    flexWrap:
+      "wrap",
   },
 
   eyebrow: {
-    color: "#ff7627",
-    fontSize: 10,
-    fontWeight: 1000,
-    letterSpacing: ".10em",
+    color:
+      "#ff7627",
+
+    fontSize:
+      10,
+
+    fontWeight:
+      1000,
+
+    letterSpacing:
+      ".10em",
   },
 
   title: {
-    margin: "5px 0 5px",
-    color: "#fff",
-    fontSize: 21,
+    margin:
+      "5px 0 5px",
+
+    color:
+      "#fff",
+
+    fontSize:
+      21,
   },
 
   description: {
-    margin: 0,
-    maxWidth: 720,
-    color: "#8f8f98",
-    fontSize: 13,
-    lineHeight: 1.55,
+    margin:
+      0,
+
+    maxWidth:
+      760,
+
+    color:
+      "#8f8f98",
+
+    fontSize:
+      13,
+
+    lineHeight:
+      1.55,
   },
 
   addButton: {
-    minHeight: 40,
-    padding: "8px 11px",
-    borderRadius: 9,
+    minHeight:
+      40,
+
+    padding:
+      "8px 11px",
+
+    borderRadius:
+      9,
+
     border:
       "1px solid rgba(255,107,31,.42)",
+
     background:
       "linear-gradient(135deg,rgba(160,14,20,.34),rgba(255,102,0,.25))",
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: 1000,
-    cursor: "pointer",
+
+    color:
+      "#fff",
+
+    fontSize:
+      11,
+
+    fontWeight:
+      1000,
+
+    cursor:
+      "pointer",
+  },
+
+  summaryGrid: {
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "repeat(4,minmax(0,1fr))",
+
+    gap:
+      9,
+
+    marginTop:
+      16,
+  },
+
+  summaryCard: {
+    minWidth:
+      0,
+
+    padding:
+      "11px 12px",
+
+    borderRadius:
+      10,
+
+    border:
+      "1px solid rgba(255,255,255,.07)",
+
+    background:
+      "#0b0b0e",
+  },
+
+  summaryLabel: {
+    color:
+      "#777782",
+
+    fontSize:
+      9,
+
+    fontWeight:
+      900,
+
+    letterSpacing:
+      ".07em",
+  },
+
+  summaryValue: {
+    marginTop:
+      5,
+
+    color:
+      "#fff",
+
+    fontSize:
+      22,
+
+    fontWeight:
+      1000,
+
+    fontVariantNumeric:
+      "tabular-nums",
   },
 
   teamCard: {
-    display: "grid",
+    display:
+      "grid",
+
     gridTemplateColumns:
-      "minmax(160px,1fr) minmax(280px,1.4fr)",
-    gap: 12,
-    alignItems: "center",
-    padding: 12,
-    borderRadius: 11,
+      "minmax(200px,1fr) minmax(300px,1.4fr)",
+
+    gap:
+      12,
+
+    alignItems:
+      "center",
+
+    padding:
+      12,
+
+    borderRadius:
+      11,
+
     border:
       "1px solid rgba(255,255,255,.07)",
+
     background:
       "rgba(255,255,255,.02)",
   },
 
   inviteRow: {
-    display: "grid",
+    display:
+      "grid",
+
     gridTemplateColumns:
       "minmax(0,1fr) auto",
-    gap: 8,
+
+    gap:
+      8,
+  },
+
+  pendingActions: {
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "minmax(0,1fr) auto",
+
+    alignItems:
+      "center",
+
+    gap:
+      10,
+  },
+
+  pendingNotice: {
+    color:
+      "#b3b3bd",
+
+    fontSize:
+      11,
+
+    lineHeight:
+      1.5,
+  },
+
+  pendingDetails: {
+    display:
+      "grid",
+
+    gap:
+      3,
+
+    marginTop:
+      9,
+
+    color:
+      "#9a9aa3",
+
+    fontSize:
+      10,
+
+    lineHeight:
+      1.45,
+  },
+
+  pendingLabel: {
+    display:
+      "inline-block",
+
+    minWidth:
+      56,
+
+    marginRight:
+      6,
+
+    color:
+      "#686873",
+
+    fontSize:
+      9,
+
+    fontWeight:
+      900,
+
+    letterSpacing:
+      ".05em",
   },
 
   input: {
-    minHeight: 40,
-    minWidth: 0,
-    padding: "8px 10px",
-    borderRadius: 9,
+    minHeight:
+      40,
+
+    minWidth:
+      0,
+
+    padding:
+      "8px 10px",
+
+    borderRadius:
+      9,
+
     border:
       "1px solid rgba(255,255,255,.12)",
-    background: "#09090b",
-    color: "#fff",
-    outline: "none",
+
+    background:
+      "#09090b",
+
+    color:
+      "#fff",
+
+    outline:
+      "none",
   },
 
   inviteButton: {
-    minHeight: 40,
-    padding: "8px 10px",
-    borderRadius: 9,
-    border: 0,
+    minHeight:
+      40,
+
+    padding:
+      "8px 10px",
+
+    borderRadius:
+      9,
+
+    border:
+      0,
+
     background:
       "linear-gradient(135deg,#a80d18,#ff6500)",
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: 1000,
-    cursor: "pointer",
+
+    color:
+      "#fff",
+
+    fontSize:
+      10,
+
+    fontWeight:
+      1000,
+
+    cursor:
+      "pointer",
+  },
+
+  resendButton: {
+    minHeight:
+      40,
+
+    padding:
+      "8px 11px",
+
+    borderRadius:
+      9,
+
+    border:
+      "1px solid rgba(255,174,66,.28)",
+
+    background:
+      "rgba(255,125,20,.10)",
+
+    color:
+      "#ffd39a",
+
+    fontSize:
+      10,
+
+    fontWeight:
+      1000,
+
+    cursor:
+      "pointer",
   },
 
   removeButton: {
-    justifySelf: "end",
-    minHeight: 40,
-    padding: "8px 10px",
-    borderRadius: 9,
+    justifySelf:
+      "end",
+
+    minHeight:
+      40,
+
+    padding:
+      "8px 10px",
+
+    borderRadius:
+      9,
+
     border:
       "1px solid rgba(248,113,113,.28)",
+
     background:
       "rgba(127,29,29,.22)",
-    color: "#fecaca",
-    fontSize: 10,
-    fontWeight: 1000,
+
+    color:
+      "#fecaca",
+
+    fontSize:
+      10,
+
+    fontWeight:
+      1000,
+  },
+
+  historyNotice: {
+    display:
+      "grid",
+
+    gap:
+      5,
+
+    marginTop:
+      16,
+
+    padding:
+      12,
+
+    borderRadius:
+      10,
+
+    border:
+      "1px solid rgba(255,102,0,.14)",
+
+    background:
+      "rgba(255,102,0,.045)",
+
+    color:
+      "#90909a",
+
+    fontSize:
+      11,
+
+    lineHeight:
+      1.5,
   },
 };

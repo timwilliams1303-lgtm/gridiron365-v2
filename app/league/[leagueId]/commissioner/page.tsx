@@ -21,14 +21,8 @@ import NflPlayoffsCommissionerSettingsEditor
 import NflPlayoffsSalarySettingsEditor
   from "@/components/nfl-playoffs/NflPlayoffsSalarySettingsEditor";
 
-import NflPlayoffsLeagueTeamsRealtime
-  from "@/components/nfl-playoffs/NflPlayoffsLeagueTeamsRealtime";
-
-import NflPlayoffsInviteForm
-  from "@/components/nfl-playoffs/NflPlayoffsInviteForm";
-
-import NflPlayoffsDeleteLeague
-  from "@/components/nfl-playoffs/NflPlayoffsDeleteLeague";
+import NflPlayoffsParticipantManager
+  from "@/components/nfl-playoffs/NflPlayoffsParticipantManager";
 
 import SeasonLongScoring
   from "@/components/season-long/SeasonLongScoring";
@@ -1524,88 +1518,13 @@ async function NflPlayoffsCommissionerWorkspace({
         <AdminPanel
           title="Teams & Members"
           eyebrow="LEAGUE MEMBERSHIP"
-          description="See every league team, owner status and send new owner invitations without leaving this page."
+          description="Invite owners, track pending invitations, resend securely, remove owners, and place replacements into the same historical NFL Playoffs entries."
         >
-          <NflPlayoffsLeagueTeamsRealtime
+          <NflPlayoffsParticipantManager
             leagueId={
               leagueId
             }
-            season={
-              season
-            }
-            roundNumber={
-              activeRound
-            }
           />
-
-          <div
-            style={
-              styles.panelInner
-            }
-          >
-            <NflPlayoffsInviteForm
-              leagueId={
-                leagueId
-              }
-            />
-
-
-            <div
-              style={{
-                marginTop:
-                  16,
-              }}
-            >
-              <div
-                className="team-grid"
-              >
-                {teams.map(
-                  (
-                    team
-                  ) => (
-                    <article
-                      key={
-                        team.id
-                      }
-                      style={
-                        styles.teamCard
-                      }
-                    >
-                      <span
-                        style={
-                          styles.teamLabel
-                        }
-                      >
-                        TEAM #{team.id}
-                      </span>
-
-                      <strong
-                        style={
-                          styles.teamName
-                        }
-                      >
-                        {team.team_name}
-                      </strong>
-
-                      <span
-                        style={{
-                          ...styles.ownerBadge,
-
-                          ...(team.owner_id
-                            ? styles.ownerAssigned
-                            : styles.ownerVacant),
-                        }}
-                      >
-                        {team.owner_id
-                          ? "OWNER ASSIGNED"
-                          : "VACANT"}
-                      </span>
-                    </article>
-                  )
-                )}
-              </div>
-            </div>
-          </div>
         </AdminPanel>
 
 
@@ -1863,15 +1782,6 @@ async function NflPlayoffsCommissionerWorkspace({
                 }
               />
             </div>
-
-            <NflPlayoffsDeleteLeague
-              leagueId={
-                leagueId
-              }
-              leagueName={
-                access.league.name
-              }
-            />
           </div>
         </AdminPanel>
 

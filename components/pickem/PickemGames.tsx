@@ -11,7 +11,6 @@ import {
   createSupabaseBrowserClient,
 } from "@/lib/supabase/browser";
 
-
 type Props = {
   leagueId: string;
   season: number;
@@ -26,63 +25,132 @@ type WeekRow = {
 type GameRow = {
   id: number;
   pickem_week_id: number;
-  sport: "ncaaf" | "nfl";
+
+  sport:
+    | "ncaaf"
+    | "nfl";
+
   kickoff_at: string;
+
   away_team_name: string;
   away_team_abbreviation:
-    string | null;
+    | string
+    | null;
+
   home_team_name: string;
   home_team_abbreviation:
-    string | null;
+    | string
+    | null;
+
   away_score:
-    number | null;
+    | number
+    | null;
+
   home_score:
-    number | null;
+    | number
+    | null;
+
   status_name:
-    string | null;
+    | string
+    | null;
+
   status_detail:
-    string | null;
+    | string
+    | null;
+
   period:
-    number | null;
+    | number
+    | null;
+
   display_clock:
-    string | null;
+    | string
+    | null;
+
   is_started: boolean;
   is_final: boolean;
+
   is_eligible: boolean;
+
   exclusion_reason:
-    string | null;
+    | string
+    | null;
+
   g365_home_spread:
-    number | string | null;
+    | number
+    | string
+    | null;
+
   spread_status:
     | "pending"
     | "published"
     | "frozen"
     | "excluded";
-  consensus_source_count:
-    number | null;
-  last_score_sync_at:
-    string | null;
-  possession_team_abbreviation:
-    string | null;
-  down: number | null;
-  distance: number | null;
-  yard_line: number | null;
-  yards_to_endzone:
-    number | null;
-  down_distance_text:
-    string | null;
-  possession_text:
-    string | null;
-  is_red_zone:
-    boolean | null;
-  last_play_text:
-    string | null;
-};
 
+  consensus_source_count:
+    | number
+    | null;
+
+  g365_total:
+    | number
+    | string
+    | null;
+
+  total_status:
+    | "pending"
+    | "published"
+    | "frozen"
+    | "excluded";
+
+  total_consensus_source_count:
+    | number
+    | null;
+
+  last_score_sync_at:
+    | string
+    | null;
+
+  possession_team_abbreviation:
+    | string
+    | null;
+
+  down:
+    | number
+    | null;
+
+  distance:
+    | number
+    | null;
+
+  yard_line:
+    | number
+    | null;
+
+  yards_to_endzone:
+    | number
+    | null;
+
+  down_distance_text:
+    | string
+    | null;
+
+  possession_text:
+    | string
+    | null;
+
+  is_red_zone:
+    | boolean
+    | null;
+
+  last_play_text:
+    | string
+    | null;
+};
 
 function numberValue(
   value:
-    number | string | null
+    | number
+    | string
+    | null
 ) {
   if (value === null) {
     return null;
@@ -91,23 +159,31 @@ function numberValue(
   const parsed =
     Number(value);
 
-  return Number.isFinite(parsed)
+  return Number.isFinite(
+    parsed
+  )
     ? parsed
     : null;
 }
 
-
 function formatNumber(
   value: number
 ) {
-  return Number.isInteger(value)
+  return Number.isInteger(
+    value
+  )
     ? String(value)
     : value
         .toFixed(2)
-        .replace(/0+$/, "")
-        .replace(/\.$/, "");
+        .replace(
+          /0+$/,
+          ""
+        )
+        .replace(
+          /\.$/,
+          ""
+        );
 }
-
 
 function formatSpread(
   value: number
@@ -120,10 +196,13 @@ function formatSpread(
   }
 
   return value > 0
-    ? `+${formatNumber(value)}`
-    : formatNumber(value);
+    ? `+${formatNumber(
+        value
+      )}`
+    : formatNumber(
+        value
+      );
 }
-
 
 function formatKickoff(
   value: string
@@ -133,20 +212,62 @@ function formatKickoff(
   ).toLocaleString(
     undefined,
     {
-      weekday:
-        "short",
-      month:
-        "short",
-      day:
-        "numeric",
-      hour:
-        "numeric",
-      minute:
-        "2-digit",
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
     }
   );
 }
 
+function sportLabel(
+  game: GameRow
+) {
+  return game.sport ===
+    "nfl"
+    ? "NFL"
+    : "COLLEGE";
+}
+
+function liveStatus(
+  game: GameRow
+) {
+  if (game.is_final) {
+    return "FINAL";
+  }
+
+  if (
+    game.is_started
+  ) {
+    const parts =
+      ["LIVE"];
+
+    if (
+      game.period
+    ) {
+      parts.push(
+        `Q${game.period}`
+      );
+    }
+
+    if (
+      game.display_clock
+    ) {
+      parts.push(
+        game.display_clock
+      );
+    }
+
+    return parts.join(
+      " · "
+    );
+  }
+
+  return formatKickoff(
+    game.kickoff_at
+  );
+}
 
 function atsState(
   game: GameRow
@@ -192,41 +313,55 @@ function atsState(
     : "AWAY CURRENTLY COVERING";
 }
 
-
-function liveStatus(
+function totalState(
   game: GameRow
 ) {
-  if (game.is_final) {
-    return "FINAL";
-  }
-
-  if (game.is_started) {
-    const parts = ["LIVE"];
-
-    if (game.period) {
-      parts.push(
-        `Q${game.period}`
-      );
-    }
-
-    if (
-      game.display_clock
-    ) {
-      parts.push(
-        game.display_clock
-      );
-    }
-
-    return parts.join(
-      " · "
+  const total =
+    numberValue(
+      game.g365_total
     );
+
+  if (
+    total === null ||
+    game.home_score ===
+      null ||
+    game.away_score ===
+      null ||
+    !game.is_started
+  ) {
+    return null;
   }
 
-  return formatKickoff(
-    game.kickoff_at
-  );
-}
+  const actualTotal =
+    game.home_score +
+    game.away_score;
 
+  const difference =
+    actualTotal -
+    total;
+
+  if (
+    Math.abs(
+      difference
+    ) < 0.0001
+  ) {
+    return game.is_final
+      ? "TOTAL PUSH"
+      : "TOTAL CURRENTLY PUSH";
+  }
+
+  if (
+    difference > 0
+  ) {
+    return game.is_final
+      ? "OVER"
+      : "CURRENTLY OVER";
+  }
+
+  return game.is_final
+    ? "UNDER"
+    : "CURRENTLY UNDER";
+}
 
 function situationText(
   game: GameRow
@@ -239,7 +374,8 @@ function situationText(
   }
 
   const possession =
-    game.possession_team_abbreviation;
+    game
+      .possession_team_abbreviation;
 
   const down =
     game.down_distance_text;
@@ -247,10 +383,15 @@ function situationText(
   const field =
     game.possession_text;
 
-  if (possession && down) {
+  if (
+    possession &&
+    down
+  ) {
     if (
       field &&
-      !down.includes(field)
+      !down.includes(
+        field
+      )
     ) {
       return `${possession} BALL · ${down} · ${field}`;
     }
@@ -258,7 +399,10 @@ function situationText(
     return `${possession} BALL · ${down}`;
   }
 
-  if (possession && field) {
+  if (
+    possession &&
+    field
+  ) {
     return `${possession} BALL · ${field}`;
   }
 
@@ -266,24 +410,102 @@ function situationText(
     return `${possession} BALL`;
   }
 
-  return down ?? field ?? null;
+  return (
+    down ??
+    field ??
+    null
+  );
 }
 
+function lineStatusText(
+  game: GameRow
+) {
+  if (
+    !game.is_eligible
+  ) {
+    return "EXCLUDED";
+  }
 
+  const spreadFrozen =
+    game.spread_status ===
+    "frozen";
 
-const PICKEM_MOBILE_CSS = `
-  .g365-pickem-mobile-page {
+  const totalFrozen =
+    game.total_status ===
+    "frozen";
+
+  if (
+    spreadFrozen &&
+    totalFrozen
+  ) {
+    return "G365 LINES FROZEN";
+  }
+
+  if (
+    spreadFrozen ||
+    totalFrozen
+  ) {
+    return "G365 LINES PARTIALLY FROZEN";
+  }
+
+  return "G365 LINES PENDING";
+}
+
+function lineStatusColor(
+  game: GameRow
+) {
+  if (
+    !game.is_eligible
+  ) {
+    return "#ff777a";
+  }
+
+  if (
+    game.spread_status ===
+      "frozen" &&
+    game.total_status ===
+      "frozen"
+  ) {
+    return "#55df8a";
+  }
+
+  return "#ffc46c";
+}
+
+const PICKEM_GAMES_CSS = `
+  .g365-pickem-games-page {
     width: 100%;
     min-width: 0;
     box-sizing: border-box;
   }
 
-  .g365-pickem-mobile-page * {
+  .g365-pickem-games-page * {
     box-sizing: border-box;
   }
 
+  .g365-football-boxscore-header,
+  .g365-football-boxscore-row {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1fr)
+      96px
+      62px;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .g365-football-total-row {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1fr)
+      96px
+      62px;
+    gap: 10px;
+    align-items: center;
+  }
+
   @media (max-width: 760px) {
-    .g365-pickem-mobile-page {
+    .g365-pickem-games-page {
       width: 100% !important;
       max-width: 100% !important;
       min-width: 0 !important;
@@ -292,80 +514,117 @@ const PICKEM_MOBILE_CSS = `
       gap: 14px !important;
     }
 
-    .g365-pickem-mobile-page > section,
-    .g365-pickem-mobile-page section,
-    .g365-pickem-mobile-page article,
-    .g365-pickem-mobile-page form,
-    .g365-pickem-mobile-page div {
+    .g365-pickem-games-page section,
+    .g365-pickem-games-page article,
+    .g365-pickem-games-page div {
       min-width: 0;
       max-width: 100%;
     }
 
-    .g365-pickem-mobile-page h1 {
-      font-size: clamp(26px, 8vw, 34px) !important;
-      line-height: 1.08 !important;
-      overflow-wrap: anywhere;
+    .g365-pickem-games-page h1 {
+      font-size:
+        clamp(
+          26px,
+          8vw,
+          34px
+        ) !important;
+      line-height:
+        1.08 !important;
     }
 
-    .g365-pickem-mobile-page h2,
-    .g365-pickem-mobile-page h3,
-    .g365-pickem-mobile-page p,
-    .g365-pickem-mobile-page span,
-    .g365-pickem-mobile-page strong {
-      overflow-wrap: anywhere;
-    }
-
-    .g365-pickem-mobile-page select,
-    .g365-pickem-mobile-page input,
-    .g365-pickem-mobile-page textarea {
+    .g365-pickem-games-page select {
       width: 100% !important;
       max-width: 100% !important;
-      min-width: 0 !important;
     }
 
-    .g365-pickem-mobile-page button,
-    .g365-pickem-mobile-page a {
-      max-width: 100%;
+    .g365-football-boxscore-header,
+    .g365-football-boxscore-row {
+      grid-template-columns:
+        minmax(0, 1fr)
+        74px
+        48px !important;
+
+      gap: 7px !important;
     }
 
-    .g365-pickem-mobile-page :not(button)[style*="grid-template-columns"] {
-      grid-template-columns: minmax(0, 1fr) !important;
+    .g365-football-total-row {
+      grid-template-columns:
+        minmax(0, 1fr)
+        74px
+        48px !important;
+
+      gap: 7px !important;
     }
 
-    .g365-pickem-mobile-page [style*="margin-left: auto"],
-    .g365-pickem-mobile-page [style*="margin-left:auto"] {
+    .g365-football-team-name {
+      font-size:
+        13px !important;
+    }
+
+    .g365-football-line {
+      font-size:
+        12px !important;
+    }
+
+    .g365-football-score {
+      font-size:
+        19px !important;
+    }
+
+    .g365-pickem-games-page
+    [style*="margin-left: auto"],
+    .g365-pickem-games-page
+    [style*="margin-left:auto"] {
       margin-left: 0 !important;
-    }
-
-    .g365-pickem-mobile-page [style*="white-space: nowrap"],
-    .g365-pickem-mobile-page [style*="white-space:nowrap"] {
-      white-space: normal !important;
-    }
-
-    .g365-pickem-mobile-page [style*="overflow: auto"],
-    .g365-pickem-mobile-page [style*="overflow:auto"] {
-      max-width: 100%;
-      -webkit-overflow-scrolling: touch;
     }
   }
 
   @media (max-width: 430px) {
-    .g365-pickem-mobile-page {
-      padding: 12px 10px 26px !important;
-      gap: 12px !important;
+    .g365-pickem-games-page {
+      padding:
+        12px 10px 26px !important;
+      gap:
+        12px !important;
     }
 
-    .g365-pickem-mobile-page section,
-    .g365-pickem-mobile-page article {
-      border-radius: 13px !important;
+    .g365-pickem-games-page article,
+    .g365-pickem-games-page section {
+      border-radius:
+        13px !important;
     }
 
-    .g365-pickem-mobile-page button {
-      min-height: 42px;
+    .g365-football-boxscore-header,
+    .g365-football-boxscore-row {
+      grid-template-columns:
+        minmax(0, 1fr)
+        68px
+        42px !important;
+
+      gap:
+        6px !important;
+    }
+
+    .g365-football-total-row {
+      grid-template-columns:
+        minmax(0, 1fr)
+        68px
+        42px !important;
+
+      gap:
+        6px !important;
+    }
+
+    .g365-football-full-name {
+      display:
+        none !important;
+    }
+
+    .g365-football-abbr-name {
+      display:
+        inline !important;
     }
   }
 `;
-
 
 export default function PickemGames({
   leagueId,
@@ -394,67 +653,104 @@ export default function PickemGames({
     weeks,
     setWeeks,
   ] =
-    useState<WeekRow[]>([]);
+    useState<
+      WeekRow[]
+    >([]);
 
   const [
     selectedWeekId,
     setSelectedWeekId,
   ] =
-    useState<number | null>(
-      null
-    );
+    useState<
+      number | null
+    >(null);
 
   const [
     games,
     setGames,
   ] =
-    useState<GameRow[]>([]);
+    useState<
+      GameRow[]
+    >([]);
 
   const orderedGames =
     useMemo(
       () =>
-        [...games].sort((a, b) => {
-          const aKickoff =
-            new Date(a.kickoff_at).getTime();
-          const bKickoff =
-            new Date(b.kickoff_at).getTime();
+        [...games].sort(
+          (
+            a,
+            b
+          ) => {
+            const aKickoff =
+              new Date(
+                a.kickoff_at
+              ).getTime();
 
-          const aValid =
-            Number.isFinite(aKickoff);
-          const bValid =
-            Number.isFinite(bKickoff);
+            const bKickoff =
+              new Date(
+                b.kickoff_at
+              ).getTime();
 
-          if (aValid && bValid && aKickoff !== bKickoff) {
-            return aKickoff - bKickoff;
-          }
+            const aValid =
+              Number.isFinite(
+                aKickoff
+              );
 
-          if (aValid !== bValid) {
-            return aValid ? -1 : 1;
-          }
+            const bValid =
+              Number.isFinite(
+                bKickoff
+              );
 
-          const sportCompare =
-            (a.sport ?? "").localeCompare(b.sport ?? "");
+            if (
+              aValid &&
+              bValid &&
+              aKickoff !==
+                bKickoff
+            ) {
+              return (
+                aKickoff -
+                bKickoff
+              );
+            }
 
-          if (sportCompare !== 0) {
-            return sportCompare;
-          }
+            if (
+              aValid !==
+              bValid
+            ) {
+              return aValid
+                ? -1
+                : 1;
+            }
 
-          const awayCompare =
-            (a.away_team_name ?? "").localeCompare(
-              b.away_team_name ?? ""
+            const sportCompare =
+              (
+                a.sport ??
+                ""
+              ).localeCompare(
+                b.sport ??
+                  ""
+              );
+
+            if (
+              sportCompare !==
+              0
+            ) {
+              return sportCompare;
+            }
+
+            return (
+              a.away_team_name ??
+              ""
+            ).localeCompare(
+              b.away_team_name ??
+                ""
             );
-
-          if (awayCompare !== 0) {
-            return awayCompare;
           }
-
-          return (a.home_team_name ?? "").localeCompare(
-            b.home_team_name ?? ""
-          );
-        }),
-      [games]
+        ),
+      [
+        games,
+      ]
     );
-
 
   const selectedWeek =
     useMemo(
@@ -463,7 +759,8 @@ export default function PickemGames({
           (row) =>
             row.id ===
             selectedWeekId
-        ) ?? null,
+        ) ??
+        null,
       [
         selectedWeekId,
         weeks,
@@ -507,10 +804,14 @@ export default function PickemGames({
         }
 
         const rows =
-          (data ??
-            []) as WeekRow[];
+          (
+            data ??
+            []
+          ) as WeekRow[];
 
-        setWeeks(rows);
+        setWeeks(
+          rows
+        );
 
         setSelectedWeekId(
           (current) => {
@@ -571,7 +872,7 @@ export default function PickemGames({
               "pickem_games"
             )
             .select(
-              "id,pickem_week_id,sport,kickoff_at,away_team_name,away_team_abbreviation,home_team_name,home_team_abbreviation,away_score,home_score,status_name,status_detail,period,display_clock,is_started,is_final,is_eligible,exclusion_reason,g365_home_spread,spread_status,consensus_source_count,last_score_sync_at,possession_team_abbreviation,down,distance,yard_line,yards_to_endzone,down_distance_text,possession_text,is_red_zone,last_play_text"
+              "id,pickem_week_id,sport,kickoff_at,away_team_name,away_team_abbreviation,home_team_name,home_team_abbreviation,away_score,home_score,status_name,status_detail,period,display_clock,is_started,is_final,is_eligible,exclusion_reason,g365_home_spread,spread_status,consensus_source_count,g365_total,total_status,total_consensus_source_count,last_score_sync_at,possession_team_abbreviation,down,distance,yard_line,yards_to_endzone,down_distance_text,possession_text,is_red_zone,last_play_text"
             )
             .eq(
               "league_id",
@@ -596,8 +897,10 @@ export default function PickemGames({
         }
 
         setGames(
-          (data ??
-            []) as GameRow[]
+          (
+            data ??
+            []
+          ) as GameRow[]
         );
       },
       [
@@ -607,7 +910,8 @@ export default function PickemGames({
     );
 
   useEffect(() => {
-    let active = true;
+    let active =
+      true;
 
     async function run() {
       setLoading(true);
@@ -637,14 +941,17 @@ export default function PickemGames({
     return () => {
       active = false;
     };
-  }, [loadWeeks]);
+  }, [
+    loadWeeks,
+  ]);
 
   useEffect(() => {
     if (loading) {
       return;
     }
 
-    let active = true;
+    let active =
+      true;
 
     async function run() {
       try {
@@ -671,7 +978,7 @@ export default function PickemGames({
         () => {
           void run();
         },
-        10000
+        10_000
       );
 
     return () => {
@@ -697,14 +1004,15 @@ export default function PickemGames({
             "#aaaab2",
         }}
       >
-        Loading Pick&apos;em games…
+        Loading Pick&apos;em
+        games…
       </main>
     );
   }
 
   return (
     <main
-      className="g365-pickem-mobile-page"
+      className="g365-pickem-games-page"
       style={{
         display:
           "grid",
@@ -715,15 +1023,19 @@ export default function PickemGames({
           1180,
       }}
     >
-      <style>{PICKEM_MOBILE_CSS}</style>
+      <style>
+        {PICKEM_GAMES_CSS}
+      </style>
+
       <section
         style={{
           padding: 20,
-          borderRadius: 18,
+          borderRadius:
+            18,
           border:
             "1px solid rgba(255,108,33,0.25)",
           background:
-            "linear-gradient(135deg, rgba(100,7,13,0.38), rgba(17,17,21,0.98) 58%)",
+            "linear-gradient(135deg,rgba(100,7,13,0.38),rgba(17,17,21,0.98) 58%)",
         }}
       >
         <div
@@ -731,7 +1043,8 @@ export default function PickemGames({
             color:
               "#ff7627",
             fontSize: 12,
-            fontWeight: 1000,
+            fontWeight:
+              1000,
             letterSpacing:
               "0.12em",
             textTransform:
@@ -747,7 +1060,7 @@ export default function PickemGames({
               "7px 0 6px",
             color: "#fff",
             fontSize:
-              "clamp(28px, 5vw, 42px)",
+              "clamp(28px,5vw,42px)",
           }}
         >
           Games
@@ -758,16 +1071,21 @@ export default function PickemGames({
             margin: 0,
             color:
               "#a3a3ab",
-            lineHeight: 1.55,
+            lineHeight:
+              1.55,
           }}
         >
-          ESPN supplies the live score, quarter, clock, possession, down-and-distance, field position, and final status. G365 spreads remain frozen independently.
+          Live football box scores
+          with aligned G365 spreads,
+          scores and official
+          over/under totals.
         </p>
       </section>
 
       <section
         style={{
-          display: "flex",
+          display:
+            "flex",
           alignItems:
             "center",
           gap: 10,
@@ -775,7 +1093,8 @@ export default function PickemGames({
             "wrap",
           padding:
             "14px 16px",
-          borderRadius: 14,
+          borderRadius:
+            14,
           border:
             "1px solid rgba(255,255,255,0.08)",
           background:
@@ -788,7 +1107,8 @@ export default function PickemGames({
             color:
               "#bcbcc3",
             fontSize: 13,
-            fontWeight: 900,
+            fontWeight:
+              900,
           }}
         >
           Week
@@ -817,25 +1137,36 @@ export default function PickemGames({
             );
           }}
           style={{
-            minWidth: 155,
+            minWidth:
+              155,
             padding:
               "10px 12px",
-            borderRadius: 10,
+            borderRadius:
+              10,
             border:
               "1px solid rgba(255,118,39,0.35)",
             background:
               "#09090c",
-            color: "#fff",
-            fontWeight: 900,
+            color:
+              "#fff",
+            fontWeight:
+              900,
           }}
         >
           {weeks.map(
             (week) => (
               <option
-                key={week.id}
-                value={week.id}
+                key={
+                  week.id
+                }
+                value={
+                  week.id
+                }
               >
-                Week {week.week}
+                Week{" "}
+                {
+                  week.week
+                }
               </option>
             )
           )}
@@ -848,8 +1179,10 @@ export default function PickemGames({
                 "auto",
               color:
                 "#909099",
-              fontSize: 12,
-              fontWeight: 800,
+              fontSize:
+                12,
+              fontWeight:
+                800,
             }}
           >
             {selectedWeek.status
@@ -867,7 +1200,8 @@ export default function PickemGames({
           style={{
             padding:
               "12px 14px",
-            borderRadius: 12,
+            borderRadius:
+              12,
             border:
               "1px solid rgba(255,80,80,0.40)",
             background:
@@ -883,12 +1217,13 @@ export default function PickemGames({
       {!selectedWeek ? (
         <EmptyState
           title="The weekly slate is not ready yet."
-          description="A Pick'em week must be initialized before ESPN games can be attached to it."
+          description="A Pick'em week must be initialized before games can be attached to it."
         />
-      ) : games.length === 0 ? (
+      ) : orderedGames.length ===
+        0 ? (
         <EmptyState
           title={`No Week ${selectedWeek.week} games are loaded yet.`}
-          description="The ESPN sync worker has not populated this Pick'em slate yet."
+          description="The football sync worker has not populated this Pick'em slate yet."
         />
       ) : (
         <section
@@ -906,34 +1241,67 @@ export default function PickemGames({
                 );
 
               const awaySpread =
-                homeSpread === null
+                homeSpread ===
+                null
                   ? null
                   : -homeSpread;
 
+              const total =
+                numberValue(
+                  game.g365_total
+                );
+
               const ats =
-                atsState(game);
+                atsState(
+                  game
+                );
+
+              const totalResult =
+                totalState(
+                  game
+                );
 
               const situation =
                 situationText(
                   game
                 );
 
+              const spreadSources =
+                game
+                  .consensus_source_count ??
+                0;
+
+              const totalSources =
+                game
+                  .total_consensus_source_count ??
+                0;
+
               return (
                 <article
-                  key={game.id}
+                  key={
+                    game.id
+                  }
                   style={{
                     overflow:
                       "hidden",
-                    borderRadius: 16,
+                    borderRadius:
+                      16,
                     border:
-                      "1px solid rgba(255,255,255,0.08)",
+                      game.is_eligible
+                        ? "1px solid rgba(255,255,255,0.09)"
+                        : "1px solid rgba(255,80,80,0.20)",
                     background:
                       "#101014",
+                    opacity:
+                      game.is_eligible
+                        ? 1
+                        : 0.78,
                   }}
                 >
                   <div
                     style={{
-                      display: "flex",
+                      display:
+                        "flex",
                       justifyContent:
                         "space-between",
                       alignItems:
@@ -946,24 +1314,54 @@ export default function PickemGames({
                       borderBottom:
                         "1px solid rgba(255,255,255,0.06)",
                       background:
-                        "rgba(0,0,0,0.22)",
+                        "rgba(0,0,0,0.24)",
                     }}
                   >
-                    <span
+                    <div
                       style={{
-                        color:
-                          "#ff9b59",
-                        fontSize: 11,
-                        fontWeight: 1000,
-                        letterSpacing:
-                          "0.09em",
+                        display:
+                          "flex",
+                        alignItems:
+                          "center",
+                        gap: 8,
+                        flexWrap:
+                          "wrap",
                       }}
                     >
-                      {game.sport ===
-                      "nfl"
-                        ? "NFL"
-                        : "COLLEGE"}
-                    </span>
+                      <span
+                        style={{
+                          color:
+                            "#ff9b59",
+                          fontSize:
+                            10,
+                          fontWeight:
+                            1000,
+                          letterSpacing:
+                            "0.08em",
+                        }}
+                      >
+                        {sportLabel(
+                          game
+                        )}
+                      </span>
+
+                      <span
+                        style={{
+                          color:
+                            lineStatusColor(
+                              game
+                            ),
+                          fontSize:
+                            10,
+                          fontWeight:
+                            900,
+                        }}
+                      >
+                        {lineStatusText(
+                          game
+                        )}
+                      </span>
+                    </div>
 
                     <span
                       style={{
@@ -971,11 +1369,14 @@ export default function PickemGames({
                           game.is_started
                             ? "#fff"
                             : "#a0a0a8",
-                        fontSize: 12,
+                        fontSize:
+                          12,
                         fontWeight:
                           game.is_started
                             ? 1000
                             : 700,
+                        fontVariantNumeric:
+                          "tabular-nums",
                       }}
                     >
                       {liveStatus(
@@ -986,24 +1387,81 @@ export default function PickemGames({
 
                   <div
                     style={{
-                      display:
-                        "grid",
-                      gap: 10,
-                      padding: 14,
+                      padding:
+                        "12px 14px 14px",
                     }}
                   >
-                    <TeamLine
+                    <div
+                      className="g365-football-boxscore-header"
+                      style={{
+                        padding:
+                          "0 0 6px",
+                        borderBottom:
+                          "1px solid rgba(255,255,255,0.06)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          color:
+                            "#6f6f78",
+                          fontSize:
+                            9,
+                          fontWeight:
+                            1000,
+                          letterSpacing:
+                            "0.08em",
+                        }}
+                      >
+                        TEAM
+                      </div>
+
+                      <div
+                        style={{
+                          textAlign:
+                            "right",
+                          color:
+                            "#6f6f78",
+                          fontSize:
+                            9,
+                          fontWeight:
+                            1000,
+                          letterSpacing:
+                            "0.08em",
+                        }}
+                      >
+                        G365 SPREAD
+                      </div>
+
+                      <div
+                        style={{
+                          textAlign:
+                            "right",
+                          color:
+                            "#6f6f78",
+                          fontSize:
+                            9,
+                          fontWeight:
+                            1000,
+                          letterSpacing:
+                            "0.08em",
+                        }}
+                      >
+                        SCORE
+                      </div>
+                    </div>
+
+                    <FootballTeamRow
                       name={
                         game.away_team_name
                       }
                       abbreviation={
                         game.away_team_abbreviation
                       }
-                      score={
-                        game.away_score
-                      }
                       spread={
                         awaySpread
+                      }
+                      score={
+                        game.away_score
                       }
                       hasBall={
                         !!game
@@ -1015,18 +1473,18 @@ export default function PickemGames({
                       }
                     />
 
-                    <TeamLine
+                    <FootballTeamRow
                       name={
                         game.home_team_name
                       }
                       abbreviation={
                         game.home_team_abbreviation
                       }
-                      score={
-                        game.home_score
-                      }
                       spread={
                         homeSpread
+                      }
+                      score={
+                        game.home_score
                       }
                       hasBall={
                         !!game
@@ -1038,12 +1496,98 @@ export default function PickemGames({
                       }
                     />
 
+                    <div
+                      className="g365-football-total-row"
+                      style={{
+                        marginTop:
+                          8,
+                        paddingTop:
+                          9,
+                        borderTop:
+                          "1px solid rgba(255,255,255,0.07)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display:
+                            "flex",
+                          alignItems:
+                            "center",
+                          gap: 8,
+                          flexWrap:
+                            "wrap",
+                        }}
+                      >
+                        <span
+                          style={{
+                            color:
+                              "#ff9b59",
+                            fontSize:
+                              10,
+                            fontWeight:
+                              1000,
+                          }}
+                        >
+                          G365 TOTAL
+                        </span>
+
+                        <span
+                          style={{
+                            color:
+                              "#777780",
+                            fontSize:
+                              9,
+                          }}
+                        >
+                          {totalSources}{" "}
+                          sportsbook
+                          {totalSources ===
+                          1
+                            ? ""
+                            : "s"}
+                        </span>
+                      </div>
+
+                      <div
+                        className="g365-football-line"
+                        style={{
+                          textAlign:
+                            "right",
+                          color:
+                            total ===
+                            null
+                              ? "#777780"
+                              : "#fff",
+                          fontSize:
+                            13,
+                          fontWeight:
+                            1000,
+                          fontVariantNumeric:
+                            "tabular-nums",
+                          whiteSpace:
+                            "nowrap",
+                        }}
+                      >
+                        {total ===
+                        null
+                          ? "O/U —"
+                          : `O/U ${formatNumber(
+                              total
+                            )}`}
+                      </div>
+
+                      <div />
+                    </div>
+
                     {situation ? (
                       <div
                         style={{
+                          marginTop:
+                            10,
                           padding:
-                            "9px 11px",
-                          borderRadius: 10,
+                            "8px 10px",
+                          borderRadius:
+                            9,
                           border:
                             game.is_red_zone
                               ? "1px solid rgba(255,143,39,0.28)"
@@ -1056,11 +1600,14 @@ export default function PickemGames({
                             game.is_red_zone
                               ? "#ffc06f"
                               : "#d4d4da",
-                          fontSize: 12,
-                          fontWeight: 900,
+                          fontSize:
+                            11,
+                          fontWeight:
+                            900,
                         }}
                       >
                         {situation}
+
                         {game.is_red_zone
                           ? " · RED ZONE"
                           : ""}
@@ -1072,10 +1619,14 @@ export default function PickemGames({
                     game.last_play_text ? (
                       <div
                         style={{
+                          marginTop:
+                            8,
                           color:
                             "#92929b",
-                          fontSize: 11,
-                          lineHeight: 1.45,
+                          fontSize:
+                            10,
+                          lineHeight:
+                            1.45,
                         }}
                       >
                         Last play:{" "}
@@ -1085,59 +1636,115 @@ export default function PickemGames({
                       </div>
                     ) : null}
 
+                    {(ats ||
+                      totalResult) ? (
+                      <div
+                        style={{
+                          display:
+                            "flex",
+                          alignItems:
+                            "center",
+                          gap: 8,
+                          flexWrap:
+                            "wrap",
+                          marginTop:
+                            10,
+                          paddingTop:
+                            9,
+                          borderTop:
+                            "1px solid rgba(255,255,255,0.05)",
+                        }}
+                      >
+                        {ats ? (
+                          <ResultBadge
+                            value={
+                              ats
+                            }
+                          />
+                        ) : null}
+
+                        {totalResult ? (
+                          <ResultBadge
+                            value={
+                              totalResult
+                            }
+                          />
+                        ) : null}
+                      </div>
+                    ) : null}
+
                     <div
                       style={{
-                        display: "flex",
+                        display:
+                          "flex",
+                        justifyContent:
+                          "space-between",
                         alignItems:
                           "center",
                         gap: 10,
                         flexWrap:
                           "wrap",
-                        paddingTop: 3,
+                        marginTop:
+                          10,
+                        paddingTop:
+                          9,
+                        borderTop:
+                          "1px solid rgba(255,255,255,0.05)",
                       }}
                     >
-                      <span
+                      <div
                         style={{
+                          display:
+                            "flex",
+                          gap: 8,
+                          alignItems:
+                            "center",
+                          flexWrap:
+                            "wrap",
                           color:
-                            homeSpread !==
-                            null
-                              ? "#ffb16f"
-                              : "#888891",
-                          fontSize: 11,
-                          fontWeight: 900,
+                            "#707078",
+                          fontSize:
+                            9,
                         }}
                       >
-                        {homeSpread !==
-                        null
-                          ? `G365: ${game.home_team_abbreviation ?? game.home_team_name} ${formatSpread(homeSpread)}`
-                          : "G365 Spread pending"}
-                      </span>
-
-                      {ats ? (
-                        <span
-                          style={{
-                            color:
-                              ats.includes(
-                                "PUSH"
-                              )
-                                ? "#ffc46c"
-                                : "#55df8a",
-                            fontSize: 11,
-                            fontWeight: 1000,
-                          }}
-                        >
-                          {ats}
+                        <span>
+                          Spread:{" "}
+                          {
+                            spreadSources
+                          }{" "}
+                          sportsbook
+                          {spreadSources ===
+                          1
+                            ? ""
+                            : "s"}
                         </span>
-                      ) : null}
+
+                        <span>
+                          ·
+                        </span>
+
+                        <span>
+                          Total:{" "}
+                          {
+                            totalSources
+                          }{" "}
+                          sportsbook
+                          {totalSources ===
+                          1
+                            ? ""
+                            : "s"}
+                        </span>
+                      </div>
 
                       {game.last_score_sync_at ? (
                         <span
                           style={{
-                            marginLeft:
-                              "auto",
                             color:
-                              "#707078",
-                            fontSize: 10,
+                              "#66666f",
+                            fontSize:
+                              9,
+                            fontVariantNumeric:
+                              "tabular-nums",
                           }}
                         >
                           Synced{" "}
@@ -1157,6 +1764,34 @@ export default function PickemGames({
                         </span>
                       ) : null}
                     </div>
+
+                    {!game.is_eligible &&
+                    game.exclusion_reason ? (
+                      <div
+                        style={{
+                          marginTop:
+                            10,
+                          padding:
+                            "8px 10px",
+                          borderRadius:
+                            9,
+                          border:
+                            "1px solid rgba(255,80,80,0.20)",
+                          background:
+                            "rgba(120,0,0,0.12)",
+                          color:
+                            "#ff999c",
+                          fontSize:
+                            10,
+                        }}
+                      >
+                        Excluded from
+                        Pick&apos;em:{" "}
+                        {
+                          game.exclusion_reason
+                        }
+                      </div>
+                    ) : null}
                   </div>
                 </article>
               );
@@ -1168,78 +1803,148 @@ export default function PickemGames({
   );
 }
 
-
-function TeamLine({
+function FootballTeamRow({
   name,
   abbreviation,
-  score,
   spread,
+  score,
   hasBall,
 }: {
   name: string;
+
   abbreviation:
-    string | null;
-  score: number | null;
-  spread: number | null;
+    | string
+    | null;
+
+  spread:
+    | number
+    | null;
+
+  score:
+    | number
+    | null;
+
   hasBall: boolean;
 }) {
   return (
     <div
+      className="g365-football-boxscore-row"
       style={{
-        display: "grid",
-        gridTemplateColumns:
-          "minmax(0,1fr) auto auto",
-        gap: 10,
-        alignItems:
-          "center",
+        minHeight:
+          50,
+        padding:
+          "7px 0",
+        borderBottom:
+          "1px solid rgba(255,255,255,0.035)",
       }}
     >
       <div
         style={{
           minWidth: 0,
-          color: "#fff",
-          fontSize: 15,
-          fontWeight: 900,
         }}
       >
-        {hasBall ? (
+        <div
+          className="g365-football-team-name"
+          style={{
+            display:
+              "flex",
+            alignItems:
+              "center",
+            gap: 7,
+            color:
+              "#fff",
+            fontSize:
+              14,
+            fontWeight:
+              1000,
+            lineHeight:
+              1.2,
+          }}
+        >
+          {hasBall ? (
+            <span
+              title="Possession"
+              aria-label="Possession"
+              style={{
+                flex:
+                  "0 0 auto",
+                color:
+                  "#ff8d3a",
+                fontSize:
+                  10,
+              }}
+            >
+              ●
+            </span>
+          ) : null}
+
           <span
-            title="Possession"
+            className="g365-football-full-name"
             style={{
-              marginRight: 7,
-              color:
-                "#ff8d3a",
-              fontSize: 12,
+              minWidth: 0,
+              overflow:
+                "hidden",
+              textOverflow:
+                "ellipsis",
+              whiteSpace:
+                "nowrap",
             }}
           >
-            ●
+            {name}
           </span>
-        ) : null}
-        {name}
-        {abbreviation ? (
+
           <span
+            className="g365-football-abbr-name"
             style={{
-              marginLeft: 7,
+              display:
+                "none",
+            }}
+          >
+            {abbreviation ??
+              name}
+          </span>
+        </div>
+
+        {abbreviation ? (
+          <div
+            style={{
+              marginTop:
+                3,
               color:
                 "#777780",
-              fontSize: 10,
-              fontWeight: 900,
+              fontSize:
+                9,
+              fontWeight:
+                900,
             }}
           >
             {abbreviation}
-          </span>
+          </div>
         ) : null}
       </div>
 
       <div
+        className="g365-football-line"
         style={{
+          textAlign:
+            "right",
           color:
-            "#ffb16f",
-          fontSize: 12,
-          fontWeight: 900,
+            spread ===
+            null
+              ? "#777780"
+              : "#ffb16f",
+          fontSize:
+            13,
+          fontWeight:
+            1000,
+          fontVariantNumeric:
+            "tabular-nums",
+          whiteSpace:
+            "nowrap",
         }}
       >
-        {spread === null
+        {spread ===
+        null
           ? "—"
           : formatSpread(
               spread
@@ -1247,13 +1952,20 @@ function TeamLine({
       </div>
 
       <div
+        className="g365-football-score"
         style={{
-          minWidth: 28,
           textAlign:
             "right",
-          color: "#fff",
-          fontSize: 20,
-          fontWeight: 1000,
+          color:
+            "#fff",
+          fontSize:
+            21,
+          fontWeight:
+            1000,
+          fontVariantNumeric:
+            "tabular-nums",
+          whiteSpace:
+            "nowrap",
         }}
       >
         {score ?? "—"}
@@ -1262,6 +1974,60 @@ function TeamLine({
   );
 }
 
+function ResultBadge({
+  value,
+}: {
+  value: string;
+}) {
+  const push =
+    value.includes(
+      "PUSH"
+    );
+
+  const over =
+    value.includes(
+      "OVER"
+    );
+
+  const under =
+    value.includes(
+      "UNDER"
+    );
+
+  return (
+    <span
+      style={{
+        padding:
+          "5px 8px",
+        borderRadius:
+          999,
+        border:
+          push
+            ? "1px solid rgba(255,196,108,0.22)"
+            : "1px solid rgba(85,223,138,0.18)",
+        background:
+          push
+            ? "rgba(255,196,108,0.07)"
+            : "rgba(85,223,138,0.06)",
+        color:
+          push
+            ? "#ffc46c"
+            : over ||
+                under
+              ? "#55df8a"
+              : "#55df8a",
+        fontSize:
+          9,
+        fontWeight:
+          1000,
+        letterSpacing:
+          "0.03em",
+      }}
+    >
+      {value}
+    </span>
+  );
+}
 
 function EmptyState({
   title,
@@ -1273,8 +2039,10 @@ function EmptyState({
   return (
     <section
       style={{
-        padding: 24,
-        borderRadius: 16,
+        padding:
+          24,
+        borderRadius:
+          16,
         border:
           "1px solid rgba(255,255,255,0.08)",
         background:
@@ -1283,8 +2051,10 @@ function EmptyState({
     >
       <div
         style={{
-          color: "#fff",
-          fontWeight: 1000,
+          color:
+            "#fff",
+          fontWeight:
+            1000,
         }}
       >
         {title}
@@ -1292,10 +2062,12 @@ function EmptyState({
 
       <div
         style={{
-          marginTop: 6,
+          marginTop:
+            6,
           color:
             "#92929b",
-          lineHeight: 1.5,
+          lineHeight:
+            1.5,
         }}
       >
         {description}

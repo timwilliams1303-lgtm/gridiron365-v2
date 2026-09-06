@@ -608,6 +608,24 @@ function normalizePosition(
 }
 
 
+function getCurrentNflSeason(
+  referenceDate = new Date()
+) {
+  const year =
+    referenceDate.getUTCFullYear();
+
+  const month =
+    referenceDate.getUTCMonth() + 1;
+
+  // NFL seasons span two calendar years.
+  // July-December belongs to the season starting that year.
+  // January-June belongs to the season that started the prior year.
+  return month >= 7
+    ? year
+    : year - 1;
+}
+
+
 /* =========================================================
    CURRENT INJURY STATUSES
 ========================================================= */
@@ -1024,8 +1042,7 @@ export async function POST(
       espnData
         .season
         ?.year ??
-      new Date()
-        .getFullYear();
+      getCurrentNflSeason();
 
 
     /* =====================================================

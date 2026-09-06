@@ -17,14 +17,16 @@ export type LeagueType =
   | "traditional"
   | "season_long"
   | "nfl_playoffs"
-  | "pickem";
+  | "pickem"
+  | "nhl_pickem";
 
 
 export type PlayerSelectionMode =
   | "draft"
   | "salary"
   | "no_salary"
-  | "pickem";
+  | "pickem"
+  | "standard";
 
 
 export type LeagueMemberRole =
@@ -113,7 +115,9 @@ function isLeagueType(
     value ===
       "nfl_playoffs" ||
     value ===
-      "pickem"
+      "pickem" ||
+    value ===
+      "nhl_pickem"
   );
 }
 
@@ -129,7 +133,9 @@ function isPlayerSelectionMode(
     value ===
       "no_salary" ||
     value ===
-      "pickem"
+      "pickem" ||
+    value ===
+      "standard"
   );
 }
 
@@ -594,6 +600,9 @@ export async function requireLeagueMember(
    *
    * - G365 Football Pick'em
    *   Participant / entry identity.
+   *
+   * - G365 NHL Pick'em
+   *   Participant / entry identity.
    * =========================================
    */
   let fantasyTeam:
@@ -609,7 +618,9 @@ export async function requireLeagueMember(
     league.league_type ===
       "nfl_playoffs" ||
     league.league_type ===
-      "pickem"
+      "pickem" ||
+    league.league_type ===
+      "nhl_pickem"
   ) {
     console.log(
       "[LEAGUE ACCESS] 6A TEAM QUERY START",

@@ -320,6 +320,9 @@ async function requireCommissioner(
       200,
     league,
     admin,
+    userClient,
+    userId:
+      userData.user.id,
   };
 }
 
@@ -345,7 +348,8 @@ export async function GET(
   if (
     auth.error ||
     !auth.league ||
-    !auth.admin
+    !auth.admin ||
+    !auth.userClient
   ) {
     return jsonError(
       auth.error ??
@@ -358,6 +362,7 @@ export async function GET(
   const {
     admin,
     league,
+    userClient,
   } =
     auth;
 
@@ -389,6 +394,33 @@ export async function GET(
       1,
       18
     );
+
+
+  /*
+   * SUMMER AUTOMATION / NEXT-SEASON READINESS
+   *
+   * These RPCs must use the authenticated user client because the
+   * database readiness function checks auth.uid(). Using the admin
+   * service-role client here would lose that JWT identity.
+   */
+  const renewalReadinessResult =
+    await userClient.rpc(
+      "get_season_long_rollover_readiness",
+      {
+        p_league_id:
+          leagueId,
+      }
+    );
+
+
+  if (
+    renewalReadinessResult.error
+  ) {
+    return jsonError(
+      renewalReadinessResult.error.message,
+      500
+    );
+  }
 
 
   const [
@@ -596,6 +628,8 @@ export async function GET(
     submittedEntries:
       submittedResult.count ??
       0,
+    renewalReadiness:
+      renewalReadinessResult.data,
   });
 }
 
@@ -621,7 +655,8 @@ export async function POST(
   if (
     auth.error ||
     !auth.league ||
-    !auth.admin
+    !auth.admin ||
+    !auth.userClient
   ) {
     return jsonError(
       auth.error ??
@@ -634,6 +669,7 @@ export async function POST(
   const {
     admin,
     league,
+    userClient,
   } =
     auth;
 
@@ -661,6 +697,139 @@ export async function POST(
       body.action ??
       ""
     );
+
+
+  if (
+    action ===
+    "renew-season"
+  ) {
+    const expectedCurrentSeason =
+      integer(
+        body.expectedCurrentSeason,
+        0,
+        1,
+        9999
+      );
+
+
+    if (
+      expectedCurrentSeason !==
+      league.season
+    ) {
+      return jsonError(
+        `League season changed. Expected ${expectedCurrentSeason}, current season is ${league.season}. Refresh the commissioner page before renewing.`,
+        409
+      );
+    }
+
+
+    /*
+     * Re-check readiness on the server immediately before rollover.
+     * The UI status is informational; this server-side gate is the
+     * authoritative protection against an early or duplicate renewal.
+     */
+    const {
+      data:
+        readinessData,
+      error:
+        readinessError,
+    } =
+      await userClient.rpc(
+        "get_season_long_rollover_readiness",
+        {
+          p_league_id:
+            leagueId,
+        }
+      );
+
+
+    if (
+      readinessError
+    ) {
+      return jsonError(
+        readinessError.message,
+        500
+      );
+    }
+
+
+    const readiness =
+      (
+        readinessData ??
+        {}
+      ) as {
+        success?: boolean;
+        ready?: boolean;
+        reason?: string;
+        currentSeason?: number;
+        nextSeason?: number;
+      };
+
+
+    if (
+      readiness.success ===
+      false
+    ) {
+      return jsonError(
+        readiness.reason ??
+          "Unable to verify Season-Long renewal readiness.",
+        409
+      );
+    }
+
+
+    if (
+      readiness.ready !==
+      true
+    ) {
+      return jsonError(
+        readiness.reason ??
+          `Season ${league.season} is not ready to renew.`,
+        409
+      );
+    }
+
+
+    const {
+      data:
+        rolloverData,
+      error:
+        rolloverError,
+    } =
+      await userClient.rpc(
+        "rollover_season_long_league_season",
+        {
+          p_league_id:
+            leagueId,
+          p_expected_current_season:
+            expectedCurrentSeason,
+        }
+      );
+
+
+    if (
+      rolloverError
+    ) {
+      return jsonError(
+        rolloverError.message,
+        409
+      );
+    }
+
+
+    return NextResponse.json({
+      success:
+        true,
+      leagueId,
+      previousSeason:
+        expectedCurrentSeason,
+      newSeason:
+        expectedCurrentSeason +
+        1,
+      result:
+        rolloverData,
+    });
+  }
 
 
   if (
