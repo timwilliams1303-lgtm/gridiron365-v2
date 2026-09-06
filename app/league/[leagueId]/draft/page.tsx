@@ -1895,6 +1895,156 @@ export default function TraditionalDraftPage() {
     );
 
 
+  const hydrateDraftPlayers =
+    useCallback(
+      async (
+        draftPicks:
+          DraftPickRow[]
+      ) => {
+        const playerIds =
+          Array.from(
+            new Set(
+              draftPicks
+                .map(
+                  (
+                    pick
+                  ) =>
+                    Number(
+                      pick.player_id
+                    )
+                )
+                .filter(
+                  (
+                    playerId
+                  ) =>
+                    Number.isFinite(
+                      playerId
+                    ) &&
+                    playerId >
+                      0
+                )
+            )
+          );
+
+
+        if (
+          playerIds.length ===
+          0
+        ) {
+          return;
+        }
+
+
+        const {
+          data,
+          error:
+            draftedPlayersError,
+        } =
+          await supabase
+            .from(
+              "nfl_players"
+            )
+            .select(
+              "id, full_name, first_name, last_name, primary_position, team_abbreviation, status, is_active, headshot_url"
+            )
+            .in(
+              "id",
+              playerIds
+            );
+
+
+        if (
+          draftedPlayersError
+        ) {
+          console.error(
+            "Could not hydrate drafted players:",
+            draftedPlayersError
+          );
+
+          return;
+        }
+
+
+        const draftedPlayers =
+          (
+            data ??
+            []
+          ).map(
+            (
+              raw
+            ) => ({
+              ...(raw as PlayerRow),
+
+              id:
+                Number(
+                  raw.id
+                ),
+            })
+          ) as PlayerRow[];
+
+
+        if (
+          draftedPlayers.length ===
+          0
+        ) {
+          return;
+        }
+
+
+        setPlayers(
+          (
+            current
+          ) => {
+            const merged =
+              new Map<
+                number,
+                PlayerRow
+              >();
+
+
+            for (
+              const player
+              of current
+            ) {
+              merged.set(
+                Number(
+                  player.id
+                ),
+                {
+                  ...player,
+
+                  id:
+                    Number(
+                      player.id
+                    ),
+                }
+              );
+            }
+
+
+            for (
+              const player
+              of draftedPlayers
+            ) {
+              merged.set(
+                Number(
+                  player.id
+                ),
+                player
+              );
+            }
+
+
+            return Array.from(
+              merged.values()
+            );
+          }
+        );
+      },
+      []
+    );
+
+
   const defaultRankingMap =
     useMemo(
       () =>
@@ -3162,6 +3312,11 @@ export default function TraditionalDraftPage() {
             );
 
 
+            await hydrateDraftPlayers(
+              authoritativePicks
+            );
+
+
             setSelectedPlayerId(
               (current) =>
                 current !== null &&
@@ -3190,7 +3345,9 @@ export default function TraditionalDraftPage() {
             false;
         }
       },
-      []
+      [
+        hydrateDraftPlayers,
+      ]
     );
 
 
@@ -3429,11 +3586,67 @@ export default function TraditionalDraftPage() {
           draftResult.data as DraftRow
         );
 
-        setPicks(
+        const refreshedPicks =
           (
             pickResult.data ??
             []
-          ) as DraftPickRow[]
+          ).map(
+            (
+              raw
+            ) => {
+              const pick =
+                raw as DraftPickRow;
+
+
+              return {
+                ...pick,
+
+                id:
+                  Number(
+                    pick.id
+                  ),
+
+                player_id:
+                  Number(
+                    pick.player_id
+                  ),
+
+                fantasy_team_id:
+                  Number(
+                    pick.fantasy_team_id
+                  ),
+
+                draft_slot:
+                  Number(
+                    pick.draft_slot
+                  ),
+
+                overall_pick:
+                  Number(
+                    pick.overall_pick
+                  ),
+
+                round_number:
+                  Number(
+                    pick.round_number
+                  ),
+
+                pick_in_round:
+                  Number(
+                    pick.pick_in_round
+                  ),
+              } as DraftPickRow;
+            }
+          );
+
+
+        setPicks(
+          refreshedPicks
+        );
+
+
+        await hydrateDraftPlayers(
+          refreshedPicks
         );
 
         const clockResponseReceivedAt =
@@ -3466,6 +3679,7 @@ export default function TraditionalDraftPage() {
       [
         draft,
         updateServerClockOffset,
+        hydrateDraftPlayers,
       ]
     );
 
@@ -3747,6 +3961,13 @@ export default function TraditionalDraftPage() {
               );
 
 
+              void hydrateDraftPlayers(
+                [
+                  inserted,
+                ]
+              );
+
+
               const {
                 data:
                   clockData,
@@ -3881,6 +4102,7 @@ export default function TraditionalDraftPage() {
     [
       draft?.id,
       reconcileDraftPicks,
+      hydrateDraftPlayers,
     ]
   );
 
@@ -6965,31 +7187,17 @@ export default function TraditionalDraftPage() {
 
               <MyRosterPanel
                 teamName={
-                  (
-                    rosterTeamId ??
-                    myTeamId
-                  )
+                  displayedRosterTeamId !==
+                  null
                     ? teamMap.get(
-                        (
-                          rosterTeamId ??
-                          myTeamId
-                        ) as number
+                        displayedRosterTeamId
                       )
                         ?.team_name ??
                       "Roster"
                     : "Roster"
                 }
                 picks={
-                  picks.filter(
-                    (
-                      pick
-                    ) =>
-                      pick.fantasy_team_id ===
-                      (
-                        rosterTeamId ??
-                        myTeamId
-                      )
-                  )
+                  displayedRosterPicks
                 }
                 playerMap={
                   playerMap
@@ -15047,6 +15255,7 @@ const styles = {
   },
 
 } as const;
+
 
 
 
