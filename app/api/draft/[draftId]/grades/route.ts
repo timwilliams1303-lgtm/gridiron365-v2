@@ -59,6 +59,35 @@ function createAuthenticatedClient(accessToken: string) {
   );
 }
 
+function getGeneratedTeamCount(teamResult: unknown): number {
+  if (
+    teamResult &&
+    typeof teamResult === "object" &&
+    !Array.isArray(teamResult)
+  ) {
+    const result = teamResult as Record<string, unknown>;
+
+    if (
+      typeof result.teamCount === "number" &&
+      Number.isFinite(result.teamCount)
+    ) {
+      return result.teamCount;
+    }
+
+    if (
+      typeof result.teamCount === "string"
+    ) {
+      const parsed = Number(result.teamCount);
+
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return 0;
+}
+
 export async function POST(
   request: Request,
   context: RouteContext
@@ -179,6 +208,7 @@ export async function POST(
      * These routines use the league's own commissioner scoring
      * configuration through the V4 projection foundation.
      */
+
     const {
       data: weeklyResult,
       error: weeklyError,
@@ -230,33 +260,29 @@ export async function POST(
       );
     }
 
-    const {
-      count: generatedCount,
-      error: countError,
-    } = await supabase
-      .from(
-        "traditional_draft_grade_v4_team_metrics"
-      )
-      .select(
-        "fantasy_team_id",
-        {
-          count: "exact",
-          head: true,
-        }
-      )
-      .eq("draft_id", draftId);
-
-    if (countError) {
-      return jsonError(
-        `Grades were rebuilt, but the result count could not be read: ${countError.message}`,
-        400
-      );
-    }
+    /*
+     * The final V4 team-grade RPC already returns the authoritative
+     * number of teams it generated:
+     *
+     * {
+     *   success: true,
+     *   teamCount: 12,
+     *   ...
+     * }
+     *
+     * Use that value directly instead of issuing a separate SELECT
+     * against traditional_draft_grade_v4_team_metrics.
+     *
+     * The separate count query can be filtered by RLS for the
+     * authenticated API client even though the SECURITY DEFINER /
+     * grading RPC successfully generated all team rows.
+     */
+    const generatedCount =
+      getGeneratedTeamCount(teamResult);
 
     return NextResponse.json({
       success: true,
-      generatedCount:
-        generatedCount ?? 0,
+      generatedCount,
       gradingVersion:
         "traditional-draft-grade-v4",
       results: {
