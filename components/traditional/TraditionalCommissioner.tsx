@@ -739,7 +739,9 @@ export default function TraditionalCommissioner({
       supabase.from("fantasy_teams").select("*").eq("league_id", leagueId).order("team_name"),
       supabase.from("league_members").select("id,user_id,role").eq("league_id", leagueId).order("joined_at"),
       supabase.from("team_rosters").select("id,fantasy_team_id,player_id,acquired_via").eq("league_id", leagueId),
-      supabase.from("nfl_players").select("id,full_name,primary_position,team_abbreviation,is_active"),
+      supabase.rpc("commissioner_get_traditional_player_catalog", {
+        p_league_id: leagueId,
+      }),
       supabase.from("league_scoring_rules").select("id,league_id,category,rule_type,stat_key,min_value,max_value,points,is_enabled,stacking_mode,priority,label").eq("league_id", leagueId).order("category").order("priority"),
       supabase.from("traditional_waiver_claims").select("*").eq("league_id", leagueId).order("submitted_at", { ascending: false }).limit(100),
       supabase.from("traditional_trade_offers").select("*").eq("league_id", leagueId).order("created_at", { ascending: false }).limit(100),
@@ -3042,5 +3044,6 @@ const styles: Record<string, React.CSSProperties> = {
   teamCardActions: { display: "flex", gap: "7px", alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" },
   teamActions: { display: "flex", gap: "6px", justifyContent: "flex-end" },
 };
+
 
 
