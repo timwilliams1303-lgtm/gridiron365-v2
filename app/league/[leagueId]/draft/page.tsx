@@ -1857,6 +1857,125 @@ export default function TraditionalDraftPage() {
     );
 
 
+  const lastCountdownDingRef =
+    useRef<string>(
+      ""
+    );
+
+
+  const playDraftTone =
+    useCallback(
+      (
+        kind:
+          "countdown" |
+          "queue-taken"
+      ) => {
+        if (
+          muted
+        ) {
+          return;
+        }
+
+
+        try {
+          const AudioContextCtor =
+            window.AudioContext;
+
+
+          if (
+            !AudioContextCtor
+          ) {
+            return;
+          }
+
+
+          const context =
+            new AudioContextCtor();
+
+          const oscillator =
+            context.createOscillator();
+
+          const gain =
+            context.createGain();
+
+
+          oscillator.type =
+            "sine";
+
+          oscillator.frequency.value =
+            kind ===
+            "countdown"
+              ? 880
+              : 520;
+
+
+          gain.gain.setValueAtTime(
+            0.0001,
+            context.currentTime
+          );
+
+          gain.gain.exponentialRampToValueAtTime(
+            kind ===
+            "countdown"
+              ? 0.2
+              : 0.28,
+            context.currentTime +
+              0.01
+          );
+
+          gain.gain.exponentialRampToValueAtTime(
+            0.0001,
+            context.currentTime +
+              (
+                kind ===
+                "countdown"
+                  ? 0.13
+                  : 0.28
+              )
+          );
+
+
+          oscillator.connect(
+            gain
+          );
+
+          gain.connect(
+            context.destination
+          );
+
+
+          oscillator.start();
+
+          oscillator.stop(
+            context.currentTime +
+              (
+                kind ===
+                "countdown"
+                  ? 0.14
+                  : 0.3
+              )
+          );
+
+
+          oscillator.addEventListener(
+            "ended",
+            () => {
+              void context.close();
+            },
+            {
+              once: true,
+            }
+          );
+        } catch {
+          // Draft audio alerts must never block drafting.
+        }
+      },
+      [
+        muted,
+      ]
+    );
+
+
   const teamMap =
     useMemo(
       () =>
@@ -2328,10 +2447,20 @@ export default function TraditionalDraftPage() {
           (
             player
           ) => {
-            if (
+            const drafted =
               draftedPlayerIds.has(
                 player.id
-              )
+              );
+
+
+            /*
+             * Keep the normal Available Players list clean, but when a
+             * manager actively searches, include matching drafted players
+             * so they can confirm the player is already gone.
+             */
+            if (
+              drafted &&
+              !searchLower
             ) {
               return false;
             }
@@ -4009,14 +4138,32 @@ export default function TraditionalDraftPage() {
               setQueueIds(
                 (
                   current
-                ) =>
-                  current.filter(
+                ) => {
+                  const wasQueued =
+                    current.includes(
+                      inserted.player_id
+                    );
+
+
+                  if (
+                    wasQueued &&
+                    inserted.fantasy_team_id !==
+                      myTeamId
+                  ) {
+                    playDraftTone(
+                      "queue-taken"
+                    );
+                  }
+
+
+                  return current.filter(
                     (
                       playerId
                     ) =>
                       playerId !==
                       inserted.player_id
-                  )
+                  );
+                }
               );
 
 
@@ -4194,6 +4341,8 @@ export default function TraditionalDraftPage() {
       draft?.id,
       reconcileDraftPicks,
       hydrateDraftPlayers,
+      myTeamId,
+      playDraftTone,
     ]
   );
 
@@ -4630,6 +4779,73 @@ export default function TraditionalDraftPage() {
     },
     [
       clock,
+    ]
+  );
+
+
+  /*
+   * HUMAN TURN FINAL-10-SECONDS AUDIO
+   *
+   * Only the owner who is actually on the clock hears these dings.
+   * One short ding plays at 10, 9, ... 1 seconds. CPU turns and other
+   * managers' turns stay silent. Mute All suppresses these alerts.
+   */
+  useEffect(
+    () => {
+      if (
+        !draft ||
+        !clock ||
+        draft.status !==
+          "live" ||
+        draft.is_paused ||
+        clock.isPaused ||
+        clock.autoPick ||
+        !isCurrentOwnerTurn ||
+        localSeconds >
+          10 ||
+        localSeconds <
+          1
+      ) {
+        return;
+      }
+
+
+      const overallPick =
+        Number(
+          clock.overallPick ??
+            draft.current_overall_pick
+        );
+
+      const dingKey =
+        `${overallPick}:${localSeconds}`;
+
+
+      if (
+        lastCountdownDingRef.current ===
+        dingKey
+      ) {
+        return;
+      }
+
+
+      lastCountdownDingRef.current =
+        dingKey;
+
+      playDraftTone(
+        "countdown"
+      );
+    },
+    [
+      draft?.id,
+      draft?.status,
+      draft?.is_paused,
+      draft?.current_overall_pick,
+      clock?.overallPick,
+      clock?.isPaused,
+      clock?.autoPick,
+      isCurrentOwnerTurn,
+      localSeconds,
+      playDraftTone,
     ]
   );
 
@@ -6971,6 +7187,9 @@ export default function TraditionalDraftPage() {
                       queuedIds={
                         queueIds
                       }
+                      draftedPlayerIds={
+                        draftedPlayerIds
+                      }
                       canDraft={
                         canDraft
                       }
@@ -8584,6 +8803,7 @@ function PlayersPanel({
   selectedPlayerId,
   selectedPlayer,
   queuedIds,
+  draftedPlayerIds,
   canDraft,
   working,
   search,
@@ -8611,6 +8831,9 @@ function PlayersPanel({
 
   queuedIds:
     number[];
+
+  draftedPlayerIds:
+    Set<number>;
 
   canDraft:
     boolean;
@@ -8802,7 +9025,9 @@ function PlayersPanel({
             styles.showing
           }
         >
-          Showing {players.length} available players
+          {search.trim()
+            ? `Showing ${players.length} matching players`
+            : `Showing ${players.length} available players`}
         </div>
       </div>
 
@@ -8832,7 +9057,12 @@ function PlayersPanel({
         <button
           type="button"
           disabled={
-            !canDraft
+            !canDraft ||
+            (selectedPlayer
+              ? draftedPlayerIds.has(
+                  selectedPlayer.id
+                )
+              : false)
           }
           onClick={
             onDraftPlayer
@@ -8840,16 +9070,26 @@ function PlayersPanel({
           style={{
             ...styles.availableDraftButton,
 
-            ...(!canDraft
+            ...(!canDraft ||
+            (selectedPlayer
+              ? draftedPlayerIds.has(
+                  selectedPlayer.id
+                )
+              : false)
               ? styles.buttonDisabled
               : {}),
           }}
         >
           {working
             ? "DRAFTING…"
-            : selectedPlayer
-              ? `DRAFT ${compactName(selectedPlayer.name).toUpperCase()}`
-              : "DRAFT PLAYER"}
+            : selectedPlayer &&
+                draftedPlayerIds.has(
+                  selectedPlayer.id
+                )
+              ? "PLAYER DRAFTED"
+              : selectedPlayer
+                ? `DRAFT ${compactName(selectedPlayer.name).toUpperCase()}`
+                : "DRAFT PLAYER"}
         </button>
       </div>
 
@@ -8901,10 +9141,6 @@ function PlayersPanel({
         }
       >
         {players
-          .slice(
-            0,
-            350
-          )
           .map(
             (
               player
@@ -8916,6 +9152,12 @@ function PlayersPanel({
 
               const queued =
                 queuedIds.includes(
+                  player.id
+                );
+
+
+              const drafted =
+                draftedPlayerIds.has(
                   player.id
                 );
 
@@ -8941,6 +9183,10 @@ function PlayersPanel({
 
                     ...(selected
                       ? styles.playerRowSelected
+                      : {}),
+
+                    ...(drafted
+                      ? { opacity: 0.66 }
                       : {}),
                   }}
                 >
@@ -8992,12 +9238,20 @@ function PlayersPanel({
                         {player.name}
                       </button>
 
-                      <span>
-                        {player.myRank
-                          ? `My Rank #${player.myRank}`
-                          : canDraft
-                            ? "Available"
-                            : "Available player"}
+                      <span
+                        style={
+                          drafted
+                            ? styles.draftedTag
+                            : undefined
+                        }
+                      >
+                        {drafted
+                          ? "DRAFTED"
+                          : player.myRank
+                            ? `My Rank #${player.myRank}`
+                            : canDraft
+                              ? "Available"
+                              : "Available player"}
                       </span>
 
                       {getInjuryDisplay(
@@ -9070,11 +9324,20 @@ function PlayersPanel({
 
                   <button
                     type="button"
+                    disabled={
+                      drafted
+                    }
                     onClick={
                       (
                         event
                       ) => {
                         event.stopPropagation();
+
+                        if (
+                          drafted
+                        ) {
+                          return;
+                        }
 
                         onQueue(
                           player.id
@@ -9087,11 +9350,24 @@ function PlayersPanel({
                       ...(queued
                         ? styles.queueButtonActive
                         : {}),
+
+                      ...(drafted
+                        ? styles.buttonDisabled
+                        : {}),
                     }}
+                    title={
+                      drafted
+                        ? "Player has already been drafted"
+                        : queued
+                          ? "Remove from queue"
+                          : "Add to queue"
+                    }
                   >
-                    {queued
-                      ? "✓"
-                      : "+"}
+                    {drafted
+                      ? "—"
+                      : queued
+                        ? "✓"
+                        : "+"}
                   </button>
                 </div>
               );
@@ -9810,7 +10086,12 @@ function QueuePanel({
         <span style={styles.countBadge}>{rows.length}</span>
       </div>
 
-      {rows.map((player, index) => (
+      <div
+        style={
+          styles.tabVerticalScroll
+        }
+      >
+        {rows.map((player, index) => (
         <div
           key={player.id}
           onClick={() => onSelect(player.id)}
@@ -9881,7 +10162,8 @@ function QueuePanel({
             </button>
           </div>
         </div>
-      ))}
+        ))}
+      </div>
 
       {rows.length === 0 ? (
         <div style={styles.emptyBody}>
@@ -9915,7 +10197,14 @@ function RankingsPanel({
 }) {
   const ranked =
     players
-      .filter((player) => player.myRank !== null)
+      .filter(
+        (player) =>
+          player.myRank !==
+            null &&
+          !draftedPlayerIds.has(
+            player.id
+          )
+      )
       .sort(
         (a, b) =>
           (a.myRank ?? 99999) -
@@ -9932,22 +10221,22 @@ function RankingsPanel({
         <span style={styles.countBadge}>{ranked.length}</span>
       </div>
 
-      {ranked.map((player) => {
-        const drafted =
-          draftedPlayerIds.has(player.id);
-
-        return (
+      <div
+        style={
+          styles.tabVerticalScroll
+        }
+      >
+        {ranked.map((player) => (
           <div
             key={player.id}
-            onClick={() => {
-              if (!drafted) onSelect(player.id);
-            }}
+            onClick={() =>
+              onSelect(player.id)
+            }
             style={{
               ...styles.rankingRow,
               ...(selectedPlayerId === player.id
                 ? styles.playerRowSelected
                 : {}),
-              ...(drafted ? styles.rankingRowDrafted : {}),
             }}
           >
             <span style={styles.rankNumber}>{player.myRank}</span>
@@ -9967,19 +10256,19 @@ function RankingsPanel({
                 {player.position} • {player.team} • Bye {player.byeWeek ?? "—"} • Proj {formatProjectedPoints(player.projectedPoints)}
               </span>
             </div>
-            <span style={drafted ? styles.draftedTag : styles.availableTag}>
-              {drafted ? "DRAFTED" : "AVAILABLE"}
+            <span style={styles.availableTag}>
+              AVAILABLE
             </span>
             <button
               type="button"
-              disabled={drafted || !canDraft || working}
+              disabled={!canDraft || working}
               onClick={(event) => {
                 event.stopPropagation();
                 onDraft(player.id);
               }}
               style={{
                 ...styles.inlineDraftButton,
-                ...(drafted || !canDraft || working
+                ...(!canDraft || working
                   ? styles.buttonDisabled
                   : {}),
               }}
@@ -9987,8 +10276,8 @@ function RankingsPanel({
               {working ? "DRAFTING…" : "DRAFT PLAYER"}
             </button>
           </div>
-        );
-      })}
+        ))}
+      </div>
 
       {ranked.length === 0 ? (
         <div style={styles.emptyBody}>
@@ -12750,8 +13039,35 @@ const styles = {
     height:
       "100%",
 
+    minHeight:
+      0,
+
+    display:
+      "grid",
+
+    gridTemplateRows:
+      "auto minmax(0,1fr)",
+
+    overflow:
+      "hidden",
+  },
+
+
+  tabVerticalScroll: {
+    minHeight:
+      0,
+
+    height:
+      "100%",
+
     overflowY:
       "auto" as const,
+
+    overflowX:
+      "hidden" as const,
+
+    scrollbarGutter:
+      "stable",
   },
 
 
@@ -13170,6 +13486,15 @@ const styles = {
     height:
       "100%",
 
+    minHeight:
+      0,
+
+    minWidth:
+      0,
+
+    overflow:
+      "hidden",
+
     display:
       "grid",
 
@@ -13219,14 +13544,32 @@ const styles = {
 
 
   boardScroll: {
-    overflow:
+    minHeight:
+      0,
+
+    minWidth:
+      0,
+
+    height:
+      "100%",
+
+    width:
+      "100%",
+
+    overflowX:
+      "auto" as const,
+
+    overflowY:
       "auto" as const,
 
     scrollbarGutter:
-      "stable",
+      "stable both-edges",
+
+    overscrollBehavior:
+      "contain",
 
     paddingBottom:
-      "5px",
+      "8px",
   },
 
 
