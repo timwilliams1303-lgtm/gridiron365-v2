@@ -34,7 +34,8 @@ export default function TraditionalLeagueNav({
     { label: "Playoffs", mobileLabel: "Playoffs", href: `${base}/playoffs` },
     { label: "Season Recap", mobileLabel: "Recap", href: `${base}/season-recap` },
     { label: "League History", mobileLabel: "History", href: `${base}/history` },
-    { label: "Draft", mobileLabel: "Draft", href: `${base}/draft` },
+    { label: "Draft", mobileLabel: "Draft", href: `${base}/draft`, exact: true },
+    { label: "Draft Grades", mobileLabel: "Grades", href: `${base}/draft/grades` },
     { label: "Settings", mobileLabel: "Settings", href: `${base}/settings` },
   ];
 

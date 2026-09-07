@@ -2196,184 +2196,193 @@ export default function TraditionalCommissioner({
                     "";
                   const isCpu = team.is_cpu === true;
 
+                  const assignedOwnerName = team.owner_id
+                    ? ownerDisplayName(team)
+                    : "";
+                  const assignedOwnerEmail = team.owner_id
+                    ? ownerEmail(team) || inviteEmail
+                    : "";
+                  const invitePending =
+                    !isCpu &&
+                    !team.owner_id &&
+                    latestInvite?.status === "pending";
+
                   return (
-                    <div key={team.id} style={styles.teamRowExpanded}>
-                      <strong style={styles.teamIndex}>{index + 1}</strong>
+                    <div
+                      key={team.id}
+                      style={{
+                        ...styles.teamOwnerCard,
+                        ...(team.owner_id ? styles.teamOwnerCardAssigned : {}),
+                        ...(isCpu ? styles.teamOwnerCardCpu : {}),
+                      }}
+                    >
+                      <div style={styles.teamCardNumber}>
+                        {index + 1}
+                      </div>
 
-                      <label style={styles.field}>
-                        <span style={styles.fieldLabel}>Team Name</span>
-                        <input
-                          value={team.team_name}
-                          onChange={(e) =>
-                            setTeams((current) =>
-                              current.map((row) =>
-                                row.id === team.id
-                                  ? { ...row, team_name: e.target.value }
-                                  : row
+                      <div style={styles.teamCardMain}>
+                        <label style={styles.field}>
+                          <span style={styles.fieldLabel}>Team Name</span>
+                          <input
+                            value={team.team_name}
+                            onChange={(e) =>
+                              setTeams((current) =>
+                                current.map((row) =>
+                                  row.id === team.id
+                                    ? { ...row, team_name: e.target.value }
+                                    : row
+                                )
                               )
-                            )
-                          }
-                          style={styles.input}
-                        />
-                      </label>
-
-                      <label style={styles.field}>
-                        <span style={styles.fieldLabel}>Owner</span>
-                        {isCpu ? (
-                          <>
-                            <input
-                              value="CPU CONTROLLED"
-                              readOnly
-                              style={styles.input}
-                            />
-                            <span style={styles.muted}>
-                              Automatic Gridiron365 CPU team
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <select
-                              value={team.owner_id ?? ""}
-                              onChange={(e) => {
-                                const nextOwnerId = e.target.value;
-                                setTeams((current) =>
-                                  current.map((row) =>
-                                    row.id === team.id
-                                      ? {
-                                          ...row,
-                                          owner_id: nextOwnerId || null,
-                                        }
-                                      : row
-                                  )
-                                );
-                              }}
-                              style={styles.input}
-                            >
-                              <option value="">—</option>
-                              {members.map((m) => {
-                                const profile = profileByUserId.get(m.user_id);
-
-                                const displayName =
-                                  profile?.display_name?.trim() ||
-                                  [
-                                    profile?.first_name?.trim(),
-                                    profile?.last_name?.trim(),
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" ") ||
-                                  shortId(m.user_id);
-
-                                return (
-                                  <option key={m.id} value={m.user_id}>
-                                    {displayName} • {pretty(m.role)}
-                                  </option>
-                                );
-                              })}
-                            </select>
-
-                            <span style={styles.muted}>
-                              {team.owner_id
-                                ? ownerEmail(team) || inviteEmail || "Email unavailable"
-                                : latestInvite?.email
-                                  ? latestInvite.email
-                                  : "No owner email yet"}
-                            </span>
-                          </>
-                        )}
-                      </label>
-
-                      <label style={styles.field}>
-                        <span style={styles.fieldLabel}>Email Invite</span>
+                            }
+                            style={styles.input}
+                          />
+                        </label>
 
                         {isCpu ? (
-                          <>
-                            <input
-                              value="Not applicable"
-                              readOnly
-                              style={styles.input}
-                            />
-                            <span style={styles.muted}>CPU TEAM</span>
-                          </>
-                        ) : (
-                          <>
-                            <input
-                              type="email"
-                              placeholder="owner@example.com"
-                              value={
-                                team.owner_id
-                                  ? ownerEmail(team) || inviteEmail
-                                  : latestInvite?.status === "pending"
-                                    ? latestInvite.email
-                                    : teamInviteEmails[team.id] ?? ""
-                              }
-                              onChange={(e) => {
-                                if (
-                                  team.owner_id ||
-                                  latestInvite?.status === "pending"
-                                ) {
-                                  return;
-                                }
-
-                                setTeamInviteEmails((current) => ({
-                                  ...current,
-                                  [team.id]: e.target.value,
-                                }));
-                              }}
-                              readOnly={
-                                Boolean(team.owner_id) ||
-                                latestInvite?.status === "pending"
-                              }
-                              style={styles.input}
-                            />
-
-                            <span style={styles.muted}>
-                              {team.owner_id &&
-                              acceptedInvite?.status === "accepted"
-                                ? "ACCEPTED"
-                                : latestInvite?.status === "pending"
-                                  ? "PENDING"
-                                  : latestInvite?.status
-                                    ? pretty(latestInvite.status).toUpperCase()
-                                    : "Enter an email address to invite an owner"}
-                            </span>
-                          </>
-                        )}
-                      </label>
-
-                      <div style={styles.ownerStatus}>
-                        {isCpu ? (
-                          <>
-                            <strong>CPU TEAM</strong>
-                            <span>Automatic drafting enabled.</span>
-                          </>
+                          <div style={styles.assignedOwnerBox}>
+                            <div style={styles.ownerAvatar}>CPU</div>
+                            <div style={styles.ownerIdentity}>
+                              <strong style={styles.ownerName}>CPU CONTROLLED</strong>
+                              <span style={styles.ownerEmailLine}>
+                                Automatic Gridiron365 drafting
+                              </span>
+                            </div>
+                            <span style={styles.cpuStatusPill}>CPU TEAM</span>
+                          </div>
                         ) : team.owner_id ? (
-                          <>
-                            <strong>{ownerDisplayName(team)}</strong>
-                            <span>
-                              {ownerEmail(team) || inviteEmail
-                                ? `${ownerEmail(team) || inviteEmail} • OWNER ASSIGNED`
-                                : "OWNER ASSIGNED"}
+                          <div style={styles.assignedOwnerBox}>
+                            <div style={styles.ownerAvatar}>
+                              {(assignedOwnerName || team.team_name)
+                                .trim()
+                                .slice(0, 1)
+                                .toUpperCase()}
+                            </div>
+
+                            <div style={styles.ownerIdentity}>
+                              <span style={styles.fieldLabel}>Owner</span>
+                              <strong style={styles.ownerName}>
+                                {assignedOwnerName || "League Member"}
+                              </strong>
+                              {assignedOwnerEmail ? (
+                                <span style={styles.ownerEmailLine}>
+                                  {assignedOwnerEmail}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <span style={styles.assignedStatusPill}>
+                              ✓ OWNER ASSIGNED
                             </span>
-                          </>
-                        ) : latestInvite?.status === "pending" ? (
-                          <>
-                            <strong>INVITE PENDING</strong>
-                            <span>{latestInvite.email}</span>
-                          </>
+                          </div>
                         ) : (
-                          <>
-                            <strong>NO OWNER ASSIGNED</strong>
-                            <span>
-                              Enter an email address to invite someone to this team.
-                            </span>
-                          </>
+                          <div style={styles.openOwnerGrid}>
+                            <label style={styles.field}>
+                              <span style={styles.fieldLabel}>Owner</span>
+                              <select
+                                value=""
+                                onChange={(e) => {
+                                  const nextOwnerId = e.target.value;
+
+                                  if (!nextOwnerId) return;
+
+                                  setTeams((current) =>
+                                    current.map((row) =>
+                                      row.id === team.id
+                                        ? {
+                                            ...row,
+                                            owner_id: nextOwnerId,
+                                          }
+                                        : row
+                                    )
+                                  );
+                                }}
+                                style={styles.input}
+                              >
+                                <option value="">
+                                  Select existing league member…
+                                </option>
+
+                                {members
+                                  .filter(
+                                    (member) =>
+                                      !teams.some(
+                                        (existingTeam) =>
+                                          existingTeam.id !== team.id &&
+                                          existingTeam.owner_id === member.user_id
+                                      )
+                                  )
+                                  .map((member) => {
+                                    const profile =
+                                      profileByUserId.get(member.user_id);
+
+                                    const displayName =
+                                      profile?.display_name?.trim() ||
+                                      [
+                                        profile?.first_name?.trim(),
+                                        profile?.last_name?.trim(),
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" ") ||
+                                      shortId(member.user_id);
+
+                                    return (
+                                      <option
+                                        key={member.id}
+                                        value={member.user_id}
+                                      >
+                                        {displayName} • {pretty(member.role)}
+                                      </option>
+                                    );
+                                  })}
+                              </select>
+                            </label>
+
+                            <label style={styles.field}>
+                              <span style={styles.fieldLabel}>
+                                {invitePending ? "Invitation" : "Email Invite"}
+                              </span>
+
+                              <input
+                                type="email"
+                                placeholder="owner@example.com"
+                                value={
+                                  invitePending
+                                    ? latestInvite?.email ?? ""
+                                    : teamInviteEmails[team.id] ?? ""
+                                }
+                                onChange={(e) => {
+                                  if (invitePending) return;
+
+                                  setTeamInviteEmails((current) => ({
+                                    ...current,
+                                    [team.id]: e.target.value,
+                                  }));
+                                }}
+                                readOnly={invitePending}
+                                style={styles.input}
+                              />
+
+                              <span
+                                style={{
+                                  ...styles.muted,
+                                  ...(invitePending
+                                    ? styles.pendingInviteText
+                                    : {}),
+                                }}
+                              >
+                                {invitePending
+                                  ? "Invitation sent • waiting for owner to join"
+                                  : "Invite a new owner directly into this team"}
+                              </span>
+                            </label>
+                          </div>
                         )}
                       </div>
 
-                      <div style={styles.teamActions}>
+                      <div style={styles.teamCardActions}>
                         {!isCpu &&
                         !team.owner_id &&
-                        latestInvite?.status !== "pending" ? (
+                        !invitePending ? (
                           <Button
                             disabled={
                               invitingTeamId !== null ||
@@ -2383,8 +2392,14 @@ export default function TraditionalCommissioner({
                           >
                             {invitingTeamId === team.id
                               ? "SENDING…"
-                              : "✉ SEND EMAIL INVITE"}
+                              : "✉ SEND INVITE"}
                           </Button>
+                        ) : null}
+
+                        {invitePending ? (
+                          <span style={styles.pendingStatusPill}>
+                            INVITE PENDING
+                          </span>
                         ) : null}
 
                         <Button
@@ -2408,6 +2423,41 @@ export default function TraditionalCommissioner({
                         >
                           SAVE
                         </Button>
+
+                        {!isCpu && team.owner_id ? (
+                          <Button
+                            danger
+                            disabled={saving}
+                            onClick={() => {
+                              if (
+                                !window.confirm(
+                                  `Remove ${
+                                    assignedOwnerName || "this owner"
+                                  } from ${team.team_name}?`
+                                )
+                              ) {
+                                return;
+                              }
+
+                              void action(
+                                () =>
+                                  supabase.rpc(
+                                    "commissioner_update_traditional_team",
+                                    {
+                                      p_league_id: leagueId,
+                                      p_fantasy_team_id: team.id,
+                                      p_team_name: team.team_name,
+                                      p_owner_id: null,
+                                      p_active: true,
+                                    }
+                                  ),
+                                `${team.team_name} is now open for a new owner.`
+                              );
+                            }}
+                          >
+                            REMOVE OWNER
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -2974,9 +3024,23 @@ const styles: Record<string, React.CSSProperties> = {
   startDraftPanel: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", marginTop: "14px", padding: "15px", border: "1px solid rgba(255,255,255,.08)", borderRadius: "10px", background: "rgba(255,255,255,.018)" },
   inviteGrid: { display: "grid", gridTemplateColumns: "repeat(3,minmax(180px,1fr)) auto", gap: "10px", alignItems: "end" },
   inviteButtonWrap: { display: "flex", alignItems: "end" },
-  teamRowExpanded: { display: "grid", gridTemplateColumns: "36px minmax(180px,1.2fr) minmax(220px,1.2fr) minmax(180px,.8fr) 100px auto", gap: "9px", alignItems: "center", padding: "10px", border: "1px solid rgba(255,255,255,.07)", borderRadius: "9px", background: "rgba(255,255,255,.018)" },
-  teamIndex: { color: "#ff6c31", textAlign: "center" },
-  ownerStatus: { display: "flex", flexDirection: "column", gap: "3px", color: "#9299a4", fontSize: "10px" },
+  teamOwnerCard: { display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: "12px", alignItems: "center", padding: "13px", border: "1px solid rgba(255,255,255,.08)", borderRadius: "12px", background: "rgba(255,255,255,.018)" },
+  teamOwnerCardAssigned: { border: "1px solid rgba(70,220,130,.18)", background: "linear-gradient(135deg,rgba(35,130,75,.07),rgba(255,255,255,.015))" },
+  teamOwnerCardCpu: { border: "1px solid rgba(255,125,50,.20)", background: "linear-gradient(135deg,rgba(170,55,20,.08),rgba(255,255,255,.015))" },
+  teamCardNumber: { width: "28px", height: "28px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "8px", background: "rgba(255,105,45,.10)", border: "1px solid rgba(255,105,45,.22)", color: "#ff7440", fontSize: "11px", fontWeight: 950 },
+  teamCardMain: { minWidth: 0, display: "grid", gridTemplateColumns: "minmax(210px,.8fr) minmax(320px,1.5fr)", gap: "12px", alignItems: "end" },
+  assignedOwnerBox: { minHeight: "56px", display: "grid", gridTemplateColumns: "38px minmax(0,1fr) auto", gap: "10px", alignItems: "center", padding: "8px 10px", border: "1px solid rgba(255,255,255,.08)", borderRadius: "9px", background: "#0b0d12" },
+  ownerAvatar: { width: "36px", height: "36px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#b51b18,#ef531d)", color: "#fff", fontSize: "11px", fontWeight: 950 },
+  ownerIdentity: { minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" },
+  ownerName: { color: "#f5f7fa", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  ownerEmailLine: { color: "#8f96a2", fontSize: "10px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  assignedStatusPill: { justifySelf: "end", whiteSpace: "nowrap", padding: "6px 8px", borderRadius: "999px", border: "1px solid rgba(70,220,130,.28)", background: "rgba(35,150,85,.10)", color: "#7be5a6", fontSize: "9px", fontWeight: 950 },
+  cpuStatusPill: { justifySelf: "end", whiteSpace: "nowrap", padding: "6px 8px", borderRadius: "999px", border: "1px solid rgba(255,120,50,.28)", background: "rgba(190,70,25,.10)", color: "#ff9a63", fontSize: "9px", fontWeight: 950 },
+  pendingStatusPill: { whiteSpace: "nowrap", padding: "7px 9px", borderRadius: "999px", border: "1px solid rgba(255,190,70,.28)", background: "rgba(170,110,20,.10)", color: "#e8c17d", fontSize: "9px", fontWeight: 950 },
+  pendingInviteText: { color: "#d1aa6f" },
+  openOwnerGrid: { display: "grid", gridTemplateColumns: "minmax(210px,.9fr) minmax(240px,1.1fr)", gap: "10px", alignItems: "start" },
+  teamCardActions: { display: "flex", gap: "7px", alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" },
   teamActions: { display: "flex", gap: "6px", justifyContent: "flex-end" },
 };
+
 
