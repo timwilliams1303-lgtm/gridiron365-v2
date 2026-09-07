@@ -6048,8 +6048,14 @@ export default function TraditionalDraftPage() {
 
             <div
               style={{
-                overflowX:
-                  "auto",
+                height:
+                  "clamp(420px, 68vh, 760px)",
+                minHeight:
+                  0,
+                minWidth:
+                  0,
+                overflow:
+                  "hidden",
                 padding:
                   "12px",
               }}
@@ -13589,11 +13595,14 @@ const styles = {
     position:
       "sticky" as const,
 
+    top:
+      0,
+
     left:
       0,
 
     zIndex:
-      4,
+      6,
 
     padding:
       "7px",
@@ -13627,6 +13636,15 @@ const styles = {
 
 
   boardTeamHeader: {
+    position:
+      "sticky" as const,
+
+    top:
+      0,
+
+    zIndex:
+      5,
+
     minHeight:
       "54px",
 
@@ -13660,10 +13678,13 @@ const styles = {
 
   boardTeamHeaderMine: {
     background:
-      "linear-gradient(180deg,rgba(180,25,18,.14),rgba(255,100,15,.03))",
+      "linear-gradient(180deg,rgba(180,25,18,.34),rgba(255,100,15,.16))",
+
+    color:
+      "#ffffff",
 
     boxShadow:
-      "inset 0 -2px #ff6f1b",
+      "inset 2px 0 #ff6f1b, inset -2px 0 #ff6f1b, inset 0 -3px #ff6f1b",
   },
 
 
@@ -13737,7 +13758,16 @@ const styles = {
 
   boardCellMine: {
     background:
-      "rgba(255,95,15,.023)",
+      "linear-gradient(180deg,rgba(180,25,18,.14),rgba(255,95,15,.08))",
+
+    borderRight:
+      "2px solid rgba(255,111,27,.72)",
+
+    borderLeft:
+      "2px solid rgba(255,111,27,.72)",
+
+    boxShadow:
+      "inset 0 0 18px rgba(255,95,15,.05)",
   },
 
 
