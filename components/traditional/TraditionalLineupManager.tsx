@@ -1170,12 +1170,15 @@ className="g365-slotNumber" style={styles.slotNumber}
 
 
       {player ? (
-        <button
-          type="button"
-          disabled={
-            saving
-          }
+        <div
+          role="button"
+          tabIndex={saving ? -1 : 0}
+          aria-disabled={saving}
           onClick={() => {
+            if (saving) {
+              return;
+            }
+
             if (
               selectedPlayer &&
               selectedPlayer.playerId !==
@@ -1190,13 +1193,9 @@ className="g365-slotNumber" style={styles.slotNumber}
               return;
             }
 
-
-            if (
-              player.isLocked
-            ) {
+            if (player.isLocked) {
               return;
             }
-
 
             onSelectPlayer(
               selected
@@ -1204,14 +1203,52 @@ className="g365-slotNumber" style={styles.slotNumber}
                 : player.playerId
             );
           }}
-className="g365-playerButton" style={styles.playerButton}
+          onKeyDown={(event) => {
+            if (
+              saving ||
+              (
+                event.key !== "Enter" &&
+                event.key !== " "
+              )
+            ) {
+              return;
+            }
+
+            event.preventDefault();
+
+            if (
+              selectedPlayer &&
+              selectedPlayer.playerId !==
+                player.playerId &&
+              canTarget
+            ) {
+              void onMovePlayer(
+                definition.slot,
+                definition.index
+              );
+
+              return;
+            }
+
+            if (player.isLocked) {
+              return;
+            }
+
+            onSelectPlayer(
+              selected
+                ? null
+                : player.playerId
+            );
+          }}
+          className="g365-playerButton"
+          style={styles.playerButton}
         >
           <PlayerIdentity
             player={
               player
             }
           />
-        </button>
+        </div>
       ) : (
         <button
           type="button"

@@ -2543,16 +2543,7 @@ export async function getTraditionalMatchupDetailData(
       projectionSource,
 
       injuryStatus:
-        injury
-          ?.status ??
-        (
-          player?.status &&
-          !["ACTIVE", "HEALTHY", "NORMAL"].includes(
-            player.status.toUpperCase()
-          )
-            ? player.status
-            : null
-        ),
+        injury?.status ?? null,
 
       injuryType:
         injury

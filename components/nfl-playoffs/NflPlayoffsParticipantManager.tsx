@@ -945,6 +945,13 @@ export default function NflPlayoffsParticipantManager({
         styles.panel
       }
     >
+      <style>{`
+        @media (max-width: 980px) {
+          .g365-nfl-playoffs-owner-row {
+            grid-template-columns: minmax(0,1fr) !important;
+          }
+        }
+      `}</style>
       <div
         style={
           styles.header
@@ -1110,9 +1117,16 @@ export default function NflPlayoffsParticipantManager({
                 key={
                   team.id
                 }
-                style={
-                  styles.card
-                }
+                className="g365-nfl-playoffs-owner-row"
+                style={{
+                  ...styles.card,
+                  borderColor:
+                    hasOwner
+                      ? "rgba(58,207,113,.23)"
+                      : pending
+                        ? "rgba(255,135,54,.22)"
+                        : "rgba(255,98,45,.18)",
+                }}
               >
                 <div
                   style={
@@ -1607,46 +1621,68 @@ const styles:
     display:
       "grid",
     gridTemplateColumns:
-      "repeat(auto-fit,minmax(270px,1fr))",
+      "minmax(0,1fr)",
     gap:
-      12,
+      10,
   },
 
   card: {
     border:
       "1px solid rgba(255,255,255,.08)",
     borderRadius:
-      14,
+      12,
     padding:
-      14,
+      13,
     background:
-      "rgba(255,255,255,.025)",
+      "linear-gradient(90deg,rgba(255,94,31,.035),rgba(255,255,255,.015))",
     display:
       "grid",
+    gridTemplateColumns:
+      "minmax(210px,.85fr) minmax(320px,1.4fr) auto",
+    alignItems:
+      "center",
     gap:
-      11,
+      12,
   },
 
   cardTop: {
+    minWidth:
+      0,
     display:
-      "flex",
-    justifyContent:
-      "space-between",
+      "grid",
     gap:
-      10,
+      7,
     alignItems:
       "center",
   },
 
   teamId: {
+    width:
+      "fit-content",
+    minWidth:
+      30,
+    height:
+      30,
+    display:
+      "inline-grid",
+    placeItems:
+      "center",
+    padding:
+      "0 8px",
     color:
-      "#777",
+      "#ff7b35",
+    background:
+      "rgba(160,52,18,.16)",
+    border:
+      "1px solid rgba(255,104,42,.28)",
+    borderRadius:
+      8,
     fontWeight:
-      900,
+      950,
     fontSize:
       10,
     letterSpacing:
-      ".06em",
+      ".04em",
   },
 
   status: {
@@ -1688,28 +1724,64 @@ const styles:
   },
 
   teamName: {
+    display:
+      "block",
+    minWidth:
+      0,
+    padding:
+      "10px 12px",
+    border:
+      "1px solid rgba(255,255,255,.10)",
+    borderRadius:
+      8,
+    background:
+      "#0b0d12",
+    color:
+      "#fff",
     fontSize:
-      16,
+      14,
+    fontWeight:
+      900,
   },
 
   ownerInfo: {
+    minWidth:
+      0,
     display:
       "grid",
     gap:
       4,
+    padding:
+      "10px 12px",
     color:
-      "#999",
+      "#9aa5b6",
+    background:
+      "#090c11",
+    border:
+      "1px solid rgba(53,205,112,.18)",
+    borderRadius:
+      9,
     fontSize:
       11,
   },
 
   pendingInfo: {
+    minWidth:
+      0,
     display:
       "grid",
     gap:
       4,
+    padding:
+      "10px 12px",
     color:
-      "#999",
+      "#9aa5b6",
+    background:
+      "#090c11",
+    border:
+      "1px solid rgba(255,128,54,.18)",
+    borderRadius:
+      9,
     fontSize:
       11,
   },
@@ -1790,4 +1862,4 @@ const styles:
     lineHeight:
       1.5,
   },
-};
+}

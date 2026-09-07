@@ -750,7 +750,7 @@ export default function TraditionalPlayersBrowser({
         "waiver_claim"
       ) {
         setMessage(
-          `Claim submitted for ${selectedPlayer.fullName} â€” manage priority in Waivers.`
+          `Claim submitted for ${selectedPlayer.fullName} — manage priority in Waivers.`
         );
       } else {
         setMessage(
@@ -877,7 +877,7 @@ export default function TraditionalPlayersBrowser({
                 <span style={styles.actionMeta}>
                   {selectedPlayer.position}
                   {selectedPlayer.teamAbbreviation
-                    ? ` â€¢ ${selectedPlayer.teamAbbreviation}`
+                    ? ` • ${selectedPlayer.teamAbbreviation}`
                     : ""}
                 </span>
 
@@ -897,7 +897,7 @@ export default function TraditionalPlayersBrowser({
                 style={styles.modalCloseButton}
                 aria-label="Close player transaction"
               >
-                Ã—
+                ×
               </button>
             </div>
 
@@ -934,7 +934,7 @@ export default function TraditionalPlayersBrowser({
                   disabled={saving}
                 >
                   <option value="">
-                    No player â€” use open roster spot
+                    No player — use open roster spot
                   </option>
 
                   {myPlayers.map((player) => (
@@ -1636,7 +1636,7 @@ const PlayerRow = memo(function PlayerRow({
               styles.unavailableLabel
             }
           >
-            â€”
+            —
           </span>
         )}
       </div>
@@ -2759,4 +2759,3 @@ const styles = {
   },
 };
 import InjuryReportButton from "@/components/ui/InjuryReportButton";
-

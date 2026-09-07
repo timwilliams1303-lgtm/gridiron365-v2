@@ -1251,14 +1251,7 @@ export async function getTraditionalRankingsData(
              * designation over nfl_players.status.
              */
             injuryStatus:
-              injury?.status ??
-              (
-                player.status &&
-                player.status !==
-                  "ACTIVE"
-                  ? player.status
-                  : null
-              ),
+              injury?.status ?? null,
 
             injuryType:
               injury?.injury_type ??

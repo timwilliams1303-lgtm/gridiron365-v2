@@ -1089,14 +1089,41 @@ export default function PickemParticipantManager({
                     team.id
                   }
                   className="g365-pickem-participant-card"
-                  style={
-                    styles.teamCard
-                  }
+                  style={{
+                    ...styles.teamCard,
+                    borderColor:
+                      team.owner_id
+                        ? "rgba(58,207,113,.24)"
+                        : pendingInvite
+                          ? "rgba(255,135,54,.22)"
+                          : "rgba(255,98,45,.18)",
+                  }}
                 >
+                  <div
+                    style={{
+                      width: 30,
+                      height: 30,
+                      display: "grid",
+                      placeItems: "center",
+                      borderRadius: 8,
+                      border: "1px solid rgba(255,104,42,.28)",
+                      background: "rgba(160,52,18,.16)",
+                      color: "#ff7b35",
+                      fontSize: 10,
+                      fontWeight: 950,
+                    }}
+                  >
+                    {teams.indexOf(team) + 1}
+                  </div>
+
                   <div
                     style={{
                       minWidth:
                         0,
+                      padding: "9px 11px",
+                      border: "1px solid rgba(255,255,255,.08)",
+                      borderRadius: 9,
+                      background: "#090c11",
                     }}
                   >
                     <strong
@@ -1619,7 +1646,7 @@ const styles:
       "grid",
 
     gridTemplateColumns:
-      "minmax(200px,1fr) minmax(300px,1.4fr)",
+      "46px minmax(220px,.9fr) minmax(320px,1.35fr)",
 
     gap:
       12,
@@ -1863,4 +1890,4 @@ const styles:
     lineHeight:
       1.5,
   },
-};
+}

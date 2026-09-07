@@ -912,10 +912,6 @@ export default async function SeasonLongEntryPage({
           status,
           is_active
         `)
-        .eq(
-          "is_active",
-          true
-        )
         .in(
           "primary_position",
           [
@@ -1311,7 +1307,7 @@ export default async function SeasonLongEntryPage({
     const injuryResult =
       await supabase
         .from(
-          "nfl_player_injuries"
+          "current_nfl_player_injuries"
         )
         .select(`
           nfl_player_id,
@@ -1324,10 +1320,6 @@ export default async function SeasonLongEntryPage({
         .eq(
           "season",
           season
-        )
-        .eq(
-          "is_active",
-          true
         )
         .in(
           "nfl_player_id",
@@ -1558,9 +1550,7 @@ export default async function SeasonLongEntryPage({
               player.team_abbreviation,
 
             injuryStatus:
-              injury
-                ?.status ??
-              player.status,
+              injury?.status ?? null,
 
             injuryType:
               injury

@@ -1759,7 +1759,33 @@ export default function NhlPickemParticipantManager({
                         styles.participantTop
                       }
                     >
-                      <div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          minWidth: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 30,
+                            height: 30,
+                            flex: "0 0 30px",
+                            display: "grid",
+                            placeItems: "center",
+                            borderRadius: 8,
+                            border: "1px solid rgba(255,104,42,.28)",
+                            background: "rgba(160,52,18,.16)",
+                            color: "#ff7b35",
+                            fontSize: 10,
+                            fontWeight: 950,
+                          }}
+                        >
+                          {activeParticipants.indexOf(participant) + 1}
+                        </div>
+
+                        <div>
                         <div
                           style={
                             styles.entryName
@@ -1787,6 +1813,7 @@ export default function NhlPickemParticipantManager({
                             participant
                               .fantasyTeamId
                           }
+                        </div>
                         </div>
                       </div>
 
@@ -2810,30 +2837,30 @@ const styles:
 
     participantCard: {
       padding:
-        "15px",
+        "14px",
 
       border:
-        "1px solid rgba(255,255,255,.07)",
+        "1px solid rgba(58,207,113,.23)",
 
       borderRadius:
         "12px",
 
       background:
-        "#090909",
+        "linear-gradient(90deg,rgba(28,104,61,.09),rgba(255,255,255,.012))",
     },
 
     vacantCard: {
       padding:
-        "15px",
+        "14px",
 
       border:
-        "1px solid rgba(255,107,34,.18)",
+        "1px solid rgba(255,107,34,.20)",
 
       borderRadius:
         "12px",
 
       background:
-        "linear-gradient(145deg, rgba(123,19,7,.15), #090909 60%)",
+        "linear-gradient(90deg,rgba(123,45,12,.11),rgba(255,255,255,.012))",
     },
 
     inactiveCard: {
@@ -2871,14 +2898,32 @@ const styles:
     },
 
     entryName: {
+      minWidth:
+        0,
+
+      padding:
+        "9px 11px",
+
+      border:
+        "1px solid rgba(255,255,255,.09)",
+
+      borderRadius:
+        "8px",
+
+      background:
+        "#0b0d12",
+
+      color:
+        "#ffffff",
+
       fontSize:
-        "17px",
+        "14px",
 
       fontWeight:
         950,
 
       letterSpacing:
-        "-.02em",
+        "-.01em",
     },
 
     entryMeta: {
@@ -2960,6 +3005,18 @@ const styles:
 
       marginTop:
         "13px",
+
+      padding:
+        "10px",
+
+      border:
+        "1px solid rgba(255,255,255,.07)",
+
+      borderRadius:
+        "9px",
+
+      background:
+        "#090c11",
     },
 
     info: {

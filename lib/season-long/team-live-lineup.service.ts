@@ -466,7 +466,7 @@ export async function getSeasonLongTeamLiveLineupData(
 
   if (playerIds.length > 0) {
     const injuryResult = await supabase
-      .from("nfl_player_injuries")
+      .from("current_nfl_player_injuries")
       .select(`
         nfl_player_id,
         status,
@@ -475,7 +475,6 @@ export async function getSeasonLongTeamLiveLineupData(
         injury_detail
       `)
       .eq("season", season)
-      .eq("is_active", true)
       .in("nfl_player_id", playerIds);
 
     if (injuryResult.error) {

@@ -2885,6 +2885,16 @@ export async function POST(
         null;
 
 
+    let effectiveDraftRankingsRefresh:
+      unknown =
+        null;
+
+    let effectiveDraftRankingsRefreshError:
+      string |
+      null =
+        null;
+
+
     if (
       hasMeaningfulInjuryChanges
     ) {
@@ -2924,6 +2934,48 @@ export async function POST(
           projectionError instanceof Error
             ? projectionError.message
             : "Projection refresh failed.";
+      }
+
+
+      /*
+       * CPU draft rankings use the same canonical injury state.
+       * Rebuild the effective G365 rankings whenever ESPN causes
+       * a meaningful injury/status change so future CPU picks
+       * immediately account for OUT/IR/PUP/NFI/suspension/return dates.
+       */
+      try {
+        const {
+          data:
+            refreshedEffectiveDraftRankingsData,
+
+          error:
+            refreshedEffectiveDraftRankingsError,
+        } =
+          await supabase.rpc(
+            "refresh_traditional_effective_draft_rankings",
+            {
+              p_season:
+                season,
+            }
+          );
+
+
+        if (
+          refreshedEffectiveDraftRankingsError
+        ) {
+          effectiveDraftRankingsRefreshError =
+            refreshedEffectiveDraftRankingsError.message;
+        } else {
+          effectiveDraftRankingsRefresh =
+            refreshedEffectiveDraftRankingsData;
+        }
+      } catch (
+        effectiveRankingsError
+      ) {
+        effectiveDraftRankingsRefreshError =
+          effectiveRankingsError instanceof Error
+            ? effectiveRankingsError.message
+            : "Effective draft rankings refresh failed.";
       }
 
 
@@ -3066,6 +3118,10 @@ export async function POST(
       projectionRefresh,
 
       projectionRefreshError,
+
+      effectiveDraftRankingsRefresh,
+
+      effectiveDraftRankingsRefreshError,
 
       seasonLongMatchupRefresh,
 

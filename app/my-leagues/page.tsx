@@ -114,6 +114,71 @@ function formatStatus(
 }
 
 
+function getLeagueTypeSortOrder(
+  leagueType: string,
+  playerSelectionMode: string
+) {
+  if (
+    leagueType ===
+    "traditional"
+  ) {
+    return 10;
+  }
+
+  if (
+    leagueType ===
+      "season_long" &&
+    playerSelectionMode ===
+      "salary"
+  ) {
+    return 20;
+  }
+
+  if (
+    leagueType ===
+      "season_long" &&
+    playerSelectionMode ===
+      "no_salary"
+  ) {
+    return 30;
+  }
+
+  if (
+    leagueType ===
+    "pickem"
+  ) {
+    return 40;
+  }
+
+  if (
+    leagueType ===
+      "nfl_playoffs" &&
+    playerSelectionMode ===
+      "salary"
+  ) {
+    return 50;
+  }
+
+  if (
+    leagueType ===
+      "nfl_playoffs" &&
+    playerSelectionMode ===
+      "no_salary"
+  ) {
+    return 60;
+  }
+
+  if (
+    leagueType ===
+    "nhl_pickem"
+  ) {
+    return 70;
+  }
+
+  return 999;
+}
+
+
 export default async function MyLeaguesPage() {
   const user =
     await requireUser();
@@ -127,6 +192,56 @@ export default async function MyLeaguesPage() {
     await getMyLeagues(
       supabase,
       user.id
+    );
+
+
+  const sortedLeagues =
+    [...leagues].sort(
+      (
+        a,
+        b
+      ) => {
+        const typeDifference =
+          getLeagueTypeSortOrder(
+            a.leagueType,
+            a.playerSelectionMode
+          ) -
+          getLeagueTypeSortOrder(
+            b.leagueType,
+            b.playerSelectionMode
+          );
+
+        if (
+          typeDifference !==
+          0
+        ) {
+          return typeDifference;
+        }
+
+        const seasonDifference =
+          Number(
+            b.season
+          ) -
+          Number(
+            a.season
+          );
+
+        if (
+          seasonDifference !==
+          0
+        ) {
+          return seasonDifference;
+        }
+
+        return a.name.localeCompare(
+          b.name,
+          undefined,
+          {
+            sensitivity:
+              "base",
+          }
+        );
+      }
     );
 
 
@@ -240,7 +355,7 @@ export default async function MyLeaguesPage() {
         </div>
 
 
-        {leagues.length ===
+        {sortedLeagues.length ===
         0 ? (
           <Card
             style={
@@ -289,7 +404,7 @@ export default async function MyLeaguesPage() {
               styles.grid
             }
           >
-            {leagues.map(
+            {sortedLeagues.map(
               (
                 league
               ) => (

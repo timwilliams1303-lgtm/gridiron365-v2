@@ -1,4 +1,4 @@
-import {
+﻿import {
   NextResponse,
 } from "next/server";
 
@@ -109,17 +109,17 @@ export async function GET() {
      * Position: NT
      * Slot: 2
      * Depth rank: 1
-     * ESPN player ID: 3043133
+     * ESPN player ID: 4880281
      */
     const espnPlayerId =
-      "3043133";
+      "4880281";
 
     const season =
       2026;
 
     const athleteUrl =
       normalizeEspnUrl(
-        `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/athletes/3043133?lang=en&region=us`
+        `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/athletes/4880281?lang=en&region=us`
       );
 
     console.log(

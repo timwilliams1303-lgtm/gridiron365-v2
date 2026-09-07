@@ -56,47 +56,11 @@ type FantasyTeam = {
 };
 
 type TeamGrade = {
-  id: number;
   draft_id: string;
-  league_id: string;
   fantasy_team_id: number;
-  season: number;
 
   projected_starter_points: number;
-  projected_weekly_average: number;
-  projected_weekly_floor: number;
-  projected_weekly_ceiling: number;
-  projected_weekly_stddev: number;
-
-  projected_strength_rank: number;
-  weeks_analyzed: number;
-
   total_vorp: number;
-  average_player_vorp: number;
-
-  elite_position_players: number;
-  above_replacement_players: number;
-
-  elite_steals: number;
-  major_steals: number;
-  good_values: number;
-  values_count: number;
-  fair_values: number;
-
-  slight_reaches: number;
-  reaches: number;
-  major_reaches: number;
-  extreme_reaches: number;
-
-  average_pick_value_score: number;
-
-  roster_player_count: number;
-  qb_count: number;
-  rb_count: number;
-  wr_count: number;
-  te_count: number;
-  k_count: number;
-  dst_count: number;
 
   starter_strength_score: number;
   vorp_advantage_score: number;
@@ -109,10 +73,11 @@ type TeamGrade = {
   final_score: number;
   final_grade: string;
   draft_grade_rank: number;
+  frozen_at?: string | null;
 };
 
 type PlayerMetric = {
-  id: number;
+  draft_id: string;
   fantasy_team_id: number;
   player_id: number;
 
@@ -128,12 +93,16 @@ type PlayerMetric = {
   replacement_rank: number;
   replacement_player_points: number;
   vorp: number;
-
   positional_tier_gap: number;
 
   draft_value_spots: number;
   pick_value_score: number;
   pick_value_label: string;
+
+  player_quality_score: number;
+  player_quality_label: string;
+  stud_score: number;
+  frozen_at?: string | null;
 };
 
 type NflPlayer = {
@@ -191,7 +160,7 @@ const COMPONENTS = [
     key:
       "positional_quality_score",
     label:
-      "Positional Quality",
+      "Player Quality / Stud Talent",
     max: 10,
   },
   {
@@ -443,7 +412,7 @@ export default function DraftGradesPage() {
             "traditional"
           ) {
             throw new Error(
-              "Draft Grade V4 is currently available for Traditional leagues."
+              "Draft Grades are currently available for Traditional leagues."
             );
           }
 
@@ -519,7 +488,7 @@ export default function DraftGradesPage() {
             await Promise.all([
               supabase
                 .from(
-                  "traditional_draft_grade_v4_team_metrics"
+                  "traditional_draft_grade_team_snapshot"
                 )
                 .select("*")
                 .eq(
@@ -649,10 +618,10 @@ export default function DraftGradesPage() {
           } =
             await supabase
               .from(
-                "traditional_draft_grade_v4_player_metrics"
+                "traditional_draft_grade_player_snapshot"
               )
               .select(`
-                id,
+                draft_id,
                 fantasy_team_id,
                 player_id,
                 position,
@@ -667,7 +636,11 @@ export default function DraftGradesPage() {
                 positional_tier_gap,
                 draft_value_spots,
                 pick_value_score,
-                pick_value_label
+                pick_value_label,
+                player_quality_score,
+                player_quality_label,
+                stud_score,
+                frozen_at
               `)
               .eq(
                 "draft_id",
@@ -908,7 +881,7 @@ export default function DraftGradesPage() {
     const channel =
       supabase
         .channel(
-          `draft-grade-v4-${draft.id}`
+          `draft-grade-frozen-${draft.id}`
         )
         .on(
           "postgres_changes",
@@ -916,7 +889,7 @@ export default function DraftGradesPage() {
             event: "*",
             schema: "public",
             table:
-              "traditional_draft_grade_v4_team_metrics",
+              "traditional_draft_grade_team_snapshot",
             filter:
               `draft_id=eq.${draft.id}`,
           },
@@ -928,7 +901,7 @@ export default function DraftGradesPage() {
             event: "*",
             schema: "public",
             table:
-              "traditional_draft_grade_v4_player_metrics",
+              "traditional_draft_grade_player_snapshot",
             filter:
               `draft_id=eq.${draft.id}`,
           },
@@ -1062,7 +1035,7 @@ export default function DraftGradesPage() {
       0
         ? true
         : window.confirm(
-            "Regenerate Draft Grade V4 for every team?"
+            "Regenerate Draft Grades for every team?"
           );
 
 
@@ -1138,7 +1111,7 @@ export default function DraftGradesPage() {
 
 
       setMessage(
-        `Draft Grade V4 generated for ${
+        `Draft Grades generated for ${
           result.generatedCount ??
           0
         } teams.`
@@ -1176,7 +1149,7 @@ export default function DraftGradesPage() {
             styles.loading
           }
         >
-          Loading Draft Grade V4...
+          Loading Draft Grades...
         </div>
       </main>
     );
@@ -1214,7 +1187,7 @@ export default function DraftGradesPage() {
                 styles.title
               }
             >
-              Draft Grade V4
+              Draft Grades
             </h1>
 
             <p
@@ -1297,7 +1270,7 @@ export default function DraftGradesPage() {
                 }}
               >
                 {generating
-                  ? "Running V4..."
+                  ? "Generating..."
                   : teamGrades.length >
                       0
                     ? "Generate Grades"
@@ -1328,7 +1301,7 @@ export default function DraftGradesPage() {
               styles.notice
             }
           >
-            Draft Grade V4 becomes
+            Draft Grades becomes
             available after the draft is
             completed.
           </section>
@@ -1347,7 +1320,7 @@ export default function DraftGradesPage() {
                 styles.emptyTitle
               }
             >
-              No V4 grades yet
+              No grades yet
             </h2>
 
             <p
@@ -1357,7 +1330,7 @@ export default function DraftGradesPage() {
             >
               The commissioner can
               generate the complete
-              100-point Draft Grade V4
+              100-point Draft Grades
               after the final pick.
             </p>
           </section>
@@ -1620,26 +1593,33 @@ export default function DraftGradesPage() {
                       />
 
                       <QuickStat
-                        label="Weekly Average"
-                        value={formatNumber(
-                          selectedGrade
-                            .projected_weekly_average
+                        label="Elite / Stud Players"
+                        value={String(
+                          selectedPlayers.filter(
+                            (player) =>
+                              player.player_quality_label === "ELITE STUD" ||
+                              player.player_quality_label === "STUD"
+                          ).length
                         )}
                       />
 
                       <QuickStat
-                        label="Weekly Floor"
-                        value={formatNumber(
-                          selectedGrade
-                            .projected_weekly_floor
+                        label="High-End Starters"
+                        value={String(
+                          selectedPlayers.filter(
+                            (player) =>
+                              player.player_quality_label === "HIGH-END STARTER"
+                          ).length
                         )}
                       />
 
                       <QuickStat
-                        label="Weekly Ceiling"
+                        label="Total Stud Weight"
                         value={formatNumber(
-                          selectedGrade
-                            .projected_weekly_ceiling
+                          selectedPlayers.reduce(
+                            (sum, player) => sum + Number(player.stud_score || 0),
+                            0
+                          )
                         )}
                       />
 
@@ -1652,11 +1632,8 @@ export default function DraftGradesPage() {
                       />
 
                       <QuickStat
-                        label="Elite Positional Players"
-                        value={String(
-                          selectedGrade
-                            .elite_position_players
-                        )}
+                        label="Frozen Grade"
+                        value="Locked at draft completion"
                       />
                     </div>
                   </div>
@@ -1884,7 +1861,15 @@ export default function DraftGradesPage() {
                               styles.th
                             }
                           >
-                            Grade
+                            Player Quality
+                          </th>
+
+                          <th
+                            style={
+                              styles.th
+                            }
+                          >
+                            Draft Cost
                           </th>
                         </tr>
                       </thead>
@@ -1897,9 +1882,7 @@ export default function DraftGradesPage() {
                               GradePlayer
                           ) => (
                             <tr
-                              key={
-                                player.id
-                              }
+                              key={`${player.draft_id}-${player.player_id}`}
                             >
                               <td
                                 style={
@@ -2030,14 +2013,31 @@ export default function DraftGradesPage() {
                               >
                                 <span
                                   style={
+                                    getQualityLabelStyle(
+                                      player.player_quality_label
+                                    )
+                                  }
+                                >
+                                  {player.player_quality_label}
+                                </span>
+                                <div style={styles.smallMuted}>
+                                  Quality {formatNumber(player.player_quality_score)} · Stud {formatNumber(player.stud_score)}
+                                </div>
+                              </td>
+
+                              <td
+                                style={
+                                  styles.td
+                                }
+                              >
+                                <span
+                                  style={
                                     getValueLabelStyle(
                                       player.pick_value_label
                                     )
                                   }
                                 >
-                                  {
-                                    player.pick_value_label
-                                  }
+                                  {player.pick_value_label}
                                 </span>
                               </td>
                             </tr>
@@ -2241,6 +2241,10 @@ function ValueCard({
               styles.valueBottom
             }
           >
+            <span style={getQualityLabelStyle(player.player_quality_label)}>
+              {player.player_quality_label}
+            </span>
+
             <span
               style={
                 getValueLabelStyle(
@@ -2332,11 +2336,11 @@ function buildAnalysis(
   return (
     `${grade.team_name} earned a ${grade.final_grade} with a ${formatNumber(
       grade.final_score
-    )}/100 Draft Grade V4. ` +
+    )}/100 Draft Grade. ` +
     `The team's strongest grading area was ${strongest}, while ${weakest} was the largest opportunity for improvement. ` +
-    `The optimal projected starting lineup averages ${formatNumber(
-      grade.projected_weekly_average
-    )} points per week with ${formatNumber(
+    `The frozen draft snapshot contains ${formatNumber(
+      grade.projected_starter_points
+    )} projected starter points and ${formatNumber(
       grade.total_vorp
     )} total VORP. ` +
     valueText +
@@ -2400,6 +2404,53 @@ function formatSigned(
 
 
   return number.toFixed(2);
+}
+
+
+function getQualityLabelStyle(
+  label: string
+): CSSProperties {
+  const elite = label === "ELITE STUD";
+  const stud = label === "STUD";
+  const highEnd = label === "HIGH-END STARTER";
+  const starter = label === "STARTER";
+
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    borderRadius: "999px",
+    padding: "5px 9px",
+    fontSize: "10px",
+    fontWeight: 900,
+    letterSpacing: "0.04em",
+    color: elite
+      ? "#ffd36a"
+      : stud
+        ? "#ff9a62"
+        : highEnd
+          ? "#8fd3ff"
+          : starter
+            ? "#c4f1c8"
+            : "#b5b5b5",
+    background: elite
+      ? "rgba(245,158,11,.14)"
+      : stud
+        ? "rgba(255,106,0,.13)"
+        : highEnd
+          ? "rgba(59,130,246,.12)"
+          : starter
+            ? "rgba(34,197,94,.10)"
+            : "rgba(148,163,184,.10)",
+    border: elite
+      ? "1px solid rgba(245,158,11,.38)"
+      : stud
+        ? "1px solid rgba(255,106,0,.34)"
+        : highEnd
+          ? "1px solid rgba(59,130,246,.30)"
+          : starter
+            ? "1px solid rgba(34,197,94,.25)"
+            : "1px solid rgba(148,163,184,.22)",
+  };
 }
 
 
@@ -3453,5 +3504,3 @@ const styles:
       "9px",
   },
 };
-
-

@@ -20,6 +20,7 @@ type Tab =
   | "lineup"
   | "scoring"
   | "teams"
+  | "matchups"
   | "season";
 
 
@@ -31,6 +32,8 @@ type League = {
   season: number;
   status: string;
   commissioner_user_id?: string | null;
+  competition_format?: string | null;
+  season_long_competition_format?: string | null;
 };
 
 
@@ -46,6 +49,8 @@ type Settings = {
   starting_superflex: number;
   starting_k: number;
   starting_dst: number;
+  competition_format?: string | null;
+  competition_mode?: string | null;
 };
 
 
@@ -55,6 +60,8 @@ type Team = {
   owner_id: string | null;
   team_name: string;
   active: boolean;
+  owner_name?: string | null;
+  owner_email?: string | null;
 };
 
 type InviteApiResponse = {
@@ -100,6 +107,20 @@ type Standing = {
 };
 
 
+type SeasonLongMatchup = {
+  id?: number | string | null;
+  week: number;
+  home_team_id: number | null;
+  away_team_id: number | null;
+};
+
+
+type ManualMatchup = {
+  homeTeamId: number | null;
+  awayTeamId: number | null;
+};
+
+
 type CommissionerPayload = {
   success: boolean;
   league: League;
@@ -108,6 +129,8 @@ type CommissionerPayload = {
   standings: Standing[];
   activeWeek: number;
   submittedEntries: number;
+  regularSeasonWeeks?: number;
+  matchups?: SeasonLongMatchup[];
 };
 
 
@@ -206,6 +229,17 @@ export default function SeasonLongCommissioner({
       null
     );
 
+
+  const [scheduleWeek, setScheduleWeek] =
+    useState(1);
+
+  const [manualMatchups, setManualMatchups] =
+    useState<Record<number, ManualMatchup[]>>(
+      {}
+    );
+
+  const [scheduleWorking, setScheduleWorking] =
+    useState(false);
 
 
   const [teamNames, setTeamNames] =
@@ -332,6 +366,52 @@ export default function SeasonLongCommissioner({
 
           setSettings(
             typed.settings
+          );
+
+          setManualMatchups(
+            () => {
+              const grouped:
+                Record<
+                  number,
+                  ManualMatchup[]
+                > = {};
+
+              for (
+                const matchup
+                of typed.matchups ?? []
+              ) {
+                const week =
+                  Math.max(
+                    1,
+                    Number(
+                      matchup.week
+                    ) || 1
+                  );
+
+                if (!grouped[week]) {
+                  grouped[week] = [];
+                }
+
+                grouped[week].push({
+                  homeTeamId:
+                    matchup.home_team_id ===
+                      null
+                      ? null
+                      : Number(
+                          matchup.home_team_id
+                        ),
+                  awayTeamId:
+                    matchup.away_team_id ===
+                      null
+                      ? null
+                      : Number(
+                          matchup.away_team_id
+                        ),
+                });
+              }
+
+              return grouped;
+            }
           );
 
           setTeamNames(
@@ -714,6 +794,343 @@ export default function SeasonLongCommissioner({
   }
 
 
+  function createDefaultWeekMatchups(
+    teams: Team[]
+  ): ManualMatchup[] {
+    const activeTeams =
+      teams.filter(
+        (team) =>
+          team.active
+      );
+
+    const rows:
+      ManualMatchup[] = [];
+
+    for (
+      let index = 0;
+      index <
+      activeTeams.length;
+      index += 2
+    ) {
+      rows.push({
+        homeTeamId:
+          activeTeams[index]
+            ?.id ??
+          null,
+        awayTeamId:
+          activeTeams[
+            index + 1
+          ]?.id ??
+          null,
+      });
+    }
+
+    return rows;
+  }
+
+
+  function getWeekMatchups(
+    week: number
+  ): ManualMatchup[] {
+    const existing =
+      manualMatchups[week];
+
+    if (
+      existing &&
+      existing.length >
+        0
+    ) {
+      return existing;
+    }
+
+    return createDefaultWeekMatchups(
+      data?.teams ??
+        []
+    );
+  }
+
+
+  function updateManualMatchup(
+    week: number,
+    rowIndex: number,
+    side:
+      "home" |
+      "away",
+    value: number | null
+  ) {
+    setManualMatchups(
+      (current) => {
+        const rows =
+          (
+            current[week] ??
+            createDefaultWeekMatchups(
+              data?.teams ??
+                []
+            )
+          ).map(
+            (row) => ({
+              ...row,
+            })
+          );
+
+        while (
+          rows.length <=
+          rowIndex
+        ) {
+          rows.push({
+            homeTeamId:
+              null,
+            awayTeamId:
+              null,
+          });
+        }
+
+        rows[rowIndex] =
+          side ===
+          "home"
+            ? {
+                ...rows[
+                  rowIndex
+                ],
+                homeTeamId:
+                  value,
+              }
+            : {
+                ...rows[
+                  rowIndex
+                ],
+                awayTeamId:
+                  value,
+              };
+
+        return {
+          ...current,
+          [week]:
+            rows,
+        };
+      }
+    );
+  }
+
+
+  async function randomizeHeadToHeadSchedule() {
+    if (
+      scheduleWorking ||
+      saving
+    ) {
+      return;
+    }
+
+    if (
+      !window.confirm(
+        "Randomize the full Season-Long Head-to-Head regular-season schedule? This will replace the existing matchup schedule."
+      )
+    ) {
+      return;
+    }
+
+    setScheduleWorking(
+      true
+    );
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response =
+        await fetch(
+          `/api/leagues/${leagueId}/season-long/commissioner`,
+          {
+            method:
+              "POST",
+            headers: {
+              "content-type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                action:
+                  "randomize-h2h-schedule",
+              }),
+          }
+        );
+
+      const payload =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !payload.success
+      ) {
+        throw new Error(
+          payload.error ??
+            "The Head-to-Head schedule could not be randomized."
+        );
+      }
+
+      setSuccess(
+        "Head-to-Head schedule randomized."
+      );
+
+      await load();
+    } catch (
+      actionError
+    ) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "The Head-to-Head schedule could not be randomized."
+      );
+    } finally {
+      setScheduleWorking(
+        false
+      );
+    }
+  }
+
+
+  async function saveHeadToHeadWeek() {
+    if (
+      scheduleWorking ||
+      saving
+    ) {
+      return;
+    }
+
+    const rows =
+      getWeekMatchups(
+        scheduleWeek
+      );
+
+    const usedTeamIds =
+      rows.flatMap(
+        (row) => [
+          row.homeTeamId,
+          row.awayTeamId,
+        ]
+      )
+        .filter(
+          (
+            teamId
+          ): teamId is number =>
+            teamId !==
+            null
+        );
+
+    const duplicateTeam =
+      usedTeamIds.find(
+        (
+          teamId,
+          index
+        ) =>
+          usedTeamIds.indexOf(
+            teamId
+          ) !==
+          index
+      );
+
+    if (
+      duplicateTeam !==
+      undefined
+    ) {
+      const duplicateName =
+        data?.teams.find(
+          (team) =>
+            team.id ===
+            duplicateTeam
+        )?.team_name ??
+        "A team";
+
+      setError(
+        `${duplicateName} is assigned more than once in Week ${scheduleWeek}.`
+      );
+      return;
+    }
+
+    if (
+      rows.some(
+        (row) =>
+          row.homeTeamId !==
+            null &&
+          row.homeTeamId ===
+            row.awayTeamId
+      )
+    ) {
+      setError(
+        "A team cannot play itself."
+      );
+      return;
+    }
+
+    setScheduleWorking(
+      true
+    );
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response =
+        await fetch(
+          `/api/leagues/${leagueId}/season-long/commissioner`,
+          {
+            method:
+              "POST",
+            headers: {
+              "content-type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                action:
+                  "save-h2h-schedule-week",
+                week:
+                  scheduleWeek,
+                matchups:
+                  rows.map(
+                    (row) => ({
+                      homeTeamId:
+                        row.homeTeamId,
+                      awayTeamId:
+                        row.awayTeamId,
+                    })
+                  ),
+              }),
+          }
+        );
+
+      const payload =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !payload.success
+      ) {
+        throw new Error(
+          payload.error ??
+            `Week ${scheduleWeek} matchups could not be saved.`
+        );
+      }
+
+      setSuccess(
+        `Week ${scheduleWeek} Head-to-Head matchups saved.`
+      );
+
+      await load();
+    } catch (
+      actionError
+    ) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : `Week ${scheduleWeek} matchups could not be saved.`
+      );
+    } finally {
+      setScheduleWorking(
+        false
+      );
+    }
+  }
+
+
   const standingsMap =
     useMemo(
       () =>
@@ -819,6 +1236,38 @@ export default function SeasonLongCommissioner({
     "salary";
 
 
+  const competitionFormat =
+    (
+      data.league.competition_format ??
+      data.league.season_long_competition_format ??
+      settings?.competition_format ??
+      settings?.competition_mode ??
+      "total_points"
+    )
+      .trim()
+      .toLowerCase();
+
+  const isHeadToHead =
+    [
+      "head_to_head",
+      "head-to-head",
+      "head to head",
+      "h2h",
+    ].includes(
+      competitionFormat
+    );
+
+  const regularSeasonWeeks =
+    Math.max(
+      1,
+      Number(
+        data.regularSeasonWeeks ??
+        18
+      ) ||
+      18
+    );
+
+
   const tabs:
     Array<[
       Tab,
@@ -828,6 +1277,15 @@ export default function SeasonLongCommissioner({
       ["lineup", "League & Lineup"],
       ["scoring", "Scoring"],
       ["teams", "Teams"],
+      ...(isHeadToHead
+        ? [[
+            "matchups",
+            "Matchups",
+          ] as [
+            Tab,
+            string,
+          ]]
+        : []),
       ["season", "Season Controls"],
     ];
 
@@ -840,15 +1298,15 @@ export default function SeasonLongCommissioner({
     >
       <style>{`
         .season-long-team-row {
-          grid-template-columns: 48px minmax(0, 1.5fr) minmax(130px, .75fr) minmax(190px, 1fr) minmax(190px, .9fr) !important;
+          grid-template-columns: 46px minmax(220px, .9fr) minmax(320px, 1.55fr) auto !important;
         }
 
-        @media (max-width: 1100px) {
+        @media (max-width: 1120px) {
           .season-long-team-row {
-            grid-template-columns: 44px minmax(0, 1.35fr) minmax(120px, .8fr) minmax(170px, 1fr) !important;
+            grid-template-columns: 44px minmax(210px, .9fr) minmax(260px, 1.2fr) !important;
           }
 
-          .season-long-team-row > :nth-child(5) {
+          .season-long-team-row > :nth-child(4) {
             grid-column: 2 / -1;
             justify-content: flex-end;
           }
@@ -863,7 +1321,7 @@ export default function SeasonLongCommissioner({
             grid-column: 2;
           }
 
-          .season-long-team-row > :nth-child(5) {
+          .season-long-team-row > :nth-child(4) {
             justify-content: flex-start;
           }
         }
@@ -1314,13 +1772,9 @@ export default function SeasonLongCommissioner({
               >
                 {data.teams.map(
                   (
-                    team
+                    team,
+                    teamIndex
                   ) => {
-                    const standing =
-                      standingsMap.get(
-                        team.id
-                      );
-
                     const hasOwner =
                       Boolean(
                         team.owner_id
@@ -1331,135 +1785,156 @@ export default function SeasonLongCommissioner({
                         team.id
                       ) ?? null;
 
+                    const ownerDisplayName =
+                      team.owner_name?.trim() ||
+                      (
+                        hasOwner
+                          ? "Human Owner"
+                          : pendingInvite
+                            ? "Invitation Pending"
+                            : "Open Team"
+                      );
+
+                    const ownerDisplayEmail =
+                      team.owner_email?.trim() ||
+                      pendingInvite?.email ||
+                      "";
+
                     return (
                       <div
                         key={
                           team.id
                         }
                         className="season-long-team-row"
-                        style={
-                          styles.teamRow
-                        }
+                        style={{
+                          ...styles.teamRow,
+                          ...(hasOwner
+                            ? styles.teamRowOwned
+                            : pendingInvite
+                              ? styles.teamRowPending
+                              : styles.teamRowOpen),
+                        }}
                       >
                         <div
                           style={
-                            styles.rank
+                            styles.teamNumber
                           }
                         >
-                          {standing
-                            ?.current_rank
-                            ? `#${standing.current_rank}`
-                            : "—"}
+                          {teamIndex + 1}
                         </div>
-
-                        <input
-                          value={
-                            teamNames[
-                              team.id
-                            ] ??
-                            team.team_name
-                          }
-                          onChange={(
-                            event
-                          ) =>
-                            setTeamNames({
-                              ...teamNames,
-                              [team.id]:
-                                event.target.value,
-                            })
-                          }
-                          style={
-                            styles.input
-                          }
-                        />
 
                         <div
                           style={
-                            styles.teamMeta
+                            styles.teamNameBlock
                           }
                         >
-                          <strong>
-                            {hasOwner
-                              ? "OWNER ASSIGNED"
-                              : pendingInvite
-                                ? "INVITE PENDING"
-                                : "VACANT / INVITE"}
-                          </strong>
-
-                          <span>
-                            {team.active
-                              ? "Active"
-                              : "Inactive"}
-                          </span>
-                        </div>
-
-                        {!hasOwner ? (
-                          pendingInvite ? (
-                            <div
-                              style={
-                                styles.teamMeta
-                              }
-                            >
-                              <strong>
-                                PENDING INVITE
-                              </strong>
-
-                              <span>
-                                {pendingInvite.email}
-                              </span>
-
-                              <span>
-                                Expires{" "}
-                                {new Date(
-                                  pendingInvite.expiresAt
-                                ).toLocaleString()}
-                              </span>
-                            </div>
-                          ) : (
-                            <input
-                              type="email"
-                              placeholder="owner@example.com"
-                              value={
-                                teamInviteEmails[
-                                  team.id
-                                ] ??
-                                ""
-                              }
-                              onChange={(
-                                event
-                              ) =>
-                                setTeamInviteEmails(
-                                  (
-                                    current
-                                  ) => ({
-                                    ...current,
-                                    [team.id]:
-                                      event
-                                        .target
-                                        .value,
-                                  })
-                                )
-                              }
-                              style={
-                                styles.input
-                              }
-                            />
-                          )
-                        ) : (
-                          <div
+                          <span
                             style={
-                              styles.teamMeta
+                              styles.teamNameLabel
                             }
                           >
-                            <strong>
-                              HUMAN OWNER
+                            Team Name
+                          </span>
+
+                          <input
+                            value={
+                              teamNames[
+                                team.id
+                              ] ??
+                              team.team_name
+                            }
+                            onChange={(
+                              event
+                            ) =>
+                              setTeamNames({
+                                ...teamNames,
+                                [team.id]:
+                                  event.target.value,
+                              })
+                            }
+                            style={
+                              styles.teamNameInput
+                            }
+                          />
+                        </div>
+
+                        <div
+                          style={
+                            styles.ownerCard
+                          }
+                        >
+                          <div
+                            style={{
+                              ...styles.ownerAvatar,
+                              ...(hasOwner
+                                ? styles.ownerAvatarAssigned
+                                : styles.ownerAvatarOpen),
+                            }}
+                          >
+                            {hasOwner
+                              ? (
+                                  ownerDisplayName
+                                    .charAt(0)
+                                    .toUpperCase() ||
+                                  "O"
+                                )
+                              : "✉"}
+                          </div>
+
+                          <div
+                            style={
+                              styles.ownerDetails
+                            }
+                          >
+                            <span
+                              style={
+                                styles.ownerLabel
+                              }
+                            >
+                              {hasOwner
+                                ? "Owner"
+                                : pendingInvite
+                                  ? "Pending Invite"
+                                  : "Owner"}
+                            </span>
+
+                            <strong
+                              style={
+                                styles.ownerName
+                              }
+                            >
+                              {ownerDisplayName}
                             </strong>
 
-                            <span>
-                              No CPU option
+                            <span
+                              style={
+                                styles.ownerEmail
+                              }
+                            >
+                              {ownerDisplayEmail ||
+                                (team.active
+                                  ? "Active team"
+                                  : "Inactive team")}
                             </span>
                           </div>
-                        )}
+
+                          <span
+                            style={{
+                              ...styles.ownerBadge,
+                              ...(hasOwner
+                                ? styles.ownerBadgeAssigned
+                                : pendingInvite
+                                  ? styles.ownerBadgePending
+                                  : styles.ownerBadgeOpen),
+                            }}
+                          >
+                            {hasOwner
+                              ? "✓ OWNER ASSIGNED"
+                              : pendingInvite
+                                ? "INVITE PENDING"
+                                : "OPEN TEAM"}
+                          </span>
+                        </div>
 
                         <div
                           style={
@@ -1491,73 +1966,62 @@ export default function SeasonLongCommissioner({
                                   : "↻ RESEND INVITE"}
                               </button>
                             ) : (
-                              <button
-                                type="button"
-                                disabled={
-                                  saving ||
-                                  invitingTeamId !==
-                                    null ||
-                                  !(
+                              <>
+                                <input
+                                  type="email"
+                                  placeholder="owner@example.com"
+                                  value={
                                     teamInviteEmails[
                                       team.id
                                     ] ??
                                     ""
-                                  ).trim()
-                                }
-                                onClick={() =>
-                                  void sendSeasonLongInvite(
-                                    team
-                                  )
-                                }
-                                style={
-                                  styles.button
-                                }
-                              >
-                                {invitingTeamId ===
-                                team.id
-                                  ? "SENDING…"
-                                  : "✉ INVITE"}
-                              </button>
-                            )
-                          ) : null}
+                                  }
+                                  onChange={(
+                                    event
+                                  ) =>
+                                    setTeamInviteEmails(
+                                      (
+                                        current
+                                      ) => ({
+                                        ...current,
+                                        [team.id]:
+                                          event.target.value,
+                                      })
+                                    )
+                                  }
+                                  style={
+                                    styles.inviteInput
+                                  }
+                                />
 
-                          {hasOwner ? (
-                            team.owner_id ===
-                            data.league.commissioner_user_id ? (
-                              <button
-                                type="button"
-                                disabled
-                                title="Transfer primary commissioner ownership before removing this owner."
-                                style={{
-                                  ...styles.linkButton,
-                                  opacity: 0.45,
-                                  cursor: "not-allowed",
-                                }}
-                              >
-                                PRIMARY COMMISSIONER
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                disabled={
-                                  saving ||
-                                  removingOwnerTeamId !==
-                                    null
-                                }
-                                onClick={() =>
-                                  void removeSeasonLongOwner(
-                                    team
-                                  )
-                                }
-                                style={
-                                  styles.linkButton
-                                }
-                              >
-                                {removingOwnerTeamId ===
-                                team.id
-                                  ? "REMOVING…"
-                                  : "REMOVE OWNER"}
-                              </button>
+                                <button
+                                  type="button"
+                                  disabled={
+                                    saving ||
+                                    invitingTeamId !==
+                                      null ||
+                                    !(
+                                      teamInviteEmails[
+                                        team.id
+                                      ] ??
+                                      ""
+                                    ).trim()
+                                  }
+                                  onClick={() =>
+                                    void sendSeasonLongInvite(
+                                      team
+                                    )
+                                  }
+                                  style={
+                                    styles.button
+                                  }
+                                >
+                                  {invitingTeamId ===
+                                  team.id
+                                    ? "SENDING…"
+                                    : "✉ INVITE"}
+                                </button>
+                              </>
                             )
                           ) : null}
 
@@ -1588,11 +2052,322 @@ export default function SeasonLongCommissioner({
                           >
                             SAVE
                           </button>
+
+                          {hasOwner ? (
+                            team.owner_id ===
+                            data.league.commissioner_user_id ? (
+                              <button
+                                type="button"
+                                disabled
+                                title="Transfer primary commissioner ownership before removing this owner."
+                                style={{
+                                  ...styles.removeOwnerButton,
+                                  opacity: 0.45,
+                                  cursor: "not-allowed",
+                                }}
+                              >
+                                PRIMARY COMMISSIONER
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={
+                                  saving ||
+                                  removingOwnerTeamId !==
+                                    null
+                                }
+                                onClick={() =>
+                                  void removeSeasonLongOwner(
+                                    team
+                                  )
+                                }
+                                style={
+                                  styles.removeOwnerButton
+                                }
+                              >
+                                {removingOwnerTeamId ===
+                                team.id
+                                  ? "REMOVING…"
+                                  : "REMOVE OWNER"}
+                              </button>
+                            )
+                          ) : null}
                         </div>
                       </div>
                     );
                   }
                 )}
+              </div>
+            </Section>
+          </>
+        ) : null}
+
+
+        {tab ===
+          "matchups" &&
+        isHeadToHead ? (
+          <>
+            <Section
+              title="Head-to-Head Matchup Schedule"
+              subtitle="Randomize the full regular-season schedule or manually set and edit each week's matchups. This section is available only for Season-Long Head-to-Head leagues."
+            >
+              <div
+                style={
+                  styles.scheduleToolbar
+                }
+              >
+                <div
+                  style={
+                    styles.scheduleControl
+                  }
+                >
+                  <span
+                    style={
+                      styles.fieldLabel
+                    }
+                  >
+                    Week
+                  </span>
+
+                  <select
+                    value={
+                      scheduleWeek
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setScheduleWeek(
+                        Number(
+                          event.target.value
+                        )
+                      )
+                    }
+                    style={
+                      styles.select
+                    }
+                  >
+                    {Array.from(
+                      {
+                        length:
+                          regularSeasonWeeks,
+                      },
+                      (
+                        _,
+                        index
+                      ) =>
+                        index + 1
+                    ).map(
+                      (week) => (
+                        <option
+                          key={
+                            week
+                          }
+                          value={
+                            week
+                          }
+                        >
+                          Week{" "}
+                          {week}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </div>
+
+                <div
+                  style={
+                    styles.actions
+                  }
+                >
+                  <button
+                    type="button"
+                    disabled={
+                      saving ||
+                      scheduleWorking
+                    }
+                    onClick={() =>
+                      void randomizeHeadToHeadSchedule()
+                    }
+                    style={
+                      styles.button
+                    }
+                  >
+                    {scheduleWorking
+                      ? "WORKING…"
+                      : "RANDOMIZE FULL SCHEDULE"}
+                  </button>
+                </div>
+              </div>
+
+              <div
+                style={
+                  styles.warning
+                }
+              >
+                Randomize Full Schedule replaces the current Head-to-Head schedule. Manual edits below save only the selected week.
+              </div>
+
+              <div
+                style={
+                  styles.matchupList
+                }
+              >
+                {getWeekMatchups(
+                  scheduleWeek
+                ).map(
+                  (
+                    matchup,
+                    index
+                  ) => (
+                    <div
+                      key={`${scheduleWeek}-${index}`}
+                      style={
+                        styles.matchupRow
+                      }
+                    >
+                      <div
+                        style={
+                          styles.matchupNumber
+                        }
+                      >
+                        MATCHUP{" "}
+                        {index + 1}
+                      </div>
+
+                      <select
+                        value={
+                          matchup.homeTeamId ??
+                          ""
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          updateManualMatchup(
+                            scheduleWeek,
+                            index,
+                            "home",
+                            event.target.value
+                              ? Number(
+                                  event.target.value
+                                )
+                              : null
+                          )
+                        }
+                        style={
+                          styles.select
+                        }
+                      >
+                        <option value="">
+                          BYE / OPEN
+                        </option>
+
+                        {data.teams
+                          .filter(
+                            (team) =>
+                              team.active
+                          )
+                          .map(
+                            (team) => (
+                              <option
+                                key={
+                                  team.id
+                                }
+                                value={
+                                  team.id
+                                }
+                              >
+                                {
+                                  team.team_name
+                                }
+                              </option>
+                            )
+                          )}
+                      </select>
+
+                      <div
+                        style={
+                          styles.versus
+                        }
+                      >
+                        VS
+                      </div>
+
+                      <select
+                        value={
+                          matchup.awayTeamId ??
+                          ""
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          updateManualMatchup(
+                            scheduleWeek,
+                            index,
+                            "away",
+                            event.target.value
+                              ? Number(
+                                  event.target.value
+                                )
+                              : null
+                          )
+                        }
+                        style={
+                          styles.select
+                        }
+                      >
+                        <option value="">
+                          BYE / OPEN
+                        </option>
+
+                        {data.teams
+                          .filter(
+                            (team) =>
+                              team.active
+                          )
+                          .map(
+                            (team) => (
+                              <option
+                                key={
+                                  team.id
+                                }
+                                value={
+                                  team.id
+                                }
+                              >
+                                {
+                                  team.team_name
+                                }
+                              </option>
+                            )
+                          )}
+                      </select>
+                    </div>
+                  )
+                )}
+              </div>
+
+              <div
+                style={
+                  styles.actions
+                }
+              >
+                <button
+                  type="button"
+                  disabled={
+                    saving ||
+                    scheduleWorking
+                  }
+                  onClick={() =>
+                    void saveHeadToHeadWeek()
+                  }
+                  style={
+                    styles.button
+                  }
+                >
+                  {scheduleWorking
+                    ? "SAVING…"
+                    : `SAVE WEEK ${scheduleWeek} MATCHUPS`}
+                </button>
               </div>
             </Section>
           </>
@@ -1736,7 +2511,11 @@ export default function SeasonLongCommissioner({
               >
                 <Guide
                   title="Weekly Competition"
-                  text="Teams submit a new lineup every NFL regular-season week. Standings are total points across finalized weeks."
+                  text={
+                    isHeadToHead
+                      ? "Teams submit a new lineup every NFL regular-season week and compete in commissioner-managed Head-to-Head matchups."
+                      : "Teams submit a new lineup every NFL regular-season week. Standings are total points across finalized weeks."
+                  }
                 />
 
                 <Guide
@@ -2282,15 +3061,275 @@ const styles:
         "rgba(255,255,255,.01)",
     },
 
-    rank: {
+    teamNumber: {
+      width:
+        "28px",
+      height:
+        "28px",
+      display:
+        "grid",
+      placeItems:
+        "center",
+      border:
+        "1px solid rgba(255,101,37,.30)",
+      borderRadius:
+        "8px",
+      background:
+        "rgba(164,55,18,.16)",
       color:
-        "#ff8a25",
+        "#ff7a35",
+      fontSize:
+        "11px",
       fontWeight:
         950,
-      textAlign:
-        "center",
+    },
+
+    teamRowOwned: {
+      border:
+        "1px solid rgba(54,191,111,.26)",
+      background:
+        "linear-gradient(90deg,rgba(28,104,61,.10),rgba(255,255,255,.012))",
+    },
+
+    teamRowPending: {
+      border:
+        "1px solid rgba(255,135,48,.24)",
+      background:
+        "linear-gradient(90deg,rgba(139,65,17,.10),rgba(255,255,255,.012))",
+    },
+
+    teamRowOpen: {
+      border:
+        "1px solid rgba(255,100,42,.22)",
+      background:
+        "linear-gradient(90deg,rgba(110,38,18,.08),rgba(255,255,255,.012))",
+    },
+
+    teamNameBlock: {
+      display:
+        "grid",
+      gap:
+        "6px",
       minWidth:
         0,
+    },
+
+    teamNameLabel: {
+      color:
+        "#aebbd0",
+      fontSize:
+        "11px",
+      fontWeight:
+        850,
+    },
+
+    teamNameInput: {
+      width:
+        "100%",
+      minWidth:
+        0,
+      minHeight:
+        "38px",
+      boxSizing:
+        "border-box",
+      border:
+        "1px solid rgba(255,255,255,.11)",
+      borderRadius:
+        "7px",
+      padding:
+        "8px 10px",
+      background:
+        "#0b0d12",
+      color:
+        "#fff",
+      fontSize:
+        "13px",
+      fontWeight:
+        800,
+    },
+
+    ownerCard: {
+      minWidth:
+        0,
+      display:
+        "flex",
+      alignItems:
+        "center",
+      gap:
+        "12px",
+      padding:
+        "9px 12px",
+      border:
+        "1px solid rgba(255,255,255,.07)",
+      borderRadius:
+        "9px",
+      background:
+        "#090c11",
+    },
+
+    ownerAvatar: {
+      width:
+        "36px",
+      height:
+        "36px",
+      flex:
+        "0 0 36px",
+      display:
+        "grid",
+      placeItems:
+        "center",
+      borderRadius:
+        "50%",
+      color:
+        "#fff",
+      fontSize:
+        "12px",
+      fontWeight:
+        950,
+    },
+
+    ownerAvatarAssigned: {
+      background:
+        "linear-gradient(135deg,#d92b19,#ff5f20)",
+    },
+
+    ownerAvatarOpen: {
+      background:
+        "linear-gradient(135deg,#7b2a15,#c84c1d)",
+    },
+
+    ownerDetails: {
+      minWidth:
+        0,
+      flex:
+        1,
+      display:
+        "grid",
+      gap:
+        "2px",
+    },
+
+    ownerLabel: {
+      color:
+        "#91a0b7",
+      fontSize:
+        "10px",
+      fontWeight:
+        850,
+    },
+
+    ownerName: {
+      overflow:
+        "hidden",
+      textOverflow:
+        "ellipsis",
+      whiteSpace:
+        "nowrap",
+      color:
+        "#fff",
+      fontSize:
+        "13px",
+      fontWeight:
+        900,
+    },
+
+    ownerEmail: {
+      overflow:
+        "hidden",
+      textOverflow:
+        "ellipsis",
+      whiteSpace:
+        "nowrap",
+      color:
+        "#8290a5",
+      fontSize:
+        "10px",
+    },
+
+    ownerBadge: {
+      flex:
+        "0 0 auto",
+      padding:
+        "5px 9px",
+      borderRadius:
+        "999px",
+      fontSize:
+        "9px",
+      fontWeight:
+        950,
+      whiteSpace:
+        "nowrap",
+    },
+
+    ownerBadgeAssigned: {
+      border:
+        "1px solid rgba(47,210,114,.34)",
+      background:
+        "rgba(21,121,68,.13)",
+      color:
+        "#5ff09c",
+    },
+
+    ownerBadgePending: {
+      border:
+        "1px solid rgba(255,149,59,.34)",
+      background:
+        "rgba(146,71,16,.13)",
+      color:
+        "#ff9b52",
+    },
+
+    ownerBadgeOpen: {
+      border:
+        "1px solid rgba(255,111,54,.26)",
+      background:
+        "rgba(122,40,15,.12)",
+      color:
+        "#ff8b55",
+    },
+
+    inviteInput: {
+      minWidth:
+        "190px",
+      minHeight:
+        "38px",
+      boxSizing:
+        "border-box",
+      border:
+        "1px solid rgba(255,255,255,.11)",
+      borderRadius:
+        "7px",
+      padding:
+        "8px 10px",
+      background:
+        "#0b0d12",
+      color:
+        "#f5f7fa",
+      fontSize:
+        "12px",
+    },
+
+    removeOwnerButton: {
+      minHeight:
+        "38px",
+      border:
+        "1px solid rgba(255,79,79,.42)",
+      borderRadius:
+        "7px",
+      padding:
+        "8px 12px",
+      background:
+        "rgba(105,19,29,.32)",
+      color:
+        "#ff8f8f",
+      fontSize:
+        "11px",
+      fontWeight:
+        950,
+      cursor:
+        "pointer",
+      whiteSpace:
+        "nowrap",
     },
 
     teamMeta: {
@@ -2321,6 +3360,101 @@ const styles:
         "100%",
       flexWrap:
         "wrap",
+    },
+
+    scheduleToolbar: {
+      display:
+        "flex",
+      alignItems:
+        "flex-end",
+      justifyContent:
+        "space-between",
+      gap:
+        "12px",
+      flexWrap:
+        "wrap",
+    },
+
+    scheduleControl: {
+      minWidth:
+        "180px",
+      display:
+        "grid",
+      gap:
+        "6px",
+    },
+
+    select: {
+      width:
+        "100%",
+      minWidth:
+        0,
+      minHeight:
+        "38px",
+      boxSizing:
+        "border-box",
+      border:
+        "1px solid rgba(255,255,255,.11)",
+      borderRadius:
+        "7px",
+      padding:
+        "8px 10px",
+      background:
+        "#0b0d12",
+      color:
+        "#f5f7fa",
+      fontSize:
+        "13px",
+    },
+
+    matchupList: {
+      display:
+        "grid",
+      gap:
+        "10px",
+      marginTop:
+        "14px",
+    },
+
+    matchupRow: {
+      display:
+        "grid",
+      gridTemplateColumns:
+        "90px minmax(180px,1fr) 42px minmax(180px,1fr)",
+      alignItems:
+        "center",
+      gap:
+        "10px",
+      padding:
+        "12px",
+      border:
+        "1px solid rgba(255,255,255,.07)",
+      borderRadius:
+        "10px",
+      background:
+        "rgba(255,255,255,.02)",
+    },
+
+    matchupNumber: {
+      color:
+        "#ff8a25",
+      fontSize:
+        "10px",
+      fontWeight:
+        950,
+      letterSpacing:
+        ".08em",
+    },
+
+    versus: {
+      textAlign:
+        "center",
+      color:
+        "#8f96a2",
+      fontSize:
+        "11px",
+      fontWeight:
+        950,
     },
 
     error: {

@@ -1707,6 +1707,14 @@ export default function TraditionalDraftPage() {
       false
     );
 
+  const [
+    draftStarting,
+    setDraftStarting,
+  ] =
+    useState(
+      false
+    );
+
 
   const [
     autoPickWorking,
@@ -2358,15 +2366,7 @@ export default function TraditionalDraftPage() {
                     : null,
 
                 injuryStatus:
-                  injuryMap.get(
-                    player.id
-                  )?.status ??
-                  (
-                    player.status !==
-                    "ACTIVE"
-                      ? player.status
-                      : null
-                  ),
+                  injuryMap.get(player.id)?.status ?? null,
 
                 injuryType:
                   injuryMap.get(
@@ -2846,10 +2846,6 @@ export default function TraditionalDraftPage() {
               )
               .select(
                 "id, full_name, first_name, last_name, primary_position, team_abbreviation, status, is_active, headshot_url"
-              )
-              .eq(
-                "is_active",
-                true
               )
               .order(
                 "id",
@@ -5460,7 +5456,7 @@ export default function TraditionalDraftPage() {
   }
 
 
-  function completeDraftAndOpenMyTeam() {
+  function openDraftGrades() {
     if (
       !draft ||
       draft.status !==
@@ -5473,15 +5469,11 @@ export default function TraditionalDraftPage() {
     /*
      * Draft completion is owned by the database.
      *
-     * make_traditional_draft_pick marks the draft completed on
-     * the final scheduled selection, and the database completion
-     * trigger initializes Week 1 and refreshes the first matchup.
-     *
-     * This button is navigation only so it can never duplicate
-     * draft-completion or lineup-initialization work.
+     * This button is navigation only and sends league members
+     * directly to the completed Draft Grades results page.
      */
     router.push(
-      `/league/${leagueId}/team`
+      `/league/${leagueId}/draft/grades`
     );
   }
 
@@ -5546,11 +5538,15 @@ export default function TraditionalDraftPage() {
   async function handleStartDraft() {
     if (
       !draft ||
-      !isCommissioner
+      !isCommissioner ||
+      draftStarting
     ) {
       return;
     }
 
+    setDraftStarting(
+      true
+    );
 
     setWorking(
       true
@@ -5560,38 +5556,42 @@ export default function TraditionalDraftPage() {
       null
     );
 
+    try {
+      const {
+        error:
+          startError,
+      } =
+        await supabase.rpc(
+          "commissioner_start_traditional_draft",
+          {
+            p_league_id:
+              leagueId,
+          }
+        );
 
-    const {
-      error:
-        startError,
-    } =
-      await supabase.rpc(
-        "commissioner_start_traditional_draft",
-        {
-          p_league_id:
-            leagueId,
-        }
-      );
+      if (
+        startError
+      ) {
+        setError(
+          startError.message
+        );
 
+        return;
+      }
 
-    if (
-      startError
-    ) {
-      setError(
-        startError.message
-      );
-    } else {
       await refreshLiveState(
         false
       );
+    } finally {
+      setDraftStarting(
+        false
+      );
+
+      setWorking(
+        false
+      );
     }
-
-
-    setWorking(
-      false
-    );
   }
-
 
   async function handlePauseResume() {
     if (
@@ -6018,13 +6018,13 @@ export default function TraditionalDraftPage() {
               <button
                 type="button"
                 onClick={
-                  completeDraftAndOpenMyTeam
+                  openDraftGrades
                 }
                 style={
                   styles.completeButton
                 }
               >
-                GO TO MY TEAM
+                VIEW DRAFT GRADES
               </button>
             </div>
           </header>
@@ -6089,7 +6089,7 @@ export default function TraditionalDraftPage() {
               marginTop:
                 "12px",
               padding:
-                "12px 14px",
+                "14px 16px",
               border:
                 "1px solid rgba(255,106,24,.22)",
               borderRadius:
@@ -6097,15 +6097,16 @@ export default function TraditionalDraftPage() {
               background:
                 "rgba(255,106,24,.06)",
               color:
-                "#d8dde5",
+                "#f4f6f8",
               fontSize:
-                "13px",
+                "14px",
+              fontWeight:
+                700,
+              textAlign:
+                "center",
             }}
           >
-            Draft grades are generated automatically after the final selection.
-            Human league members with an email address receive their own
-            Gridiron365 draft report when the grade-email worker processes the
-            completion queue.
+            Draft is complete! Go to the Draft Grades page to see your results.
           </div>
         </div>
       </main>
@@ -6436,13 +6437,16 @@ export default function TraditionalDraftPage() {
                   }
                 }
                 disabled={
-                  working
+                  working ||
+                  draftStarting
                 }
                 style={
                   styles.primaryButton
                 }
               >
-                START DRAFT
+                {draftStarting
+                  ? "DRAFT IS STARTING..."
+                  : "START DRAFT"}
               </button>
             ) : null}
 
@@ -15779,14 +15783,4 @@ const styles = {
   },
 
 } as const;
-
-
-
-
-
-
-
-
-
-
 

@@ -858,7 +858,7 @@ export default async function NflPlayoffsEntry({
     const injuryResult =
       await supabase
         .from(
-          "nfl_player_injuries"
+          "current_nfl_player_injuries"
         )
         .select(`
           nfl_player_id,
@@ -870,10 +870,6 @@ export default async function NflPlayoffsEntry({
         .eq(
           "season",
           season
-        )
-        .eq(
-          "is_active",
-          true
         )
         .in(
           "nfl_player_id",
