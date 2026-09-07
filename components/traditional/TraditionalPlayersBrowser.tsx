@@ -1125,6 +1125,10 @@ export default function TraditionalPlayersBrowser({
             style={{
               ...styles.modalCard,
               width: "min(920px,100%)",
+              height: "min(820px,calc(100dvh - 40px))",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
             <div style={styles.modalHeader}>
@@ -1171,7 +1175,17 @@ export default function TraditionalPlayersBrowser({
               </button>
             </div>
 
-            <div style={styles.modalBody}>
+            <div
+              className="g365-player-profile-scroll"
+              style={{
+                ...styles.modalBody,
+                minHeight: 0,
+                flex: "1 1 auto",
+                overflowY: "scroll",
+                scrollbarGutter: "stable",
+                overscrollBehavior: "contain",
+              }}
+            >
               {playerDetailLoading ? (
                 <div style={styles.profileLoading}>
                   Loading weekly and season stats…
@@ -1251,8 +1265,25 @@ export default function TraditionalPlayersBrowser({
                       </div>
                     </div>
 
-                    <div style={styles.weeklyStatsWrap}>
-                      <div style={styles.weeklyStatsHeader}>
+                    <div
+                      className="g365-weekly-stats-scroll"
+                      style={{
+                        ...styles.weeklyStatsWrap,
+                        maxHeight: "430px",
+                        overflowY: "scroll",
+                        scrollbarGutter: "stable",
+                        overscrollBehavior: "contain",
+                      }}
+                    >
+                      <div
+                        style={{
+                          ...styles.weeklyStatsHeader,
+                          position: "sticky",
+                          top: 0,
+                          zIndex: 2,
+                          background: "#101113",
+                        }}
+                      >
                         <span>WK</span>
                         <span>GAME</span>
                         <span>STATS</span>

@@ -165,6 +165,20 @@ export type MatchupDetailPlayer = {
     string |
     null;
 
+  opponentPrefix:
+    "vs" |
+    "@" |
+    null;
+
+  kickoffAt:
+    string |
+    null;
+
+  projectionSource:
+    "weekly" |
+    "season_average" |
+    "none";
+
   injuryStatus:
     string |
     null;
@@ -416,6 +430,22 @@ type ProjectionRow = {
     number |
     string |
     null;
+
+  opponent_abbreviation:
+    string |
+    null;
+
+  home_or_away:
+    string |
+    null;
+
+  kickoff_at:
+    string |
+    null;
+
+  is_bye:
+    boolean |
+    null;
 };
 
 
@@ -569,6 +599,10 @@ type NflGameRow = {
     null;
 
   status_completed: boolean;
+
+  kickoff_at:
+    string |
+    null;
 };
 
 
@@ -1104,6 +1138,13 @@ export async function getTraditionalPlayoffMatchupDetailData(
     >();
 
 
+  const projectionContextMap =
+    new Map<
+      number,
+      ProjectionRow
+    >();
+
+
   if (
     playerIds.length >
     0
@@ -1121,7 +1162,11 @@ export async function getTraditionalPlayoffMatchupDetailData(
         )
         .select(`
           player_id,
-          projected_points
+          projected_points,
+          opponent_abbreviation,
+          home_or_away,
+          kickoff_at,
+          is_bye
         `)
         .eq(
           "league_id",
@@ -1161,11 +1206,23 @@ export async function getTraditionalPlayoffMatchupDetailData(
         []
       ) as ProjectionRow[]
     ) {
+      const playerId =
+        Number(
+          projection.player_id
+        );
+
+
       projectionMap.set(
-        projection.player_id,
+        playerId,
         numberValue(
           projection.projected_points
         )
+      );
+
+
+      projectionContextMap.set(
+        playerId,
+        projection
       );
     }
   }
@@ -1600,7 +1657,8 @@ export async function getTraditionalPlayoffMatchupDetailData(
           home_team_id,
           away_team_id,
           status_name,
-          status_completed
+          status_completed,
+          kickoff_at
         `)
         .in(
           "id",
@@ -1853,6 +1911,12 @@ export async function getTraditionalPlayoffMatchupDetailData(
       );
 
 
+    const weeklyProjection =
+      projectionContextMap.get(
+        lineup.player_id
+      );
+
+
     const nflGameId =
       score
         ?.nfl_game_id ??
@@ -1893,7 +1957,12 @@ export async function getTraditionalPlayoffMatchupDetailData(
     let opponent:
       string |
       null =
-        null;
+        weeklyProjection
+          ?.is_bye
+          ? null
+          : weeklyProjection
+              ?.opponent_abbreviation ??
+            null;
 
 
     if (
@@ -1918,6 +1987,57 @@ export async function getTraditionalPlayoffMatchupDetailData(
           ?.abbreviation ??
         null;
     }
+
+
+    let opponentPrefix:
+      "vs" |
+      "@" |
+      null =
+        opponent
+          ? weeklyProjection
+              ?.home_or_away
+              ?.toLowerCase() ===
+            "away"
+            ? "@"
+            : "vs"
+          : null;
+
+
+    if (
+      game &&
+      playerTeam
+    ) {
+      opponentPrefix =
+        game.home_team_id ===
+          playerTeam.id
+          ? "vs"
+          : "@";
+    }
+
+
+    const kickoffAt =
+      game
+        ?.kickoff_at ??
+      weeklyProjection
+        ?.kickoff_at ??
+      null;
+
+
+    const projectedPoints =
+      projectionMap.get(
+        lineup.player_id
+      ) ??
+      0;
+
+
+    const projectionSource:
+      MatchupDetailPlayer[
+        "projectionSource"
+      ] =
+        projectedPoints >
+        0
+          ? "weekly"
+          : "none";
 
 
     const hasPossession =
@@ -2020,11 +2140,7 @@ export async function getTraditionalPlayoffMatchupDetailData(
             ?.fantasy_points
         ),
 
-      projectedPoints:
-        projectionMap.get(
-          lineup.player_id
-        ) ??
-        0,
+      projectedPoints,
 
       basePoints:
         numberValue(
@@ -2059,6 +2175,12 @@ export async function getTraditionalPlayoffMatchupDetailData(
 
       nflOpponent:
         opponent,
+
+      opponentPrefix,
+
+      kickoffAt,
+
+      projectionSource,
 
       injuryStatus:
         injury

@@ -1333,11 +1333,17 @@ className="g365-rowStatus" style={styles.rowStatus}
       >
         {player
           ?.isLocked ? (
-          <span
+          <>
+            <PlayerProjectionAction
+              player={player}
+            />
+
+            <span
 className="g365-lockedBadge" style={styles.lockedBadge}
-          >
-            LOCKED
-          </span>
+            >
+              LOCKED
+            </span>
+          </>
         ) : (
           <>
             {selected ? (
@@ -1366,30 +1372,81 @@ className="g365-moveHereButton" style={styles.moveHereButton}
 
 
             {player ? (
-              <button
-                type="button"
-                disabled={
-                  saving ||
-                  droppingPlayerId ===
-                    player.playerId
-                }
-                onClick={() =>
-                  void onDropPlayer(
-                    player
-                  )
-                }
+              <>
+                <PlayerProjectionAction
+                  player={player}
+                />
+
+                <button
+                  type="button"
+                  disabled={
+                    saving ||
+                    droppingPlayerId ===
+                      player.playerId
+                  }
+                  onClick={() =>
+                    void onDropPlayer(
+                      player
+                    )
+                  }
 className="g365-dropButton" style={styles.dropButton}
-              >
-                {droppingPlayerId ===
-                player.playerId
-                  ? "DROPPING..."
-                  : "DROP"}
-              </button>
+                >
+                  {droppingPlayerId ===
+                  player.playerId
+                    ? "DROPPING..."
+                    : "DROP"}
+                </button>
+              </>
             ) : null}
           </>
         )}
       </div>
     </article>
+  );
+}
+
+
+function PlayerProjectionAction({
+  player,
+}: {
+  player:
+    LineupPlayer;
+}) {
+  const projected =
+    player.projectedPoints !==
+      null &&
+    Number.isFinite(
+      player.projectedPoints
+    )
+      ? player.projectedPoints.toFixed(
+          1
+        )
+      : "—";
+
+  return (
+    <div
+      className="g365-projectionAction"
+      style={
+        styles.projectionAction
+      }
+      title="Week projected fantasy points"
+    >
+      <span
+        style={
+          styles.projectionActionLabel
+        }
+      >
+        PROJ
+      </span>
+
+      <strong
+        style={
+          styles.projectionActionValue
+        }
+      >
+        {projected}
+      </strong>
+    </div>
   );
 }
 
@@ -1489,73 +1546,6 @@ className="g365-playerMeta" style={styles.playerMeta}
               "3px",
           }}
         >
-          <span
-            style={{
-              color:
-                "#aeb4bd",
-              fontSize:
-                "9px",
-              fontWeight:
-                800,
-            }}
-          >
-            {player.isBye
-              ? "BYE"
-              : player
-                  .opponentAbbreviation
-                ? `${
-                    player
-                      .homeOrAway
-                      ?.toUpperCase() ===
-                    "AWAY"
-                      ? "@"
-                      : "vs"
-                  } ${
-                    player
-                      .opponentAbbreviation
-                  }${
-                    formatKickoff(
-                      player.kickoffAt
-                    )
-                      ? ` • ${formatKickoff(
-                          player.kickoffAt
-                        )}`
-                      : ""
-                  }`
-                : "Game TBD"}
-          </span>
-
-          <span
-            style={{
-              padding:
-                "2px 6px",
-              border:
-                "1px solid rgba(255,122,24,.18)",
-              borderRadius:
-                "5px",
-              background:
-                "rgba(255,122,24,.06)",
-              color:
-                "#ff8a2b",
-              fontSize:
-                "9px",
-              fontWeight:
-                900,
-              whiteSpace:
-                "nowrap",
-            }}
-          >
-            PROJ{" "}
-            {player.projectedPoints !==
-              null &&
-            Number.isFinite(
-              player.projectedPoints
-            )
-              ? player.projectedPoints.toFixed(
-                  1
-                )
-              : "—"}
-          </span>
         </div>
 
       </div>
@@ -2035,6 +2025,66 @@ const styles = {
 
     cursor:
       "pointer",
+  },
+
+
+  projectionAction: {
+    minWidth:
+      "72px",
+
+    padding:
+      "5px 8px",
+
+    display:
+      "grid",
+
+    justifyItems:
+      "end",
+
+    gap:
+      "1px",
+
+    border:
+      "1px solid rgba(255,122,24,.26)",
+
+    borderRadius:
+      "7px",
+
+    background:
+      "rgba(255,122,24,.08)",
+  },
+
+
+  projectionActionLabel: {
+    color:
+      "#9da3ad",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      900,
+
+    letterSpacing:
+      ".08em",
+  },
+
+
+  projectionActionValue: {
+    color:
+      "#ff9b32",
+
+    fontSize:
+      "20px",
+
+    fontWeight:
+      950,
+
+    lineHeight:
+      1,
+
+    fontVariantNumeric:
+      "tabular-nums",
   },
 
 

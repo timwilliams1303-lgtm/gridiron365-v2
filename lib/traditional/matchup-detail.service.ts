@@ -420,10 +420,6 @@ type PlayerRow = {
   headshot_url:
     string |
     null;
-
-  status:
-    string |
-    null;
 };
 
 
@@ -464,6 +460,22 @@ type WeeklyProjectionRow = {
   projected_points:
     number |
     string |
+    null;
+
+  opponent_abbreviation:
+    string |
+    null;
+
+  home_or_away:
+    string |
+    null;
+
+  kickoff_at:
+    string |
+    null;
+
+  is_bye:
+    boolean |
     null;
 };
 
@@ -1220,8 +1232,7 @@ export async function getTraditionalMatchupDetailData(
           full_name,
           primary_position,
           team_abbreviation,
-          headshot_url,
-          status
+          headshot_url
         `)
         .in(
           "id",
@@ -1271,6 +1282,13 @@ export async function getTraditionalMatchupDetailData(
     >();
 
 
+  const projectionContextMap =
+    new Map<
+      number,
+      WeeklyProjectionRow
+    >();
+
+
   if (
     playerIds.length >
     0
@@ -1288,7 +1306,11 @@ export async function getTraditionalMatchupDetailData(
         )
         .select(`
           player_id,
-          projected_points
+          projected_points,
+          opponent_abbreviation,
+          home_or_away,
+          kickoff_at,
+          is_bye
         `)
         .eq(
           "league_id",
@@ -1324,13 +1346,21 @@ export async function getTraditionalMatchupDetailData(
         []
       ) as WeeklyProjectionRow[]
     ) {
-      projectionMap.set(
+      const playerId =
         Number(
           row.player_id
-        ),
+        );
+
+      projectionMap.set(
+        playerId,
         numberValue(
           row.projected_points
         )
+      );
+
+      projectionContextMap.set(
+        playerId,
+        row
       );
     }
   }
@@ -2295,6 +2325,12 @@ export async function getTraditionalMatchupDetailData(
       );
 
 
+    const weeklyProjection =
+      projectionContextMap.get(
+        lineup.player_id
+      );
+
+
     const nflGameId =
       score
         ?.nfl_game_id ??
@@ -2335,7 +2371,12 @@ export async function getTraditionalMatchupDetailData(
     let opponent:
       string |
       null =
-        null;
+        weeklyProjection
+          ?.is_bye
+          ? null
+          : weeklyProjection
+              ?.opponent_abbreviation ??
+            null;
 
 
     if (
@@ -2366,7 +2407,14 @@ export async function getTraditionalMatchupDetailData(
       "vs" |
       "@" |
       null =
-        null;
+        opponent
+          ? weeklyProjection
+              ?.home_or_away
+              ?.toLowerCase() ===
+            "away"
+            ? "@"
+            : "vs"
+          : null;
 
     if (
       game &&
@@ -2381,6 +2429,8 @@ export async function getTraditionalMatchupDetailData(
 
     const kickoffAt =
       game
+        ?.kickoff_at ??
+      weeklyProjection
         ?.kickoff_at ??
       null;
 
@@ -2543,7 +2593,9 @@ export async function getTraditionalMatchupDetailData(
       projectionSource,
 
       injuryStatus:
-        injury?.status ?? null,
+        injury
+          ?.status ??
+        null,
 
       injuryType:
         injury
