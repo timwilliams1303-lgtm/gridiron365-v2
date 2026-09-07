@@ -46,9 +46,10 @@ type Team = {
 type Matchup = {
   id: number;
   week: number;
-  home_team_id: number;
-  away_team_id: number;
-  status: string;
+  home_fantasy_team_id: number;
+  away_fantasy_team_id: number;
+  is_live: boolean;
+  is_final: boolean;
   finalized_at: string | null;
   home_points: number | string | null;
   away_points: number | string | null;
@@ -375,15 +376,16 @@ export default function CommissionerScheduleBuilderPage() {
           } =
             await supabase
               .from(
-                "fantasy_matchups"
+                "traditional_matchups"
               )
               .select(
                 `
                 id,
                 week,
-                home_team_id,
-                away_team_id,
-                status,
+                home_fantasy_team_id,
+                away_fantasy_team_id,
+                is_live,
+                is_final,
                 finalized_at,
                 home_points,
                 away_points
@@ -397,10 +399,6 @@ export default function CommissionerScheduleBuilderPage() {
                 "season",
                 loadedLeague
                   .season
-              )
-              .eq(
-                "matchup_type",
-                "regular_season"
               )
               .order(
                 "week",
@@ -555,12 +553,8 @@ export default function CommissionerScheduleBuilderPage() {
           (
             matchup
           ) =>
-            [
-              "live",
-              "final",
-            ].includes(
-              matchup.status
-            ) ||
+            matchup.is_live ||
+            matchup.is_final ||
             matchup.finalized_at !==
               null
         ),
@@ -576,12 +570,8 @@ export default function CommissionerScheduleBuilderPage() {
           (
             matchup
           ) =>
-            [
-              "live",
-              "final",
-            ].includes(
-              matchup.status
-            ) ||
+            matchup.is_live ||
+            matchup.is_final ||
             matchup.finalized_at !==
               null
         ),
@@ -624,12 +614,12 @@ export default function CommissionerScheduleBuilderPage() {
 
                 homeTeamId:
                   matchup
-                    ?.home_team_id ??
+                    ?.home_fantasy_team_id ??
                   null,
 
                 awayTeamId:
                   matchup
-                    ?.away_team_id ??
+                    ?.away_fantasy_team_id ??
                   null,
               };
             }
@@ -690,11 +680,11 @@ export default function CommissionerScheduleBuilderPage() {
           weekRows
         ) {
           scheduledIds.add(
-            matchup.home_team_id
+            matchup.home_fantasy_team_id
           );
 
           scheduledIds.add(
-            matchup.away_team_id
+            matchup.away_fantasy_team_id
           );
         }
 
@@ -977,13 +967,13 @@ export default function CommissionerScheduleBuilderPage() {
           const home =
             stats.get(
               matchup
-                .home_team_id
+                .home_fantasy_team_id
             );
 
           const away =
             stats.get(
               matchup
-                .away_team_id
+                .away_fantasy_team_id
             );
 
           if (home) {
@@ -992,11 +982,11 @@ export default function CommissionerScheduleBuilderPage() {
 
             home.opponents.set(
               matchup
-                .away_team_id,
+                .away_fantasy_team_id,
               (
                 home.opponents.get(
                   matchup
-                    .away_team_id
+                    .away_fantasy_team_id
                 ) ??
                 0
               ) +
@@ -1010,11 +1000,11 @@ export default function CommissionerScheduleBuilderPage() {
 
             away.opponents.set(
               matchup
-                .home_team_id,
+                .home_fantasy_team_id,
               (
                 away.opponents.get(
                   matchup
-                    .home_team_id
+                    .home_fantasy_team_id
                 ) ??
                 0
               ) +
@@ -1295,12 +1285,12 @@ export default function CommissionerScheduleBuilderPage() {
 
             homeTeamId:
               matchup
-                ?.home_team_id ??
+                ?.home_fantasy_team_id ??
               null,
 
             awayTeamId:
               matchup
-                ?.away_team_id ??
+                ?.away_fantasy_team_id ??
               null,
           };
         }
@@ -1323,11 +1313,11 @@ export default function CommissionerScheduleBuilderPage() {
         source
       ) {
         sourceIds.add(
-          matchup.home_team_id
+          matchup.home_fantasy_team_id
         );
 
         sourceIds.add(
-          matchup.away_team_id
+          matchup.away_fantasy_team_id
         );
       }
 
@@ -1575,10 +1565,10 @@ export default function CommissionerScheduleBuilderPage() {
         (
           pair
         ) => ({
-          home_team_id:
+          home_fantasy_team_id:
             pair.homeTeamId,
 
-          away_team_id:
+          away_fantasy_team_id:
             pair.awayTeamId,
         })
       );
@@ -3597,3 +3587,4 @@ const styles:
         "#ffd2d2",
     },
   };
+
