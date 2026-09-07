@@ -732,7 +732,7 @@ export default function DraftGradesPage() {
                 .select(`
                   id,
                   full_name,
-                  position,
+                  position:primary_position,
                   team_abbreviation
                 `)
                 .in(
@@ -3453,4 +3453,5 @@ const styles:
       "9px",
   },
 };
+
 
