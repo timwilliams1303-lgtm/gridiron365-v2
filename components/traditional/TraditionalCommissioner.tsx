@@ -1316,13 +1316,16 @@ export default function TraditionalCommissioner({
   }
 
   async function addCpuTeam() {
-    if (addingCpuTeam) return;
+    if (addingCpuTeam || addingRestCpuTeams) return;
 
     const maxTeams = leagueSettings?.max_teams ?? 12;
     const activeTeams = teams.filter((team) => team.active);
+    const openTeam = activeTeams.find(
+      (team) => !team.owner_id && team.is_cpu !== true
+    );
 
-    if (activeTeams.length >= maxTeams) {
-      setError(`This league is already at its ${maxTeams}-team limit.`);
+    if (!openTeam && activeTeams.length >= maxTeams) {
+      setError(`This league is already at its ${maxTeams}-team limit with no open team slots.`);
       return;
     }
 
@@ -1335,36 +1338,44 @@ export default function TraditionalCommissioner({
         activeTeams.map((team) => team.team_name)
       );
 
-      const { error: insertError } = await supabase
-        .from("fantasy_teams")
-        .insert({
-          league_id: leagueId,
-          owner_id: null,
-          team_name: cpuName,
-          wins: 0,
-          losses: 0,
-          ties: 0,
-          points_for: 0,
-          active: true,
-          is_cpu: true,
-          cpu_auto_draft: true,
-        });
+      if (openTeam) {
+        const { error: updateError } = await supabase
+          .from("fantasy_teams")
+          .update({
+            owner_id: null,
+            team_name: cpuName,
+            active: true,
+            is_cpu: true,
+            cpu_auto_draft: true,
+          })
+          .eq("id", openTeam.id)
+          .eq("league_id", leagueId);
 
-      if (insertError) {
-        throw new Error(insertError.message);
+        if (updateError) throw new Error(updateError.message);
+      } else {
+        const { error: insertError } = await supabase
+          .from("fantasy_teams")
+          .insert({
+            league_id: leagueId,
+            owner_id: null,
+            team_name: cpuName,
+            wins: 0,
+            losses: 0,
+            ties: 0,
+            points_for: 0,
+            active: true,
+            is_cpu: true,
+            cpu_auto_draft: true,
+          });
+
+        if (insertError) throw new Error(insertError.message);
       }
 
-      await load({
-        showLoading: false,
-        clearMessages: false,
-      });
-
+      await load({ showLoading: false, clearMessages: false });
       setSuccess(`${cpuName} was added as a CPU team.`);
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "The CPU team could not be added."
+        err instanceof Error ? err.message : "The CPU team could not be added."
       );
     } finally {
       setAddingCpuTeam(false);
@@ -1376,17 +1387,21 @@ export default function TraditionalCommissioner({
 
     const maxTeams = leagueSettings?.max_teams ?? 12;
     const activeTeams = teams.filter((team) => team.active);
-    const availableSpots = maxTeams - activeTeams.length;
+    const openTeams = activeTeams.filter(
+      (team) => !team.owner_id && team.is_cpu !== true
+    );
+    const missingRows = Math.max(0, maxTeams - activeTeams.length);
+    const availableSpots = openTeams.length + missingRows;
 
     if (availableSpots <= 0) {
-      setError(`This league is already at its ${maxTeams}-team limit.`);
+      setError(`This league is already at its ${maxTeams}-team limit with no open team slots.`);
       return;
     }
 
     const confirmed = window.confirm(
-      `Add ${availableSpots} CPU ${
-        availableSpots === 1 ? "team" : "teams"
-      } and fill every remaining spot in this league?`
+      `Add CPU teams to all ${availableSpots} remaining open ${
+        availableSpots === 1 ? "spot" : "spots"
+      } in this league?`
     );
 
     if (!confirmed) return;
@@ -1397,54 +1412,56 @@ export default function TraditionalCommissioner({
 
     try {
       const existingNames = activeTeams.map((team) => team.team_name);
-      const rows: Array<{
-        league_id: string;
-        owner_id: null;
-        team_name: string;
-        wins: number;
-        losses: number;
-        ties: number;
-        points_for: number;
-        active: boolean;
-        is_cpu: boolean;
-        cpu_auto_draft: boolean;
-      }> = [];
 
-      for (let index = 0; index < availableSpots; index += 1) {
+      for (const openTeam of openTeams) {
         const cpuName = makeRandomCpuTeamName(existingNames);
         existingNames.push(cpuName);
 
-        rows.push({
-          league_id: leagueId,
-          owner_id: null,
-          team_name: cpuName,
-          wins: 0,
-          losses: 0,
-          ties: 0,
-          points_for: 0,
-          active: true,
-          is_cpu: true,
-          cpu_auto_draft: true,
+        const { error: updateError } = await supabase
+          .from("fantasy_teams")
+          .update({
+            owner_id: null,
+            team_name: cpuName,
+            active: true,
+            is_cpu: true,
+            cpu_auto_draft: true,
+          })
+          .eq("id", openTeam.id)
+          .eq("league_id", leagueId);
+
+        if (updateError) throw new Error(updateError.message);
+      }
+
+      if (missingRows > 0) {
+        const rows = Array.from({ length: missingRows }, () => {
+          const cpuName = makeRandomCpuTeamName(existingNames);
+          existingNames.push(cpuName);
+          return {
+            league_id: leagueId,
+            owner_id: null,
+            team_name: cpuName,
+            wins: 0,
+            losses: 0,
+            ties: 0,
+            points_for: 0,
+            active: true,
+            is_cpu: true,
+            cpu_auto_draft: true,
+          };
         });
+
+        const { error: insertError } = await supabase
+          .from("fantasy_teams")
+          .insert(rows);
+
+        if (insertError) throw new Error(insertError.message);
       }
 
-      const { error: insertError } = await supabase
-        .from("fantasy_teams")
-        .insert(rows);
-
-      if (insertError) {
-        throw new Error(insertError.message);
-      }
-
-      await load({
-        showLoading: false,
-        clearMessages: false,
-      });
-
+      await load({ showLoading: false, clearMessages: false });
       setSuccess(
         `${availableSpots} CPU ${
           availableSpots === 1 ? "team was" : "teams were"
-        } added. The league is now full at ${maxTeams} teams.`
+        } added to the remaining open league spots.`
       );
     } catch (err) {
       setError(
@@ -1586,6 +1603,17 @@ export default function TraditionalCommissioner({
       </main>
     );
   }
+
+  const activeTeamsForCpu = teams.filter((team) => team.active);
+  const openCpuConvertibleTeams = activeTeamsForCpu.filter(
+    (team) => !team.owner_id && team.is_cpu !== true
+  );
+  const missingCpuTeamRows = Math.max(
+    0,
+    (leagueSettings?.max_teams ?? 12) - activeTeamsForCpu.length
+  );
+  const availableCpuSpots =
+    openCpuConvertibleTeams.length + missingCpuTeamRows;
 
   const tabs: Array<[Tab, string]> = [
     ["overview", "Overview"],
@@ -2162,8 +2190,7 @@ export default function TraditionalCommissioner({
                 disabled={
                   addingCpuTeam ||
                   addingRestCpuTeams ||
-                  teams.filter((team) => team.active).length >=
-                    (leagueSettings?.max_teams ?? 12)
+                  availableCpuSpots <= 0
                 }
                 onClick={() => void addCpuTeam()}
               >
@@ -2174,17 +2201,13 @@ export default function TraditionalCommissioner({
                 disabled={
                   addingCpuTeam ||
                   addingRestCpuTeams ||
-                  teams.filter((team) => team.active).length >=
-                    (leagueSettings?.max_teams ?? 12)
+                  availableCpuSpots <= 0
                 }
                 onClick={() => void addRestCpuTeams()}
               >
                 {addingRestCpuTeams
                   ? "ADDING REST…"
-                  : `+ ADD REST CPU (${
-                      (leagueSettings?.max_teams ?? 12) -
-                      teams.filter((team) => team.active).length
-                    })`}
+                  : `+ ADD REST CPU (${availableCpuSpots})`}
               </Button>
             </div>
 
