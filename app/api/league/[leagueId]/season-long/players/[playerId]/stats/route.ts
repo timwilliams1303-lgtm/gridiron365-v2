@@ -247,7 +247,7 @@ export async function GET(
         }),
 
       supabase
-        .from("season_long_weekly_player_projections")
+        .from("weekly_player_projections")
         .select(`
           week,
           opponent_abbreviation,
