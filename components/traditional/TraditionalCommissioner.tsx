@@ -184,6 +184,8 @@ type Team = {
   owner_id: string | null;
   team_name: string;
   active: boolean;
+  is_cpu?: boolean;
+  cpu_auto_draft?: boolean;
 };
 
 type Member = {
@@ -288,6 +290,74 @@ const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
+
+const CPU_TEAM_ADJECTIVES = [
+  "Blitzing",
+  "Gridiron",
+  "Sunday",
+  "Red Zone",
+  "Goal Line",
+  "Fourth Down",
+  "Hail Mary",
+  "Two Minute",
+  "End Zone",
+  "Prime Time",
+  "Pigskin",
+  "Turf",
+  "Iron",
+  "Thunder",
+  "Turbo",
+  "Wild",
+  "Raging",
+  "Flying",
+  "Golden",
+  "Midnight",
+];
+
+const CPU_TEAM_MASCOTS = [
+  "Bandits",
+  "Bruisers",
+  "Yetis",
+  "Outlaws",
+  "Wolves",
+  "Rhinos",
+  "Sharks",
+  "Dragons",
+  "Hawks",
+  "Bisons",
+  "Bulldogs",
+  "Titans",
+  "Warriors",
+  "Raptors",
+  "Renegades",
+  "Cyclones",
+  "Mammoths",
+  "Cobras",
+  "Mustangs",
+  "Gladiators",
+];
+
+function makeRandomCpuTeamName(existingNames: string[]): string {
+  const used = new Set(existingNames.map((name) => name.trim().toLowerCase()));
+
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const adjective =
+      CPU_TEAM_ADJECTIVES[
+        Math.floor(Math.random() * CPU_TEAM_ADJECTIVES.length)
+      ];
+    const mascot =
+      CPU_TEAM_MASCOTS[
+        Math.floor(Math.random() * CPU_TEAM_MASCOTS.length)
+      ];
+    const candidate = `${adjective} ${mascot}`;
+
+    if (!used.has(candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+
+  return `Gridiron Legends ${existingNames.length + 1}`;
+}
 
 const scoringGroups: Record<
   ScoringCategoryKey,
@@ -615,6 +685,7 @@ export default function TraditionalCommissioner({
   const [draftOrder, setDraftOrder] = useState<number[]>([]);
   const [teamInviteEmails, setTeamInviteEmails] = useState<Record<number, string>>({});
   const [invitingTeamId, setInvitingTeamId] = useState<number | null>(null);
+  const [addingCpuTeam, setAddingCpuTeam] = useState(false);
 
   const [rosterTeamId, setRosterTeamId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
@@ -896,6 +967,21 @@ export default function TraditionalCommissioner({
       if (
         invite.fantasy_team_id !== null &&
         invite.status === "accepted" &&
+        !map.has(invite.fantasy_team_id)
+      ) {
+        map.set(invite.fantasy_team_id, invite);
+      }
+    }
+
+    return map;
+  }, [invitations]);
+
+  const latestInviteByTeamId = useMemo(() => {
+    const map = new Map<number, LeagueInvitation>();
+
+    for (const invite of invitations) {
+      if (
+        invite.fantasy_team_id !== null &&
         !map.has(invite.fantasy_team_id)
       ) {
         map.set(invite.fantasy_team_id, invite);
@@ -1202,6 +1288,62 @@ export default function TraditionalCommissioner({
     );
 
     router.push(`/league/${leagueId}/draft`);
+  }
+
+  async function addCpuTeam() {
+    if (addingCpuTeam) return;
+
+    const maxTeams = leagueSettings?.max_teams ?? 12;
+    const activeTeams = teams.filter((team) => team.active);
+
+    if (activeTeams.length >= maxTeams) {
+      setError(`This league is already at its ${maxTeams}-team limit.`);
+      return;
+    }
+
+    setAddingCpuTeam(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const cpuName = makeRandomCpuTeamName(
+        activeTeams.map((team) => team.team_name)
+      );
+
+      const { error: insertError } = await supabase
+        .from("fantasy_teams")
+        .insert({
+          league_id: leagueId,
+          owner_id: null,
+          team_name: cpuName,
+          wins: 0,
+          losses: 0,
+          ties: 0,
+          points_for: 0,
+          active: true,
+          is_cpu: true,
+          cpu_auto_draft: true,
+        });
+
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
+
+      await load({
+        showLoading: false,
+        clearMessages: false,
+      });
+
+      setSuccess(`${cpuName} was added as a CPU team.`);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "The CPU team could not be added."
+      );
+    } finally {
+      setAddingCpuTeam(false);
+    }
   }
 
   async function sendTeamInvite(team: Team) {
@@ -1895,141 +2037,253 @@ export default function TraditionalCommissioner({
         {tab === "teams" ? (
           <Section
             title="Teams & Owners"
-            subtitle="Assign an existing league member or type an email address and send an invitation directly for that team."
+            subtitle="Assign owners, invite new owners by email, or add CPU-controlled teams without changing the rest of the league setup."
           >
+            <div style={{ ...styles.actions, marginBottom: 16 }}>
+              <Button
+                disabled={
+                  addingCpuTeam ||
+                  teams.filter((team) => team.active).length >=
+                    (leagueSettings?.max_teams ?? 12)
+                }
+                onClick={() => void addCpuTeam()}
+              >
+                {addingCpuTeam ? "ADDING CPU…" : "+ ADD CPU TEAM"}
+              </Button>
+            </div>
+
             <div style={styles.list}>
-              {teams.filter((team) => team.active).slice(0, leagueSettings?.max_teams ?? 12).map((team, index) => (
-                <div key={team.id} style={styles.teamRowExpanded}>
-                  <strong style={styles.teamIndex}>{index + 1}</strong>
+              {teams
+                .filter((team) => team.active)
+                .slice(0, leagueSettings?.max_teams ?? 12)
+                .map((team, index) => {
+                  const latestInvite = latestInviteByTeamId.get(team.id);
+                  const acceptedInvite =
+                    latestInvite?.status === "accepted"
+                      ? latestInvite
+                      : acceptedInviteByTeamId.get(team.id);
+                  const inviteEmail =
+                    acceptedInvite?.email?.trim() ||
+                    latestInvite?.email?.trim() ||
+                    "";
+                  const isCpu = team.is_cpu === true;
 
-                  <label style={styles.field}>
-                    <span style={styles.fieldLabel}>Team Name</span>
-                    <input
-                      value={team.team_name}
-                      onChange={(e) =>
-                        setTeams((current) =>
-                          current.map((row) =>
-                            row.id === team.id ? { ...row, team_name: e.target.value } : row
-                          )
-                        )
-                      }
-                      style={styles.input}
-                    />
-                  </label>
+                  return (
+                    <div key={team.id} style={styles.teamRowExpanded}>
+                      <strong style={styles.teamIndex}>{index + 1}</strong>
 
-                  <label style={styles.field}>
-                    <span style={styles.fieldLabel}>Owner</span>
-                    <select
-                      value={team.owner_id ?? ""}
-                      onChange={(e) => {
-                        const nextOwnerId = e.target.value;
-                        setTeams((current) =>
-                          current.map((row) =>
-                            row.id === team.id
-                              ? { ...row, owner_id: nextOwnerId || null }
-                              : row
-                          )
-                        );
-                      }}
-                      style={styles.input}
-                    >
-                      <option value="">—</option>
-                      {members.map((m) => {
-                        const profile = profileByUserId.get(m.user_id);
+                      <label style={styles.field}>
+                        <span style={styles.fieldLabel}>Team Name</span>
+                        <input
+                          value={team.team_name}
+                          onChange={(e) =>
+                            setTeams((current) =>
+                              current.map((row) =>
+                                row.id === team.id
+                                  ? { ...row, team_name: e.target.value }
+                                  : row
+                              )
+                            )
+                          }
+                          style={styles.input}
+                        />
+                      </label>
 
-                        const displayName =
-                          profile?.display_name?.trim() ||
-                          [profile?.first_name?.trim(), profile?.last_name?.trim()]
-                            .filter(Boolean)
-                            .join(" ") ||
-                          shortId(m.user_id);
+                      <label style={styles.field}>
+                        <span style={styles.fieldLabel}>Owner</span>
+                        {isCpu ? (
+                          <>
+                            <input
+                              value="CPU CONTROLLED"
+                              readOnly
+                              style={styles.input}
+                            />
+                            <span style={styles.muted}>
+                              Automatic Gridiron365 CPU team
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <select
+                              value={team.owner_id ?? ""}
+                              onChange={(e) => {
+                                const nextOwnerId = e.target.value;
+                                setTeams((current) =>
+                                  current.map((row) =>
+                                    row.id === team.id
+                                      ? {
+                                          ...row,
+                                          owner_id: nextOwnerId || null,
+                                        }
+                                      : row
+                                  )
+                                );
+                              }}
+                              style={styles.input}
+                            >
+                              <option value="">—</option>
+                              {members.map((m) => {
+                                const profile = profileByUserId.get(m.user_id);
 
-                        return (
-                          <option key={m.id} value={m.user_id}>
-                            {displayName} • {pretty(m.role)}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </label>
+                                const displayName =
+                                  profile?.display_name?.trim() ||
+                                  [
+                                    profile?.first_name?.trim(),
+                                    profile?.last_name?.trim(),
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" ") ||
+                                  shortId(m.user_id);
 
-                  <label style={styles.field}>
-                    <span style={styles.fieldLabel}>
-                      {team.owner_id ? "Owner Email" : "Email Invite"}
-                    </span>
-                    <input
-                      type="email"
-                      placeholder="owner@example.com"
-                      value={
-                        team.owner_id
-                          ? ownerEmail(team)
-                          : teamInviteEmails[team.id] ?? ""
-                      }
-                      onChange={(e) => {
-                        if (team.owner_id) return;
+                                return (
+                                  <option key={m.id} value={m.user_id}>
+                                    {displayName} • {pretty(m.role)}
+                                  </option>
+                                );
+                              })}
+                            </select>
 
-                        setTeamInviteEmails((current) => ({
-                          ...current,
-                          [team.id]: e.target.value,
-                        }));
-                      }}
-                      readOnly={Boolean(team.owner_id)}
-                      style={styles.input}
-                    />
-                  </label>
+                            <span style={styles.muted}>
+                              {team.owner_id
+                                ? ownerEmail(team) || inviteEmail || "Email unavailable"
+                                : latestInvite?.email
+                                  ? latestInvite.email
+                                  : "No owner email yet"}
+                            </span>
+                          </>
+                        )}
+                      </label>
 
-                  <div style={styles.ownerStatus}>
-                    {team.owner_id ? (
-                      <>
-                        <strong>{ownerDisplayName(team)}</strong>
-                        <span>
-                          {ownerEmail(team)
-                            ? `${ownerEmail(team)} • OWNER ASSIGNED`
-                            : "OWNER ASSIGNED"}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <strong>NO OWNER ASSIGNED</strong>
-                        <span>Enter an email address to invite someone to this team.</span>
-                      </>
-                    )}
-                  </div>
+                      <label style={styles.field}>
+                        <span style={styles.fieldLabel}>Email Invite</span>
 
-                  <div style={styles.teamActions}>
-                    {!team.owner_id ? (
-                      <Button
-                        disabled={
-                          invitingTeamId !== null ||
-                          !(teamInviteEmails[team.id] ?? "").trim()
-                        }
-                        onClick={() => void sendTeamInvite(team)}
-                      >
-                        {invitingTeamId === team.id ? "SENDING…" : "✉ SEND EMAIL INVITE"}
-                      </Button>
-                    ) : null}
+                        {isCpu ? (
+                          <>
+                            <input
+                              value="Not applicable"
+                              readOnly
+                              style={styles.input}
+                            />
+                            <span style={styles.muted}>CPU TEAM</span>
+                          </>
+                        ) : (
+                          <>
+                            <input
+                              type="email"
+                              placeholder="owner@example.com"
+                              value={
+                                team.owner_id
+                                  ? ownerEmail(team) || inviteEmail
+                                  : latestInvite?.status === "pending"
+                                    ? latestInvite.email
+                                    : teamInviteEmails[team.id] ?? ""
+                              }
+                              onChange={(e) => {
+                                if (
+                                  team.owner_id ||
+                                  latestInvite?.status === "pending"
+                                ) {
+                                  return;
+                                }
 
-                    <Button
-                      disabled={saving}
-                      onClick={() =>
-                        void action(
-                          () =>
-                            supabase.rpc("commissioner_update_traditional_team", {
-                              p_league_id: leagueId,
-                              p_fantasy_team_id: team.id,
-                              p_team_name: team.team_name,
-                              p_owner_id: team.owner_id,
-                              p_active: true,
-                            }),
-                          `${team.team_name} updated.`
-                        )
-                      }
-                    >
-                      SAVE
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                                setTeamInviteEmails((current) => ({
+                                  ...current,
+                                  [team.id]: e.target.value,
+                                }));
+                              }}
+                              readOnly={
+                                Boolean(team.owner_id) ||
+                                latestInvite?.status === "pending"
+                              }
+                              style={styles.input}
+                            />
+
+                            <span style={styles.muted}>
+                              {team.owner_id &&
+                              acceptedInvite?.status === "accepted"
+                                ? "ACCEPTED"
+                                : latestInvite?.status === "pending"
+                                  ? "PENDING"
+                                  : latestInvite?.status
+                                    ? pretty(latestInvite.status).toUpperCase()
+                                    : "Enter an email address to invite an owner"}
+                            </span>
+                          </>
+                        )}
+                      </label>
+
+                      <div style={styles.ownerStatus}>
+                        {isCpu ? (
+                          <>
+                            <strong>CPU TEAM</strong>
+                            <span>Automatic drafting enabled.</span>
+                          </>
+                        ) : team.owner_id ? (
+                          <>
+                            <strong>{ownerDisplayName(team)}</strong>
+                            <span>
+                              {ownerEmail(team) || inviteEmail
+                                ? `${ownerEmail(team) || inviteEmail} • OWNER ASSIGNED`
+                                : "OWNER ASSIGNED"}
+                            </span>
+                          </>
+                        ) : latestInvite?.status === "pending" ? (
+                          <>
+                            <strong>INVITE PENDING</strong>
+                            <span>{latestInvite.email}</span>
+                          </>
+                        ) : (
+                          <>
+                            <strong>NO OWNER ASSIGNED</strong>
+                            <span>
+                              Enter an email address to invite someone to this team.
+                            </span>
+                          </>
+                        )}
+                      </div>
+
+                      <div style={styles.teamActions}>
+                        {!isCpu &&
+                        !team.owner_id &&
+                        latestInvite?.status !== "pending" ? (
+                          <Button
+                            disabled={
+                              invitingTeamId !== null ||
+                              !(teamInviteEmails[team.id] ?? "").trim()
+                            }
+                            onClick={() => void sendTeamInvite(team)}
+                          >
+                            {invitingTeamId === team.id
+                              ? "SENDING…"
+                              : "✉ SEND EMAIL INVITE"}
+                          </Button>
+                        ) : null}
+
+                        <Button
+                          disabled={saving}
+                          onClick={() =>
+                            void action(
+                              () =>
+                                supabase.rpc(
+                                  "commissioner_update_traditional_team",
+                                  {
+                                    p_league_id: leagueId,
+                                    p_fantasy_team_id: team.id,
+                                    p_team_name: team.team_name,
+                                    p_owner_id: team.owner_id,
+                                    p_active: true,
+                                  }
+                                ),
+                              `${team.team_name} updated.`
+                            )
+                          }
+                        >
+                          SAVE
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           </Section>
         ) : null}
