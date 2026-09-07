@@ -90,6 +90,15 @@ type EspnInjury = {
     description?: string;
     abbreviation?: string;
   };
+
+  details?: {
+    fantasyStatus?: { description?: string; abbreviation?: string };
+    type?: string;
+    location?: string;
+    detail?: string;
+    side?: string;
+    returnDate?: string;
+  };
 };
 
 
@@ -99,6 +108,12 @@ type EspnTeamInjuries = {
   injuries?: EspnInjury[];
 };
 
+
+type EspnCoreSeasonAthlete = {
+  id?: string;
+  displayName?: string;
+  injuries?: EspnInjury[];
+};
 
 type EspnInjuryResponse = {
   timestamp?: string;
@@ -215,6 +230,9 @@ type EspnPlayerRecord = {
     string | null;
 
   sourceUpdatedAt:
+    string | null;
+
+  returnDate:
     string | null;
 };
 
@@ -1271,6 +1289,9 @@ export async function POST(
                 ?.date ??
               espnData.timestamp
             ),
+
+          returnDate:
+            null,
         });
       }
     }
@@ -1386,6 +1407,148 @@ export async function POST(
           record.espnPlayerId,
           record
         );
+      }
+    }
+
+
+    let coreAthletesChecked = 0;
+    let coreAthletesWithInjuries = 0;
+    let coreInjuryOverrides = 0;
+    let coreFetchFailures = 0;
+
+    /*
+     * The league-wide ESPN injury feed can lag roster transactions.
+     * ESPN's season-scoped Core athlete resource exposes the current
+     * injuries[] array, including IR/PUP/NFI and return-date details.
+     *
+     * Enrich the players already reported by the league-wide feed.
+     * Core reserve designations override stale generic statuses such
+     * as Day-To-Day.
+     */
+    for (const [espnPlayerId, existingRecord] of latestRecordByEspnPlayerId) {
+      const coreUrl =
+        `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${season}/athletes/${espnPlayerId}?lang=en&region=us`;
+
+      try {
+        const coreResponse = await fetch(coreUrl, {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+            "User-Agent": "Mozilla/5.0",
+          },
+        });
+
+        coreAthletesChecked += 1;
+
+        if (!coreResponse.ok) {
+          coreFetchFailures += 1;
+          continue;
+        }
+
+        const coreAthlete =
+          (await coreResponse.json()) as EspnCoreSeasonAthlete;
+
+        const coreInjuries =
+          Array.isArray(coreAthlete.injuries)
+            ? coreAthlete.injuries
+            : [];
+
+        if (coreInjuries.length === 0) continue;
+
+        coreAthletesWithInjuries += 1;
+
+        const latestCoreInjury =
+          coreInjuries
+            .slice()
+            .sort(
+              (a, b) =>
+                new Date(b.date ?? 0).getTime() -
+                new Date(a.date ?? 0).getTime()
+            )[0];
+
+        if (!latestCoreInjury) continue;
+
+        const rawCoreStatus =
+          normalizeText(latestCoreInjury.status) ??
+          normalizeText(latestCoreInjury.type?.description) ??
+          normalizeText(latestCoreInjury.type?.abbreviation) ??
+          normalizeText(latestCoreInjury.type?.name);
+
+        const coreStatus =
+          normalizeInjuryStatus(rawCoreStatus);
+
+        if (!coreStatus) continue;
+
+        const shortComment =
+          normalizeText(latestCoreInjury.shortComment);
+        const longComment =
+          normalizeText(latestCoreInjury.longComment);
+        const details =
+          latestCoreInjury.details;
+
+        const coreInjuryType =
+          normalizeText(details?.type) ??
+          normalizeText(latestCoreInjury.type?.description) ??
+          normalizeText(latestCoreInjury.type?.name);
+
+        const coreLocation =
+          normalizeText(details?.location) ??
+          inferInjuryLocation(
+            details?.type,
+            details?.detail,
+            shortComment,
+            longComment
+          );
+
+        const structuredDetail =
+          [normalizeText(details?.detail), normalizeText(details?.side)]
+            .filter((value): value is string => Boolean(value))
+            .join(" - ") || null;
+
+        const coreInjuryDetail =
+          longComment ??
+          shortComment ??
+          structuredDetail;
+
+        const coreInjuryDate =
+          normalizeDate(latestCoreInjury.date);
+        const coreSourceUpdatedAt =
+          normalizeDateTime(latestCoreInjury.date);
+        const coreReturnDate =
+          normalizeDate(details?.returnDate);
+
+        const existingTime =
+          new Date(existingRecord.sourceUpdatedAt ?? 0).getTime();
+        const coreTime =
+          new Date(coreSourceUpdatedAt ?? 0).getTime();
+
+        const reserveStatuses =
+          new Set(["Injured Reserve", "PUP", "NFI", "Suspended"]);
+
+        if (
+          coreTime < existingTime &&
+          !reserveStatuses.has(coreStatus)
+        ) {
+          continue;
+        }
+
+        latestRecordByEspnPlayerId.set(espnPlayerId, {
+          ...existingRecord,
+          rawStatus: rawCoreStatus ?? existingRecord.rawStatus,
+          status: coreStatus,
+          injuryType: coreInjuryType ?? existingRecord.injuryType,
+          injuryLocation: coreLocation ?? existingRecord.injuryLocation,
+          injuryDetail: coreInjuryDetail ?? existingRecord.injuryDetail,
+          injuryDate: coreInjuryDate ?? existingRecord.injuryDate,
+          sourceUpdatedAt:
+            coreSourceUpdatedAt ?? existingRecord.sourceUpdatedAt,
+          returnDate: coreReturnDate ?? existingRecord.returnDate,
+        });
+
+        coreInjuryOverrides += 1;
+      } catch {
+        coreFetchFailures += 1;
       }
     }
 
@@ -1670,7 +1833,7 @@ export async function POST(
           injury.injuryDate,
 
         return_date:
-          null,
+          injury.returnDate,
 
         source_updated_at:
           injury.sourceUpdatedAt,
@@ -2456,6 +2619,11 @@ export async function POST(
 
       latestEspnRecords:
         latestEspnRecords.length,
+
+      coreAthletesChecked,
+      coreAthletesWithInjuries,
+      coreInjuryOverrides,
+      coreFetchFailures,
 
       fantasyAndDefensiveInjuriesMatched:
         normalized.length,
