@@ -686,6 +686,7 @@ export default function TraditionalCommissioner({
   const [teamInviteEmails, setTeamInviteEmails] = useState<Record<number, string>>({});
   const [invitingTeamId, setInvitingTeamId] = useState<number | null>(null);
   const [addingCpuTeam, setAddingCpuTeam] = useState(false);
+  const [addingRestCpuTeams, setAddingRestCpuTeams] = useState(false);
 
   const [rosterTeamId, setRosterTeamId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
@@ -1290,6 +1291,30 @@ export default function TraditionalCommissioner({
     router.push(`/league/${leagueId}/draft`);
   }
 
+  async function resetDraftNow() {
+    if (!draft || saving) return;
+
+    const firstConfirm = window.confirm(
+      "Reset this entire draft?\n\nThis will clear every draft pick, remove roster/lineup entries created by this draft, reset the draft clock, and return the draft to Round 1 Pick 1. Draft settings and draft order will be preserved."
+    );
+
+    if (!firstConfirm) return;
+
+    const finalConfirm = window.confirm(
+      "FINAL CONFIRMATION\n\nThis action cannot be undone. Reset the current Traditional draft now?"
+    );
+
+    if (!finalConfirm) return;
+
+    await action(
+      () =>
+        supabase.rpc("commissioner_reset_traditional_draft", {
+          p_draft_id: draft.id,
+        }),
+      "Draft reset complete. All draft picks were cleared and the draft is ready to start again."
+    );
+  }
+
   async function addCpuTeam() {
     if (addingCpuTeam) return;
 
@@ -1343,6 +1368,92 @@ export default function TraditionalCommissioner({
       );
     } finally {
       setAddingCpuTeam(false);
+    }
+  }
+
+  async function addRestCpuTeams() {
+    if (addingRestCpuTeams || addingCpuTeam) return;
+
+    const maxTeams = leagueSettings?.max_teams ?? 12;
+    const activeTeams = teams.filter((team) => team.active);
+    const availableSpots = maxTeams - activeTeams.length;
+
+    if (availableSpots <= 0) {
+      setError(`This league is already at its ${maxTeams}-team limit.`);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Add ${availableSpots} CPU ${
+        availableSpots === 1 ? "team" : "teams"
+      } and fill every remaining spot in this league?`
+    );
+
+    if (!confirmed) return;
+
+    setAddingRestCpuTeams(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const existingNames = activeTeams.map((team) => team.team_name);
+      const rows: Array<{
+        league_id: string;
+        owner_id: null;
+        team_name: string;
+        wins: number;
+        losses: number;
+        ties: number;
+        points_for: number;
+        active: boolean;
+        is_cpu: boolean;
+        cpu_auto_draft: boolean;
+      }> = [];
+
+      for (let index = 0; index < availableSpots; index += 1) {
+        const cpuName = makeRandomCpuTeamName(existingNames);
+        existingNames.push(cpuName);
+
+        rows.push({
+          league_id: leagueId,
+          owner_id: null,
+          team_name: cpuName,
+          wins: 0,
+          losses: 0,
+          ties: 0,
+          points_for: 0,
+          active: true,
+          is_cpu: true,
+          cpu_auto_draft: true,
+        });
+      }
+
+      const { error: insertError } = await supabase
+        .from("fantasy_teams")
+        .insert(rows);
+
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
+
+      await load({
+        showLoading: false,
+        clearMessages: false,
+      });
+
+      setSuccess(
+        `${availableSpots} CPU ${
+          availableSpots === 1 ? "team was" : "teams were"
+        } added. The league is now full at ${maxTeams} teams.`
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "The remaining CPU teams could not be added."
+      );
+    } finally {
+      setAddingRestCpuTeams(false);
     }
   }
 
@@ -2030,6 +2141,13 @@ export default function TraditionalCommissioner({
               <Button onClick={() => router.push(`/league/${leagueId}/draft`)}>
                 OPEN LIVE DRAFT ROOM
               </Button>
+              <Button
+                danger
+                disabled={saving}
+                onClick={() => void resetDraftNow()}
+              >
+                RESET ENTIRE DRAFT
+              </Button>
             </div>
           </Section>
         ) : null}
@@ -2043,12 +2161,30 @@ export default function TraditionalCommissioner({
               <Button
                 disabled={
                   addingCpuTeam ||
+                  addingRestCpuTeams ||
                   teams.filter((team) => team.active).length >=
                     (leagueSettings?.max_teams ?? 12)
                 }
                 onClick={() => void addCpuTeam()}
               >
                 {addingCpuTeam ? "ADDING CPU…" : "+ ADD CPU TEAM"}
+              </Button>
+
+              <Button
+                disabled={
+                  addingCpuTeam ||
+                  addingRestCpuTeams ||
+                  teams.filter((team) => team.active).length >=
+                    (leagueSettings?.max_teams ?? 12)
+                }
+                onClick={() => void addRestCpuTeams()}
+              >
+                {addingRestCpuTeams
+                  ? "ADDING REST…"
+                  : `+ ADD REST CPU (${
+                      (leagueSettings?.max_teams ?? 12) -
+                      teams.filter((team) => team.active).length
+                    })`}
               </Button>
             </div>
 
