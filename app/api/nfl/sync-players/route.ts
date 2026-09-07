@@ -261,9 +261,38 @@ async function validateUser(
   request: Request
 ) {
   /*
-   * First use the normal Gridiron365 SSR cookie session.
-   * This is the same authentication source used by the
-   * server side of the application.
+   * Automated Supabase cron/server callers use the same
+   * Gridiron365 sync secret as the other NFL sync routes.
+   */
+  const configuredSecret =
+    process.env
+      .GRIDIRON_SYNC_SECRET ??
+    process.env
+      .NFL_SYNC_SECRET;
+
+  const suppliedSecret =
+    request.headers.get(
+      "x-gridiron-sync-secret"
+    );
+
+  if (
+    configuredSecret &&
+    suppliedSecret ===
+      configuredSecret
+  ) {
+    return {
+      userId:
+        null,
+
+      error:
+        null,
+    };
+  }
+
+
+  /*
+   * Manual sync from the Gridiron365 application:
+   * first use the normal SSR cookie session.
    */
   try {
     const serverSupabase =
@@ -325,7 +354,9 @@ async function validateUser(
               false,
 
             error:
-              "Your login session is missing.",
+              suppliedSecret
+                ? "Unauthorized NFL player sync request."
+                : "Your login session is missing.",
           },
           {
             status:
