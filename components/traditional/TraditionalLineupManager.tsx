@@ -1376,7 +1376,10 @@ className="g365-moveHereButton" style={styles.moveHereButton}
 
 
             {player ? (
-              <>
+              <div
+                className="g365-playerActions"
+                style={styles.playerActions}
+              >
                 <PlayerProjectionAction
                   player={player}
                 />
@@ -1400,7 +1403,7 @@ className="g365-dropButton" style={styles.dropButton}
                     ? "DROPPING..."
                     : "DROP"}
                 </button>
-              </>
+              </div>
             ) : null}
           </>
         )}
@@ -2051,6 +2054,33 @@ const styles = {
   },
 
 
+  playerActions: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "flex-end",
+
+    gap:
+      "8px",
+
+    flexDirection:
+      "row" as const,
+
+    flexWrap:
+      "nowrap" as const,
+
+    whiteSpace:
+      "nowrap",
+
+    flex:
+      "0 0 auto",
+  },
+
+
   projectionAction: {
     order:
       1,
@@ -2167,7 +2197,7 @@ const styles = {
       "row" as const,
 
     flexWrap:
-      "wrap" as const,
+      "nowrap" as const,
   },
 
 
