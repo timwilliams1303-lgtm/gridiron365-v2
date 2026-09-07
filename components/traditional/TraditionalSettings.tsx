@@ -20,6 +20,13 @@ const HIDDEN_KEYS = new Set([
   "league_id",
   "created_at",
   "updated_at",
+  "deleted_at",
+]);
+
+const OBSOLETE_SCORING_KEYS = new Set([
+  "passing_yards_per_point",
+  "rushing_yards_per_point",
+  "receiving_yards_per_point",
 ]);
 
 const TRADITIONAL_REALTIME_TABLES = [
@@ -74,10 +81,193 @@ function show(value: unknown): string {
   return String(value).replaceAll("_", " ");
 }
 
-function settingEntries(row: AnyRow | null | undefined) {
+function isUsedValue(value: unknown): boolean {
+  if (value === null || value === undefined || value === "") {
+    return false;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+
+    if (
+      normalized === "" ||
+      normalized === "false" ||
+      normalized === "disabled" ||
+      normalized === "none" ||
+      normalized === "off" ||
+      normalized === "0"
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  return true;
+}
+
+function settingEntries(
+  row: AnyRow | null | undefined,
+  options?: {
+    keepZero?: boolean;
+    excludeKeys?: Set<string>;
+  }
+) {
   return Object.entries(row ?? {})
-    .filter(([key]) => !HIDDEN_KEYS.has(key))
+    .filter(([key, value]) => {
+      if (HIDDEN_KEYS.has(key)) {
+        return false;
+      }
+
+      if (options?.excludeKeys?.has(key)) {
+        return false;
+      }
+
+      if (options?.keepZero && typeof value === "number") {
+        return true;
+      }
+
+      return isUsedValue(value);
+    })
     .sort(([a], [b]) => a.localeCompare(b));
+}
+
+type ScoringGroup = {
+  title: string;
+  description: string;
+  entries: Array<[string, unknown]>;
+};
+
+function scoringCategory(key: string):
+  | "passing"
+  | "rushing"
+  | "receiving"
+  | "kicking"
+  | "dst"
+  | "other" {
+  const value = key.toLowerCase();
+
+  if (
+    value.includes("pass") ||
+    value.includes("completion") ||
+    value.includes("interception_thrown") ||
+    value.includes("qb_")
+  ) {
+    return "passing";
+  }
+
+  if (
+    value.includes("rush") ||
+    value.includes("rushing")
+  ) {
+    return "rushing";
+  }
+
+  if (
+    value.includes("receiv") ||
+    value.includes("reception") ||
+    value.includes("target")
+  ) {
+    return "receiving";
+  }
+
+  if (
+    value.includes("field_goal") ||
+    value.includes("extra_point") ||
+    value.includes("kicking") ||
+    value.includes("fg_") ||
+    value.includes("xp_")
+  ) {
+    return "kicking";
+  }
+
+  if (
+    value.includes("dst") ||
+    value.includes("defense") ||
+    value.includes("defensive") ||
+    value.includes("sack") ||
+    value.includes("safety") ||
+    value.includes("points_allowed") ||
+    value.includes("yards_allowed") ||
+    value.includes("return_td") ||
+    value.includes("blocked_kick")
+  ) {
+    return "dst";
+  }
+
+  return "other";
+}
+
+function buildScoringGroups(scoring: AnyRow): ScoringGroup[] {
+  const activeEntries = settingEntries(scoring, {
+    excludeKeys: OBSOLETE_SCORING_KEYS,
+  });
+
+  const grouped = new Map<string, Array<[string, unknown]>>();
+
+  for (const entry of activeEntries) {
+    const category = scoringCategory(entry[0]);
+    const list = grouped.get(category) ?? [];
+    list.push(entry);
+    grouped.set(category, list);
+  }
+
+  const definitions: Array<{
+    key: string;
+    title: string;
+    description: string;
+  }> = [
+    {
+      key: "passing",
+      title: "Passing",
+      description: "Passing scoring currently in use.",
+    },
+    {
+      key: "rushing",
+      title: "Rushing",
+      description: "Rushing scoring used by eligible offensive players.",
+    },
+    {
+      key: "receiving",
+      title: "Receiving",
+      description: "Receiving scoring used by RB, WR and TE.",
+    },
+    {
+      key: "kicking",
+      title: "Kicker",
+      description: "Kicking and field-goal scoring currently in use.",
+    },
+    {
+      key: "dst",
+      title: "Defense / Special Teams",
+      description: "DST scoring currently in use.",
+    },
+    {
+      key: "other",
+      title: "Other Scoring",
+      description: "Other active scoring settings that apply across positions.",
+    },
+  ];
+
+  return definitions
+    .map((definition) => ({
+      title: definition.title,
+      description: definition.description,
+      entries: grouped.get(definition.key) ?? [],
+    }))
+    .filter((group) => group.entries.length > 0);
 }
 
 function Item({
@@ -121,7 +311,59 @@ function Section({
           ))}
         </div>
       ) : (
-        <div style={styles.empty}>No settings have been saved in this section yet.</div>
+        <div style={styles.empty}>No active settings are currently being used in this section.</div>
+      )}
+    </section>
+  );
+}
+
+function ScoringSection({
+  scoring,
+}: {
+  scoring: AnyRow;
+}) {
+  const groups = buildScoringGroups(scoring);
+
+  return (
+    <section style={styles.card}>
+      <div style={{ marginBottom: 14 }}>
+        <p style={styles.eyebrow}>TRADITIONAL • SCORING</p>
+        <h2 style={styles.sectionTitle}>Scoring by Position</h2>
+        <p style={styles.description}>
+          Only scoring settings that currently affect fantasy points are shown.
+        </p>
+      </div>
+
+      {groups.length ? (
+        <div style={styles.scoringGroups}>
+          {groups.map((group) => (
+            <div key={group.title} style={styles.scoringGroup}>
+              <div style={styles.scoringGroupHeader}>
+                <h3 style={styles.scoringGroupTitle}>{group.title}</h3>
+                <p style={styles.scoringGroupDescription}>
+                  {group.description}
+                </p>
+              </div>
+
+              <div
+                className="g365-traditional-settings-grid"
+                style={styles.grid}
+              >
+                {group.entries.map(([key, value]) => (
+                  <Item
+                    key={key}
+                    label={humanize(key)}
+                    value={show(value)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={styles.empty}>
+          No active scoring settings are currently configured.
+        </div>
       )}
     </section>
   );
@@ -132,19 +374,43 @@ function RulesSection({
 }: {
   rules: AnyRow[];
 }) {
+  const activeRules = rules.filter((rule) => {
+    if ("enabled" in rule && !Boolean(rule.enabled)) {
+      return false;
+    }
+
+    if ("active" in rule && !Boolean(rule.active)) {
+      return false;
+    }
+
+    const points =
+      rule.points ??
+      rule.point_value ??
+      rule.value;
+
+    if (
+      typeof points === "number" &&
+      points === 0
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+
   return (
     <section style={styles.card}>
       <div style={{ marginBottom: 14 }}>
-        <p style={styles.eyebrow}>TRADITIONAL</p>
-        <h2 style={styles.sectionTitle}>Bonus Scoring Rules</h2>
+        <p style={styles.eyebrow}>TRADITIONAL • BONUS SCORING</p>
+        <h2 style={styles.sectionTitle}>Active Bonus Rules</h2>
         <p style={styles.description}>
-          Every saved custom scoring rule. Tiered bonus families remain highest-qualifying-only when configured that way.
+          Only enabled bonus rules that are currently part of league scoring are shown.
         </p>
       </div>
 
       <div style={styles.rulesList}>
-        {rules.length ? (
-          rules.map((rule, index) => (
+        {activeRules.length ? (
+          activeRules.map((rule, index) => (
             <div key={String(rule.id ?? index)} style={styles.ruleCard}>
               <strong style={styles.ruleTitle}>
                 {show(rule.label) !== "—"
@@ -152,15 +418,24 @@ function RulesSection({
                   : `Bonus Rule ${index + 1}`}
               </strong>
 
-              <div className="g365-traditional-settings-grid" style={styles.grid}>
+              <div
+                className="g365-traditional-settings-grid"
+                style={styles.grid}
+              >
                 {settingEntries(rule).map(([key, value]) => (
-                  <Item key={key} label={humanize(key)} value={show(value)} />
+                  <Item
+                    key={key}
+                    label={humanize(key)}
+                    value={show(value)}
+                  />
                 ))}
               </div>
             </div>
           ))
         ) : (
-          <div style={styles.empty}>No bonus scoring rules are currently configured.</div>
+          <div style={styles.empty}>
+            No active bonus scoring rules are currently configured.
+          </div>
         )}
       </div>
     </section>
@@ -343,51 +618,47 @@ export default async function TraditionalSettings({
 
         <Section
           title="League"
-          description="Core league identity, status, season and league-level configuration."
+          description="Current league configuration that is actively in use."
           row={league}
         />
 
         <Section
           title="League & Season"
-          description="League size and season structure."
+          description="Active league size and season structure."
           row={settings}
         />
 
         <Section
           title="Roster Settings"
-          description="Starting lineup, bench, reserve and position-limit requirements."
+          description="Roster requirements currently in use."
           row={roster}
         />
 
         <Section
           title="Draft Settings"
-          description="Current Traditional draft configuration and live draft state."
+          description="Draft settings currently in use."
           row={draft}
         />
 
-        <Section
-          title="Scoring"
-          description="Every current base scoring field, including kicking yardage, DST tackle/TFL and any future scoring fields added to this table."
-          row={scoring}
-        />
+        <ScoringSection scoring={scoring} />
 
         <RulesSection rules={rules} />
 
         <Section
           title="Waivers & Free Agency"
-          description="Current waiver and free-agent configuration."
+          description="Waiver and free-agent settings currently in use."
           row={waivers}
         />
 
         <Section
           title="Trades"
-          description="Current Traditional trade configuration."
+          description="Trade settings currently in use."
           row={trades}
         />
 
         <Section
           title="Playoffs"
-          description="Current Traditional playoff field, timing and reseeding configuration."
+          description="Playoff settings currently in use."
           row={playoffs}
         />
 
@@ -545,6 +816,34 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#fff",
     fontSize: 13,
     overflowWrap: "anywhere",
+  },
+  scoringGroups: {
+    display: "grid",
+    gap: 14,
+  },
+  scoringGroup: {
+    display: "grid",
+    gap: 10,
+    padding: 14,
+    borderRadius: 14,
+    border: "1px solid #2d2d2d",
+    background: "#0c0c0c",
+  },
+  scoringGroupHeader: {
+    display: "grid",
+    gap: 4,
+  },
+  scoringGroupTitle: {
+    margin: 0,
+    color: "#ff8a35",
+    fontSize: 15,
+    fontWeight: 950,
+  },
+  scoringGroupDescription: {
+    margin: 0,
+    color: "#858585",
+    fontSize: 11,
+    lineHeight: 1.4,
   },
   rulesList: {
     display: "grid",
