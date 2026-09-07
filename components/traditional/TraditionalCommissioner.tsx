@@ -192,6 +192,28 @@ type Member = {
   role: string;
 };
 
+type Profile = {
+  user_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  display_name: string | null;
+  email?: string | null;
+};
+
+type LeagueInvitation = {
+  id: string;
+  league_id: string;
+  fantasy_team_id: number | null;
+  first_name: string;
+  last_name: string;
+  email: string;
+  status: "pending" | "accepted" | "expired" | "cancelled";
+  accepted_by: string | null;
+  accepted_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type RosterRow = {
   id: number;
   fantasy_team_id: number;
@@ -581,6 +603,8 @@ export default function TraditionalCommissioner({
   const [season, setSeason] = useState<SeasonState | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [invitations, setInvitations] = useState<LeagueInvitation[]>([]);
   const [rosters, setRosters] = useState<RosterRow[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [claims, setClaims] = useState<WaiverClaim[]>([]);
@@ -647,6 +671,13 @@ export default function TraditionalCommissioner({
       supabase.from("league_scoring_rules").select("id,league_id,category,rule_type,stat_key,min_value,max_value,points,is_enabled,stacking_mode,priority,label").eq("league_id", leagueId).order("category").order("priority"),
       supabase.from("traditional_waiver_claims").select("*").eq("league_id", leagueId).order("submitted_at", { ascending: false }).limit(100),
       supabase.from("traditional_trade_offers").select("*").eq("league_id", leagueId).order("created_at", { ascending: false }).limit(100),
+      supabase
+        .from("league_invitations")
+        .select(
+          "id,league_id,fantasy_team_id,first_name,last_name,email,status,accepted_by,accepted_at,created_at,updated_at"
+        )
+        .eq("league_id", leagueId)
+        .order("created_at", { ascending: false }),
     ]);
 
     const failed = results.find((r) => r.error);
@@ -694,15 +725,57 @@ export default function TraditionalCommissioner({
       setPlayoffs(loadedPlayoffs);
     }
     setSeason(results[8].data as SeasonState | null);
-    setTeams((results[9].data ?? []) as Team[]);
-    setMembers((results[10].data ?? []) as Member[]);
+
+    const loadedTeams = (results[9].data ?? []) as Team[];
+    const loadedMembers = (results[10].data ?? []) as Member[];
+    const loadedInvitations = (results[16].data ?? []) as LeagueInvitation[];
+
+    const profileUserIds = Array.from(
+      new Set(
+        [
+          ...loadedMembers.map((member) => member.user_id),
+          ...loadedTeams
+            .map((team) => team.owner_id)
+            .filter((ownerId): ownerId is string => Boolean(ownerId)),
+        ].filter(Boolean)
+      )
+    );
+
+    let loadedProfiles: Profile[] = [];
+
+    if (profileUserIds.length > 0) {
+      const profileResult = await supabase
+        .from("profiles")
+        .select("user_id,first_name,last_name,display_name,email")
+        .in("user_id", profileUserIds);
+
+      if (profileResult.error) {
+        console.error("Failed to load league profiles:", profileResult.error);
+
+        const fallbackProfileResult = await supabase
+          .from("profiles")
+          .select("user_id,first_name,last_name,display_name")
+          .in("user_id", profileUserIds);
+
+        if (!fallbackProfileResult.error) {
+          loadedProfiles = (fallbackProfileResult.data ?? []) as Profile[];
+        }
+      } else {
+        loadedProfiles = (profileResult.data ?? []) as Profile[];
+      }
+    }
+
+    setTeams(loadedTeams);
+    setMembers(loadedMembers);
+    setProfiles(loadedProfiles);
+    setInvitations(loadedInvitations);
     setRosters((results[11].data ?? []) as RosterRow[]);
     setPlayers((results[12].data ?? []) as Player[]);
     setScoringRules((results[13].data ?? []) as ScoringRule[]);
     setClaims((results[14].data ?? []) as WaiverClaim[]);
     setOffers((results[15].data ?? []) as TradeOffer[]);
 
-    const activeTeams = ((results[9].data ?? []) as Team[]).filter((team) => team.active);
+    const activeTeams = loadedTeams.filter((team) => team.active);
 
     setDraftOrder((current) => {
       const activeTeamIds = activeTeams.map((team) => team.id);
@@ -725,6 +798,82 @@ export default function TraditionalCommissioner({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const refreshSilently = () => {
+      void load({
+        showLoading: false,
+        clearMessages: false,
+      });
+    };
+
+    const channel = supabase
+      .channel(`traditional-commissioner-${leagueId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "league_invitations",
+          filter: `league_id=eq.${leagueId}`,
+        },
+        refreshSilently
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "fantasy_teams",
+          filter: `league_id=eq.${leagueId}`,
+        },
+        refreshSilently
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "league_members",
+          filter: `league_id=eq.${leagueId}`,
+        },
+        refreshSilently
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "profiles",
+        },
+        refreshSilently
+      )
+      .subscribe();
+
+    const fallbackInterval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        refreshSilently();
+      }
+    }, 5000);
+
+    const handleFocus = () => refreshSilently();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshSilently();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(fallbackInterval);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      void supabase.removeChannel(channel);
+    };
+  }, [leagueId, load]);
+
   const playerMap = useMemo(
     () => new Map(players.map((p) => [p.id, p] as const)),
     [players]
@@ -733,6 +882,78 @@ export default function TraditionalCommissioner({
   const teamMap = useMemo(
     () => new Map(teams.map((t) => [t.id, t] as const)),
     [teams]
+  );
+
+  const profileByUserId = useMemo(
+    () => new Map(profiles.map((profile) => [profile.user_id, profile] as const)),
+    [profiles]
+  );
+
+  const acceptedInviteByTeamId = useMemo(() => {
+    const map = new Map<number, LeagueInvitation>();
+
+    for (const invite of invitations) {
+      if (
+        invite.fantasy_team_id !== null &&
+        invite.status === "accepted" &&
+        !map.has(invite.fantasy_team_id)
+      ) {
+        map.set(invite.fantasy_team_id, invite);
+      }
+    }
+
+    return map;
+  }, [invitations]);
+
+  const ownerDisplayName = useCallback(
+    (team: Team) => {
+      if (!team.owner_id) return "";
+
+      const profile = profileByUserId.get(team.owner_id);
+
+      const displayName = profile?.display_name?.trim();
+      if (displayName) return displayName;
+
+      const profileFullName = [
+        profile?.first_name?.trim(),
+        profile?.last_name?.trim(),
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      if (profileFullName) return profileFullName;
+
+      const invite = acceptedInviteByTeamId.get(team.id);
+      const inviteFullName = invite
+        ? [invite.first_name?.trim(), invite.last_name?.trim()]
+            .filter(Boolean)
+            .join(" ")
+        : "";
+
+      return inviteFullName || shortId(team.owner_id);
+    },
+    [profileByUserId, acceptedInviteByTeamId]
+  );
+
+  const ownerEmail = useCallback(
+    (team: Team) => {
+      if (!team.owner_id) return "";
+
+      const profileEmail = profileByUserId.get(team.owner_id)?.email?.trim();
+      if (profileEmail) return profileEmail;
+
+      const invite = acceptedInviteByTeamId.get(team.id);
+
+      if (
+        invite &&
+        (!invite.accepted_by || invite.accepted_by === team.owner_id)
+      ) {
+        return invite.email.trim();
+      }
+
+      return "";
+    },
+    [profileByUserId, acceptedInviteByTeamId]
   );
 
   const rostered = useMemo(
@@ -1713,26 +1934,46 @@ export default function TraditionalCommissioner({
                       style={styles.input}
                     >
                       <option value="">—</option>
-                      {members.map((m) => (
-                        <option key={m.id} value={m.user_id}>
-                          {shortId(m.user_id)} • {pretty(m.role)}
-                        </option>
-                      ))}
+                      {members.map((m) => {
+                        const profile = profileByUserId.get(m.user_id);
+
+                        const displayName =
+                          profile?.display_name?.trim() ||
+                          [profile?.first_name?.trim(), profile?.last_name?.trim()]
+                            .filter(Boolean)
+                            .join(" ") ||
+                          shortId(m.user_id);
+
+                        return (
+                          <option key={m.id} value={m.user_id}>
+                            {displayName} • {pretty(m.role)}
+                          </option>
+                        );
+                      })}
                     </select>
                   </label>
 
                   <label style={styles.field}>
-                    <span style={styles.fieldLabel}>Email Invite</span>
+                    <span style={styles.fieldLabel}>
+                      {team.owner_id ? "Owner Email" : "Email Invite"}
+                    </span>
                     <input
                       type="email"
                       placeholder="owner@example.com"
-                      value={teamInviteEmails[team.id] ?? ""}
-                      onChange={(e) =>
+                      value={
+                        team.owner_id
+                          ? ownerEmail(team)
+                          : teamInviteEmails[team.id] ?? ""
+                      }
+                      onChange={(e) => {
+                        if (team.owner_id) return;
+
                         setTeamInviteEmails((current) => ({
                           ...current,
                           [team.id]: e.target.value,
-                        }))
-                      }
+                        }));
+                      }}
+                      readOnly={Boolean(team.owner_id)}
                       style={styles.input}
                     />
                   </label>
@@ -1740,8 +1981,12 @@ export default function TraditionalCommissioner({
                   <div style={styles.ownerStatus}>
                     {team.owner_id ? (
                       <>
-                        <strong>OWNER ASSIGNED</strong>
-                        <span>{shortId(team.owner_id)}</span>
+                        <strong>{ownerDisplayName(team)}</strong>
+                        <span>
+                          {ownerEmail(team)
+                            ? `${ownerEmail(team)} • OWNER ASSIGNED`
+                            : "OWNER ASSIGNED"}
+                        </span>
                       </>
                     ) : (
                       <>
@@ -1752,15 +1997,17 @@ export default function TraditionalCommissioner({
                   </div>
 
                   <div style={styles.teamActions}>
-                    <Button
-                      disabled={
-                        invitingTeamId !== null ||
-                        !(teamInviteEmails[team.id] ?? "").trim()
-                      }
-                      onClick={() => void sendTeamInvite(team)}
-                    >
-                      {invitingTeamId === team.id ? "SENDING…" : "✉ SEND EMAIL INVITE"}
-                    </Button>
+                    {!team.owner_id ? (
+                      <Button
+                        disabled={
+                          invitingTeamId !== null ||
+                          !(teamInviteEmails[team.id] ?? "").trim()
+                        }
+                        onClick={() => void sendTeamInvite(team)}
+                      >
+                        {invitingTeamId === team.id ? "SENDING…" : "✉ SEND EMAIL INVITE"}
+                      </Button>
+                    ) : null}
 
                     <Button
                       disabled={saving}
