@@ -77,6 +77,8 @@ type TraditionalLineupManagerProps = {
 };
 
 
+
+
 function formatKickoff(
   kickoffAt:
     string |
@@ -104,6 +106,8 @@ function formatKickoff(
   return new Intl.DateTimeFormat(
     "en-US",
     {
+      timeZone:
+        "America/New_York",
       weekday:
         "short",
       hour:
@@ -1533,28 +1537,12 @@ className="g365-playerMeta" style={styles.playerMeta}
         </span>
 
         <div
-          style={{
-            display:
-              "flex",
-            alignItems:
-              "center",
-            gap:
-              "8px",
-            flexWrap:
-              "wrap",
-            marginTop:
-              "3px",
-          }}
+          className="g365-gameContext"
+          style={styles.gameContext}
         >
           <span
-            style={{
-              color:
-                "#aeb4bd",
-              fontSize:
-                "9px",
-              fontWeight:
-                800,
-            }}
+            className="g365-gameContextText"
+            style={styles.gameContextText}
           >
             {player.isBye
               ? "BYE"
@@ -1581,7 +1569,6 @@ className="g365-playerMeta" style={styles.playerMeta}
                   }`
                 : "Game TBD"}
           </span>
-
         </div>
 
       </div>
@@ -2127,6 +2114,39 @@ const styles = {
 
     fontVariantNumeric:
       "tabular-nums",
+  },
+
+
+  gameContext: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "8px",
+
+    flexWrap:
+      "wrap" as const,
+
+    marginTop:
+      "3px",
+  },
+
+
+  gameContextText: {
+    color:
+      "#aeb4bd",
+
+    fontSize:
+      "9px",
+
+    fontWeight:
+      800,
+
+    lineHeight:
+      1.35,
   },
 
 
