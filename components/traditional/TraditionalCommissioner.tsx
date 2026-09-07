@@ -752,6 +752,9 @@ export default function TraditionalCommissioner({
         )
         .eq("league_id", leagueId)
         .order("created_at", { ascending: false }),
+      supabase.rpc("commissioner_get_traditional_roster_players", {
+        p_league_id: leagueId,
+      }),
     ]);
 
     const failed = results.find((r) => r.error);
@@ -844,7 +847,20 @@ export default function TraditionalCommissioner({
     setProfiles(loadedProfiles);
     setInvitations(loadedInvitations);
     setRosters((results[11].data ?? []) as RosterRow[]);
-    setPlayers((results[12].data ?? []) as Player[]);
+
+    const catalogPlayers = (results[12].data ?? []) as Player[];
+    const rosterPlayers = (results[17].data ?? []) as Player[];
+
+    const mergedPlayers = new Map<number, Player>();
+
+    for (const player of [...catalogPlayers, ...rosterPlayers]) {
+      mergedPlayers.set(Number(player.id), {
+        ...player,
+        id: Number(player.id),
+      });
+    }
+
+    setPlayers(Array.from(mergedPlayers.values()));
     setScoringRules((results[13].data ?? []) as ScoringRule[]);
     setClaims((results[14].data ?? []) as WaiverClaim[]);
     setOffers((results[15].data ?? []) as TradeOffer[]);
@@ -949,7 +965,7 @@ export default function TraditionalCommissioner({
   }, [leagueId, load]);
 
   const playerMap = useMemo(
-    () => new Map(players.map((p) => [p.id, p] as const)),
+    () => new Map(players.map((p) => [Number(p.id), p] as const)),
     [players]
   );
 
@@ -1053,8 +1069,8 @@ export default function TraditionalCommissioner({
   const rosterRows = useMemo(
     () =>
       rosters.filter((r) => r.fantasy_team_id === rosterTeamId).sort((a, b) => {
-        const pa = playerMap.get(a.player_id);
-        const pb = playerMap.get(b.player_id);
+        const pa = playerMap.get(Number(a.player_id));
+        const pb = playerMap.get(Number(b.player_id));
         return `${pa?.primary_position ?? ""}${pa?.full_name ?? ""}`.localeCompare(
           `${pb?.primary_position ?? ""}${pb?.full_name ?? ""}`
         );
@@ -2528,7 +2544,7 @@ export default function TraditionalCommissioner({
 
             <div style={styles.list}>
               {rosterRows.map((row) => {
-                const p = playerMap.get(row.player_id);
+                const p = playerMap.get(Number(row.player_id));
                 return (
                   <div key={row.id} style={styles.rosterRow}>
                     <div>
@@ -2642,7 +2658,7 @@ export default function TraditionalCommissioner({
                 rows={claims.map((c) => ({
                   id: c.id,
                   a: teamMap.get(c.fantasy_team_id)?.team_name ?? `Team ${c.fantasy_team_id}`,
-                  b: playerMap.get(c.player_id)?.full_name ?? `Player ${c.player_id}`,
+                  b: playerMap.get(Number(c.player_id))?.full_name ?? `Player ${c.player_id}`,
                   c: `${pretty(c.status)} • Week ${c.week}${c.faab_bid !== null ? ` • $${c.faab_bid}` : ""}`,
                 }))}
               />
