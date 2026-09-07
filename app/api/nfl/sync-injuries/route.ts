@@ -1661,6 +1661,334 @@ export async function POST(
     }
 
 
+    /*
+     * IMPORTANT:
+     * ESPN can remove a player from the league-wide /injuries feed after
+     * a roster transaction even though the season-scoped Core athlete
+     * resource still carries the authoritative injury designation.
+     *
+     * Discover those missing players directly from our current NFL player
+     * catalog. This is what catches IR/PUP/NFI players such as a player who
+     * disappears from the league-wide feed after being moved to reserve.
+     */
+    const coreDiscoveryPositions =
+      new Set([
+        "QB",
+        "RB",
+        "WR",
+        "TE",
+        "K",
+        "DL",
+        "DE",
+        "DT",
+        "NT",
+        "EDGE",
+        "LB",
+        "ILB",
+        "OLB",
+        "MLB",
+        "DB",
+        "CB",
+        "S",
+        "FS",
+        "SS",
+      ]);
+
+
+    let coreCatalogPlayersChecked =
+      0;
+
+    let coreCatalogInjuriesDiscovered =
+      0;
+
+    let coreCatalogFetchFailures =
+      0;
+
+
+    for (
+      const player
+      of players
+    ) {
+      const espnPlayerId =
+        player.espn_player_id;
+
+      if (
+        !espnPlayerId ||
+        latestRecordByEspnPlayerId.has(
+          espnPlayerId
+        ) ||
+        !coreDiscoveryPositions.has(
+          normalizePosition(
+            player.primary_position
+          )
+        )
+      ) {
+        continue;
+      }
+
+
+      const coreUrl =
+        `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${season}/athletes/${espnPlayerId}?lang=en&region=us`;
+
+
+      try {
+        const coreResponse =
+          await fetch(
+            coreUrl,
+            {
+              method:
+                "GET",
+
+              cache:
+                "no-store",
+
+              headers: {
+                Accept:
+                  "application/json",
+
+                "User-Agent":
+                  "Mozilla/5.0",
+              },
+            }
+          );
+
+
+        coreCatalogPlayersChecked +=
+          1;
+
+
+        if (
+          !coreResponse.ok
+        ) {
+          coreCatalogFetchFailures +=
+            1;
+
+          continue;
+        }
+
+
+        const coreAthlete =
+          (
+            await coreResponse.json()
+          ) as EspnCoreSeasonAthlete;
+
+
+        const coreInjuries =
+          Array.isArray(
+            coreAthlete.injuries
+          )
+            ? coreAthlete.injuries
+            : [];
+
+
+        if (
+          coreInjuries.length ===
+          0
+        ) {
+          continue;
+        }
+
+
+        const latestCoreInjury =
+          coreInjuries
+            .slice()
+            .sort(
+              (
+                a,
+                b
+              ) =>
+                new Date(
+                  b.date ??
+                  0
+                ).getTime() -
+                new Date(
+                  a.date ??
+                  0
+                ).getTime()
+            )[0];
+
+
+        if (
+          !latestCoreInjury
+        ) {
+          continue;
+        }
+
+
+        const rawCoreStatus =
+          normalizeText(
+            latestCoreInjury.status
+          ) ??
+          normalizeText(
+            latestCoreInjury
+              .type
+              ?.description
+          ) ??
+          normalizeText(
+            latestCoreInjury
+              .type
+              ?.abbreviation
+          ) ??
+          normalizeText(
+            latestCoreInjury
+              .type
+              ?.name
+          );
+
+
+        const coreStatus =
+          normalizeInjuryStatus(
+            rawCoreStatus
+          );
+
+
+        if (
+          !coreStatus
+        ) {
+          continue;
+        }
+
+
+        const shortComment =
+          normalizeText(
+            latestCoreInjury.shortComment
+          );
+
+        const longComment =
+          normalizeText(
+            latestCoreInjury.longComment
+          );
+
+        const details =
+          latestCoreInjury.details;
+
+
+        const coreInjuryType =
+          normalizeText(
+            details?.type
+          ) ??
+          normalizeText(
+            latestCoreInjury
+              .type
+              ?.description
+          ) ??
+          normalizeText(
+            latestCoreInjury
+              .type
+              ?.name
+          );
+
+
+        const coreLocation =
+          normalizeText(
+            details?.location
+          ) ??
+          inferInjuryLocation(
+            details?.type,
+            details?.detail,
+            shortComment,
+            longComment
+          );
+
+
+        const structuredDetail =
+          [
+            normalizeText(
+              details?.detail
+            ),
+            normalizeText(
+              details?.side
+            ),
+          ]
+            .filter(
+              (
+                value
+              ): value is string =>
+                Boolean(
+                  value
+                )
+            )
+            .join(
+              " - "
+            ) ||
+          null;
+
+
+        const coreInjuryDetail =
+          longComment ??
+          shortComment ??
+          structuredDetail;
+
+
+        latestRecordByEspnPlayerId.set(
+          espnPlayerId,
+          {
+            espnPlayerId,
+
+            fullName:
+              player.full_name,
+
+            team:
+              player.team_abbreviation,
+
+            position:
+              normalizePosition(
+                player.primary_position
+              ) ||
+              null,
+
+            rawStatus:
+              rawCoreStatus,
+
+            status:
+              coreStatus,
+
+            injuryType:
+              coreInjuryType,
+
+            injuryLocation:
+              coreLocation,
+
+            injuryDetail:
+              coreInjuryDetail,
+
+            injuryDate:
+              normalizeDate(
+                latestCoreInjury.date
+              ),
+
+            sourceUpdatedAt:
+              normalizeDateTime(
+                latestCoreInjury.date
+              ),
+
+            returnDate:
+              normalizeDate(
+                details?.returnDate
+              ),
+          }
+        );
+
+
+        coreCatalogInjuriesDiscovered +=
+          1;
+      } catch {
+        coreCatalogFetchFailures +=
+          1;
+      }
+    }
+
+
+    /*
+     * Rebuild after Core catalog discovery so newly discovered reserve
+     * injuries participate in the same canonical insert/update pipeline.
+     */
+    const allCurrentEspnRecords =
+      Array.from(
+        latestRecordByEspnPlayerId.values()
+      );
+
+
     /* =====================================================
        5. MATCH CURRENT FANTASY + DEFENSIVE INJURIES
     ===================================================== */
@@ -1739,7 +2067,7 @@ export async function POST(
 
     for (
       const injury
-      of latestEspnRecords
+      of allCurrentEspnRecords
     ) {
       const player =
         playerByEspnId.get(
@@ -1857,6 +2185,15 @@ export async function POST(
 
           latestEspnRecords:
             latestEspnRecords.length,
+
+          allCurrentEspnRecords:
+            allCurrentEspnRecords.length,
+
+          coreCatalogPlayersChecked,
+
+          coreCatalogInjuriesDiscovered,
+
+          coreCatalogFetchFailures,
 
           matchedActiveOrNews,
 
@@ -2320,7 +2657,7 @@ export async function POST(
 
     for (
       const record
-      of latestEspnRecords
+      of allCurrentEspnRecords
     ) {
       if (
         !hasCredibleInjuryInformation(
@@ -2624,6 +2961,15 @@ export async function POST(
       coreAthletesWithInjuries,
       coreInjuryOverrides,
       coreFetchFailures,
+
+      coreCatalogPlayersChecked,
+
+      coreCatalogInjuriesDiscovered,
+
+      coreCatalogFetchFailures,
+
+      allCurrentEspnRecords:
+        allCurrentEspnRecords.length,
 
       fantasyAndDefensiveInjuriesMatched:
         normalized.length,
