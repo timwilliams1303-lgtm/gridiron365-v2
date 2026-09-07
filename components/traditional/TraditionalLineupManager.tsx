@@ -1546,6 +1546,42 @@ className="g365-playerMeta" style={styles.playerMeta}
               "3px",
           }}
         >
+          <span
+            style={{
+              color:
+                "#aeb4bd",
+              fontSize:
+                "9px",
+              fontWeight:
+                800,
+            }}
+          >
+            {player.isBye
+              ? "BYE"
+              : player
+                  .opponentAbbreviation
+                ? `${
+                    player
+                      .homeOrAway
+                      ?.toUpperCase() ===
+                    "AWAY"
+                      ? "@"
+                      : "vs"
+                  } ${
+                    player
+                      .opponentAbbreviation
+                  }${
+                    formatKickoff(
+                      player.kickoffAt
+                    )
+                      ? ` • ${formatKickoff(
+                          player.kickoffAt
+                        )}`
+                      : ""
+                  }`
+                : "Game TBD"}
+          </span>
+
         </div>
 
       </div>
@@ -2055,6 +2091,9 @@ const styles = {
 
     background:
       "rgba(255,122,24,.08)",
+
+    flex:
+      "0 0 auto",
   },
 
 
