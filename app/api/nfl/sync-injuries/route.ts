@@ -1563,45 +1563,101 @@ export async function POST(
        4. LOAD NFL PLAYERS FROM PUBLIC SCHEMA
     ===================================================== */
 
-    const {
-      data:
-        playerRows,
-
-      error:
-        playerError,
-    } =
-      await supabase
-        .schema(
-          "public"
-        )
-        .from(
-          "nfl_players"
-        )
-        .select(
-          "id, espn_player_id, full_name, primary_position, team_abbreviation"
-        )
-        .not(
-          "espn_player_id",
-          "is",
-          null
-        );
+    /*
+     * Supabase/PostgREST commonly caps a single select at 1,000 rows.
+     * The NFL player catalog is larger than that, so a one-shot query
+     * silently omits players and prevents Core injury discovery for them.
+     * Page through the full catalog so EVERY ESPN-mapped NFL player is
+     * eligible for current injury discovery.
+     */
+    const playerRows:
+      Array<{
+        id: unknown;
+        espn_player_id: unknown;
+        full_name: unknown;
+        primary_position: unknown;
+        team_abbreviation: unknown;
+      }> =
+      [];
 
 
-    if (
-      playerError
+    const playerPageSize =
+      1000;
+
+
+    for (
+      let from = 0;
+      ;
+      from += playerPageSize
     ) {
-      throw new Error(
-        `Unable to load NFL players: ${playerError.message}`
+      const {
+        data:
+          pageRows,
+
+        error:
+          playerError,
+      } =
+        await supabase
+          .schema(
+            "public"
+          )
+          .from(
+            "nfl_players"
+          )
+          .select(
+            "id, espn_player_id, full_name, primary_position, team_abbreviation"
+          )
+          .not(
+            "espn_player_id",
+            "is",
+            null
+          )
+          .order(
+            "id",
+            {
+              ascending:
+                true,
+            }
+          )
+          .range(
+            from,
+            from +
+              playerPageSize -
+              1
+          );
+
+
+      if (
+        playerError
+      ) {
+        throw new Error(
+          `Unable to load NFL players: ${playerError.message}`
+        );
+      }
+
+
+      const rows =
+        pageRows ??
+        [];
+
+
+      playerRows.push(
+        ...rows
       );
+
+
+      if (
+        rows.length <
+        playerPageSize
+      ) {
+        break;
+      }
     }
 
 
     const players:
       NflPlayer[] =
-      (
-        playerRows ??
-        []
-      ).map(
+      playerRows.map(
         (
           row
         ) => ({
@@ -2188,6 +2244,9 @@ export async function POST(
 
           allCurrentEspnRecords:
             allCurrentEspnRecords.length,
+
+          nflPlayersLoaded:
+            players.length,
 
           coreCatalogPlayersChecked,
 
@@ -2961,6 +3020,9 @@ export async function POST(
       coreAthletesWithInjuries,
       coreInjuryOverrides,
       coreFetchFailures,
+
+      nflPlayersLoaded:
+        players.length,
 
       coreCatalogPlayersChecked,
 
