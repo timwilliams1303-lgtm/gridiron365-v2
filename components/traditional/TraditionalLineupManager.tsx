@@ -2029,6 +2029,9 @@ const styles = {
 
 
   projectionAction: {
+    order:
+      1,
+
     minWidth:
       "72px",
 
@@ -2099,7 +2102,10 @@ const styles = {
       "flex-end",
 
     gap:
-      "7px",
+      "8px",
+
+    flexDirection:
+      "row" as const,
 
     flexWrap:
       "wrap" as const,
@@ -2149,6 +2155,9 @@ const styles = {
 
 
   dropButton: {
+    order:
+      2,
+
     minHeight:
       "31px",
 
