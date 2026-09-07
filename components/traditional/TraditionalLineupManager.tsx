@@ -31,6 +31,15 @@ type LineupPlayer = {
     string | null;
   injuryDetail:
     string | null;
+  projectedPoints:
+    number | null;
+  opponentAbbreviation:
+    string | null;
+  homeOrAway:
+    string | null;
+  kickoffAt:
+    string | null;
+  isBye: boolean;
 };
 
 
@@ -68,6 +77,44 @@ type TraditionalLineupManagerProps = {
 };
 
 
+function formatKickoff(
+  kickoffAt:
+    string |
+    null
+) {
+  if (
+    !kickoffAt
+  ) {
+    return null;
+  }
+
+  const date =
+    new Date(
+      kickoffAt
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      weekday:
+        "short",
+      hour:
+        "numeric",
+      minute:
+        "2-digit",
+    }
+  ).format(
+    date
+  );
+}
 
 
 function getInjuryDisplay(
@@ -1427,6 +1474,89 @@ className="g365-playerMeta" style={styles.playerMeta}
             ? ` • ${player.teamAbbreviation}`
             : ""}
         </span>
+
+        <div
+          style={{
+            display:
+              "flex",
+            alignItems:
+              "center",
+            gap:
+              "8px",
+            flexWrap:
+              "wrap",
+            marginTop:
+              "3px",
+          }}
+        >
+          <span
+            style={{
+              color:
+                "#aeb4bd",
+              fontSize:
+                "9px",
+              fontWeight:
+                800,
+            }}
+          >
+            {player.isBye
+              ? "BYE"
+              : player
+                  .opponentAbbreviation
+                ? `${
+                    player
+                      .homeOrAway
+                      ?.toUpperCase() ===
+                    "AWAY"
+                      ? "@"
+                      : "vs"
+                  } ${
+                    player
+                      .opponentAbbreviation
+                  }${
+                    formatKickoff(
+                      player.kickoffAt
+                    )
+                      ? ` • ${formatKickoff(
+                          player.kickoffAt
+                        )}`
+                      : ""
+                  }`
+                : "Game TBD"}
+          </span>
+
+          <span
+            style={{
+              padding:
+                "2px 6px",
+              border:
+                "1px solid rgba(255,122,24,.18)",
+              borderRadius:
+                "5px",
+              background:
+                "rgba(255,122,24,.06)",
+              color:
+                "#ff8a2b",
+              fontSize:
+                "9px",
+              fontWeight:
+                900,
+              whiteSpace:
+                "nowrap",
+            }}
+          >
+            PROJ{" "}
+            {player.projectedPoints !==
+              null &&
+            Number.isFinite(
+              player.projectedPoints
+            )
+              ? player.projectedPoints.toFixed(
+                  1
+                )
+              : "—"}
+          </span>
+        </div>
 
       </div>
     </div>

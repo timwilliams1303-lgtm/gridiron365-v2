@@ -47,6 +47,24 @@ export type TraditionalPlayerBrowserRow = {
 
   seasonFantasyPoints:
     number;
+
+  weeklyProjectedPoints:
+    number | null;
+
+  weeklyRank:
+    number | null;
+
+  opponentAbbreviation:
+    string | null;
+
+  homeOrAway:
+    string | null;
+
+  kickoffAt:
+    string | null;
+
+  isBye:
+    boolean;
 };
 
 
@@ -150,6 +168,16 @@ type FantasyScoreRow = {
     number |
     string |
     null;
+};
+
+
+type WeeklyProjectionRow = {
+  player_id: number;
+  opponent_abbreviation: string | null;
+  home_or_away: string | null;
+  kickoff_at: string | null;
+  is_bye: boolean | null;
+  projected_points: number | string | null;
 };
 
 
@@ -329,6 +357,20 @@ export async function getTraditionalPlayersData(
     seasonStateData as
       SeasonStateRow |
       null;
+
+
+  const activeWeek =
+    Math.max(
+      1,
+      Math.min(
+        18,
+        Number(
+          seasonState
+            ?.active_week ??
+          1
+        )
+      )
+    );
 
 
   /*
@@ -843,16 +885,114 @@ export async function getTraditionalPlayersData(
   }
 
 
-  const hasRegularSeasonScoring =
-    Array.from(
-      seasonFantasyPointsByPlayer.values()
-    ).some(
+
+  /*
+   * =====================================================
+   * LEAGUE-SPECIFIC WEEKLY PROJECTIONS
+   * =====================================================
+   *
+   * This is the authoritative ranking source for the
+   * Players page. projected_points has already been
+   * calculated for this league's commissioner scoring.
+   */
+
+  const weeklyProjectionByPlayer =
+    new Map<
+      number,
+      WeeklyProjectionRow
+    >();
+
+
+  const projectionPageSize =
+    1000;
+
+
+  let projectionStart =
+    0;
+
+
+  while (true) {
+    const {
+      data:
+        projectionData,
+
+      error:
+        projectionError,
+    } =
+      await supabase
+        .from(
+          "traditional_weekly_player_projections"
+        )
+        .select(
+          `
+            player_id,
+            opponent_abbreviation,
+            home_or_away,
+            kickoff_at,
+            is_bye,
+            projected_points
+          `
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        )
+        .eq(
+          "season_type",
+          2
+        )
+        .eq(
+          "week",
+          activeWeek
+        )
+        .range(
+          projectionStart,
+          projectionStart +
+            projectionPageSize -
+            1
+        );
+
+
+    if (projectionError) {
+      throw new Error(
+        `Could not load Week ${activeWeek} projections: ${projectionError.message}`
+      );
+    }
+
+
+    const projectionPage =
       (
-        points
-      ) =>
-        points !==
-        0
-    );
+        projectionData ??
+        []
+      ) as WeeklyProjectionRow[];
+
+
+    for (
+      const projection
+      of projectionPage
+    ) {
+      weeklyProjectionByPlayer.set(
+        projection.player_id,
+        projection
+      );
+    }
+
+
+    if (
+      projectionPage.length <
+      projectionPageSize
+    ) {
+      break;
+    }
+
+
+    projectionStart +=
+      projectionPageSize;
+  }
 
 
   /*
@@ -882,6 +1022,12 @@ export async function getTraditionalPlayersData(
 
           const waiver =
             waiverByPlayer.get(
+              player.id
+            );
+
+
+          const weeklyProjection =
+            weeklyProjectionByPlayer.get(
               player.id
             );
 
@@ -972,6 +1118,42 @@ export async function getTraditionalPlayersData(
                 player.id
               ) ??
               0,
+
+            weeklyProjectedPoints:
+              weeklyProjection
+                ?.projected_points !==
+                  null &&
+              weeklyProjection
+                ?.projected_points !==
+                  undefined
+                ? Number(
+                    weeklyProjection
+                      .projected_points
+                  )
+                : null,
+
+            weeklyRank:
+              null,
+
+            opponentAbbreviation:
+              weeklyProjection
+                ?.opponent_abbreviation ??
+              null,
+
+            homeOrAway:
+              weeklyProjection
+                ?.home_or_away ??
+              null,
+
+            kickoffAt:
+              weeklyProjection
+                ?.kickoff_at ??
+              null,
+
+            isBye:
+              weeklyProjection
+                ?.is_bye ??
+              false,
           };
         }
       );
@@ -996,32 +1178,40 @@ export async function getTraditionalPlayersData(
 
 
   /*
-   * Before regular-season scoring exists:
-   *   default draft rank ASC.
-   *
-   * After regular-season fantasy points exist:
-   *   season fantasy points DESC,
-   *   then default draft rank ASC.
+   * Rank the Players page by the selected/active week's
+   * league-specific projected fantasy points. Players
+   * without a projection sort after projected players.
    */
 
   availablePlayers.sort(
-    (
-      a,
-      b
-    ) => {
-      if (
-        hasRegularSeasonScoring
-      ) {
-        const pointsDifference =
-          b.seasonFantasyPoints -
-          a.seasonFantasyPoints;
+    (a, b) => {
+      const aProjection =
+        a.weeklyProjectedPoints;
 
+      const bProjection =
+        b.weeklyProjectedPoints;
+
+
+      if (
+        aProjection !== null ||
+        bProjection !== null
+      ) {
+        if (aProjection === null) {
+          return 1;
+        }
+
+        if (bProjection === null) {
+          return -1;
+        }
 
         if (
-          pointsDifference !==
-          0
+          bProjection !==
+          aProjection
         ) {
-          return pointsDifference;
+          return (
+            bProjection -
+            aProjection
+          );
         }
       }
 
@@ -1030,29 +1220,32 @@ export async function getTraditionalPlayersData(
         a.defaultRank ??
         Number.MAX_SAFE_INTEGER;
 
-
       const bRank =
         b.defaultRank ??
         Number.MAX_SAFE_INTEGER;
 
 
-      if (
-        aRank !==
-        bRank
-      ) {
-        return (
-          aRank -
-          bRank
-        );
+      if (aRank !== bRank) {
+        return aRank - bRank;
       }
 
 
-      return a.fullName
-        .localeCompare(
-          b.fullName
-        );
+      return a.fullName.localeCompare(
+        b.fullName
+      );
     }
   );
+
+
+  for (
+    let index = 0;
+    index < availablePlayers.length;
+    index += 1
+  ) {
+    availablePlayers[index].weeklyRank =
+      index + 1;
+  }
+
 
   /*
    * Build NFL team filter list.
@@ -1119,10 +1312,7 @@ export async function getTraditionalPlayersData(
         teamSet
       ).sort(),
 
-    activeWeek:
-      seasonState
-        ?.active_week ??
-      1,
+    activeWeek,
 
     waiverType:
       waiverSettings

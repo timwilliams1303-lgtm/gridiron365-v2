@@ -535,7 +535,7 @@ export default async function TraditionalTeamPage({
             }
 
             week={
-              teamData.activeWeek
+              teamData.selectedWeek
             }
 
             players={

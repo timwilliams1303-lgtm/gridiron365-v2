@@ -44,6 +44,21 @@ export type TraditionalRosterPlayer = {
 
   isStarter:
     boolean;
+
+  projectedPoints:
+    number | null;
+
+  opponentAbbreviation:
+    string | null;
+
+  homeOrAway:
+    string | null;
+
+  kickoffAt:
+    string | null;
+
+  isBye:
+    boolean;
 };
 
 
@@ -159,6 +174,28 @@ type InjuryRow = {
 
   injury_detail:
     string | null;
+};
+
+
+type WeeklyProjectionRow = {
+  player_id: number;
+
+  opponent_abbreviation:
+    string | null;
+
+  home_or_away:
+    string | null;
+
+  kickoff_at:
+    string | null;
+
+  is_bye:
+    boolean | null;
+
+  projected_points:
+    number |
+    string |
+    null;
 };
 
 
@@ -623,6 +660,97 @@ export async function getTraditionalTeamData(
 
   /*
    * =====================================================
+   * LEAGUE-SPECIFIC WEEKLY PROJECTIONS + MATCHUP
+   * =====================================================
+   *
+   * traditional_weekly_player_projections already stores
+   * the projection after the shared G365 context has been
+   * scored for this exact league. It also carries the NFL
+   * opponent, home/away flag, kickoff time and bye status.
+   */
+
+  const weeklyProjectionByPlayer =
+    new Map<
+      number,
+      WeeklyProjectionRow
+    >();
+
+
+  if (
+    playerIds.length >
+    0
+  ) {
+    const {
+      data:
+        weeklyProjectionData,
+
+      error:
+        weeklyProjectionError,
+    } =
+      await supabase
+        .from(
+          "traditional_weekly_player_projections"
+        )
+        .select(
+          `
+            player_id,
+            opponent_abbreviation,
+            home_or_away,
+            kickoff_at,
+            is_bye,
+            projected_points
+          `
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        )
+        .eq(
+          "season_type",
+          2
+        )
+        .eq(
+          "week",
+          selectedWeek
+        )
+        .in(
+          "player_id",
+          playerIds
+        );
+
+
+    if (
+      weeklyProjectionError
+    ) {
+      throw new Error(
+        `Could not load weekly player projections: ${weeklyProjectionError.message}`
+      );
+    }
+
+
+    for (
+      const projection
+      of (
+        weeklyProjectionData ??
+        []
+      ) as WeeklyProjectionRow[]
+    ) {
+      weeklyProjectionByPlayer.set(
+        Number(
+          projection.player_id
+        ),
+        projection
+      );
+    }
+  }
+
+
+  /*
+   * =====================================================
    * NORMALIZE DISPLAY ROSTER
    * =====================================================
    */
@@ -652,6 +780,29 @@ export async function getTraditionalTeamData(
               rosterRow
                 .player_id
             );
+
+
+          const weeklyProjection =
+            weeklyProjectionByPlayer.get(
+              rosterRow
+                .player_id
+            );
+
+
+          const rawProjectedPoints =
+            weeklyProjection
+              ?.projected_points;
+
+
+          const parsedProjectedPoints =
+            rawProjectedPoints ===
+              null ||
+            rawProjectedPoints ===
+              undefined
+              ? null
+              : Number(
+                  rawProjectedPoints
+                );
 
 
           const lineupSlot =
@@ -727,6 +878,35 @@ export async function getTraditionalTeamData(
               isStarterSlot(
                 lineupSlot
               ),
+
+            projectedPoints:
+              parsedProjectedPoints !==
+                null &&
+              Number.isFinite(
+                parsedProjectedPoints
+              )
+                ? parsedProjectedPoints
+                : null,
+
+            opponentAbbreviation:
+              weeklyProjection
+                ?.opponent_abbreviation ??
+              null,
+
+            homeOrAway:
+              weeklyProjection
+                ?.home_or_away ??
+              null,
+
+            kickoffAt:
+              weeklyProjection
+                ?.kickoff_at ??
+              null,
+
+            isBye:
+              weeklyProjection
+                ?.is_bye ??
+              false,
           };
         }
       );

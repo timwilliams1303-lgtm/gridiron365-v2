@@ -160,10 +160,15 @@ function playerStatus(
 
 
   /*
-   * Keep the matchup STATUS column intentionally simple:
+   * STATUS display rules:
+   *
+   * BYE:
+   *   BYE
    *
    * BEFORE GAME:
-   *   UPCOMING
+   *   SUN 1:00 PM
+   *   SUN 4:25 PM
+   *   MON 8:15 PM
    *
    * LIVE:
    *   Q1 12:34
@@ -175,10 +180,17 @@ function playerStatus(
    * COMPLETE:
    *   FINAL
    *
-   * Do not show lineup-lock state, kickoff date/time, or any
-   * other designation in this column. Injury designations stay
-   * beside the player's name where they belong.
+   * The OPP column shows the scheduled opponent. The STATUS
+   * column shows kickoff day/time before the game, live clock
+   * while the game is active, and FINAL when complete.
    */
+
+  if (
+    !player.nflOpponent
+  ) {
+    return "BYE";
+  }
+
 
   if (
     context
@@ -216,7 +228,16 @@ function playerStatus(
   }
 
 
-  return "UPCOMING";
+  const scheduledKickoff =
+    kickoffLabel(
+      player.kickoffAt
+    );
+
+
+  return scheduledKickoff !==
+    "—"
+    ? scheduledKickoff.toUpperCase()
+    : "UPCOMING";
 }
 
 
@@ -4241,3 +4262,4 @@ const styles = {
       "center" as const,
   },
 };
+

@@ -48,6 +48,43 @@ type Props = {
 };
 
 
+type PlayerWeekDetail = {
+  week: number;
+  opponentAbbreviation: string | null;
+  homeOrAway: string | null;
+  kickoffAt: string | null;
+  isBye: boolean;
+  projectedPoints: number | null;
+  fantasyPoints: number | null;
+  gameStatus: string | null;
+  isLive: boolean;
+  isFinal: boolean;
+  stats: Record<string, number | string | boolean | null> | null;
+};
+
+
+type PlayerDetailResponse = {
+  success: boolean;
+  error?: string;
+  player?: {
+    id: number;
+    fullName: string;
+    position: string;
+    teamAbbreviation: string | null;
+    headshotUrl: string | null;
+    status: string | null;
+  };
+  weekly?: PlayerWeekDetail[];
+  season?: {
+    gamesPlayed: number;
+    fantasyPoints: number;
+    fantasyPointsPerGame: number;
+    averageProjection: number;
+    totals: Record<string, number>;
+  };
+};
+
+
 const positions = [
   "ALL",
   "QB",
@@ -232,6 +269,149 @@ function formatWaiverTime(
 }
 
 
+function formatKickoff(
+  value: string | null
+) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toLocaleString(
+    undefined,
+    {
+      weekday: "short",
+      hour: "numeric",
+      minute: "2-digit",
+    }
+  );
+}
+
+
+function matchupLabel(
+  opponent: string | null,
+  homeOrAway: string | null,
+  isBye: boolean
+) {
+  if (isBye) {
+    return "BYE";
+  }
+
+  if (!opponent) {
+    return "TBD";
+  }
+
+  return `${
+    homeOrAway?.toUpperCase() === "AWAY"
+      ? "@"
+      : "vs"
+  } ${opponent}`;
+}
+
+
+function numberStat(
+  stats: PlayerWeekDetail["stats"],
+  key: string
+) {
+  const value = Number(stats?.[key] ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+
+function weeklyStatSummary(
+  position: string,
+  stats: PlayerWeekDetail["stats"]
+) {
+  if (!stats) {
+    return "No game stats yet";
+  }
+
+  const pos = position.toUpperCase();
+
+  if (pos === "QB") {
+    return `${numberStat(stats, "passing_completions")}/${numberStat(stats, "passing_attempts")} CMP, ${numberStat(stats, "passing_yards")} PASS YDS, ${numberStat(stats, "passing_touchdowns")} PASS TD, ${numberStat(stats, "passing_interceptions")} INT, ${numberStat(stats, "rushing_yards")} RUSH YDS`;
+  }
+
+  if (pos === "RB") {
+    return `${numberStat(stats, "rushing_attempts")} CAR, ${numberStat(stats, "rushing_yards")} RUSH YDS, ${numberStat(stats, "rushing_touchdowns")} RUSH TD, ${numberStat(stats, "receptions")} REC, ${numberStat(stats, "receiving_yards")} REC YDS, ${numberStat(stats, "receiving_touchdowns")} REC TD`;
+  }
+
+  if (pos === "WR" || pos === "TE") {
+    return `${numberStat(stats, "receiving_targets")} TGT, ${numberStat(stats, "receptions")} REC, ${numberStat(stats, "receiving_yards")} REC YDS, ${numberStat(stats, "receiving_touchdowns")} REC TD, ${numberStat(stats, "rushing_yards")} RUSH YDS`;
+  }
+
+  if (pos === "K" || pos === "PK") {
+    return `${numberStat(stats, "field_goals_made")}/${numberStat(stats, "field_goals_attempted")} FG, ${numberStat(stats, "extra_points_made")}/${numberStat(stats, "extra_points_attempted")} XP`;
+  }
+
+  if (pos === "DST") {
+    return `${numberStat(stats, "dst_sacks")} SACK, ${numberStat(stats, "dst_interceptions")} INT, ${numberStat(stats, "dst_fumble_recoveries")} FR, ${numberStat(stats, "dst_touchdowns")} TD, ${numberStat(stats, "dst_points_allowed")} PA`;
+  }
+
+  return `${numberStat(stats, "rushing_yards")} RUSH YDS, ${numberStat(stats, "receiving_yards")} REC YDS`;
+}
+
+
+function seasonStatCards(
+  position: string,
+  totals: Record<string, number>
+) {
+  const pos = position.toUpperCase();
+
+  if (pos === "QB") {
+    return [
+      ["PASS YDS", totals.passingYards ?? 0],
+      ["PASS TD", totals.passingTouchdowns ?? 0],
+      ["INT", totals.passingInterceptions ?? 0],
+      ["RUSH YDS", totals.rushingYards ?? 0],
+      ["RUSH TD", totals.rushingTouchdowns ?? 0],
+    ];
+  }
+
+  if (pos === "RB") {
+    return [
+      ["RUSH YDS", totals.rushingYards ?? 0],
+      ["RUSH TD", totals.rushingTouchdowns ?? 0],
+      ["REC", totals.receptions ?? 0],
+      ["REC YDS", totals.receivingYards ?? 0],
+      ["REC TD", totals.receivingTouchdowns ?? 0],
+    ];
+  }
+
+  if (pos === "WR" || pos === "TE") {
+    return [
+      ["TGT", totals.receivingTargets ?? 0],
+      ["REC", totals.receptions ?? 0],
+      ["REC YDS", totals.receivingYards ?? 0],
+      ["REC TD", totals.receivingTouchdowns ?? 0],
+      ["RUSH YDS", totals.rushingYards ?? 0],
+    ];
+  }
+
+  if (pos === "K" || pos === "PK") {
+    return [
+      ["FGM", totals.fieldGoalsMade ?? 0],
+      ["FGA", totals.fieldGoalsAttempted ?? 0],
+      ["XPM", totals.extraPointsMade ?? 0],
+      ["XPA", totals.extraPointsAttempted ?? 0],
+    ];
+  }
+
+  return [
+    ["SACK", totals.dstSacks ?? 0],
+    ["INT", totals.dstInterceptions ?? 0],
+    ["FR", totals.dstFumbleRecoveries ?? 0],
+    ["TD", totals.dstTouchdowns ?? 0],
+    ["TFL", totals.defensiveTacklesForLoss ?? 0],
+  ];
+}
+
+
 export default function TraditionalPlayersBrowser({
   leagueId,
   fantasyTeamId,
@@ -364,6 +544,91 @@ export default function TraditionalPlayersBrowser({
     >(
       null
     );
+
+
+  const [
+    profilePlayerId,
+    setProfilePlayerId,
+  ] = useState<number | null>(null);
+
+  const [
+    playerDetail,
+    setPlayerDetail,
+  ] = useState<PlayerDetailResponse | null>(null);
+
+  const [
+    playerDetailLoading,
+    setPlayerDetailLoading,
+  ] = useState(false);
+
+  const [
+    playerDetailError,
+    setPlayerDetailError,
+  ] = useState<string | null>(null);
+
+
+  const profilePlayer =
+    players.find(
+      (player) =>
+        player.playerId ===
+        profilePlayerId
+    ) ?? null;
+
+
+  const openPlayerProfile =
+    useCallback(
+      async (
+        playerId: number
+      ) => {
+        setProfilePlayerId(playerId);
+        setPlayerDetail(null);
+        setPlayerDetailError(null);
+        setPlayerDetailLoading(true);
+
+        try {
+          const response =
+            await fetch(
+              `/api/league/${leagueId}/players/${playerId}/stats?season=${season}`,
+              {
+                method: "GET",
+                cache: "no-store",
+              }
+            );
+
+          const result =
+            (await response.json()) as PlayerDetailResponse;
+
+          if (
+            !response.ok ||
+            !result.success
+          ) {
+            throw new Error(
+              result.error ??
+              "Player stats could not be loaded."
+            );
+          }
+
+          setPlayerDetail(result);
+        } catch (detailError) {
+          setPlayerDetailError(
+            detailError instanceof Error
+              ? detailError.message
+              : "Player stats could not be loaded."
+          );
+        } finally {
+          setPlayerDetailLoading(false);
+        }
+      },
+      [leagueId, season]
+    );
+
+
+  function closePlayerProfile() {
+    setProfilePlayerId(null);
+    setPlayerDetail(null);
+    setPlayerDetailError(null);
+    setPlayerDetailLoading(false);
+  }
 
 
   const filteredPlayers =
@@ -843,6 +1108,219 @@ export default function TraditionalPlayersBrowser({
       ) : null}
 
 
+      {profilePlayer ? (
+        <div
+          style={styles.modalBackdrop}
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closePlayerProfile();
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="player-profile-title"
+            style={{
+              ...styles.modalCard,
+              width: "min(920px,100%)",
+            }}
+          >
+            <div style={styles.modalHeader}>
+              <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                {profilePlayer.headshotUrl ? (
+                  <Image
+                    src={profilePlayer.headshotUrl}
+                    alt={profilePlayer.fullName}
+                    width={58}
+                    height={58}
+                    style={{ ...styles.headshot, width: 58, height: 58 }}
+                  />
+                ) : null}
+
+                <div>
+                  <span style={styles.actionEyebrow}>
+                    PLAYER PROFILE
+                  </span>
+                  <strong
+                    id="player-profile-title"
+                    style={{ ...styles.actionTitle, fontSize: 20 }}
+                  >
+                    {profilePlayer.fullName}
+                  </strong>
+                  <span style={styles.actionMeta}>
+                    {profilePlayer.position}
+                    {profilePlayer.teamAbbreviation
+                      ? ` • ${profilePlayer.teamAbbreviation}`
+                      : ""}
+                    {profilePlayer.weeklyRank
+                      ? ` • Week ${week} Rank #${profilePlayer.weeklyRank}`
+                      : ""}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closePlayerProfile}
+                style={styles.modalCloseButton}
+                aria-label="Close player profile"
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={styles.modalBody}>
+              {playerDetailLoading ? (
+                <div style={styles.profileLoading}>
+                  Loading weekly and season stats…
+                </div>
+              ) : playerDetailError ? (
+                <div style={styles.modalError}>
+                  {playerDetailError}
+                </div>
+              ) : playerDetail?.player && playerDetail.season ? (
+                <>
+                  <section style={styles.profileSection}>
+                    <div style={styles.profileSectionHeading}>
+                      <div>
+                        <strong style={styles.profileSectionTitle}>
+                          {season} Season Stats
+                        </strong>
+                        <span style={styles.profileSectionSubtitle}>
+                          Actual fantasy points use this league&apos;s scoring settings.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={styles.profileStatGrid}>
+                      <div style={styles.profileStatCard}>
+                        <span style={styles.profileStatLabel}>FANTASY PTS</span>
+                        <strong style={styles.profileStatValue}>
+                          {playerDetail.season.fantasyPoints.toFixed(1)}
+                        </strong>
+                      </div>
+                      <div style={styles.profileStatCard}>
+                        <span style={styles.profileStatLabel}>FPTS / GAME</span>
+                        <strong style={styles.profileStatValue}>
+                          {playerDetail.season.fantasyPointsPerGame.toFixed(1)}
+                        </strong>
+                      </div>
+                      <div style={styles.profileStatCard}>
+                        <span style={styles.profileStatLabel}>GAMES</span>
+                        <strong style={styles.profileStatValue}>
+                          {playerDetail.season.gamesPlayed}
+                        </strong>
+                      </div>
+                      <div style={styles.profileStatCard}>
+                        <span style={styles.profileStatLabel}>AVG PROJ</span>
+                        <strong style={styles.profileStatValue}>
+                          {playerDetail.season.averageProjection.toFixed(1)}
+                        </strong>
+                      </div>
+
+                      {seasonStatCards(
+                        playerDetail.player?.position ?? profilePlayer.position,
+                        playerDetail.season.totals
+                      ).map(([label, value]) => (
+                        <div
+                          key={String(label)}
+                          style={styles.profileStatCard}
+                        >
+                          <span style={styles.profileStatLabel}>
+                            {label}
+                          </span>
+                          <strong style={styles.profileStatValueSmall}>
+                            {Number(value).toLocaleString()}
+                          </strong>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section style={styles.profileSection}>
+                    <div style={styles.profileSectionHeading}>
+                      <div>
+                        <strong style={styles.profileSectionTitle}>
+                          Weekly Stats
+                        </strong>
+                        <span style={styles.profileSectionSubtitle}>
+                          Projection, actual fantasy points and NFL box-score production by week.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={styles.weeklyStatsWrap}>
+                      <div style={styles.weeklyStatsHeader}>
+                        <span>WK</span>
+                        <span>GAME</span>
+                        <span>STATS</span>
+                        <span>PROJ</span>
+                        <span>FPTS</span>
+                      </div>
+
+                      {(playerDetail.weekly ?? []).map((row) => (
+                        <div
+                          key={row.week}
+                          style={{
+                            ...styles.weeklyStatsRow,
+                            ...(row.week === week
+                              ? styles.weeklyStatsRowActive
+                              : {}),
+                          }}
+                        >
+                          <strong style={styles.weekNumber}>
+                            {row.week}
+                          </strong>
+
+                          <div style={styles.weekGameCell}>
+                            <strong>
+                              {matchupLabel(
+                                row.opponentAbbreviation,
+                                row.homeOrAway,
+                                row.isBye
+                              )}
+                            </strong>
+                            {!row.isBye && row.kickoffAt ? (
+                              <small>
+                                {formatKickoff(row.kickoffAt)}
+                              </small>
+                            ) : null}
+                          </div>
+
+                          <span style={styles.weekStatText}>
+                            {row.isBye
+                              ? "Bye week"
+                              : weeklyStatSummary(
+                                  playerDetail.player?.position ?? profilePlayer.position,
+                                  row.stats
+                                )}
+                          </span>
+
+                          <strong style={styles.projectionValue}>
+                            {row.projectedPoints !== null
+                              ? row.projectedPoints.toFixed(1)
+                              : "—"}
+                          </strong>
+
+                          <strong style={styles.actualFantasyValue}>
+                            {row.fantasyPoints !== null
+                              ? row.fantasyPoints.toFixed(1)
+                              : "—"}
+                          </strong>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+
       {selectedPlayer ? (
         <div
           style={styles.modalBackdrop}
@@ -1275,7 +1753,7 @@ export default function TraditionalPlayersBrowser({
           }
         >
           <span>
-            PLAYER
+            RANK / PLAYER
           </span>
 
           <span>
@@ -1287,7 +1765,7 @@ export default function TraditionalPlayersBrowser({
           </span>
 
           <span>
-            STATUS
+            WEEK {week}
           </span>
 
           <span>
@@ -1322,6 +1800,10 @@ export default function TraditionalPlayersBrowser({
 
                 onAdd={
                   openAddPanel
+                }
+
+                onView={
+                  openPlayerProfile
                 }
               />
             )
@@ -1370,6 +1852,7 @@ const PlayerRow = memo(function PlayerRow({
   player,
   canManage,
   onAdd,
+  onView,
 }: {
   player:
     TraditionalPlayerBrowserRow;
@@ -1378,6 +1861,11 @@ const PlayerRow = memo(function PlayerRow({
     boolean;
 
   onAdd:
+    (
+      playerId: number
+    ) => void;
+
+  onView:
     (
       playerId: number
     ) => void;
@@ -1447,14 +1935,38 @@ const PlayerRow = memo(function PlayerRow({
             styles.playerText
           }
         >
-          <strong
+          <button
+            type="button"
             className="g365-player-name"
-            style={
-              styles.playerName
+            onClick={() =>
+              onView(player.playerId)
             }
+            style={styles.playerNameButton}
           >
-            {player.fullName}
-          </strong>
+            <span style={styles.rankBadge}>
+              #{player.weeklyRank ?? "—"}
+            </span>
+            <strong style={styles.playerName}>
+              {player.fullName}
+            </strong>
+          </button>
+
+          <span style={styles.playerWeekMeta}>
+            {matchupLabel(
+              player.opponentAbbreviation,
+              player.homeOrAway,
+              player.isBye
+            )}
+            {player.kickoffAt && !player.isBye
+              ? ` • ${formatKickoff(player.kickoffAt)}`
+              : ""}
+            {" • "}
+            <strong style={styles.projectionInline}>
+              PROJ {player.weeklyProjectedPoints !== null
+                ? player.weeklyProjectedPoints.toFixed(1)
+                : "—"}
+            </strong>
+          </span>
 
           {injury ? (
             <InjuryReportButton
@@ -1489,25 +2001,23 @@ const PlayerRow = memo(function PlayerRow({
       </span>
 
 
-      <span className="g365-player-desktop-cell">
-        {player.isActive ? (
-          <span
-            style={
-              styles.activeBadge
-            }
-          >
-            ACTIVE
-          </span>
-        ) : (
-          <span
-            style={
-              styles.inactiveBadge
-            }
-          >
-            INACTIVE
-          </span>
-        )}
-      </span>
+      <div
+        className="g365-player-desktop-cell"
+        style={styles.weekProjectionCell}
+      >
+        <strong style={styles.projectionValue}>
+          {player.weeklyProjectedPoints !== null
+            ? player.weeklyProjectedPoints.toFixed(1)
+            : "—"}
+        </strong>
+        <small style={styles.weekOpponent}>
+          {matchupLabel(
+            player.opponentAbbreviation,
+            player.homeOrAway,
+            player.isBye
+          )}
+        </small>
+      </div>
 
 
       <div
@@ -1582,6 +2092,11 @@ const PlayerRow = memo(function PlayerRow({
         <span style={styles.nflTeam}>
           {player.teamAbbreviation ?? "FA"}
         </span>
+        <strong style={styles.projectionInline}>
+          PROJ {player.weeklyProjectedPoints !== null
+            ? player.weeklyProjectedPoints.toFixed(1)
+            : "—"}
+        </strong>
         {player.isActive ? (
           <span style={styles.activeBadge}>ACTIVE</span>
         ) : (
@@ -2285,7 +2800,7 @@ const styles = {
       "grid",
 
     gridTemplateColumns:
-      "minmax(260px,2fr) 60px 60px 90px minmax(120px,1fr) 70px",
+      "minmax(300px,2fr) 60px 60px 105px minmax(120px,1fr) 70px",
 
     alignItems:
       "center",
@@ -2324,7 +2839,7 @@ const styles = {
       "grid",
 
     gridTemplateColumns:
-      "minmax(260px,2fr) 60px 60px 90px minmax(120px,1fr) 70px",
+      "minmax(300px,2fr) 60px 60px 105px minmax(120px,1fr) 70px",
 
     alignItems:
       "center",
@@ -2424,6 +2939,45 @@ const styles = {
 
     gap:
       "4px",
+  },
+
+
+  playerNameButton: {
+    maxWidth: "100%",
+    padding: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    border: 0,
+    background: "transparent",
+    color: "inherit",
+    cursor: "pointer",
+    textAlign: "left" as const,
+  },
+
+
+  rankBadge: {
+    minWidth: "34px",
+    color: "#ff8423",
+    fontSize: "12px",
+    fontWeight: 950,
+  },
+
+
+  playerWeekMeta: {
+    maxWidth: "100%",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
+    color: "#858c96",
+    fontSize: "11px",
+    fontWeight: 750,
+  },
+
+
+  projectionInline: {
+    color: "#ff9a3d",
+    fontWeight: 950,
   },
 
 
@@ -2667,6 +3221,172 @@ const styles = {
   },
 
 
+  weekProjectionCell: {
+    display: "grid",
+    gap: "3px",
+  },
+
+
+  projectionValue: {
+    color: "#ff922f",
+    fontSize: "14px",
+    fontWeight: 950,
+  },
+
+
+  weekOpponent: {
+    color: "#777e88",
+    fontSize: "10px",
+    fontWeight: 800,
+  },
+
+
+  profileLoading: {
+    minHeight: "180px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#8c939d",
+    fontSize: "14px",
+    fontWeight: 800,
+  },
+
+
+  profileSection: {
+    display: "grid",
+    gap: "12px",
+  },
+
+
+  profileSectionHeading: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+  },
+
+
+  profileSectionTitle: {
+    display: "block",
+    color: "#ffffff",
+    fontSize: "15px",
+  },
+
+
+  profileSectionSubtitle: {
+    display: "block",
+    marginTop: "3px",
+    color: "#777e88",
+    fontSize: "11px",
+  },
+
+
+  profileStatGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(105px,1fr))",
+    gap: "8px",
+  },
+
+
+  profileStatCard: {
+    minHeight: "66px",
+    padding: "10px",
+    display: "grid",
+    alignContent: "center",
+    gap: "4px",
+    border: "1px solid rgba(255,255,255,.07)",
+    borderRadius: "10px",
+    background: "rgba(255,255,255,.025)",
+  },
+
+
+  profileStatLabel: {
+    color: "#6f7680",
+    fontSize: "9px",
+    fontWeight: 950,
+    letterSpacing: ".07em",
+  },
+
+
+  profileStatValue: {
+    color: "#ff8a28",
+    fontSize: "22px",
+    fontWeight: 950,
+  },
+
+
+  profileStatValueSmall: {
+    color: "#ffffff",
+    fontSize: "16px",
+    fontWeight: 950,
+  },
+
+
+  weeklyStatsWrap: {
+    overflowX: "auto" as const,
+    border: "1px solid rgba(255,255,255,.07)",
+    borderRadius: "10px",
+  },
+
+
+  weeklyStatsHeader: {
+    minWidth: "720px",
+    padding: "9px 10px",
+    display: "grid",
+    gridTemplateColumns: "42px 125px minmax(300px,1fr) 70px 70px",
+    gap: "10px",
+    background: "rgba(255,255,255,.025)",
+    color: "#686f79",
+    fontSize: "9px",
+    fontWeight: 950,
+    letterSpacing: ".07em",
+  },
+
+
+  weeklyStatsRow: {
+    minWidth: "720px",
+    padding: "10px",
+    display: "grid",
+    gridTemplateColumns: "42px 125px minmax(300px,1fr) 70px 70px",
+    alignItems: "center",
+    gap: "10px",
+    borderTop: "1px solid rgba(255,255,255,.055)",
+  },
+
+
+  weeklyStatsRowActive: {
+    background: "rgba(255,92,15,.055)",
+  },
+
+
+  weekNumber: {
+    color: "#ff8423",
+    fontSize: "13px",
+  },
+
+
+  weekGameCell: {
+    display: "grid",
+    gap: "2px",
+    color: "#ffffff",
+    fontSize: "11px",
+  },
+
+
+  weekStatText: {
+    color: "#a3a9b1",
+    fontSize: "10px",
+    lineHeight: 1.35,
+  },
+
+
+  actualFantasyValue: {
+    color: "#45d986",
+    fontSize: "14px",
+    fontWeight: 950,
+  },
+
+
   actionCell: {
     display:
       "flex",
@@ -2759,3 +3479,4 @@ const styles = {
   },
 };
 import InjuryReportButton from "@/components/ui/InjuryReportButton";
+
