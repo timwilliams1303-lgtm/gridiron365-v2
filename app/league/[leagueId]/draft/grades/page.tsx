@@ -133,6 +133,14 @@ type GenerateResponse = {
   error?: string;
 };
 
+type FrozenGradesResponse = {
+  success?: boolean;
+  hasFrozenGrades?: boolean;
+  draftId?: string | null;
+  teamGrades?: TeamGrade[];
+  playerGrades?: PlayerMetric[];
+};
+
 
 const COMPONENTS = [
   {
@@ -426,378 +434,134 @@ export default function DraftGradesPage() {
           );
 
 
-          const {
-            data: draftRows,
-            error: draftError,
-          } =
-            await supabase
-              .from(
-                "league_drafts"
-              )
+          const [
+            draftResponse,
+            frozenResponse,
+            teamsResponse,
+          ] = await Promise.all([
+            supabase
+              .from("league_drafts")
               .select(`
                 id,
                 league_id,
                 status,
                 updated_at
               `)
-              .eq(
-                "league_id",
-                leagueId
-              )
-              .order(
-                "updated_at",
-                {
-                  ascending: false,
-                }
-              )
-              .limit(1);
+              .eq("league_id", leagueId)
+              .order("updated_at", { ascending: false })
+              .limit(1),
 
+            supabase.rpc(
+              "get_traditional_frozen_draft_grades",
+              { p_league_id: leagueId }
+            ),
 
-          if (draftError) {
-            throw new Error(
-              draftError.message
-            );
+            supabase
+              .from("fantasy_teams")
+              .select(`
+                id,
+                team_name,
+                owner_id
+              `)
+              .eq("league_id", leagueId),
+          ]);
+
+          if (draftResponse.error) {
+            throw new Error(draftResponse.error.message);
           }
 
+          if (frozenResponse.error) {
+            throw new Error(frozenResponse.error.message);
+          }
 
-          const loadedDraft =
-            (
-              draftRows ??
-              []
-            )[0] as
-              | Draft
-              | undefined;
+          if (teamsResponse.error) {
+            throw new Error(teamsResponse.error.message);
+          }
 
+          const newestDraft = (draftResponse.data ?? [])[0] as Draft | undefined;
+          const frozen = (frozenResponse.data ?? {}) as FrozenGradesResponse;
+          const frozenDraftId = frozen.draftId ?? null;
+
+          const loadedDraft: Draft | undefined =
+            frozenDraftId
+              ? ((draftResponse.data ?? []).find(
+                  (row) => row.id === frozenDraftId
+                ) as Draft | undefined) ??
+                ({
+                  id: frozenDraftId,
+                  league_id: leagueId,
+                  status: "completed",
+                  updated_at: null,
+                } as Draft)
+              : newestDraft;
 
           if (!loadedDraft) {
-            throw new Error(
-              "No draft exists for this league."
-            );
+            throw new Error("No draft exists for this league.");
           }
 
+          setDraft(loadedDraft);
 
-          setDraft(
-            loadedDraft
+          const teams = (teamsResponse.data ?? []) as FantasyTeam[];
+          const teamMap = new Map<number, FantasyTeam>(
+            teams.map((team) => [Number(team.id), team])
           );
 
+          const gradeRows = (frozen.teamGrades ?? []) as TeamGrade[];
+          const loadedGrades = gradeRows.map((row): GradeTeam => {
+            const team = teamMap.get(Number(row.fantasy_team_id));
+            return {
+              ...row,
+              fantasy_team_id: Number(row.fantasy_team_id),
+              team_name: team?.team_name ?? `Team ${row.fantasy_team_id}`,
+              owner_id: team?.owner_id ?? null,
+            };
+          });
 
-          const [
-            gradeResponse,
-            teamsResponse,
-          ] =
-            await Promise.all([
-              supabase
-                .from(
-                  "traditional_draft_grade_team_snapshot"
-                )
-                .select("*")
-                .eq(
-                  "draft_id",
-                  loadedDraft.id
-                )
-                .order(
-                  "draft_grade_rank",
-                  {
-                    ascending: true,
-                    nullsFirst:
-                      false,
-                  }
-                ),
+          setTeamGrades(loadedGrades);
 
-              supabase
-                .from(
-                  "fantasy_teams"
-                )
-                .select(`
-                  id,
-                  team_name,
-                  owner_id
-                `)
-                .eq(
-                  "league_id",
-                  leagueId
-                ),
-            ]);
-
-
-          if (
-            gradeResponse.error
-          ) {
-            throw new Error(
-              gradeResponse.error
-                .message
-            );
-          }
-
-
-          if (
-            teamsResponse.error
-          ) {
-            throw new Error(
-              teamsResponse.error
-                .message
-            );
-          }
-
-
-          const teams =
-            (
-              teamsResponse.data ??
-              []
-            ) as FantasyTeam[];
-
-
-          const teamMap =
-            new Map<
-              number,
-              FantasyTeam
-            >(
-              teams.map(
-                (
-                  team:
-                    FantasyTeam
-                ) => [
-                  Number(
-                    team.id
-                  ),
-                  team,
-                ]
-              )
-            );
-
-
-          const gradeRows =
-            (
-              gradeResponse.data ??
-              []
-            ) as TeamGrade[];
-
-
-          const loadedGrades =
-            gradeRows.map(
-              (
-                row:
-                  TeamGrade
-              ): GradeTeam => {
-                const team =
-                  teamMap.get(
-                    Number(
-                      row.fantasy_team_id
-                    )
-                  );
-
-
-                return {
-                  ...row,
-
-                  fantasy_team_id:
-                    Number(
-                      row.fantasy_team_id
-                    ),
-
-                  team_name:
-                    team?.team_name ??
-                    `Team ${row.fantasy_team_id}`,
-
-                  owner_id:
-                    team?.owner_id ??
-                    null,
-                };
-              }
-            );
-
-
-          setTeamGrades(
-            loadedGrades
+          const metrics = (frozen.playerGrades ?? []) as PlayerMetric[];
+          const playerIds = Array.from(
+            new Set(metrics.map((metric) => Number(metric.player_id)))
           );
 
+          let players: NflPlayer[] = [];
 
-          const {
-            data: metricRows,
-            error: metricError,
-          } =
-            await supabase
-              .from(
-                "traditional_draft_grade_player_snapshot"
-              )
-              .select(`
-                draft_id,
-                fantasy_team_id,
-                player_id,
-                position,
-                actual_pick,
-                actual_round,
-                g365_overall_rank,
-                g365_position_rank,
-                projected_season_points,
-                replacement_rank,
-                replacement_player_points,
-                vorp,
-                positional_tier_gap,
-                draft_value_spots,
-                pick_value_score,
-                pick_value_label,
-                player_quality_score,
-                player_quality_label,
-                stud_score,
-                frozen_at
-              `)
-              .eq(
-                "draft_id",
-                loadedDraft.id
-              )
-              .order(
-                "actual_pick",
-                {
-                  ascending: true,
-                }
-              );
-
-
-          if (metricError) {
-            throw new Error(
-              metricError.message
-            );
-          }
-
-
-          const metrics =
-            (
-              metricRows ??
-              []
-            ) as PlayerMetric[];
-
-
-          const playerIds =
-            Array.from(
-              new Set(
-                metrics.map(
-                  (
-                    metric:
-                      PlayerMetric
-                  ) =>
-                    Number(
-                      metric.player_id
-                    )
-                )
-              )
-            );
-
-
-          let players:
-            NflPlayer[] = [];
-
-
-          if (
-            playerIds.length >
-            0
-          ) {
-            const {
-              data:
-                playerRows,
-              error:
-                playerError,
-            } =
+          if (playerIds.length > 0) {
+            const { data: playerRows, error: playerError } =
               await supabase
-                .from(
-                  "nfl_players"
-                )
+                .from("nfl_players")
                 .select(`
                   id,
                   full_name,
                   position:primary_position,
                   team_abbreviation
                 `)
-                .in(
-                  "id",
-                  playerIds
-                );
+                .in("id", playerIds);
 
-
-            if (
-              playerError
-            ) {
-              throw new Error(
-                playerError.message
-              );
+            if (playerError) {
+              throw new Error(playerError.message);
             }
 
-
-            players =
-              (
-                playerRows ??
-                []
-              ) as NflPlayer[];
+            players = (playerRows ?? []) as NflPlayer[];
           }
 
-
-          const playerMap =
-            new Map<
-              number,
-              NflPlayer
-            >(
-              players.map(
-                (
-                  player:
-                    NflPlayer
-                ) => [
-                  Number(
-                    player.id
-                  ),
-                  player,
-                ]
-              )
-            );
-
-
-          const loadedPlayers =
-            metrics.map(
-              (
-                metric:
-                  PlayerMetric
-              ): GradePlayer => {
-                const player =
-                  playerMap.get(
-                    Number(
-                      metric.player_id
-                    )
-                  );
-
-
-                return {
-                  ...metric,
-
-                  fantasy_team_id:
-                    Number(
-                      metric.fantasy_team_id
-                    ),
-
-                  player_id:
-                    Number(
-                      metric.player_id
-                    ),
-
-                  full_name:
-                    player?.full_name ??
-                    `Player ${metric.player_id}`,
-
-                  nfl_position:
-                    player?.position ??
-                    null,
-
-                  team_abbreviation:
-                    player
-                      ?.team_abbreviation ??
-                    null,
-                };
-              }
-            );
-
-
-          setPlayerMetrics(
-            loadedPlayers
+          const playerMap = new Map<number, NflPlayer>(
+            players.map((player) => [Number(player.id), player])
           );
 
+          const loadedPlayers = metrics.map((metric): GradePlayer => {
+            const player = playerMap.get(Number(metric.player_id));
+            return {
+              ...metric,
+              fantasy_team_id: Number(metric.fantasy_team_id),
+              player_id: Number(metric.player_id),
+              full_name: player?.full_name ?? `Player ${metric.player_id}`,
+              nfl_position: player?.position ?? null,
+              team_abbreviation: player?.team_abbreviation ?? null,
+            };
+          });
+
+          setPlayerMetrics(loadedPlayers);
 
           setSelectedTeamId(
             (
@@ -1030,22 +794,6 @@ export default function DraftGradesPage() {
     }
 
 
-    const confirmed =
-      teamGrades.length ===
-      0
-        ? true
-        : window.confirm(
-            "Regenerate Draft Grades for every team?"
-          );
-
-
-    if (
-      !confirmed
-    ) {
-      return;
-    }
-
-
     setGenerating(true);
     setMessage("");
     setIsError(false);
@@ -1247,7 +995,7 @@ export default function DraftGradesPage() {
             </Link>
 
 
-            {isCommissioner && (
+            {isCommissioner && teamGrades.length === 0 && (
               <button
                 type="button"
                 onClick={() =>
