@@ -9005,16 +9005,10 @@ function PlayersPanel({
                       ) ? (
                         <span
                           style={styles.playerInjuryText}
-                          title={
-                            player.injuryDetail ??
-                            player.injuryType ??
-                            getInjuryDisplay(player.injuryStatus)?.label
-                          }
                         >
-                          {getInjuryDisplay(player.injuryStatus)?.code}
-                          {(player.injuryType ?? player.injuryLocation ?? player.injuryDetail)
-                            ? ` · ${player.injuryType ?? player.injuryLocation ?? player.injuryDetail}`
-                            : ""}
+                          {getInjuryDisplay(
+                            player.injuryStatus
+                          )?.code}
                         </span>
                       ) : null}
                     </div>
