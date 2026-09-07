@@ -1,5 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 type RouteContext = {
   params: Promise<{
@@ -7,356 +10,270 @@ type RouteContext = {
   }>;
 };
 
-function getBearerToken(
-  request: NextRequest
-): string | null {
-  const header =
-    request.headers.get("authorization");
+type JsonObject = Record<string, unknown>;
 
-  if (!header) {
-    return null;
+function jsonError(
+  error: string,
+  status = 400,
+  details?: unknown
+) {
+  return NextResponse.json(
+    {
+      success: false,
+      error,
+      ...(details !== undefined ? { details } : {}),
+    },
+    { status }
+  );
+}
+
+function createAuthenticatedClient(accessToken: string) {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  const publicKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !publicKey) {
+    throw new Error(
+      "Supabase public configuration is incomplete."
+    );
   }
 
-  const match =
-    header.match(/^Bearer\s+(.+)$/i);
-
-  return match?.[1] ?? null;
+  return createClient(
+    supabaseUrl,
+    publicKey,
+    {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    }
+  );
 }
 
 export async function POST(
-  request: NextRequest,
+  request: Request,
   context: RouteContext
 ) {
   try {
-    const { draftId } =
-      await context.params;
-
-    if (!draftId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Draft ID is required.",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    const token =
-      getBearerToken(request);
-
-    if (!token) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Authentication is required.",
-        },
-        {
-          status: 401,
-        }
-      );
-    }
-
-    const supabaseUrl =
-      process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-    const anonKey =
-      process.env
-        .NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    const serviceRoleKey =
-      process.env
-        .SUPABASE_SERVICE_ROLE_KEY;
+    const authorization =
+      request.headers.get("authorization");
 
     if (
-      !supabaseUrl ||
-      !anonKey ||
-      !serviceRoleKey
+      !authorization?.startsWith("Bearer ")
     ) {
-      console.error(
-        "Draft grades: Supabase environment variables are missing."
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Draft-grade service configuration is incomplete.",
-        },
-        {
-          status: 500,
-        }
+      return jsonError(
+        "Your login session is missing.",
+        401
       );
     }
 
-    // ------------------------------------------------------
-    // AUTH CLIENT
-    // Used only to verify the requesting user.
-    // ------------------------------------------------------
+    const accessToken =
+      authorization.slice("Bearer ".length);
 
-    const authClient =
-      createClient(
-        supabaseUrl,
-        anonKey,
-        {
-          global: {
-            headers: {
-              Authorization:
-                `Bearer ${token}`,
-            },
-          },
-          auth: {
-            persistSession: false,
-            autoRefreshToken: false,
-          },
-        }
+    const { draftId } = await context.params;
+
+    if (!draftId) {
+      return jsonError(
+        "The draft ID is missing.",
+        400
       );
+    }
+
+    const supabase =
+      createAuthenticatedClient(accessToken);
 
     const {
       data: userData,
       error: userError,
-    } =
-      await authClient.auth
-        .getUser(token);
-
-    const user =
-      userData.user;
+    } = await supabase.auth.getUser();
 
     if (
       userError ||
-      !user
+      !userData.user
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Your login session has expired.",
-        },
-        {
-          status: 401,
-        }
+      return jsonError(
+        "Your login session has expired.",
+        401
       );
     }
 
-    // ------------------------------------------------------
-    // ADMIN CLIENT
-    // Never exposed to the browser.
-    // ------------------------------------------------------
-
-    const admin =
-      createClient(
-        supabaseUrl,
-        serviceRoleKey,
-        {
-          auth: {
-            persistSession: false,
-            autoRefreshToken: false,
-          },
-        }
-      );
-
-    // ------------------------------------------------------
-    // LOAD DRAFT
-    // ------------------------------------------------------
+    const userId = userData.user.id;
 
     const {
       data: draft,
       error: draftError,
-    } =
-      await admin
-        .from("league_drafts")
-        .select(`
-          id,
-          league_id,
-          status
-        `)
-        .eq(
-          "id",
-          draftId
-        )
-        .maybeSingle();
+    } = await supabase
+      .from("league_drafts")
+      .select(
+        "id, league_id, season, status"
+      )
+      .eq("id", draftId)
+      .maybeSingle();
 
-    if (
-      draftError ||
-      !draft
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            draftError?.message ??
-            "Draft could not be found.",
-        },
-        {
-          status: 404,
-        }
+    if (draftError) {
+      return jsonError(
+        draftError.message,
+        400
       );
     }
 
-    // ------------------------------------------------------
-    // COMMISSIONER AUTHORIZATION
-    // ------------------------------------------------------
+    if (!draft) {
+      return jsonError(
+        "The draft could not be found.",
+        404
+      );
+    }
+
+    if (draft.status !== "completed") {
+      return jsonError(
+        "The draft must be completed before grades can be generated.",
+        400
+      );
+    }
 
     const {
       data: membership,
       error: membershipError,
-    } =
-      await admin
-        .from("league_members")
-        .select("role")
-        .eq(
-          "league_id",
-          draft.league_id
-        )
-        .eq(
-          "user_id",
-          user.id
-        )
-        .maybeSingle();
+    } = await supabase
+      .from("league_members")
+      .select("role")
+      .eq("league_id", draft.league_id)
+      .eq("user_id", userId)
+      .maybeSingle();
 
-    if (
-      membershipError ||
-      !membership
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "You are not a member of this league.",
-        },
-        {
-          status: 403,
-        }
-      );
-    }
-
-    const isCommissioner =
-      membership.role ===
-        "commissioner" ||
-      membership.role ===
-        "co_commissioner";
-
-    if (!isCommissioner) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Only the commissioner can generate draft grades.",
-        },
-        {
-          status: 403,
-        }
+    if (membershipError) {
+      return jsonError(
+        membershipError.message,
+        400
       );
     }
 
     if (
-      draft.status !==
-      "completed"
+      !membership ||
+      !["commissioner", "co_commissioner"].includes(
+        String(membership.role)
+      )
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "The draft must be completed before grades are generated.",
-        },
-        {
-          status: 409,
-        }
+      return jsonError(
+        "Only a commissioner may generate draft grades.",
+        403
       );
     }
 
-    // ------------------------------------------------------
-    // RUN V4
-    // ------------------------------------------------------
-
+    /*
+     * Draft Grades V4 rebuild order:
+     *
+     * 1. Weekly optimal lineup / starter strength
+     * 2. Per-player draft value / VORP / positional metrics
+     * 3. Final team scores, grades and analysis
+     *
+     * These routines use the league's own commissioner scoring
+     * configuration through the V4 projection foundation.
+     */
     const {
-      data: gradeResult,
-      error: gradeError,
-    } =
-      await admin.rpc(
-        "rebuild_traditional_draft_grade_v4_team_grades",
-        {
-          p_draft_id:
-            draftId,
-        }
-      );
+      data: weeklyResult,
+      error: weeklyError,
+    } = await supabase.rpc(
+      "rebuild_traditional_draft_grade_v4_weekly",
+      {
+        p_draft_id: draftId,
+      }
+    );
 
-    if (gradeError) {
-      console.error(
-        "Draft Grade V4 RPC failed:",
-        gradeError
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            gradeError.message,
-        },
-        {
-          status: 500,
-        }
+    if (weeklyError) {
+      return jsonError(
+        `V4 weekly grade rebuild failed: ${weeklyError.message}`,
+        400
       );
     }
 
-    // ------------------------------------------------------
-    // COUNT FINAL TEAM GRADES
-    // ------------------------------------------------------
+    const {
+      data: playerResult,
+      error: playerError,
+    } = await supabase.rpc(
+      "rebuild_traditional_draft_grade_v4_players",
+      {
+        p_draft_id: draftId,
+      }
+    );
+
+    if (playerError) {
+      return jsonError(
+        `V4 player grade rebuild failed: ${playerError.message}`,
+        400
+      );
+    }
 
     const {
-      count,
+      data: teamResult,
+      error: teamError,
+    } = await supabase.rpc(
+      "rebuild_traditional_draft_grade_v4_team_grades",
+      {
+        p_draft_id: draftId,
+      }
+    );
+
+    if (teamError) {
+      return jsonError(
+        `V4 team grade rebuild failed: ${teamError.message}`,
+        400
+      );
+    }
+
+    const {
+      count: generatedCount,
       error: countError,
-    } =
-      await admin
-        .from(
-          "traditional_draft_grade_v4_team_metrics"
-        )
-        .select(
-          "id",
-          {
-            count: "exact",
-            head: true,
-          }
-        )
-        .eq(
-          "draft_id",
-          draftId
-        );
+    } = await supabase
+      .from(
+        "traditional_draft_grade_v4_team_metrics"
+      )
+      .select(
+        "fantasy_team_id",
+        {
+          count: "exact",
+          head: true,
+        }
+      )
+      .eq("draft_id", draftId);
 
     if (countError) {
-      console.error(
-        "Draft Grade V4 count failed:",
-        countError
+      return jsonError(
+        `Grades were rebuilt, but the result count could not be read: ${countError.message}`,
+        400
       );
     }
 
     return NextResponse.json({
       success: true,
-      engine:
-        "traditional_draft_grade_v4_final",
       generatedCount:
-        count ?? 0,
-      result:
-        gradeResult,
+        generatedCount ?? 0,
+      gradingVersion:
+        "traditional-draft-grade-v4",
+      results: {
+        weekly:
+          weeklyResult as JsonObject | unknown,
+        players:
+          playerResult as JsonObject | unknown,
+        teams:
+          teamResult as JsonObject | unknown,
+      },
     });
   } catch (error) {
-    console.error(
-      "Draft Grade V4 route error:",
-      error
-    );
-
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Draft grades could not be generated.",
-      },
-      {
-        status: 500,
-      }
+    return jsonError(
+      error instanceof Error
+        ? error.message
+        : "Draft grades could not be generated.",
+      500
     );
   }
 }

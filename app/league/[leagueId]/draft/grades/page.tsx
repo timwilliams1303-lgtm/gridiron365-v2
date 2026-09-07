@@ -1300,8 +1300,8 @@ export default function DraftGradesPage() {
                   ? "Running V4..."
                   : teamGrades.length >
                       0
-                    ? "Regenerate V4"
-                    : "Generate V4"}
+                    ? "Generate Grades"
+                    : "Generate Grades"}
               </button>
             )}
           </div>
