@@ -188,6 +188,54 @@ type PoolPlayer = {
 };
 
 
+type PlayerWeekDetail = {
+  week: number;
+  opponentAbbreviation: string | null;
+  homeOrAway: string | null;
+  kickoffAt: string | null;
+  isBye: boolean;
+  projectedPoints: number | null;
+  fantasyPoints: number | null;
+  gameStatus: string | null;
+  isLive: boolean;
+  isFinal: boolean;
+  stats: Record<string, number | string | boolean | null> | null;
+};
+
+
+type PlayerDetailResponse = {
+  success: boolean;
+  error?: string;
+
+  player?: {
+    id: number;
+    fullName: string;
+    position: string;
+    teamAbbreviation: string | null;
+    headshotUrl: string | null;
+    status: string | null;
+  };
+
+  weekly?: PlayerWeekDetail[];
+
+  season?: {
+    gamesPlayed: number;
+    fantasyPoints: number;
+    fantasyPointsPerGame: number;
+    averageProjection: number;
+    totals: Record<string, number>;
+  };
+};
+
+
+type ProfilePlayer = {
+  id: number;
+  name: string;
+  position: string;
+  teamAbbreviation: string | null;
+};
+
+
 type SlotDefinition = {
   slot:
     string;
@@ -542,6 +590,187 @@ function getMatchupDifficulty(
 }
 
 
+function formatPlayerKickoff(
+  value: string | null
+) {
+  if (!value) {
+    return null;
+  }
+
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      timeZone:
+        "America/New_York",
+      weekday:
+        "short",
+      hour:
+        "numeric",
+      minute:
+        "2-digit",
+    }
+  ).format(date);
+}
+
+
+function profileMatchupLabel(
+  row: PlayerWeekDetail
+) {
+  if (row.isBye) {
+    return "BYE";
+  }
+
+  if (!row.opponentAbbreviation) {
+    return "TBD";
+  }
+
+  return `${
+    row.homeOrAway?.toLowerCase() ===
+    "away"
+      ? "@"
+      : "vs"
+  } ${row.opponentAbbreviation}`;
+}
+
+
+function numberStat(
+  stats:
+    PlayerWeekDetail["stats"],
+  key:
+    string
+) {
+  const value =
+    Number(
+      stats?.[key] ??
+      0
+    );
+
+  return Number.isFinite(value)
+    ? value
+    : 0;
+}
+
+
+function weeklyStatSummary(
+  position:
+    string,
+  stats:
+    PlayerWeekDetail["stats"]
+) {
+  if (!stats) {
+    return "No game stats yet";
+  }
+
+  const pos =
+    normalizePosition(
+      position
+    );
+
+  if (pos === "QB") {
+    return `${numberStat(stats, "passing_completions")}/${numberStat(stats, "passing_attempts")} CMP • ${numberStat(stats, "passing_yards")} PASS YDS • ${numberStat(stats, "passing_touchdowns")} PASS TD • ${numberStat(stats, "passing_interceptions")} INT • ${numberStat(stats, "rushing_yards")} RUSH YDS`;
+  }
+
+  if (pos === "RB") {
+    return `${numberStat(stats, "rushing_attempts")} CAR • ${numberStat(stats, "rushing_yards")} RUSH YDS • ${numberStat(stats, "rushing_touchdowns")} RUSH TD • ${numberStat(stats, "receptions")} REC • ${numberStat(stats, "receiving_yards")} REC YDS • ${numberStat(stats, "receiving_touchdowns")} REC TD`;
+  }
+
+  if (
+    pos === "WR" ||
+    pos === "TE"
+  ) {
+    return `${numberStat(stats, "receiving_targets")} TGT • ${numberStat(stats, "receptions")} REC • ${numberStat(stats, "receiving_yards")} REC YDS • ${numberStat(stats, "receiving_touchdowns")} REC TD • ${numberStat(stats, "rushing_yards")} RUSH YDS`;
+  }
+
+  if (pos === "K") {
+    return `${numberStat(stats, "field_goals_made")}/${numberStat(stats, "field_goals_attempted")} FG • ${numberStat(stats, "extra_points_made")}/${numberStat(stats, "extra_points_attempted")} XP`;
+  }
+
+  if (pos === "DST") {
+    return `${numberStat(stats, "dst_sacks")} SACK • ${numberStat(stats, "dst_interceptions")} INT • ${numberStat(stats, "dst_fumble_recoveries")} FR • ${numberStat(stats, "dst_touchdowns")} TD • ${numberStat(stats, "dst_points_allowed")} PA`;
+  }
+
+  return "Stats available";
+}
+
+
+function seasonStatCards(
+  position:
+    string,
+  totals:
+    Record<string, number>
+) {
+  const pos =
+    normalizePosition(
+      position
+    );
+
+  if (pos === "QB") {
+    return [
+      ["PASS YDS", totals.passingYards ?? 0],
+      ["PASS TD", totals.passingTouchdowns ?? 0],
+      ["INT", totals.passingInterceptions ?? 0],
+      ["RUSH YDS", totals.rushingYards ?? 0],
+      ["RUSH TD", totals.rushingTouchdowns ?? 0],
+    ] as Array<[string, number]>;
+  }
+
+  if (pos === "RB") {
+    return [
+      ["RUSH YDS", totals.rushingYards ?? 0],
+      ["RUSH TD", totals.rushingTouchdowns ?? 0],
+      ["REC", totals.receptions ?? 0],
+      ["REC YDS", totals.receivingYards ?? 0],
+      ["REC TD", totals.receivingTouchdowns ?? 0],
+    ] as Array<[string, number]>;
+  }
+
+  if (
+    pos === "WR" ||
+    pos === "TE"
+  ) {
+    return [
+      ["TGT", totals.receivingTargets ?? 0],
+      ["REC", totals.receptions ?? 0],
+      ["REC YDS", totals.receivingYards ?? 0],
+      ["REC TD", totals.receivingTouchdowns ?? 0],
+      ["RUSH YDS", totals.rushingYards ?? 0],
+    ] as Array<[string, number]>;
+  }
+
+  if (pos === "K") {
+    return [
+      ["FG", totals.fieldGoalsMade ?? 0],
+      ["FGA", totals.fieldGoalsAttempted ?? 0],
+      ["XP", totals.extraPointsMade ?? 0],
+      ["XPA", totals.extraPointsAttempted ?? 0],
+    ] as Array<[string, number]>;
+  }
+
+  if (pos === "DST") {
+    return [
+      ["SACK", totals.dstSacks ?? 0],
+      ["INT", totals.dstInterceptions ?? 0],
+      ["FR", totals.dstFumbleRecoveries ?? 0],
+      ["TD", totals.dstTouchdowns ?? 0],
+      ["PA", totals.dstPointsAllowed ?? 0],
+    ] as Array<[string, number]>;
+  }
+
+  return [] as Array<[string, number]>;
+}
+
+
 function buildSlots(
   settings:
     Settings
@@ -780,6 +1009,42 @@ export default function SeasonLongWeeklyLineup({
     useState<string | null>(null);
 
 
+  const [
+    profilePlayer,
+    setProfilePlayer,
+  ] =
+    useState<
+      ProfilePlayer | null
+    >(
+      null
+    );
+
+
+  const [
+    playerDetail,
+    setPlayerDetail,
+  ] =
+    useState<
+      PlayerDetailResponse | null
+    >(
+      null
+    );
+
+
+  const [
+    playerDetailLoading,
+    setPlayerDetailLoading,
+  ] =
+    useState(false);
+
+
+  const [
+    playerDetailError,
+    setPlayerDetailError,
+  ] =
+    useState("");
+
+
   const isSalary =
     playerSelectionMode ===
     "salary";
@@ -969,6 +1234,89 @@ export default function SeasonLongWeeklyLineup({
         0,
         250
       );
+
+
+  async function openPlayerProfile(
+    player:
+      ProfilePlayer
+  ) {
+    setProfilePlayer(
+      player
+    );
+
+    setPlayerDetail(
+      null
+    );
+
+    setPlayerDetailError(
+      ""
+    );
+
+    setPlayerDetailLoading(
+      true
+    );
+
+    try {
+      const response =
+        await fetch(
+          `/api/league/${leagueId}/season-long/players/${player.id}/stats?season=${season}`,
+          {
+            cache:
+              "no-store",
+          }
+        );
+
+      const data =
+        (
+          await response.json()
+        ) as PlayerDetailResponse;
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ??
+          "Player stats could not be loaded."
+        );
+      }
+
+      setPlayerDetail(
+        data
+      );
+    } catch (
+      error
+    ) {
+      setPlayerDetailError(
+        error instanceof Error
+          ? error.message
+          : "Player stats could not be loaded."
+      );
+    } finally {
+      setPlayerDetailLoading(
+        false
+      );
+    }
+  }
+
+
+  function closePlayerProfile() {
+    setProfilePlayer(
+      null
+    );
+
+    setPlayerDetail(
+      null
+    );
+
+    setPlayerDetailError(
+      ""
+    );
+
+    setPlayerDetailLoading(
+      false
+    );
+  }
 
 
   async function addPlayer(
@@ -1617,6 +1965,427 @@ export default function SeasonLongWeeklyLineup({
         />
 
 
+        {profilePlayer ? (
+          <div
+            style={
+              styles.modalBackdrop
+            }
+            role="presentation"
+            onMouseDown={(
+              event
+            ) => {
+              if (
+                event.target ===
+                event.currentTarget
+              ) {
+                closePlayerProfile();
+              }
+            }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="season-long-player-profile-title"
+              style={
+                styles.modalCard
+              }
+            >
+              <div
+                style={
+                  styles.modalHeader
+                }
+              >
+                <div>
+                  <span
+                    style={
+                      styles.modalEyebrow
+                    }
+                  >
+                    PLAYER PROFILE
+                  </span>
+
+                  <strong
+                    id="season-long-player-profile-title"
+                    style={
+                      styles.modalTitle
+                    }
+                  >
+                    {playerDetail
+                      ?.player
+                      ?.fullName ??
+                      profilePlayer.name}
+                  </strong>
+
+                  <span
+                    style={
+                      styles.modalMeta
+                    }
+                  >
+                    {normalizePosition(
+                      playerDetail
+                        ?.player
+                        ?.position ??
+                        profilePlayer.position
+                    )}
+
+                    {(playerDetail
+                      ?.player
+                      ?.teamAbbreviation ??
+                      profilePlayer.teamAbbreviation)
+                      ? ` • ${
+                          playerDetail
+                            ?.player
+                            ?.teamAbbreviation ??
+                          profilePlayer.teamAbbreviation
+                        }`
+                      : ""}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={
+                    closePlayerProfile
+                  }
+                  style={
+                    styles.modalCloseButton
+                  }
+                  aria-label="Close player profile"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div
+                className="g365-season-player-profile-scroll"
+                style={
+                  styles.modalBody
+                }
+              >
+                {playerDetailLoading ? (
+                  <div
+                    style={
+                      styles.profileMessage
+                    }
+                  >
+                    Loading weekly and season stats…
+                  </div>
+                ) : playerDetailError ? (
+                  <div
+                    style={
+                      styles.profileError
+                    }
+                  >
+                    {playerDetailError}
+                  </div>
+                ) : playerDetail
+                    ?.season ? (
+                  <>
+                    <section
+                      style={
+                        styles.profileSection
+                      }
+                    >
+                      <div
+                        style={
+                          styles.profileSectionHeader
+                        }
+                      >
+                        <div>
+                          <strong
+                            style={
+                              styles.profileSectionTitle
+                            }
+                          >
+                            {season} Season Stats
+                          </strong>
+
+                          <span
+                            style={
+                              styles.profileSectionSubtitle
+                            }
+                          >
+                            Actual fantasy points use this Season-Long league&apos;s scoring settings.
+                          </span>
+                        </div>
+                      </div>
+
+                      <div
+                        style={
+                          styles.profileSummaryGrid
+                        }
+                      >
+                        <div
+                          style={
+                            styles.profileSummaryCard
+                          }
+                        >
+                          <span>
+                            FANTASY PTS
+                          </span>
+
+                          <strong>
+                            {formatPoints(
+                              playerDetail
+                                .season
+                                .fantasyPoints
+                            )}
+                          </strong>
+                        </div>
+
+                        <div
+                          style={
+                            styles.profileSummaryCard
+                          }
+                        >
+                          <span>
+                            GAMES
+                          </span>
+
+                          <strong>
+                            {playerDetail
+                              .season
+                              .gamesPlayed}
+                          </strong>
+                        </div>
+
+                        <div
+                          style={
+                            styles.profileSummaryCard
+                          }
+                        >
+                          <span>
+                            FPTS/G
+                          </span>
+
+                          <strong>
+                            {formatPoints(
+                              playerDetail
+                                .season
+                                .fantasyPointsPerGame
+                            )}
+                          </strong>
+                        </div>
+
+                        <div
+                          style={
+                            styles.profileSummaryCard
+                          }
+                        >
+                          <span>
+                            AVG PROJ
+                          </span>
+
+                          <strong>
+                            {formatPoints(
+                              playerDetail
+                                .season
+                                .averageProjection
+                            )}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div
+                        style={
+                          styles.profileStatGrid
+                        }
+                      >
+                        {seasonStatCards(
+                          playerDetail
+                            .player
+                            ?.position ??
+                            profilePlayer.position,
+                          playerDetail
+                            .season
+                            .totals
+                        ).map(
+                          (
+                            [
+                              label,
+                              value,
+                            ]
+                          ) => (
+                            <div
+                              key={
+                                label
+                              }
+                              style={
+                                styles.profileStatCard
+                              }
+                            >
+                              <span>
+                                {label}
+                              </span>
+
+                              <strong>
+                                {value}
+                              </strong>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </section>
+
+                    <section
+                      style={
+                        styles.profileSection
+                      }
+                    >
+                      <div
+                        style={
+                          styles.profileSectionHeader
+                        }
+                      >
+                        <div>
+                          <strong
+                            style={
+                              styles.profileSectionTitle
+                            }
+                          >
+                            Weekly Stats
+                          </strong>
+
+                          <span
+                            style={
+                              styles.profileSectionSubtitle
+                            }
+                          >
+                            Scroll up and down to view every available week.
+                          </span>
+                        </div>
+                      </div>
+
+                      <div
+                        className="g365-season-weekly-stats-scroll"
+                        style={
+                          styles.weeklyStatsWrap
+                        }
+                      >
+                        <div
+                          style={
+                            styles.weeklyStatsHeader
+                          }
+                        >
+                          <span>
+                            WEEK
+                          </span>
+
+                          <span>
+                            GAME
+                          </span>
+
+                          <span>
+                            PROJ
+                          </span>
+
+                          <span>
+                            FPTS
+                          </span>
+                        </div>
+
+                        {(playerDetail
+                          .weekly ??
+                          []).length >
+                        0 ? (
+                          (
+                            playerDetail
+                              .weekly ??
+                            []
+                          ).map(
+                            (
+                              row
+                            ) => (
+                              <div
+                                key={
+                                  row.week
+                                }
+                                style={
+                                  styles.weeklyStatRow
+                                }
+                              >
+                                <strong>
+                                  {row.week}
+                                </strong>
+
+                                <div
+                                  style={
+                                    styles.weeklyGameCell
+                                  }
+                                >
+                                  <strong>
+                                    {profileMatchupLabel(
+                                      row
+                                    )}
+                                  </strong>
+
+                                  <span>
+                                    {formatPlayerKickoff(
+                                      row.kickoffAt
+                                    ) ??
+                                      (row.isBye
+                                        ? "BYE"
+                                        : "Time TBD")}
+                                  </span>
+
+                                  <small>
+                                    {weeklyStatSummary(
+                                      playerDetail
+                                        .player
+                                        ?.position ??
+                                        profilePlayer.position,
+                                      row.stats
+                                    )}
+                                  </small>
+                                </div>
+
+                                <strong>
+                                  {row.projectedPoints ===
+                                  null
+                                    ? "—"
+                                    : formatPoints(
+                                        row.projectedPoints
+                                      )}
+                                </strong>
+
+                                <strong>
+                                  {row.fantasyPoints ===
+                                  null
+                                    ? "—"
+                                    : formatPoints(
+                                        row.fantasyPoints
+                                      )}
+                                </strong>
+                              </div>
+                            )
+                          )
+                        ) : (
+                          <div
+                            style={
+                              styles.profileMessage
+                            }
+                          >
+                            No weekly stats are available yet.
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                  </>
+                ) : (
+                  <div
+                    style={
+                      styles.profileMessage
+                    }
+                  >
+                    Player stats are not available yet.
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+
         <section
           style={
             styles.workspace
@@ -1719,9 +2488,50 @@ export default function SeasonLongWeeklyLineup({
                               styles.playerIdentity
                             }
                           >
-                            <strong>
-                              {player.name}
-                            </strong>
+                            <div
+                              style={
+                                styles.playerNameLine
+                              }
+                            >
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void openPlayerProfile(
+                                    {
+                                      id:
+                                        player.playerId,
+                                      name:
+                                        player.name,
+                                      position:
+                                        player.position,
+                                      teamAbbreviation:
+                                        player.teamAbbreviation,
+                                    }
+                                  )
+                                }
+                                style={
+                                  styles.playerNameButton
+                                }
+                                title={`View ${player.name} weekly and season stats`}
+                              >
+                                {player.name}
+                              </button>
+
+                              <InjuryReportButton
+                                status={
+                                  player.injuryStatus
+                                }
+                                injuryType={
+                                  player.injuryType
+                                }
+                                injuryDetail={
+                                  player.injuryDetail
+                                }
+                                playerName={
+                                  player.name
+                                }
+                              />
+                            </div>
 
                             <span>
                               {normalizePosition(
@@ -1761,28 +2571,6 @@ export default function SeasonLongWeeklyLineup({
                                 </>
                               ) : ""}
                             </span>
-
-                            {(() => {
-                              const injury =
-                                getInjuryDisplay(
-                                  player.injuryStatus,
-                                  player.injuryType,
-                                  player.injuryDetail
-                                );
-
-                              if (!injury) {
-                                return null;
-                              }
-
-                              return (
-                                <InjuryReportButton
-                                  status={player.injuryStatus}
-                                  injuryType={player.injuryType}
-                                  injuryDetail={player.injuryDetail}
-                                  playerName={player.name}
-                                />
-                              );
-                            })()}
                           </div>
 
 
@@ -2114,9 +2902,50 @@ export default function SeasonLongWeeklyLineup({
                             styles.poolIdentity
                           }
                         >
-                          <strong>
-                            {player.name}
-                          </strong>
+                          <div
+                            style={
+                              styles.playerNameLine
+                            }
+                          >
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void openPlayerProfile(
+                                  {
+                                    id:
+                                      player.id,
+                                    name:
+                                      player.name,
+                                    position:
+                                      player.position,
+                                    teamAbbreviation:
+                                      player.teamAbbreviation,
+                                  }
+                                )
+                              }
+                              style={
+                                styles.playerNameButton
+                              }
+                              title={`View ${player.name} weekly and season stats`}
+                            >
+                              {player.name}
+                            </button>
+
+                            <InjuryReportButton
+                              status={
+                                player.injuryStatus
+                              }
+                              injuryType={
+                                player.injuryType
+                              }
+                              injuryDetail={
+                                player.injuryDetail
+                              }
+                              playerName={
+                                player.name
+                              }
+                            />
+                          </div>
 
                           <span>
                             {normalizePosition(
@@ -2154,28 +2983,6 @@ export default function SeasonLongWeeklyLineup({
                               </>
                             )}
                           </span>
-
-                          {(() => {
-                            const injury =
-                              getInjuryDisplay(
-                                player.injuryStatus,
-                                player.injuryType,
-                                player.injuryDetail
-                              );
-
-                            if (!injury) {
-                              return null;
-                            }
-
-                            return (
-                              <InjuryReportButton
-                                status={player.injuryStatus}
-                                injuryType={player.injuryType}
-                                injuryDetail={player.injuryDetail}
-                                playerName={player.name}
-                              />
-                            );
-                          })()}
                         </div>
 
 
@@ -2673,6 +3480,57 @@ const styles = {
     letterSpacing:
       ".04em",
   },
+
+  playerNameLine: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "7px",
+
+    flexWrap:
+      "wrap" as const,
+
+    minWidth:
+      0,
+  },
+
+
+  playerNameButton: {
+    appearance:
+      "none" as const,
+
+    border:
+      0,
+
+    padding:
+      0,
+
+    margin:
+      0,
+
+    background:
+      "transparent",
+
+    color:
+      "#ffffff",
+
+    cursor:
+      "pointer",
+
+    font:
+      "inherit",
+
+    fontWeight:
+      900,
+
+    textAlign:
+      "left" as const,
+  },
+
 
   playerIdentity: {
     minWidth:
@@ -3259,6 +4117,471 @@ const styles = {
     fontSize:
       "12px",
   },
+
+  modalBackdrop: {
+    position:
+      "fixed" as const,
+
+    inset:
+      0,
+
+    zIndex:
+      1000,
+
+    display:
+      "grid",
+
+    placeItems:
+      "center",
+
+    padding:
+      "20px",
+
+    background:
+      "rgba(0,0,0,.78)",
+
+    backdropFilter:
+      "blur(7px)",
+  },
+
+
+  modalCard: {
+    width:
+      "min(920px,100%)",
+
+    height:
+      "min(820px,calc(100dvh - 40px))",
+
+    overflow:
+      "hidden",
+
+    display:
+      "flex",
+
+    flexDirection:
+      "column" as const,
+
+    border:
+      "1px solid rgba(255,112,0,.28)",
+
+    borderRadius:
+      "14px",
+
+    background:
+      "#101113",
+
+    boxShadow:
+      "0 28px 80px rgba(0,0,0,.55)",
+  },
+
+
+  modalHeader: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "space-between",
+
+    gap:
+      "16px",
+
+    padding:
+      "16px 18px",
+
+    borderBottom:
+      "1px solid rgba(255,255,255,.08)",
+
+    background:
+      "#111214",
+  },
+
+
+  modalEyebrow: {
+    display:
+      "block",
+
+    color:
+      "#ff7a18",
+
+    fontSize:
+      "9px",
+
+    fontWeight:
+      900,
+
+    letterSpacing:
+      ".12em",
+  },
+
+
+  modalTitle: {
+    display:
+      "block",
+
+    marginTop:
+      "3px",
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "21px",
+  },
+
+
+  modalMeta: {
+    display:
+      "block",
+
+    marginTop:
+      "3px",
+
+    color:
+      "#9199a5",
+
+    fontSize:
+      "11px",
+
+    fontWeight:
+      800,
+  },
+
+
+  modalCloseButton: {
+    width:
+      "38px",
+
+    height:
+      "38px",
+
+    border:
+      "1px solid rgba(255,255,255,.10)",
+
+    borderRadius:
+      "9px",
+
+    background:
+      "#17181b",
+
+    color:
+      "#ffffff",
+
+    cursor:
+      "pointer",
+
+    fontSize:
+      "23px",
+
+    lineHeight:
+      1,
+  },
+
+
+  modalBody: {
+    minHeight:
+      0,
+
+    flex:
+      "1 1 auto",
+
+    overflowY:
+      "scroll" as const,
+
+    scrollbarGutter:
+      "stable",
+
+    overscrollBehavior:
+      "contain" as const,
+
+    padding:
+      "16px",
+
+    display:
+      "grid",
+
+    gap:
+      "16px",
+  },
+
+
+  profileMessage: {
+    padding:
+      "18px",
+
+    color:
+      "#9ca3ad",
+
+    fontSize:
+      "12px",
+  },
+
+
+  profileError: {
+    padding:
+      "14px",
+
+    border:
+      "1px solid rgba(255,70,70,.25)",
+
+    borderRadius:
+      "9px",
+
+    background:
+      "rgba(255,40,40,.06)",
+
+    color:
+      "#ff7474",
+
+    fontSize:
+      "12px",
+  },
+
+
+  profileSection: {
+    display:
+      "grid",
+
+    gap:
+      "12px",
+  },
+
+
+  profileSectionHeader: {
+    display:
+      "flex",
+
+    alignItems:
+      "flex-end",
+
+    justifyContent:
+      "space-between",
+
+    gap:
+      "12px",
+  },
+
+
+  profileSectionTitle: {
+    display:
+      "block",
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "15px",
+  },
+
+
+  profileSectionSubtitle: {
+    display:
+      "block",
+
+    marginTop:
+      "3px",
+
+    color:
+      "#858d99",
+
+    fontSize:
+      "10px",
+  },
+
+
+  profileSummaryGrid: {
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(125px,1fr))",
+
+    gap:
+      "8px",
+  },
+
+
+  profileSummaryCard: {
+    padding:
+      "11px",
+
+    display:
+      "grid",
+
+    gap:
+      "4px",
+
+    border:
+      "1px solid rgba(255,255,255,.075)",
+
+    borderRadius:
+      "9px",
+
+    background:
+      "#151619",
+
+    color:
+      "#8f96a2",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      900,
+
+    letterSpacing:
+      ".06em",
+  },
+
+
+  profileStatGrid: {
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(110px,1fr))",
+
+    gap:
+      "8px",
+  },
+
+
+  profileStatCard: {
+    padding:
+      "10px",
+
+    display:
+      "grid",
+
+    gap:
+      "3px",
+
+    border:
+      "1px solid rgba(255,122,24,.15)",
+
+    borderRadius:
+      "8px",
+
+    background:
+      "rgba(255,122,24,.045)",
+
+    color:
+      "#9da4ae",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      900,
+  },
+
+
+  weeklyStatsWrap: {
+    maxHeight:
+      "430px",
+
+    overflowY:
+      "scroll" as const,
+
+    scrollbarGutter:
+      "stable",
+
+    overscrollBehavior:
+      "contain" as const,
+
+    border:
+      "1px solid rgba(255,255,255,.07)",
+
+    borderRadius:
+      "10px",
+
+    background:
+      "#0d0e10",
+  },
+
+
+  weeklyStatsHeader: {
+    position:
+      "sticky" as const,
+
+    top:
+      0,
+
+    zIndex:
+      2,
+
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "52px minmax(0,1fr) 70px 70px",
+
+    gap:
+      "10px",
+
+    padding:
+      "9px 10px",
+
+    background:
+      "#101113",
+
+    borderBottom:
+      "1px solid rgba(255,255,255,.08)",
+
+    color:
+      "#727b87",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      900,
+
+    letterSpacing:
+      ".08em",
+  },
+
+
+  weeklyStatRow: {
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "52px minmax(0,1fr) 70px 70px",
+
+    alignItems:
+      "center",
+
+    gap:
+      "10px",
+
+    padding:
+      "10px",
+
+    borderBottom:
+      "1px solid rgba(255,255,255,.055)",
+
+    color:
+      "#ffffff",
+
+    fontSize:
+      "11px",
+  },
+
+
+  weeklyGameCell: {
+    minWidth:
+      0,
+
+    display:
+      "grid",
+
+    gap:
+      "2px",
+  },
+
 
   matchupHard: {
     color: "#ff6464",
