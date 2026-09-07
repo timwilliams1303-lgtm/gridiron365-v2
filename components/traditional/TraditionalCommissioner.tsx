@@ -54,30 +54,49 @@ type RosterSettings = {
 
 type Scoring = {
   league_id: string;
-  passing_yards_per_point: number | string;
+
+  passing_yard_points: number | string;
+  passing_yards_per_point?: number | string;
   passing_td_points: number | string;
   passing_interception_points: number | string;
   passing_two_point_points: number | string;
   passing_completion_points: number | string;
   passing_incompletion_points: number | string;
-  rushing_yards_per_point: number | string;
+
+  rushing_yard_points: number | string;
+  rushing_yards_per_point?: number | string;
   rushing_td_points: number | string;
   rushing_two_point_points: number | string;
   rushing_attempt_points: number | string;
-  receiving_yards_per_point: number | string;
+
+  receiving_yard_points: number | string;
+  receiving_yards_per_point?: number | string;
   receiving_td_points: number | string;
   receiving_two_point_points: number | string;
   reception_points: number | string;
   receiving_target_points: number | string;
+
   passing_first_down_points: number | string;
   rushing_first_down_points: number | string;
   receiving_first_down_points: number | string;
+
   fumble_points: number | string;
   fumble_lost_points: number | string;
+
   extra_point_made_points: number | string;
   extra_point_missed_points: number | string;
   field_goal_missed_points: number | string;
+
+  field_goal_0_19_points: number | string;
+  field_goal_20_29_points: number | string;
+  field_goal_30_39_points: number | string;
+  field_goal_40_49_points: number | string;
+  field_goal_50_59_points: number | string;
+  field_goal_60_plus_points: number | string;
+
   dst_sack_points: number | string;
+  dst_total_tackle_points: number | string;
+  dst_tackle_for_loss_points: number | string;
   dst_interception_points: number | string;
   dst_fumble_recovery_points: number | string;
   dst_touchdown_points: number | string;
@@ -85,11 +104,29 @@ type Scoring = {
   dst_blocked_kick_points: number | string;
   dst_return_touchdown_points: number | string;
   dst_extra_point_return_points: number | string;
+
+  dst_points_allowed_0_points: number | string;
+  dst_points_allowed_1_6_points: number | string;
+  dst_points_allowed_7_13_points: number | string;
+  dst_points_allowed_14_20_points: number | string;
+  dst_points_allowed_21_27_points: number | string;
+  dst_points_allowed_28_34_points: number | string;
+  dst_points_allowed_35_plus_points: number | string;
+
+  dst_yards_allowed_0_99_points: number | string;
+  dst_yards_allowed_100_199_points: number | string;
+  dst_yards_allowed_200_299_points: number | string;
+  dst_yards_allowed_300_399_points: number | string;
+  dst_yards_allowed_400_449_points: number | string;
+  dst_yards_allowed_450_499_points: number | string;
+  dst_yards_allowed_500_plus_points: number | string;
+
   kick_return_yards_per_point: number | string | null;
   punt_return_yards_per_point: number | string | null;
   kick_return_td_points: number | string;
   punt_return_td_points: number | string;
   offensive_fumble_recovery_td_points: number | string;
+
   fractional_scoring_enabled: boolean;
   decimal_places: number;
 };
@@ -241,7 +278,7 @@ const scoringGroups: Record<
   passing: {
     label: "Passing",
     baseFields: [
-      ["passing_yards_per_point", "Passing Yards Per Point"],
+      ["passing_yard_points", "Points Per Passing Yard"],
       ["passing_td_points", "Passing TD"],
       ["passing_interception_points", "Passing Interception"],
       ["passing_two_point_points", "Passing 2PT"],
@@ -264,7 +301,7 @@ const scoringGroups: Record<
   rushing: {
     label: "Rushing",
     baseFields: [
-      ["rushing_yards_per_point", "Rushing Yards Per Point"],
+      ["rushing_yard_points", "Points Per Rushing Yard"],
       ["rushing_td_points", "Rushing TD"],
       ["rushing_two_point_points", "Rushing 2PT"],
       ["rushing_attempt_points", "Rushing Attempt"],
@@ -283,7 +320,7 @@ const scoringGroups: Record<
   receiving: {
     label: "Receiving",
     baseFields: [
-      ["receiving_yards_per_point", "Receiving Yards Per Point"],
+      ["receiving_yard_points", "Points Per Receiving Yard"],
       ["receiving_td_points", "Receiving TD"],
       ["receiving_two_point_points", "Receiving 2PT"],
       ["reception_points", "Reception"],
@@ -307,6 +344,12 @@ const scoringGroups: Record<
       ["extra_point_made_points", "Extra Point Made"],
       ["extra_point_missed_points", "Extra Point Missed"],
       ["field_goal_missed_points", "Field Goal Missed"],
+      ["field_goal_0_19_points", "Field Goal 0–19 Yards"],
+      ["field_goal_20_29_points", "Field Goal 20–29 Yards"],
+      ["field_goal_30_39_points", "Field Goal 30–39 Yards"],
+      ["field_goal_40_49_points", "Field Goal 40–49 Yards"],
+      ["field_goal_50_59_points", "Field Goal 50–59 Yards"],
+      ["field_goal_60_plus_points", "Field Goal 60+ Yards"],
     ],
     bonusStats: [
       ["field_goals_made", "Field Goals Made — total"],
@@ -326,6 +369,8 @@ const scoringGroups: Record<
     label: "Defense / DST",
     baseFields: [
       ["dst_sack_points", "DST Sack"],
+      ["dst_total_tackle_points", "DST Total Tackle"],
+      ["dst_tackle_for_loss_points", "DST Tackle For Loss"],
       ["dst_interception_points", "DST Interception"],
       ["dst_fumble_recovery_points", "DST Fumble Recovery"],
       ["dst_touchdown_points", "DST Touchdown"],
@@ -333,6 +378,22 @@ const scoringGroups: Record<
       ["dst_blocked_kick_points", "DST Blocked Kick"],
       ["dst_return_touchdown_points", "DST Return TD"],
       ["dst_extra_point_return_points", "DST Extra Point Return"],
+
+      ["dst_points_allowed_0_points", "DST Points Allowed: 0"],
+      ["dst_points_allowed_1_6_points", "DST Points Allowed: 1–6"],
+      ["dst_points_allowed_7_13_points", "DST Points Allowed: 7–13"],
+      ["dst_points_allowed_14_20_points", "DST Points Allowed: 14–20"],
+      ["dst_points_allowed_21_27_points", "DST Points Allowed: 21–27"],
+      ["dst_points_allowed_28_34_points", "DST Points Allowed: 28–34"],
+      ["dst_points_allowed_35_plus_points", "DST Points Allowed: 35+"],
+
+      ["dst_yards_allowed_0_99_points", "DST Yards Allowed: 0–99"],
+      ["dst_yards_allowed_100_199_points", "DST Yards Allowed: 100–199"],
+      ["dst_yards_allowed_200_299_points", "DST Yards Allowed: 200–299"],
+      ["dst_yards_allowed_300_399_points", "DST Yards Allowed: 300–399"],
+      ["dst_yards_allowed_400_449_points", "DST Yards Allowed: 400–449"],
+      ["dst_yards_allowed_450_499_points", "DST Yards Allowed: 450–499"],
+      ["dst_yards_allowed_500_plus_points", "DST Yards Allowed: 500+"],
     ],
     bonusStats: [
       ["dst_points_allowed", "DST Points Allowed — threshold/range"],
@@ -582,7 +643,7 @@ export default function TraditionalCommissioner({
       supabase.from("fantasy_teams").select("*").eq("league_id", leagueId).order("team_name"),
       supabase.from("league_members").select("id,user_id,role").eq("league_id", leagueId).order("joined_at"),
       supabase.from("team_rosters").select("id,fantasy_team_id,player_id,acquired_via").eq("league_id", leagueId),
-      supabase.from("nfl_players").select("id,full_name,primary_position,team_abbreviation,is_active").eq("is_active", true),
+      supabase.from("nfl_players").select("id,full_name,primary_position,team_abbreviation,is_active"),
       supabase.from("league_scoring_rules").select("id,league_id,category,rule_type,stat_key,min_value,max_value,points,is_enabled,stacking_mode,priority,label").eq("league_id", leagueId).order("category").order("priority"),
       supabase.from("traditional_waiver_claims").select("*").eq("league_id", leagueId).order("submitted_at", { ascending: false }).limit(100),
       supabase.from("traditional_trade_offers").select("*").eq("league_id", leagueId).order("created_at", { ascending: false }).limit(100),
@@ -922,30 +983,6 @@ export default function TraditionalCommissioner({
     router.push(`/league/${leagueId}/draft`);
   }
 
-  async function resetDraftNow() {
-    if (!draft || saving) return;
-
-    const firstConfirm = window.confirm(
-      "Reset this draft and start over?\n\nThis will clear every draft pick, remove roster/lineup entries created by this draft, reset the clock, and return the draft to Round 1 Pick 1. Draft settings and draft order will be preserved."
-    );
-
-    if (!firstConfirm) return;
-
-    const finalConfirm = window.confirm(
-      "FINAL CONFIRMATION\n\nThis cannot be undone. Reset the current Traditional draft now?"
-    );
-
-    if (!finalConfirm) return;
-
-    await action(
-      () =>
-        supabase.rpc("commissioner_reset_traditional_draft", {
-          p_draft_id: draft.id,
-        }),
-      "Draft reset complete. All picks were cleared and the draft is ready to start again."
-    );
-  }
-
   async function sendTeamInvite(team: Team) {
     if (!league || invitingTeamId !== null) return;
 
@@ -967,7 +1004,7 @@ export default function TraditionalCommissioner({
       const token = sessionResult.data.session?.access_token;
       if (!token) throw new Error("Your login session is missing. Sign in again and retry.");
 
-      const response = await fetch(`/api/leagues/${league.id}/invite`, {
+      const response = await fetch(`/api/league/${league.id}/invite`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1608,22 +1645,6 @@ export default function TraditionalCommissioner({
               </Button>
             </div>
 
-            <div style={styles.resetDraftPanel}>
-              <div>
-                <div style={styles.resetDraftTitle}>RESET DRAFT</div>
-                <p style={styles.sectionSub}>
-                  Clear every pick and draft-created roster/lineup entry, reset the clock, and return to Round 1 Pick 1. Draft settings and draft order are preserved.
-                </p>
-              </div>
-              <Button
-                danger
-                disabled={saving}
-                onClick={() => void resetDraftNow()}
-              >
-                ↻ RESET DRAFT & START OVER
-              </Button>
-            </div>
-
             <div style={styles.actions}>
               <Button
                 disabled={saving || Boolean(draft.started_at)}
@@ -1830,7 +1851,7 @@ export default function TraditionalCommissioner({
                 return (
                   <div key={row.id} style={styles.rosterRow}>
                     <div>
-                      <strong>{p?.full_name ?? `Player ${row.player_id}`}</strong>
+                      <strong>{p?.full_name ?? "Player name unavailable"}</strong>
                       <div style={styles.muted}>{p?.primary_position ?? "—"} • {p?.team_abbreviation ?? "FA"} • {pretty(row.acquired_via)}</div>
                     </div>
                     <select
@@ -2067,12 +2088,39 @@ export default function TraditionalCommissioner({
                 disabled={saving}
                 onClick={() =>
                   void action(
-                    () => supabase.rpc("generate_traditional_regular_season_schedule", { p_league_id: leagueId }),
-                    "Schedule generated."
+                    () =>
+                      supabase.rpc("reset_traditional_balanced_schedule", {
+                        p_league_id: leagueId,
+                      }),
+                    "Balanced regular-season schedule generated."
                   )
                 }
               >
-                GENERATE SCHEDULE
+                GENERATE / RESET BALANCED SCHEDULE
+              </Button>
+
+              <Button
+                disabled={saving}
+                onClick={() =>
+                  void action(
+                    () =>
+                      supabase.rpc("randomize_traditional_schedule", {
+                        p_league_id: leagueId,
+                      }),
+                    "Regular-season schedule randomized."
+                  )
+                }
+              >
+                RANDOMIZE FULL SCHEDULE
+              </Button>
+
+              <Button
+                disabled={saving}
+                onClick={() =>
+                  router.push(`/league/${leagueId}/commissioner/schedule`)
+                }
+              >
+                MANUAL SCHEDULE BUILDER
               </Button>
               <Button
                 disabled={saving}
@@ -2101,7 +2149,7 @@ export default function TraditionalCommissioner({
                 AUTO-ADVANCE WEEK
               </Button>
             </div>
-            <div style={styles.warning}>Season actions affect the league. Use them only after the week's results are ready.</div>
+            <div style={styles.warning}>A balanced schedule should exist before Week 1. The commissioner can randomize the full unlocked schedule or open the Manual Schedule Builder to set matchups week by week. Live/final weeks remain protected.</div>
           </Section>
         ) : null}
 
@@ -2295,8 +2343,6 @@ const styles: Record<string, React.CSSProperties> = {
   draftSlotNumber: { color: "#ff7035", fontSize: "10px", fontWeight: 950, letterSpacing: ".06em" },
   commissionerNotice: { display: "flex", flexDirection: "column", gap: "4px", marginTop: "14px", padding: "12px", border: "1px solid rgba(255,95,35,.35)", borderRadius: "9px", background: "rgba(165,45,15,.08)", color: "#d9c3b8", fontSize: "12px" },
   startDraftPanel: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", marginTop: "14px", padding: "15px", border: "1px solid rgba(255,255,255,.08)", borderRadius: "10px", background: "rgba(255,255,255,.018)" },
-  resetDraftPanel: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", marginTop: "14px", padding: "15px", border: "1px solid rgba(255,75,75,.24)", borderRadius: "10px", background: "rgba(145,20,20,.10)" },
-  resetDraftTitle: { color: "#ff7b72", fontSize: "12px", fontWeight: 950, letterSpacing: ".09em", marginBottom: "6px" },
   inviteGrid: { display: "grid", gridTemplateColumns: "repeat(3,minmax(180px,1fr)) auto", gap: "10px", alignItems: "end" },
   inviteButtonWrap: { display: "flex", alignItems: "end" },
   teamRowExpanded: { display: "grid", gridTemplateColumns: "36px minmax(180px,1.2fr) minmax(220px,1.2fr) minmax(180px,.8fr) 100px auto", gap: "9px", alignItems: "center", padding: "10px", border: "1px solid rgba(255,255,255,.07)", borderRadius: "9px", background: "rgba(255,255,255,.018)" },

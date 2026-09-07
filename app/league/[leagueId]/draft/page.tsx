@@ -10815,6 +10815,14 @@ function DraftBoardPanel({
                         ...(mine
                           ? styles.boardCellMine
                           : {}),
+
+                        ...(draft.status === "completed" &&
+                        pick &&
+                        player
+                          ? completedDraftBoardCellStyle(
+                              player.primary_position
+                            )
+                          : {}),
                       }}
                     >
                       <span
@@ -11273,6 +11281,64 @@ function RosterGroups({
       </div>
     </div>
   );
+}
+
+
+function completedDraftBoardCellStyle(
+  position: string
+) {
+  const normalized =
+    position
+      .trim()
+      .toUpperCase();
+
+  if (normalized === "QB") {
+    return {
+      background:
+        "linear-gradient(135deg,rgba(255,179,57,.24),rgba(255,179,57,.10))",
+      boxShadow:
+        "inset 4px 0 0 #ffb339, inset 0 0 20px rgba(255,179,57,.07)",
+    };
+  }
+
+  if (normalized === "RB") {
+    return {
+      background:
+        "linear-gradient(135deg,rgba(71,220,141,.24),rgba(71,220,141,.10))",
+      boxShadow:
+        "inset 4px 0 0 #47dc8d, inset 0 0 20px rgba(71,220,141,.07)",
+    };
+  }
+
+  if (normalized === "WR") {
+    return {
+      background:
+        "linear-gradient(135deg,rgba(99,169,255,.24),rgba(99,169,255,.10))",
+      boxShadow:
+        "inset 4px 0 0 #63a9ff, inset 0 0 20px rgba(99,169,255,.07)",
+    };
+  }
+
+  if (normalized === "TE") {
+    return {
+      background:
+        "linear-gradient(135deg,rgba(215,144,255,.24),rgba(215,144,255,.10))",
+      boxShadow:
+        "inset 4px 0 0 #d790ff, inset 0 0 20px rgba(215,144,255,.07)",
+    };
+  }
+
+  /*
+   * K and DST currently use the draft's neutral/default
+   * position treatment. Keep that same visual language here
+   * instead of inventing a new color that is not used elsewhere.
+   */
+  return {
+    background:
+      "linear-gradient(135deg,rgba(216,219,224,.13),rgba(255,255,255,.055))",
+    boxShadow:
+      "inset 4px 0 0 #d8dbe0, inset 0 0 18px rgba(255,255,255,.035)",
+  };
 }
 
 
@@ -15713,6 +15779,7 @@ const styles = {
   },
 
 } as const;
+
 
 
 

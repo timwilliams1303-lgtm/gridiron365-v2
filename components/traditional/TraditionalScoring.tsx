@@ -17,7 +17,6 @@ import {
 
 type Props = {
   leagueId: string;
-  embedded?: boolean;
 };
 
 type League = {
@@ -545,12 +544,9 @@ function makeComponent(
 ) {
   return function TraditionalScoring({
     leagueId,
-    embedded = false,
   }: Props) {
     const router =
       useRouter();
-
-    void embedded;
 
     const supabase =
       useMemo(

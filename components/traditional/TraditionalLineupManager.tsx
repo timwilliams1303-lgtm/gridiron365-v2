@@ -243,30 +243,22 @@ function eligibleForSlot(
   }
 
 
-  if (
-    slot === "IR"
-  ) {
-    const injury =
-      (
-        player
-          .injuryStatus ??
-        ""
-      ).toUpperCase();
-
+  if (slot === "IR") {
+    const injury = (player.injuryStatus ?? "")
+      .trim()
+      .toUpperCase();
 
     return (
-      injury.includes(
-        "IR"
-      ) ||
-      injury.includes(
-        "OUT"
-      ) ||
-      injury.includes(
-        "PUP"
-      ) ||
-      injury.includes(
-        "NFI"
-      )
+      injury === "IR" ||
+      injury.includes("INJURED RESERVE") ||
+      injury.includes("RESERVE/INJURED") ||
+      injury.includes("RESERVE-INJURED") ||
+      injury.includes("RESERVE INJURED") ||
+      injury.includes("OUT") ||
+      injury.includes("PUP") ||
+      injury.includes("PHYSICALLY UNABLE") ||
+      injury.includes("NFI") ||
+      injury.includes("NON-FOOTBALL")
     );
   }
 
