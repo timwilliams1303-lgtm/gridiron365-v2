@@ -2,6 +2,8 @@ import {
   redirect,
 } from "next/navigation";
 
+import PickemRealtimeRefresh from "@/components/pickem/PickemRealtimeRefresh";
+
 import PickemStandings from "@/components/pickem/PickemStandings";
 import MixedPickemStandings from "@/components/pickem/MixedPickemStandings";
 import NhlPickemStandings from "@/components/nhl-pickem/NhlPickemStandings";
@@ -142,7 +144,9 @@ export default async function PickemStandingsPage({
 
   if (nhlOnly) {
     return (
-      <NhlPickemStandings
+      <>
+        <PickemRealtimeRefresh leagueId={leagueId} />
+        <NhlPickemStandings
         leagueId={
           leagueId
         }
@@ -155,12 +159,15 @@ export default async function PickemStandingsPage({
           null
         }
       />
+      </>
     );
   }
 
   if (mixed) {
     return (
-      <MixedPickemStandings
+      <>
+        <PickemRealtimeRefresh leagueId={leagueId} />
+        <MixedPickemStandings
         leagueId={
           leagueId
         }
@@ -176,11 +183,14 @@ export default async function PickemStandingsPage({
           enabledSports
         }
       />
+      </>
     );
   }
 
   return (
-    <PickemStandings
+    <>
+      <PickemRealtimeRefresh leagueId={leagueId} />
+      <PickemStandings
       leagueId={
         leagueId
       }
@@ -193,5 +203,6 @@ export default async function PickemStandingsPage({
         null
       }
     />
+    </>
   );
 }

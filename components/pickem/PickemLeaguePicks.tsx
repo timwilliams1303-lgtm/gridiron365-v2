@@ -551,6 +551,9 @@ export default function PickemLeaguePicks({
   const realtimeRefreshPendingRef =
     useRef(false);
 
+  const initializedCollapseWeekRef =
+    useRef<number | null>(null);
+
   const [
     loading,
     setLoading,
@@ -603,12 +606,6 @@ export default function PickemLeaguePicks({
   ] =
     useState<Set<number>>(
       () => new Set()
-    );
-
-
-  const collapsedInitializedWeekRef =
-    useRef<number | null>(
-      null
     );
 
 
@@ -750,35 +747,6 @@ export default function PickemLeaguePicks({
     ]);
 
 
-  useEffect(() => {
-    if (
-      selectedWeekId ===
-        null ||
-      teamGroups.length ===
-        0 ||
-      collapsedInitializedWeekRef.current ===
-        selectedWeekId
-    ) {
-      return;
-    }
-
-    setCollapsedTeamIds(
-      new Set(
-        teamGroups.map(
-          (group) =>
-            group.fantasyTeamId
-        )
-      )
-    );
-
-    collapsedInitializedWeekRef.current =
-      selectedWeekId;
-  }, [
-    selectedWeekId,
-    teamGroups,
-  ]);
-
-
   const loadWeeks =
     useCallback(
       async () => {
@@ -864,6 +832,26 @@ export default function PickemLeaguePicks({
       ]
     );
 
+
+
+
+  useEffect(() => {
+    if (
+      selectedWeekId === null ||
+      teamGroups.length === 0 ||
+      initializedCollapseWeekRef.current === selectedWeekId
+    ) {
+      return;
+    }
+
+    setCollapsedTeamIds(
+      new Set(
+        teamGroups.map((group) => group.fantasyTeamId)
+      )
+    );
+
+    initializedCollapseWeekRef.current = selectedWeekId;
+  }, [selectedWeekId, teamGroups]);
 
   const loadWeekData =
     useCallback(
@@ -1243,7 +1231,7 @@ export default function PickemLeaguePicks({
         () => {
           performRefresh();
         },
-        10_000
+        2_000
       );
     function handleVisibilityChange() {
       if (

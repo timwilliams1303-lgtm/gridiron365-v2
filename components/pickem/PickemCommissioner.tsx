@@ -787,8 +787,7 @@ export default function PickemCommissioner({
               : legacySports
           );
           setPickMarketMode(
-            nextSettings.pick_market_mode ??
-              "spread_only"
+            "spread_total"
           );
           setHockeyMarketMode(
             nextSettings.hockey_market_mode ??
@@ -1195,7 +1194,7 @@ export default function PickemCommissioner({
             p_missing_pick_policy:
               missingPickPolicy,
             p_pick_market_mode:
-              pickMarketMode,
+              "spread_total",
             p_hockey_market_mode:
               hockeyMarketMode,
             p_allow_same_game_multiple_markets:
@@ -1723,27 +1722,12 @@ export default function PickemCommissioner({
           >
             Football Pick Markets
             <select
-              value={
-                pickMarketMode
-              }
-              onChange={(
-                event
-              ) =>
-                setPickMarketMode(
-                  event.target
-                    .value as PickMarketMode
-                )
-              }
+              value="spread_total"
+              disabled
               style={
                 styles.input
               }
             >
-              <option value="spread_only">
-                Spread only
-              </option>
-              <option value="total_only">
-                Over / Under only
-              </option>
               <option value="spread_total">
                 Spread + Over / Under
               </option>
@@ -1753,7 +1737,7 @@ export default function PickemCommissioner({
                 styles.help
               }
             >
-              Spread + Over / Under lets each football selection use either market. One game still counts as one pick.
+              NFL and College Football always include both the G365 Spread and G365 Over / Under. A football game still counts as one pick, using the selected market.
             </span>
           </label>
           ) : null}

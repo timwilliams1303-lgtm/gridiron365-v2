@@ -726,27 +726,40 @@ export default function MixedPickemStandings({
   }, [load]);
 
   useEffect(() => {
-    if (loading) {
-      return;
-    }
+    if (loading) return;
 
-    const timer =
-      window.setInterval(
-        () => {
-          void load();
-        },
-        15000
-      );
+    const refresh = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+
+    const channel = supabase
+      .channel(`mixed-pickem-standings-${leagueId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pickem_weekly_results", filter: `league_id=eq.${leagueId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pickem_weeks", filter: `league_id=eq.${leagueId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pickem_picks", filter: `league_id=eq.${leagueId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pickem_games", filter: `league_id=eq.${leagueId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "nhl_pickem_picks", filter: `league_id=eq.${leagueId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "nhl_pickem_games", filter: `league_id=eq.${leagueId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "nhl_pickem_period_results", filter: `league_id=eq.${leagueId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pickem_settings", filter: `league_id=eq.${leagueId}` }, refresh)
+      .subscribe();
+
+    const customRefresh = (event: Event) => {
+      const detail = (event as CustomEvent<{ leagueId?: string }>).detail;
+      if (!detail?.leagueId || detail.leagueId === leagueId) refresh();
+    };
+
+    const timer = window.setInterval(refresh, 2_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("g365-pickem-realtime", customRefresh);
 
     return () => {
-      window.clearInterval(
-        timer
-      );
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("g365-pickem-realtime", customRefresh);
+      void supabase.removeChannel(channel);
     };
-  }, [
-    load,
-    loading,
-  ]);
+  }, [leagueId, load, loading, supabase]);
 
   if (loading) {
     return (

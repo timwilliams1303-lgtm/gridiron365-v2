@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -233,6 +234,7 @@ export default function MixedPickemLeaguePicks({
   const [collapsedTeamIds, setCollapsedTeamIds] = useState<Set<number>>(
     () => new Set()
   );
+  const initializedCollapseWeekRef = useRef<number | null>(null);
 
   const selectedWeekRow =
     weeks.find((row) => row.week === selectedWeek) ?? null;
@@ -507,7 +509,7 @@ export default function MixedPickemLeaguePicks({
           void refresh();
         }
       },
-      10_000
+      2_000
     );
 
     const footballChannel = supabase
@@ -555,6 +557,24 @@ export default function MixedPickemLeaguePicks({
       )
       .subscribe();
 
+    const stateChannel = supabase
+      .channel(
+        `mixed-league-picks-state-${leagueId}-${selectedWeek ?? "none"}`
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "pickem_games", filter: `league_id=eq.${leagueId}` }, () => void refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "pickem_weeks", filter: `league_id=eq.${leagueId}` }, () => void refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "nhl_pickem_games", filter: `league_id=eq.${leagueId}` }, () => void refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "nhl_pickem_periods", filter: `league_id=eq.${leagueId}` }, () => void refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "nhl_pickem_period_results", filter: `league_id=eq.${leagueId}` }, () => void refresh())
+      .subscribe();
+
+    function customRefresh(event: Event) {
+      const detail = (event as CustomEvent<{ leagueId?: string }>).detail;
+      if (!detail?.leagueId || detail.leagueId === leagueId) void refresh();
+    }
+
+    window.addEventListener("g365-pickem-realtime", customRefresh);
+
     function visibleRefresh() {
       if (document.visibilityState === "visible") {
         void refresh();
@@ -573,9 +593,11 @@ export default function MixedPickemLeaguePicks({
         "visibilitychange",
         visibleRefresh
       );
+      window.removeEventListener("g365-pickem-realtime", customRefresh);
       void supabase.removeChannel(footballChannel);
       void supabase.removeChannel(nhlChannel);
       void supabase.removeChannel(resultsChannel);
+      void supabase.removeChannel(stateChannel);
     };
   }, [
     leagueId,
@@ -785,6 +807,19 @@ export default function MixedPickemLeaguePicks({
 
     return map;
   }, [filteredPicks]);
+
+  useEffect(() => {
+    if (
+      selectedWeek === null ||
+      teams.length === 0 ||
+      initializedCollapseWeekRef.current === selectedWeek
+    ) {
+      return;
+    }
+
+    setCollapsedTeamIds(new Set(teams.map((team) => team.id)));
+    initializedCollapseWeekRef.current = selectedWeek;
+  }, [selectedWeek, teams]);
 
   function toggleTeam(teamId: number) {
     setCollapsedTeamIds((current) => {

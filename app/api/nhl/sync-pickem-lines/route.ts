@@ -119,7 +119,9 @@ function getEnv() {
 
   const syncSecret =
     process.env
-      .NHL_SYNC_SECRET;
+      .GRIDIRON_SYNC_SECRET ??
+    process.env
+      .NFL_SYNC_SECRET;
 
   const oddsApiKey =
     process.env
@@ -132,7 +134,7 @@ function getEnv() {
     !oddsApiKey
   ) {
     throw new Error(
-      "Required NHL Pick'em line-sync environment variables are missing. NHL_SYNC_SECRET and THE_ODDS_API_KEY must be configured."
+      "Required NHL Pick'em line-sync environment variables are missing. THE_ODDS_API_KEY must be configured."
     );
   }
 
