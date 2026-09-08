@@ -824,49 +824,18 @@ export default function PickemMyPicks({
       return;
     }
 
-    let active =
-      true;
-
-    async function run() {
-      try {
-        await loadWeek(
-          selectedWeek
-        );
-      } catch (error) {
-        if (!active) {
-          return;
-        }
-
-        setIsError(true);
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "This Pick'em week could not be loaded."
-        );
-      }
-    }
-
-    void run();
-
-    const timer =
-      window.setInterval(
-        () => {
-          void run();
-        },
-        15000
+    // My Picks is private to this member. Load when the selected week changes,
+    // but do not poll or subscribe to realtime updates. Pick mutations update
+    // this component's state through the existing save/remove flows.
+    void loadWeek(selectedWeek).catch((error) => {
+      setIsError(true);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "This Pick'em week could not be loaded."
       );
-
-    return () => {
-      active = false;
-      window.clearInterval(
-        timer
-      );
-    };
-  }, [
-    loadWeek,
-    loading,
-    selectedWeek,
-  ]);
+    });
+  }, [loadWeek, loading, selectedWeek]);
 
 
   async function savePick(
@@ -2335,3 +2304,4 @@ function EmptyState({
     </section>
   );
 }
+

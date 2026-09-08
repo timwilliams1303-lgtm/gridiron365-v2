@@ -2,7 +2,6 @@ import {
   redirect,
 } from "next/navigation";
 
-import PickemRealtimeRefresh from "@/components/pickem/PickemRealtimeRefresh";
 
 import PickemMyPicks from "@/components/pickem/PickemMyPicks";
 import NhlPickemMyPicks from "@/components/nhl-pickem/NhlPickemMyPicks";
@@ -114,42 +113,33 @@ export default async function PickemMyPicksPage({
 
   if (nhlOnly) {
     return (
-      <>
-        <PickemRealtimeRefresh leagueId={leagueId} />
-        <NhlPickemMyPicks
+      <NhlPickemMyPicks
         leagueId={leagueId}
         season={access.league.season}
         fantasyTeamId={access.fantasyTeam.id}
         teamName={access.fantasyTeam.teamName}
       />
-      </>
     );
   }
 
   if (mixed) {
     return (
-      <>
-        <PickemRealtimeRefresh leagueId={leagueId} />
-        <MixedPickemMyPicks
+      <MixedPickemMyPicks
         leagueId={leagueId}
         season={access.league.season}
         fantasyTeamId={access.fantasyTeam.id}
         teamName={access.fantasyTeam.teamName}
         enabledSports={enabledSports}
       />
-      </>
     );
   }
 
   return (
-    <>
-      <PickemRealtimeRefresh leagueId={leagueId} />
-      <PickemMyPicks
+    <PickemMyPicks
       leagueId={leagueId}
       season={access.league.season}
       fantasyTeamId={access.fantasyTeam.id}
       teamName={access.fantasyTeam.teamName}
     />
-    </>
   );
 }

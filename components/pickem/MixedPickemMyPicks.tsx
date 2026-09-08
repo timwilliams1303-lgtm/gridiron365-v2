@@ -192,74 +192,10 @@ export default function MixedPickemMyPicks({
   }, [leagueId, season, supabase, week]);
 
   useEffect(() => {
+    // My Picks is private to this member. Load the combined status when the
+    // component/week changes, but do not subscribe, poll, or force refreshes.
     void loadUnifiedStatus();
-
-    const refresh = () => {
-      void loadUnifiedStatus();
-    };
-
-    window.addEventListener("focus", refresh);
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") refresh();
-    }, 30_000);
-
-    const footballChannel = supabase
-      .channel(`mixed-pickem-football-${leagueId}-${fantasyTeamId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "pickem_picks",
-          filter: `fantasy_team_id=eq.${fantasyTeamId}`,
-        },
-        refresh
-      )
-      .subscribe();
-
-    const nhlChannel = supabase
-      .channel(`mixed-pickem-nhl-${leagueId}-${fantasyTeamId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "nhl_pickem_picks",
-          filter: `fantasy_team_id=eq.${fantasyTeamId}`,
-        },
-        refresh
-      )
-      .subscribe();
-
-    const stateChannel = supabase
-      .channel(`mixed-pickem-state-${leagueId}-${fantasyTeamId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "pickem_settings", filter: `league_id=eq.${leagueId}` }, refresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "pickem_weeks", filter: `league_id=eq.${leagueId}` }, refresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "pickem_games", filter: `league_id=eq.${leagueId}` }, refresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "nhl_pickem_periods", filter: `league_id=eq.${leagueId}` }, refresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "nhl_pickem_games", filter: `league_id=eq.${leagueId}` }, refresh)
-      .subscribe();
-
-    const customRefresh = (event: Event) => {
-      const detail = (event as CustomEvent<{ leagueId?: string }>).detail;
-      if (!detail?.leagueId || detail.leagueId === leagueId) refresh();
-    };
-    window.addEventListener("g365-pickem-realtime", customRefresh);
-
-    return () => {
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("g365-pickem-realtime", customRefresh);
-      window.clearInterval(timer);
-      void supabase.removeChannel(footballChannel);
-      void supabase.removeChannel(nhlChannel);
-      void supabase.removeChannel(stateChannel);
-    };
-  }, [
-    fantasyTeamId,
-    leagueId,
-    loadUnifiedStatus,
-    supabase,
-  ]);
+  }, [loadUnifiedStatus]);
 
   const sportLabel = [
     enabledSports.includes("cfb") ? "College Football" : null,
@@ -549,4 +485,3 @@ export default function MixedPickemMyPicks({
     </main>
   );
 }
-
