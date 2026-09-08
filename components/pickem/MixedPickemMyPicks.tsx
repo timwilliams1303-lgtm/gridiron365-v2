@@ -199,7 +199,9 @@ export default function MixedPickemMyPicks({
     };
 
     window.addEventListener("focus", refresh);
-    const timer = window.setInterval(refresh, 2_000);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") refresh();
+    }, 30_000);
 
     const footballChannel = supabase
       .channel(`mixed-pickem-football-${leagueId}-${fantasyTeamId}`)
@@ -547,3 +549,4 @@ export default function MixedPickemMyPicks({
     </main>
   );
 }
+

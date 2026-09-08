@@ -34,19 +34,23 @@ type FootballScope =
   | "nfl_only";
 
 
-type ScoringMode =
-  | "record_only"
-  | "standard"
-  | "three_one_zero"
-  | "custom"
-  | "confidence";
+type PickMarketMode =
+  | "spread_only"
+  | "total_only"
+  | "spread_total";
+
+
+type PickMarketType =
+  | "spread"
+  | "total";
 
 
 type SettingsRow = {
   football_scope: FootballScope;
   picks_per_week: number;
   pick_lock_mode: PickLockMode;
-  scoring_mode: ScoringMode;
+  pick_market_mode:
+    PickMarketMode;
 };
 
 
@@ -58,12 +62,6 @@ type WeekRow = {
   required_picks: number;
   line_day_at: string | null;
   finalize_not_before: string | null;
-  scoring_mode: ScoringMode;
-  win_points: number | string;
-  push_points: number | string;
-  loss_points: number | string;
-  confidence_points: number[] | string[] | null;
-  confidence_push_multiplier: number | string;
 };
 
 
@@ -86,6 +84,12 @@ type GameRow = {
   is_eligible: boolean;
   exclusion_reason: string | null;
   g365_home_spread: number | string | null;
+  g365_total: number | string | null;
+  total_status:
+    | "pending"
+    | "published"
+    | "frozen"
+    | "excluded";
   spread_status:
     | "pending"
     | "published"
@@ -99,8 +103,21 @@ type PickRow = {
   pickem_week_id: number;
   fantasy_team_id: number;
   pickem_game_id: number;
-  selected_side: "home" | "away";
-  frozen_home_spread: number | string;
+  market_type:
+    PickMarketType;
+  selected_side:
+    | "home"
+    | "away"
+    | "over"
+    | "under";
+  frozen_home_spread:
+    number |
+    string |
+    null;
+  frozen_total:
+    number |
+    string |
+    null;
   submitted_at: string;
   updated_at: string;
   result:
@@ -110,7 +127,6 @@ type PickRow = {
     | "push"
     | "void";
   points_awarded: number | string | null;
-  confidence_value: number | string | null;
 };
 
 
@@ -299,103 +315,6 @@ function normalizeStatus(
 }
 
 
-
-const PICKEM_MOBILE_CSS = `
-  .g365-pickem-mobile-page {
-    width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-  }
-
-  .g365-pickem-mobile-page * {
-    box-sizing: border-box;
-  }
-
-  @media (max-width: 760px) {
-    .g365-pickem-mobile-page {
-      width: 100% !important;
-      max-width: 100% !important;
-      min-width: 0 !important;
-      overflow-x: hidden !important;
-      padding: 14px 12px 30px !important;
-      gap: 14px !important;
-    }
-
-    .g365-pickem-mobile-page > section,
-    .g365-pickem-mobile-page section,
-    .g365-pickem-mobile-page article,
-    .g365-pickem-mobile-page form,
-    .g365-pickem-mobile-page div {
-      min-width: 0;
-      max-width: 100%;
-    }
-
-    .g365-pickem-mobile-page h1 {
-      font-size: clamp(26px, 8vw, 34px) !important;
-      line-height: 1.08 !important;
-      overflow-wrap: anywhere;
-    }
-
-    .g365-pickem-mobile-page h2,
-    .g365-pickem-mobile-page h3,
-    .g365-pickem-mobile-page p,
-    .g365-pickem-mobile-page span,
-    .g365-pickem-mobile-page strong {
-      overflow-wrap: anywhere;
-    }
-
-    .g365-pickem-mobile-page select,
-    .g365-pickem-mobile-page input,
-    .g365-pickem-mobile-page textarea {
-      width: 100% !important;
-      max-width: 100% !important;
-      min-width: 0 !important;
-    }
-
-    .g365-pickem-mobile-page button,
-    .g365-pickem-mobile-page a {
-      max-width: 100%;
-    }
-
-    .g365-pickem-mobile-page :not(button)[style*="grid-template-columns"] {
-      grid-template-columns: minmax(0, 1fr) !important;
-    }
-
-    .g365-pickem-mobile-page [style*="margin-left: auto"],
-    .g365-pickem-mobile-page [style*="margin-left:auto"] {
-      margin-left: 0 !important;
-    }
-
-    .g365-pickem-mobile-page [style*="white-space: nowrap"],
-    .g365-pickem-mobile-page [style*="white-space:nowrap"] {
-      white-space: normal !important;
-    }
-
-    .g365-pickem-mobile-page [style*="overflow: auto"],
-    .g365-pickem-mobile-page [style*="overflow:auto"] {
-      max-width: 100%;
-      -webkit-overflow-scrolling: touch;
-    }
-  }
-
-  @media (max-width: 430px) {
-    .g365-pickem-mobile-page {
-      padding: 12px 10px 26px !important;
-      gap: 12px !important;
-    }
-
-    .g365-pickem-mobile-page section,
-    .g365-pickem-mobile-page article {
-      border-radius: 13px !important;
-    }
-
-    .g365-pickem-mobile-page button {
-      min-height: 42px;
-    }
-  }
-`;
-
-
 export default function PickemMyPicks({
   leagueId,
   season,
@@ -485,52 +404,6 @@ export default function PickemMyPicks({
     });
 
 
-  const orderedGames =
-    useMemo(
-      () =>
-        [...games].sort((a, b) => {
-          const aKickoff =
-            new Date(a.kickoff_at).getTime();
-          const bKickoff =
-            new Date(b.kickoff_at).getTime();
-
-          const aValid =
-            Number.isFinite(aKickoff);
-          const bValid =
-            Number.isFinite(bKickoff);
-
-          if (aValid && bValid && aKickoff !== bKickoff) {
-            return aKickoff - bKickoff;
-          }
-
-          if (aValid !== bValid) {
-            return aValid ? -1 : 1;
-          }
-
-          const sportCompare =
-            (a.sport ?? "").localeCompare(b.sport ?? "");
-
-          if (sportCompare !== 0) {
-            return sportCompare;
-          }
-
-          const awayCompare =
-            (a.away_team_name ?? "").localeCompare(
-              b.away_team_name ?? ""
-            );
-
-          if (awayCompare !== 0) {
-            return awayCompare;
-          }
-
-          return (a.home_team_name ?? "").localeCompare(
-            b.home_team_name ?? ""
-          );
-        }),
-      [games]
-    );
-
-
   const selectedWeek =
     useMemo(
       () =>
@@ -607,6 +480,18 @@ export default function PickemMyPicks({
     ]);
 
 
+  const visibleGames = useMemo(() => {
+    if (!visibleSports || visibleSports.length === 0) {
+      return games;
+    }
+
+    return games.filter((game) => {
+      const sport = game.sport === "ncaaf" ? "cfb" : "nfl";
+      return visibleSports.includes(sport);
+    });
+  }, [games, visibleSports]);
+
+
   const fullCardLocked =
     settings
       ?.pick_lock_mode ===
@@ -630,7 +515,7 @@ export default function PickemMyPicks({
                 "pickem_settings"
               )
               .select(
-                "football_scope,picks_per_week,pick_lock_mode,scoring_mode"
+                "football_scope,picks_per_week,pick_lock_mode,pick_market_mode"
               )
               .eq(
                 "league_id",
@@ -643,7 +528,7 @@ export default function PickemMyPicks({
                 "pickem_weeks"
               )
               .select(
-                "id,season,week,status,required_picks,line_day_at,finalize_not_before,scoring_mode,win_points,push_points,loss_points,confidence_points,confidence_push_multiplier"
+                "id,season,week,status,required_picks,line_day_at,finalize_not_before"
               )
               .eq(
                 "league_id",
@@ -715,32 +600,24 @@ export default function PickemMyPicks({
         setSelectedWeekId(
           (current) => {
             if (forcedWeek !== null) {
-              return (
-                nextWeeks.find(
-                  (row) => row.week === forcedWeek
-                )?.id ?? null
+              const forced = nextWeeks.find(
+                (row) => row.week === forcedWeek
               );
+              return forced?.id ?? null;
             }
 
             if (
               current !== null &&
-              nextWeeks.some(
-                (row) => row.id === current
-              )
+              nextWeeks.some((row) => row.id === current)
             ) {
               return current;
             }
 
-            const activeWeek =
-              nextWeeks.find(
-                (row) => row.status !== "final"
-              );
-
-            return (
-              activeWeek?.id ??
-              nextWeeks.at(-1)?.id ??
-              null
+            const activeWeek = nextWeeks.find(
+              (row) => row.status !== "final"
             );
+
+            return activeWeek?.id ?? nextWeeks.at(-1)?.id ?? null;
           }
         );
       },
@@ -794,7 +671,7 @@ export default function PickemMyPicks({
                 "pickem_games"
               )
               .select(
-                "id,pickem_week_id,sport,kickoff_at,away_team_name,away_team_abbreviation,home_team_name,home_team_abbreviation,away_score,home_score,status_detail,period,display_clock,is_started,is_final,is_eligible,exclusion_reason,g365_home_spread,spread_status"
+                "id,pickem_week_id,sport,kickoff_at,away_team_name,away_team_abbreviation,home_team_name,home_team_abbreviation,away_score,home_score,status_detail,period,display_clock,is_started,is_final,is_eligible,exclusion_reason,g365_home_spread,spread_status,g365_total,total_status"
               )
               .eq(
                 "league_id",
@@ -817,7 +694,7 @@ export default function PickemMyPicks({
                 "pickem_picks"
               )
               .select(
-                "id,pickem_week_id,fantasy_team_id,pickem_game_id,selected_side,frozen_home_spread,submitted_at,updated_at,result,points_awarded,confidence_value"
+                "id,pickem_week_id,fantasy_team_id,pickem_game_id,market_type,selected_side,frozen_home_spread,frozen_total,submitted_at,updated_at,result,points_awarded"
               )
               .eq(
                 "league_id",
@@ -994,8 +871,13 @@ export default function PickemMyPicks({
 
   async function savePick(
     gameId: number,
+    marketType:
+      PickMarketType,
     side:
-      "home" | "away"
+      | "home"
+      | "away"
+      | "over"
+      | "under"
   ) {
     if (
       !selectedWeek ||
@@ -1017,7 +899,7 @@ export default function PickemMyPicks({
         error,
       } =
         await supabase.rpc(
-          "save_pickem_pick",
+          "save_pickem_pick_v2",
           {
             p_league_id:
               leagueId,
@@ -1027,6 +909,8 @@ export default function PickemMyPicks({
               selectedWeek.week,
             p_pickem_game_id:
               gameId,
+            p_market_type:
+              marketType,
             p_selected_side:
               side,
           }
@@ -1140,61 +1024,6 @@ export default function PickemMyPicks({
   }
 
 
-
-  async function setConfidenceValue(
-    gameId: number,
-    confidenceValue: number
-  ) {
-    if (
-      !selectedWeek ||
-      workingGameId !== null
-    ) {
-      return;
-    }
-
-    setWorkingGameId(gameId);
-    setMessage("");
-    setIsError(false);
-
-    try {
-      const { error } =
-        await supabase.rpc(
-          "set_pickem_confidence_value",
-          {
-            p_league_id: leagueId,
-            p_season: season,
-            p_week: selectedWeek.week,
-            p_pickem_game_id: gameId,
-            p_confidence_value: confidenceValue,
-          }
-        );
-
-      if (error) {
-        throw new Error(
-          error.message
-        );
-      }
-
-      await loadWeek(
-        selectedWeek
-      );
-
-      setMessage(
-        "Confidence value saved."
-      );
-    } catch (error) {
-      setIsError(true);
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "The confidence value could not be saved."
-      );
-    } finally {
-      setWorkingGameId(null);
-    }
-  }
-
-
   if (loading) {
     return (
       <main
@@ -1213,7 +1042,6 @@ export default function PickemMyPicks({
 
   return (
     <main
-      className="g365-pickem-mobile-page"
       style={{
         display:
           "grid",
@@ -1225,7 +1053,6 @@ export default function PickemMyPicks({
           1180,
       }}
     >
-      <style>{PICKEM_MOBILE_CSS}</style>
       {!embedded ? (
       <section
         style={{
@@ -1340,29 +1167,6 @@ export default function PickemMyPicks({
               "full_card"
                 ? "FULL CARD"
                 : "PER GAME"
-            }
-          />
-
-          <SummaryBox
-            label="Scoring"
-            value={
-              selectedWeek
-                ?.scoring_mode ===
-              "record_only"
-                ? "RECORD ONLY"
-                : selectedWeek
-                    ?.scoring_mode ===
-                  "confidence"
-                  ? "CONFIDENCE"
-                  : selectedWeek
-                      ?.scoring_mode ===
-                    "three_one_zero"
-                    ? "3 / 1 / 0"
-                    : selectedWeek
-                        ?.scoring_mode ===
-                      "custom"
-                      ? "CUSTOM"
-                      : "1 / .5 / 0"
             }
           />
         </div>
@@ -1595,18 +1399,7 @@ export default function PickemMyPicks({
             </div>
           ) : null}
 
-          {orderedGames
-            .filter((game) => {
-              if (!visibleSports || visibleSports.length === 0) {
-                return true;
-              }
-
-              const sport =
-                game.sport === "ncaaf" ? "cfb" : "nfl";
-
-              return visibleSports.includes(sport);
-            })
-            .map(
+          {visibleGames.map(
             (game) => {
               const pick =
                 pickByGameId.get(
@@ -1624,12 +1417,50 @@ export default function PickemMyPicks({
                   ? null
                   : -homeSpread;
 
-              const hasFrozenLine =
+              const total =
+                numericValue(
+                  game.g365_total
+                );
+
+              const hasFrozenSpread =
                 game.is_eligible &&
                 game.spread_status ===
                   "frozen" &&
                 homeSpread !==
                   null;
+
+              const hasFrozenTotal =
+                game.total_status ===
+                  "frozen" &&
+                total !==
+                  null;
+
+              const marketMode =
+                settings
+                  ?.pick_market_mode ??
+                "spread_only";
+
+              const spreadEnabled =
+                marketMode ===
+                  "spread_only" ||
+                marketMode ===
+                  "spread_total";
+
+              const totalEnabled =
+                marketMode ===
+                  "total_only" ||
+                marketMode ===
+                  "spread_total";
+
+              const hasFrozenLine =
+                (
+                  spreadEnabled &&
+                  hasFrozenSpread
+                ) ||
+                (
+                  totalEnabled &&
+                  hasFrozenTotal
+                );
 
               const gameLocked =
                 Date.now() >=
@@ -1645,8 +1476,14 @@ export default function PickemMyPicks({
                   fullCardLocked
                 );
 
-              const canSelect =
-                hasFrozenLine &&
+              const canSelectSpread =
+                spreadEnabled &&
+                hasFrozenSpread &&
+                !locked;
+
+              const canSelectTotal =
+                totalEnabled &&
+                hasFrozenTotal &&
                 !locked;
 
               const working =
@@ -1754,11 +1591,18 @@ export default function PickemMyPicks({
                       }}
                     >
                       {hasFrozenLine
-                        ? "G365 SPREAD FROZEN"
-                        : game.spread_status ===
-                            "excluded"
-                          ? "GAME EXCLUDED"
-                          : "LINE NOT FROZEN"}
+                        ? [
+                            hasFrozenSpread
+                              ? "SPREAD"
+                              : null,
+                            hasFrozenTotal
+                              ? "TOTAL"
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" + ") +
+                          " FROZEN"
+                        : "LINE NOT FROZEN"}
                     </div>
                   </div>
 
@@ -1788,16 +1632,20 @@ export default function PickemMyPicks({
                       }
                       selected={
                         pick
+                          ?.market_type ===
+                          "spread" &&
+                        pick
                           ?.selected_side ===
                         "away"
                       }
                       disabled={
-                        !canSelect ||
+                        !canSelectSpread ||
                         working
                       }
                       onClick={() =>
                         void savePick(
                           game.id,
+                          "spread",
                           "away"
                         )
                       }
@@ -1818,20 +1666,146 @@ export default function PickemMyPicks({
                       }
                       selected={
                         pick
+                          ?.market_type ===
+                          "spread" &&
+                        pick
                           ?.selected_side ===
                         "home"
                       }
                       disabled={
-                        !canSelect ||
+                        !canSelectSpread ||
                         working
                       }
                       onClick={() =>
                         void savePick(
                           game.id,
+                          "spread",
                           "home"
                         )
                       }
                     />
+
+                    {totalEnabled ? (
+                      <div
+                        style={{
+                          display:
+                            "grid",
+                          gap:
+                            8,
+                          marginTop:
+                            4,
+                          paddingTop:
+                            12,
+                          borderTop:
+                            "1px solid rgba(255,255,255,0.07)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display:
+                              "flex",
+                            alignItems:
+                              "center",
+                            justifyContent:
+                              "space-between",
+                            gap:
+                              10,
+                            color:
+                              "#a9a9b1",
+                            fontSize:
+                              11,
+                            fontWeight:
+                              900,
+                            letterSpacing:
+                              "0.06em",
+                            textTransform:
+                              "uppercase",
+                          }}
+                        >
+                          <span>
+                            G365 Total
+                          </span>
+                          <strong
+                            style={{
+                              color:
+                                hasFrozenTotal
+                                  ? "#ff9b59"
+                                  : "#777780",
+                            }}
+                          >
+                            {hasFrozenTotal
+                              ? total?.toFixed(
+                                  1
+                                )
+                              : "NOT FROZEN"}
+                          </strong>
+                        </div>
+
+                        <div
+                          className="g365-pickem-total-grid"
+                          style={{
+                            display:
+                              "grid",
+                            gridTemplateColumns:
+                              "repeat(2,minmax(0,1fr))",
+                            gap:
+                              8,
+                          }}
+                        >
+                          <TotalPickButton
+                            label="OVER"
+                            total={
+                              total
+                            }
+                            selected={
+                              pick
+                                ?.market_type ===
+                                "total" &&
+                              pick
+                                ?.selected_side ===
+                                "over"
+                            }
+                            disabled={
+                              !canSelectTotal ||
+                              working
+                            }
+                            onClick={() =>
+                              void savePick(
+                                game.id,
+                                "total",
+                                "over"
+                              )
+                            }
+                          />
+
+                          <TotalPickButton
+                            label="UNDER"
+                            total={
+                              total
+                            }
+                            selected={
+                              pick
+                                ?.market_type ===
+                                "total" &&
+                              pick
+                                ?.selected_side ===
+                                "under"
+                            }
+                            disabled={
+                              !canSelectTotal ||
+                              working
+                            }
+                            onClick={() =>
+                              void savePick(
+                                game.id,
+                                "total",
+                                "under"
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
 
@@ -1871,46 +1845,34 @@ export default function PickemMyPicks({
                           >
                             Your pick:
                           </strong>{" "}
-                          {pick.selected_side ===
-                          "home"
-                            ? game.home_team_name
-                            : game.away_team_name}{" "}
-                          {pick.selected_side ===
-                          "home"
-                            ? formatSpread(
-                                numericValue(
-                                  pick.frozen_home_spread
-                                ) ??
-                                  0
-                              )
-                            : formatSpread(
-                                -(
-                                  numericValue(
-                                    pick.frozen_home_spread
-                                  ) ??
-                                  0
-                                )
-                              )}
-                          {selectedWeek.scoring_mode ===
-                            "confidence" &&
-                          numericValue(
-                            pick.confidence_value
-                          ) !== null ? (
-                            <>
-                              {" "}
-                              · Confidence{" "}
-                              <strong
-                                style={{
-                                  color:
-                                    "#ffbd5f",
-                                }}
-                              >
-                                {numericValue(
-                                  pick.confidence_value
-                                )}
-                              </strong>
-                            </>
-                          ) : null}
+                          {pick.market_type ===
+                          "total"
+                            ? `${pick.selected_side.toUpperCase()} ${numericValue(
+                                pick.frozen_total
+                              )?.toFixed(1) ?? ""}`
+                            : `${
+                                pick.selected_side ===
+                                "home"
+                                  ? game.home_team_name
+                                  : game.away_team_name
+                              } ${
+                                pick.selected_side ===
+                                "home"
+                                  ? formatSpread(
+                                      numericValue(
+                                        pick.frozen_home_spread
+                                      ) ??
+                                        0
+                                    )
+                                  : formatSpread(
+                                      -(
+                                        numericValue(
+                                          pick.frozen_home_spread
+                                        ) ??
+                                          0
+                                      )
+                                    )
+                              }`}
                           {pick.result !==
                           "pending" ? (
                             <>
@@ -1940,67 +1902,6 @@ export default function PickemMyPicks({
                         "This game is not currently selectable."
                       )}
                     </div>
-
-                    {pick &&
-                    selectedWeek.scoring_mode ===
-                      "confidence" ? (
-                      <label
-                        style={{
-                          display: "inline-flex",
-                          gap: 8,
-                          alignItems: "center",
-                          color: "#c9c9cf",
-                          fontSize: 12,
-                          fontWeight: 900,
-                        }}
-                      >
-                        Confidence
-                        <select
-                          value={
-                            numericValue(
-                              pick.confidence_value
-                            ) ?? ""
-                          }
-                          disabled={
-                            locked ||
-                            working
-                          }
-                          onChange={(event) =>
-                            void setConfidenceValue(
-                              game.id,
-                              Number(
-                                event.target.value
-                              )
-                            )
-                          }
-                          style={{
-                            minWidth: 90,
-                            padding: "8px 9px",
-                            borderRadius: 9,
-                            border:
-                              "1px solid rgba(255,118,39,0.35)",
-                            background: "#09090c",
-                            color: "#fff",
-                            fontWeight: 900,
-                          }}
-                        >
-                          <option value="" disabled>
-                            Select
-                          </option>
-                          {(
-                            selectedWeek.confidence_points ??
-                            []
-                          ).map((value) => (
-                            <option
-                              key={String(value)}
-                              value={Number(value)}
-                            >
-                              {Number(value)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : null}
 
                     {pick &&
                     !locked ? (
@@ -2141,6 +2042,81 @@ function Badge({
     >
       {children}
     </span>
+  );
+}
+
+
+
+function TotalPickButton({
+  label,
+  total,
+  selected,
+  disabled,
+  onClick,
+}: {
+  label:
+    "OVER" |
+    "UNDER";
+  total:
+    number |
+    null;
+  selected:
+    boolean;
+  disabled:
+    boolean;
+  onClick:
+    () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={
+        onClick
+      }
+      disabled={
+        disabled
+      }
+      style={{
+        width:
+          "100%",
+        minHeight:
+          50,
+        padding:
+          "10px 12px",
+        borderRadius:
+          11,
+        border:
+          selected
+            ? "1px solid #ff6926"
+            : "1px solid rgba(255,255,255,0.09)",
+        background:
+          selected
+            ? "linear-gradient(90deg, rgba(172,15,19,0.45), rgba(255,101,26,0.17))"
+            : "rgba(255,255,255,0.025)",
+        color:
+          "#fff",
+        cursor:
+          disabled
+            ? "not-allowed"
+            : "pointer",
+        opacity:
+          disabled &&
+          !selected
+            ? 0.62
+            : 1,
+        fontWeight:
+          950,
+        textAlign:
+          "center",
+      }}
+    >
+      {label}{" "}
+      {total !== null
+        ? total.toFixed(
+            1
+          )
+        : "—"}
+    </button>
   );
 }
 

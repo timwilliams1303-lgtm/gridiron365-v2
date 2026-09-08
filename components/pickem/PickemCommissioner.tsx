@@ -787,7 +787,8 @@ export default function PickemCommissioner({
               : legacySports
           );
           setPickMarketMode(
-            "spread_total"
+            nextSettings.pick_market_mode ??
+              "spread_total"
           );
           setHockeyMarketMode(
             nextSettings.hockey_market_mode ??
@@ -1194,7 +1195,7 @@ export default function PickemCommissioner({
             p_missing_pick_policy:
               missingPickPolicy,
             p_pick_market_mode:
-              "spread_total",
+              pickMarketMode,
             p_hockey_market_mode:
               hockeyMarketMode,
             p_allow_same_game_multiple_markets:
@@ -1722,12 +1723,20 @@ export default function PickemCommissioner({
           >
             Football Pick Markets
             <select
-              value="spread_total"
-              disabled
-              style={
-                styles.input
+              value={pickMarketMode}
+              onChange={(event) =>
+                setPickMarketMode(
+                  event.target.value as PickMarketMode
+                )
               }
+              style={styles.input}
             >
+              <option value="spread_only">
+                Spread Only
+              </option>
+              <option value="total_only">
+                Over / Under Only
+              </option>
               <option value="spread_total">
                 Spread + Over / Under
               </option>
@@ -1737,7 +1746,7 @@ export default function PickemCommissioner({
                 styles.help
               }
             >
-              NFL and College Football always include both the G365 Spread and G365 Over / Under. A football game still counts as one pick, using the selected market.
+              Choose which football markets are available to members. When both are enabled, a football game still counts as one pick and the member chooses either the spread or the over/under for that game.
             </span>
           </label>
           ) : null}
@@ -3164,3 +3173,4 @@ const styles:
       "pointer",
   },
 };
+

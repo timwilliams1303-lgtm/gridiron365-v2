@@ -8,14 +8,12 @@ type Props = {
   leagueId: string;
 };
 
-const LEAGUE_TABLES = [
-  "pickem_settings",
+const LIVE_DATA_TABLES = [
   "pickem_weeks",
   "pickem_games",
   "pickem_picks",
   "pickem_weekly_results",
   "pickem_badge_awards",
-  "nhl_pickem_settings",
   "nhl_pickem_periods",
   "nhl_pickem_games",
   "nhl_pickem_picks",
@@ -30,24 +28,46 @@ export default function PickemRealtimeRefresh({ leagueId }: Props) {
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
-    let refreshTimer: number | null = null;
+    let hardRefreshTimer: number | null = null;
+    let softRefreshTimer: number | null = null;
 
-    const refresh = () => {
+    const dispatchRefresh = () => {
+      window.dispatchEvent(
+        new CustomEvent("g365-pickem-realtime", {
+          detail: { leagueId },
+        })
+      );
+    };
+
+    // Data changes should refresh the client components without remounting
+    // the whole server page. This prevents flicker/spazzing while picks change.
+    const softRefresh = () => {
       if (document.visibilityState === "hidden") return;
 
-      if (refreshTimer !== null) {
-        window.clearTimeout(refreshTimer);
+      if (softRefreshTimer !== null) {
+        window.clearTimeout(softRefreshTimer);
       }
 
-      refreshTimer = window.setTimeout(() => {
-        refreshTimer = null;
+      softRefreshTimer = window.setTimeout(() => {
+        softRefreshTimer = null;
+        dispatchRefresh();
+      }, 100);
+    };
+
+    // League/settings changes can alter which component tree is rendered,
+    // so those changes also refresh the server route.
+    const hardRefresh = () => {
+      if (document.visibilityState === "hidden") return;
+
+      if (hardRefreshTimer !== null) {
+        window.clearTimeout(hardRefreshTimer);
+      }
+
+      hardRefreshTimer = window.setTimeout(() => {
+        hardRefreshTimer = null;
+        dispatchRefresh();
         router.refresh();
-        window.dispatchEvent(
-          new CustomEvent("g365-pickem-realtime", {
-            detail: { leagueId },
-          })
-        );
-      }, 120);
+      }, 180);
     };
 
     let channel = supabase
@@ -60,10 +80,30 @@ export default function PickemRealtimeRefresh({ leagueId }: Props) {
           table: "leagues",
           filter: `id=eq.${leagueId}`,
         },
-        refresh
+        hardRefresh
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "pickem_settings",
+          filter: `league_id=eq.${leagueId}`,
+        },
+        hardRefresh
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "nhl_pickem_settings",
+          filter: `league_id=eq.${leagueId}`,
+        },
+        hardRefresh
       );
 
-    for (const table of LEAGUE_TABLES) {
+    for (const table of LIVE_DATA_TABLES) {
       channel = channel.on(
         "postgres_changes",
         {
@@ -72,7 +112,7 @@ export default function PickemRealtimeRefresh({ leagueId }: Props) {
           table,
           filter: `league_id=eq.${leagueId}`,
         },
-        refresh
+        softRefresh
       );
     }
 
@@ -82,27 +122,29 @@ export default function PickemRealtimeRefresh({ leagueId }: Props) {
       }
     });
 
+    const onFocus = () => {
+      dispatchRefresh();
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        dispatchRefresh();
+      }
+    };
+
+    // Low-frequency safety fallback only. Realtime remains the primary path.
     const fallback = window.setInterval(() => {
       if (document.visibilityState === "visible") {
-        router.refresh();
-        window.dispatchEvent(
-          new CustomEvent("g365-pickem-realtime", {
-            detail: { leagueId },
-          })
-        );
+        dispatchRefresh();
       }
-    }, 2_000);
-
-    const onFocus = () => refresh();
-    const onVisible = () => {
-      if (document.visibilityState === "visible") refresh();
-    };
+    }, 30_000);
 
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
-      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      if (hardRefreshTimer !== null) window.clearTimeout(hardRefreshTimer);
+      if (softRefreshTimer !== null) window.clearTimeout(softRefreshTimer);
       window.clearInterval(fallback);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
