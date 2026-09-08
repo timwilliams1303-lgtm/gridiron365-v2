@@ -1,3 +1,4 @@
+
 import Image from "next/image";
 import Link from "next/link";
 
@@ -79,15 +80,7 @@ function getLeagueTypeLabel(
     leagueType ===
     "pickem"
   ) {
-    return "G365 FOOTBALL PICK'EM";
-  }
-
-
-  if (
-    leagueType ===
-    "nhl_pickem"
-  ) {
-    return "G365 NHL PICK'EM";
+    return "G365 PICK'EM";
   }
 
 
@@ -281,11 +274,6 @@ export default async function LeagueLayout({
   const isPickem =
     league.leagueType ===
     "pickem";
-
-
-  const isNhlPickem =
-    league.leagueType ===
-    "nhl_pickem";
 
 
   /*
@@ -641,3 +629,4 @@ export default async function LeagueLayout({
     </div>
   );
 }
+

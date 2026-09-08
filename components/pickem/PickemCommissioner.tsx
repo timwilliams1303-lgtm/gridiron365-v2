@@ -18,6 +18,7 @@ import {
 
 import PickemParticipantManager from "@/components/pickem/PickemParticipantManager";
 import PickemRenewButton from "@/components/pickem/PickemRenewButton";
+import PickemNhlCommissionerPanel from "@/components/pickem/PickemNhlCommissionerPanel";
 
 
 type Props = {
@@ -29,6 +30,18 @@ type FootballScope =
   | "college_nfl"
   | "college_only"
   | "nfl_only";
+
+
+type PickemSport =
+  | "cfb"
+  | "nfl"
+  | "nhl";
+
+
+type HockeyMarketMode =
+  | "puck_line_only"
+  | "total_only"
+  | "puck_line_and_total";
 
 
 type PickLockMode =
@@ -60,6 +73,10 @@ type SettingsRow = {
   season: number;
   football_scope:
     FootballScope;
+  enabled_sports:
+    PickemSport[] | null;
+  hockey_market_mode:
+    HockeyMarketMode | null;
   picks_per_week:
     number;
   pick_lock_mode:
@@ -359,12 +376,14 @@ export default function PickemCommissioner({
     >(null);
 
   const [
-    footballScope,
-    setFootballScope,
+    enabledSports,
+    setEnabledSports,
   ] =
-    useState<FootballScope>(
-      "college_nfl"
-    );
+    useState<PickemSport[]>([
+      "cfb",
+      "nfl",
+      "nhl",
+    ]);
 
   const [
     pickMarketMode,
@@ -372,6 +391,14 @@ export default function PickemCommissioner({
   ] =
     useState<PickMarketMode>(
       "spread_only"
+    );
+
+  const [
+    hockeyMarketMode,
+    setHockeyMarketMode,
+  ] =
+    useState<HockeyMarketMode>(
+      "puck_line_and_total"
     );
 
   const [
@@ -615,7 +642,7 @@ export default function PickemCommissioner({
                 "pickem_settings"
               )
               .select(
-                "season,football_scope,picks_per_week,pick_lock_mode,minimum_source_books,scoring_mode,win_points,push_points,loss_points,confidence_points,confidence_push_multiplier,missing_pick_policy,pick_market_mode"
+                "season,football_scope,enabled_sports,hockey_market_mode,picks_per_week,pick_lock_mode,minimum_source_books,scoring_mode,win_points,push_points,loss_points,confidence_points,confidence_push_multiplier,missing_pick_policy,pick_market_mode"
               )
               .eq(
                 "league_id",
@@ -746,12 +773,26 @@ export default function PickemCommissioner({
         if (
           nextSettings
         ) {
-          setFootballScope(
-            nextSettings.football_scope
+          const legacySports: PickemSport[] =
+            nextSettings.football_scope === "college_only"
+              ? ["cfb"]
+              : nextSettings.football_scope === "nfl_only"
+                ? ["nfl"]
+                : ["cfb", "nfl"];
+
+          setEnabledSports(
+            Array.isArray(nextSettings.enabled_sports) &&
+            nextSettings.enabled_sports.length > 0
+              ? nextSettings.enabled_sports
+              : legacySports
           );
           setPickMarketMode(
             nextSettings.pick_market_mode ??
               "spread_only"
+          );
+          setHockeyMarketMode(
+            nextSettings.hockey_market_mode ??
+              "puck_line_and_total"
           );
           setPicksPerWeek(
             nextSettings.picks_per_week
@@ -1077,7 +1118,13 @@ export default function PickemCommissioner({
           20
       ) {
         throw new Error(
-          "Picks required per week must be between 1 and 20."
+          "Picks required per contest period must be between 1 and 20."
+        );
+      }
+
+      if (enabledSports.length === 0) {
+        throw new Error(
+          "Enable at least one Pick'em sport."
         );
       }
 
@@ -1121,12 +1168,12 @@ export default function PickemCommissioner({
         error,
       } =
         await supabase.rpc(
-          "save_pickem_settings_v4",
+          "save_pickem_settings_v5",
           {
             p_league_id:
               leagueId,
-            p_football_scope:
-              footballScope,
+            p_enabled_sports:
+              enabledSports,
             p_picks_per_week:
               picksPerWeek,
             p_pick_lock_mode:
@@ -1149,6 +1196,10 @@ export default function PickemCommissioner({
               missingPickPolicy,
             p_pick_market_mode:
               pickMarketMode,
+            p_hockey_market_mode:
+              hockeyMarketMode,
+            p_allow_same_game_multiple_markets:
+              false,
           }
         );
 
@@ -1517,7 +1568,7 @@ export default function PickemCommissioner({
               34,
           }}
         >
-          G365 Football Pick&apos;em
+          G365 Pick&apos;em
         </h1>
 
         <p
@@ -1578,46 +1629,99 @@ export default function PickemCommissioner({
               16,
           }}
         >
-          <label
+          <div
             style={
               styles.label
             }
           >
-            Football Slate
-            <select
-              value={
-                footballScope
-              }
-              onChange={(
-                event
-              ) =>
-                setFootballScope(
-                  event.target
-                    .value as FootballScope
-                )
-              }
+            Enabled Sports
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
+              {(
+                [
+                  ["cfb", "College Football"],
+                  ["nfl", "NFL"],
+                  ["nhl", "NHL"],
+                ] as const
+              ).map(([sport, label]) => {
+                const active =
+                  enabledSports.includes(
+                    sport
+                  );
+
+                return (
+                  <button
+                    key={sport}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => {
+                      setEnabledSports(
+                        (current) =>
+                          current.includes(
+                            sport
+                          )
+                            ? current.filter(
+                                (value) =>
+                                  value !==
+                                  sport
+                              )
+                            : [
+                                ...current,
+                                sport,
+                              ]
+                      );
+                    }}
+                    style={{
+                      padding:
+                        "10px 14px",
+                      borderRadius:
+                        10,
+                      border:
+                        active
+                          ? "1px solid rgba(249,115,22,0.8)"
+                          : "1px solid rgba(148,163,184,0.25)",
+                      background:
+                        active
+                          ? "linear-gradient(135deg, rgba(220,38,38,0.34), rgba(249,115,22,0.28))"
+                          : "rgba(15,23,42,0.7)",
+                      color:
+                        "#f8fafc",
+                      fontWeight:
+                        800,
+                      cursor:
+                        "pointer",
+                    }}
+                  >
+                    {active
+                      ? "✓ "
+                      : ""}
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <span
               style={
-                styles.input
+                styles.help
               }
             >
-              <option value="college_nfl">
-                College + NFL
-              </option>
-              <option value="college_only">
-                College only
-              </option>
-              <option value="nfl_only">
-                NFL only
-              </option>
-            </select>
-          </label>
+              Members make their required picks from the sports enabled for this G365 Pick&apos;em league.
+            </span>
+          </div>
 
+          {(enabledSports.includes("cfb") ||
+            enabledSports.includes("nfl")) ? (
           <label
             style={
               styles.label
             }
           >
-            Pick Markets
+            Football Pick Markets
             <select
               value={
                 pickMarketMode
@@ -1649,16 +1753,60 @@ export default function PickemCommissioner({
                 styles.help
               }
             >
-              Spread + Over / Under lets each weekly selection use either market. One game still counts as one pick.
+              Spread + Over / Under lets each football selection use either market. One game still counts as one pick.
             </span>
           </label>
+          ) : null}
+
+          {enabledSports.includes("nhl") ? (
+            <label
+              style={
+                styles.label
+              }
+            >
+              NHL Pick Markets
+              <select
+                value={
+                  hockeyMarketMode
+                }
+                onChange={(
+                  event
+                ) =>
+                  setHockeyMarketMode(
+                    event.target
+                      .value as HockeyMarketMode
+                  )
+                }
+                style={
+                  styles.input
+                }
+              >
+                <option value="puck_line_only">
+                  Puck Line only
+                </option>
+                <option value="total_only">
+                  Over / Under only
+                </option>
+                <option value="puck_line_and_total">
+                  Puck Line + Over / Under
+                </option>
+              </select>
+              <span
+                style={
+                  styles.help
+                }
+              >
+                NHL uses its existing puck-line and total engine. One game still counts as one pick.
+              </span>
+            </label>
+          ) : null}
 
           <label
             style={
               styles.label
             }
           >
-            Required Picks Per Week
+            Required Picks Per Contest Period
             <input
               type="number"
               min={
@@ -2648,6 +2796,14 @@ export default function PickemCommissioner({
           </div>
         )}
       </Panel>
+
+
+      {settings && enabledSports.includes("nhl") ? (
+        <PickemNhlCommissionerPanel
+          leagueId={leagueId}
+          season={settings.season}
+        />
+      ) : null}
 
 
       <Panel

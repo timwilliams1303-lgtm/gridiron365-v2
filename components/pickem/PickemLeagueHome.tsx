@@ -14,8 +14,15 @@ type Props = {
 };
 
 
+type PickemSport =
+  | "cfb"
+  | "nfl"
+  | "nhl";
+
+
 type PickemSettingsRow = {
   football_scope: string;
+  enabled_sports: string[] | null;
   picks_per_week: number;
   pick_lock_mode: string;
   minimum_source_books: number;
@@ -32,17 +39,102 @@ type WeekRow = {
 };
 
 
-function formatScope(value: string) {
-  if (value === "college_only") return "College Football Only";
-  if (value === "nfl_only") return "NFL Only";
-  return "College + NFL";
+type NhlPeriodRow = {
+  id: number;
+  league_id: string;
+  season: number;
+  period_number: number;
+  status: string;
+  starts_at: string;
+  ends_at: string;
+  finalized_at: string | null;
+};
+
+
+type NhlEntryRow = {
+  id: number;
+  fantasy_team_id: number;
+  season: number;
+};
+
+
+type NhlPeriodResultRow = {
+  required_picks: number;
+  wins: number;
+  pushes: number;
+  losses: number;
+};
+
+
+function normalizeEnabledSports(
+  settings: PickemSettingsRow | null
+): PickemSport[] {
+  const explicit =
+    Array.isArray(
+      settings?.enabled_sports
+    )
+      ? settings!.enabled_sports
+          .map((value) =>
+            String(value)
+              .trim()
+              .toLowerCase()
+          )
+          .filter(
+            (
+              value
+            ): value is PickemSport =>
+              value === "cfb" ||
+              value === "nfl" ||
+              value === "nhl"
+          )
+      : [];
+
+  if (explicit.length > 0) {
+    return Array.from(
+      new Set(explicit)
+    );
+  }
+
+  if (
+    settings?.football_scope ===
+    "college_only"
+  ) {
+    return ["cfb"];
+  }
+
+  if (
+    settings?.football_scope ===
+    "nfl_only"
+  ) {
+    return ["nfl"];
+  }
+
+  return ["cfb", "nfl"];
+}
+
+
+function formatEnabledSports(
+  sports: PickemSport[]
+) {
+  const labels: Record<
+    PickemSport,
+    string
+  > = {
+    cfb: "College Football",
+    nfl: "NFL",
+    nhl: "NHL",
+  };
+
+  return sports
+    .map((sport) => labels[sport])
+    .join(" + ");
 }
 
 
 function formatLockMode(value: string) {
   return value === "full_card"
     ? "Full Weekly Card Lock"
-    : "Each Pick Locks at Kickoff";
+    : "Each Pick Locks at Game Start";
 }
 
 
@@ -61,16 +153,67 @@ export default async function PickemLeagueHome({
     await supabase
       .from("pickem_settings")
       .select(
-        "football_scope,picks_per_week,pick_lock_mode,minimum_source_books"
+        [
+          "football_scope",
+          "enabled_sports",
+          "picks_per_week",
+          "pick_lock_mode",
+          "minimum_source_books",
+        ].join(",")
       )
       .eq("league_id", leagueId)
       .maybeSingle();
 
   const settings =
-    settingsData as PickemSettingsRow | null;
+    settingsData as
+      | PickemSettingsRow
+      | null;
 
-  const { data: weekData } =
-    await supabase
+  const enabledSports =
+    normalizeEnabledSports(
+      settings
+    );
+
+  const nhlOnly =
+    enabledSports.length === 1 &&
+    enabledSports[0] === "nhl";
+
+  const includesNhl =
+    enabledSports.includes("nhl");
+
+  const includesFootball =
+    enabledSports.includes("cfb") ||
+    enabledSports.includes("nfl");
+
+  const fantasyTeamId =
+    access.fantasyTeam?.id ??
+    null;
+
+  let currentWeek:
+    | WeekRow
+    | null = null;
+
+  let currentNhlPeriod:
+    | NhlPeriodRow
+    | null = null;
+
+  let displayWeekNumber:
+    | number
+    | null = null;
+
+  let selectedPicks = 0;
+  let wins = 0;
+  let losses = 0;
+  let pushes = 0;
+
+  let requiredPicks =
+    settings?.picks_per_week ??
+    5;
+
+  if (!nhlOnly) {
+    const {
+      data: weekData,
+    } = await supabase
       .from("pickem_weeks")
       .select(
         "id,season,week,status,required_picks,finalized_at"
@@ -83,12 +226,15 @@ export default async function PickemLeagueHome({
       .limit(1)
       .maybeSingle();
 
-  let currentWeek =
-    weekData as WeekRow | null;
+    currentWeek =
+      weekData as
+        | WeekRow
+        | null;
 
-  if (!currentWeek) {
-    const { data: latestFinal } =
-      await supabase
+    if (!currentWeek) {
+      const {
+        data: latestFinal,
+      } = await supabase
         .from("pickem_weeks")
         .select(
           "id,season,week,status,required_picks,finalized_at"
@@ -101,75 +247,432 @@ export default async function PickemLeagueHome({
         .limit(1)
         .maybeSingle();
 
-    currentWeek =
-      latestFinal as WeekRow | null;
-  }
+      currentWeek =
+        latestFinal as
+          | WeekRow
+          | null;
+    }
 
-  const fantasyTeamId =
-    access.fantasyTeam?.id ??
-    null;
+    if (currentWeek) {
+      displayWeekNumber =
+        currentWeek.week;
 
-  let selectedPicks = 0;
-  let wins = 0;
-  let losses = 0;
-  let pushes = 0;
-
-  if (
-    currentWeek &&
-    fantasyTeamId
-  ) {
-    const { count } =
-      await supabase
-        .from("pickem_picks")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
-        .eq(
-          "pickem_week_id",
-          currentWeek.id
-        )
-        .eq(
-          "fantasy_team_id",
-          fantasyTeamId
-        )
-        .neq("result", "void");
-
-    selectedPicks =
-      count ?? 0;
-
-    const { data: resultData } =
-      await supabase
-        .from(
-          "pickem_weekly_results"
-        )
-        .select(
-          "wins,losses,pushes"
-        )
-        .eq(
-          "pickem_week_id",
-          currentWeek.id
-        )
-        .eq(
-          "fantasy_team_id",
-          fantasyTeamId
-        )
-        .maybeSingle();
-
-    if (resultData) {
-      wins =
-        Number(resultData.wins) || 0;
-      losses =
-        Number(resultData.losses) || 0;
-      pushes =
-        Number(resultData.pushes) || 0;
+      requiredPicks =
+        currentWeek.required_picks ??
+        requiredPicks;
     }
   }
 
-  const requiredPicks =
-    currentWeek?.required_picks ??
-    settings?.picks_per_week ??
-    5;
+  if (includesNhl) {
+    if (nhlOnly) {
+      const {
+        data: openPeriodData,
+      } = await supabase
+        .from(
+          "nhl_pickem_periods"
+        )
+        .select(
+          [
+            "id",
+            "league_id",
+            "season",
+            "period_number",
+            "status",
+            "starts_at",
+            "ends_at",
+            "finalized_at",
+          ].join(",")
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .neq(
+          "status",
+          "final"
+        )
+        .order(
+          "period_number",
+          {
+            ascending: true,
+          }
+        )
+        .limit(1)
+        .maybeSingle();
+
+      currentNhlPeriod =
+        openPeriodData as
+          | NhlPeriodRow
+          | null;
+
+      if (!currentNhlPeriod) {
+        const {
+          data: latestFinalData,
+        } = await supabase
+          .from(
+            "nhl_pickem_periods"
+          )
+          .select(
+            [
+              "id",
+              "league_id",
+              "season",
+              "period_number",
+              "status",
+              "starts_at",
+              "ends_at",
+              "finalized_at",
+            ].join(",")
+          )
+          .eq(
+            "league_id",
+            leagueId
+          )
+          .eq(
+            "status",
+            "final"
+          )
+          .order(
+            "period_number",
+            {
+              ascending: false,
+            }
+          )
+          .limit(1)
+          .maybeSingle();
+
+        currentNhlPeriod =
+          latestFinalData as
+            | NhlPeriodRow
+            | null;
+      }
+
+      if (currentNhlPeriod) {
+        const {
+          count:
+            nhlDisplayWeekCount,
+        } = await supabase
+          .from(
+            "nhl_pickem_periods"
+          )
+          .select(
+            "id",
+            {
+              count: "exact",
+              head: true,
+            }
+          )
+          .eq(
+            "league_id",
+            leagueId
+          )
+          .eq(
+            "season",
+            currentNhlPeriod.season
+          )
+          .lte(
+            "period_number",
+            currentNhlPeriod.period_number
+          );
+
+        displayWeekNumber =
+          nhlDisplayWeekCount ??
+          1;
+      }
+    } else if (
+      currentWeek
+    ) {
+      const {
+        data: matchingNhlPeriod,
+      } = await supabase
+        .from(
+          "nhl_pickem_periods"
+        )
+        .select(
+          [
+            "id",
+            "league_id",
+            "season",
+            "period_number",
+            "status",
+            "starts_at",
+            "ends_at",
+            "finalized_at",
+          ].join(",")
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          currentWeek.season
+        )
+        .eq(
+          "period_number",
+          currentWeek.week
+        )
+        .maybeSingle();
+
+      currentNhlPeriod =
+        matchingNhlPeriod as
+          | NhlPeriodRow
+          | null;
+    }
+  }
+
+  if (
+    !nhlOnly &&
+    includesFootball &&
+    currentWeek &&
+    fantasyTeamId
+  ) {
+    const {
+      count:
+        footballPickCount,
+    } = await supabase
+      .from("pickem_picks")
+      .select(
+        "id",
+        {
+          count: "exact",
+          head: true,
+        }
+      )
+      .eq(
+        "pickem_week_id",
+        currentWeek.id
+      )
+      .eq(
+        "fantasy_team_id",
+        fantasyTeamId
+      )
+      .neq(
+        "result",
+        "void"
+      );
+
+    selectedPicks +=
+      footballPickCount ?? 0;
+
+    const {
+      data:
+        footballResultData,
+    } = await supabase
+      .from(
+        "pickem_weekly_results"
+      )
+      .select(
+        "wins,losses,pushes"
+      )
+      .eq(
+        "pickem_week_id",
+        currentWeek.id
+      )
+      .eq(
+        "fantasy_team_id",
+        fantasyTeamId
+      )
+      .maybeSingle();
+
+    if (footballResultData) {
+      wins +=
+        Number(
+          footballResultData.wins
+        ) || 0;
+
+      losses +=
+        Number(
+          footballResultData.losses
+        ) || 0;
+
+      pushes +=
+        Number(
+          footballResultData.pushes
+        ) || 0;
+    }
+  }
+
+  if (
+    currentNhlPeriod &&
+    fantasyTeamId
+  ) {
+    const {
+      data: nhlEntryData,
+    } = await supabase
+      .from(
+        "nhl_pickem_entries"
+      )
+      .select(
+        "id,fantasy_team_id,season"
+      )
+      .eq(
+        "league_id",
+        leagueId
+      )
+      .eq(
+        "fantasy_team_id",
+        fantasyTeamId
+      )
+      .eq(
+        "season",
+        currentNhlPeriod.season
+      )
+      .eq(
+        "active",
+        true
+      )
+      .limit(1)
+      .maybeSingle();
+
+    const nhlEntry =
+      nhlEntryData as
+        | NhlEntryRow
+        | null;
+
+    if (nhlEntry) {
+      const {
+        count:
+          nhlPickCount,
+      } = await supabase
+        .from(
+          "nhl_pickem_picks"
+        )
+        .select(
+          "id",
+          {
+            count: "exact",
+            head: true,
+          }
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "nhl_pickem_period_id",
+          currentNhlPeriod.id
+        )
+        .eq(
+          "entry_id",
+          nhlEntry.id
+        )
+        .neq(
+          "result",
+          "void"
+        );
+
+      selectedPicks +=
+        nhlPickCount ?? 0;
+
+      const {
+        data:
+          nhlResultData,
+      } = await supabase
+        .from(
+          "nhl_pickem_period_results"
+        )
+        .select(
+          [
+            "required_picks",
+            "wins",
+            "pushes",
+            "losses",
+          ].join(",")
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "nhl_pickem_period_id",
+          currentNhlPeriod.id
+        )
+        .eq(
+          "entry_id",
+          nhlEntry.id
+        )
+        .maybeSingle();
+
+      const nhlResult =
+        nhlResultData as
+          | NhlPeriodResultRow
+          | null;
+
+      if (nhlResult) {
+        wins +=
+          Number(
+            nhlResult.wins
+          ) || 0;
+
+        losses +=
+          Number(
+            nhlResult.losses
+          ) || 0;
+
+        pushes +=
+          Number(
+            nhlResult.pushes
+          ) || 0;
+
+        if (nhlOnly) {
+          requiredPicks =
+            Number(
+              nhlResult.required_picks
+            ) ||
+            requiredPicks;
+        }
+      }
+    }
+  }
+
+  if (nhlOnly) {
+    const {
+      data: nhlSettingsData,
+    } = await supabase
+      .from(
+        "nhl_pickem_settings"
+      )
+      .select(
+        "picks_per_period"
+      )
+      .eq(
+        "league_id",
+        leagueId
+      )
+      .maybeSingle();
+
+    requiredPicks =
+      Number(
+        nhlSettingsData
+          ?.picks_per_period
+      ) ||
+      requiredPicks;
+  }
+
+  const weekLabel =
+    displayWeekNumber
+      ? `Week ${displayWeekNumber}`
+      : "Not Open Yet";
+
+  const sportsLabel =
+    formatEnabledSports(
+      enabledSports
+    );
+
+  const heroTitle =
+    nhlOnly
+      ? "Pick the G365 Hockey Card."
+      : includesNhl
+        ? "Beat the G365 Lines."
+        : "Beat the G365 Spread.";
+
+  const heroDescription =
+    nhlOnly
+      ? `Make exactly ${requiredPicks} NHL picks this contest week. Choose from the official G365 puck-line and total markets available for the slate.`
+      : includesNhl
+        ? `Make exactly ${requiredPicks} picks from the enabled G365 sports this contest week. Football uses the G365 spread and NHL uses its official puck-line and total markets.`
+        : `Make exactly ${requiredPicks} ATS picks this week. Each selection stays private to the league until that specific game kicks off.`;
 
   return (
     <main
@@ -272,7 +775,7 @@ export default async function PickemLeagueHome({
             textTransform: "uppercase",
           }}
         >
-          G365 Football Pick&apos;em
+          G365 Pick&apos;em
         </div>
 
         <h2
@@ -283,7 +786,7 @@ export default async function PickemLeagueHome({
             lineHeight: 1,
           }}
         >
-          Beat the G365 Spread.
+          {heroTitle}
         </h2>
 
         <p
@@ -294,7 +797,7 @@ export default async function PickemLeagueHome({
             lineHeight: 1.65,
           }}
         >
-          Make exactly {requiredPicks} ATS picks this week. Each selection stays private to the league until that specific game kicks off.
+          {heroDescription}
         </p>
       </section>
 
@@ -310,9 +813,7 @@ export default async function PickemLeagueHome({
         {[
           [
             "Current Week",
-            currentWeek
-              ? `Week ${currentWeek.week}`
-              : "Not Open Yet",
+            weekLabel,
           ],
           [
             "Your Picks",
@@ -323,11 +824,8 @@ export default async function PickemLeagueHome({
             `${wins}-${losses}${pushes ? `-${pushes}` : ""}`,
           ],
           [
-            "Eligible Football",
-            formatScope(
-              settings?.football_scope ??
-                "college_nfl"
-            ),
+            "Enabled Sports",
+            sportsLabel,
           ],
         ].map(([label, value]) => (
           <div
@@ -378,7 +876,7 @@ export default async function PickemLeagueHome({
         {[
           [
             "My Picks",
-            `Choose your ${requiredPicks} ATS games for the week.`,
+            `Choose your ${requiredPicks} G365 picks for the week.`,
             `/league/${leagueId}/pickem/my-picks`,
           ],
           [
@@ -388,12 +886,12 @@ export default async function PickemLeagueHome({
           ],
           [
             "Live Games",
-            "Follow scores, quarter, clock and live ATS position.",
+            "Follow the live games and your current G365 pick position.",
             `/league/${leagueId}/pickem/games`,
           ],
           [
             "Standings",
-            "Track weekly and season-long Pick'em records.",
+            "Track weekly and season-long Pick'em records across the enabled sports.",
             `/league/${leagueId}/pickem/standings`,
           ],
         ].map(
@@ -454,7 +952,7 @@ export default async function PickemLeagueHome({
         {formatLockMode(
           settings?.pick_lock_mode ??
             "per_game"
-        )}. Picks are always revealed one-by-one only when their own game kicks off. Weekly results remain live until the final game of the Pick&apos;em week is complete and the Monday-night finalization gate is satisfied.
+        )}. Picks are revealed according to the league lock rules. Results remain live until the applicable games in the G365 Pick&apos;em contest week are complete and the period is finalized.
       </section>
     </main>
   );

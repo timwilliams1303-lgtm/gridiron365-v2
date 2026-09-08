@@ -196,8 +196,12 @@ export async function POST(
     const baseUrl =
       getBaseUrl(request);
 
-    const syncSecret =
+    const nhlSyncSecret =
       process.env.NHL_SYNC_SECRET;
+
+    const gridironSyncSecret =
+      process.env.GRIDIRON_SYNC_SECRET ??
+      process.env.NFL_SYNC_SECRET;
 
     /*
      * --------------------------------------------------
@@ -214,7 +218,7 @@ export async function POST(
     const liveStateResult =
       await callInternalRoute(
         `${baseUrl}/api/nhl/sync-live-games`,
-        syncSecret,
+        gridironSyncSecret,
         {}
       );
 
@@ -350,7 +354,7 @@ export async function POST(
       const result =
         await callInternalRoute(
           `${baseUrl}/api/nhl/sync-game-stats`,
-          syncSecret,
+          nhlSyncSecret,
           {
             nhlGameId:
               game.nhl_game_id,
@@ -549,4 +553,3 @@ export async function POST(
     );
   }
 }
-

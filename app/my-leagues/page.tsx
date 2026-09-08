@@ -1,3 +1,4 @@
+
 import Image from "next/image";
 import Link from "next/link";
 
@@ -79,15 +80,7 @@ function formatLeagueType(
     leagueType ===
       "pickem"
   ) {
-    return "G365 Football Pick'em";
-  }
-
-
-  if (
-    leagueType ===
-      "nhl_pickem"
-  ) {
-    return "G365 NHL Pick'em";
+    return "G365 Pick'em";
   }
 
 
@@ -166,13 +159,6 @@ function getLeagueTypeSortOrder(
       "no_salary"
   ) {
     return 60;
-  }
-
-  if (
-    leagueType ===
-    "nhl_pickem"
-  ) {
-    return 70;
   }
 
   return 999;
@@ -492,9 +478,7 @@ export default async function MyLeaguesPage() {
                             {league.leagueType ===
                               "season_long" ||
                             league.leagueType ===
-                              "pickem" ||
-                            league.leagueType ===
-                              "nhl_pickem"
+                              "pickem"
                               ? "My Entry"
                               : "My Team"}
                           </span>
@@ -1270,3 +1254,4 @@ const styles = {
       "none",
   },
 };
+

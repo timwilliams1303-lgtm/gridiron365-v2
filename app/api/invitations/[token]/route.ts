@@ -1,3 +1,4 @@
+
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -996,87 +997,6 @@ export async function POST(
       }
     }
 
-    /*
-     * NHL Pick'em requires a complete participant chain:
-     * member -> franchise -> fantasy team -> entry -> standings.
-     *
-     * Call this through the authenticated user client because the
-     * database function validates auth.uid().
-     */
-    if (
-      league.league_type ===
-      "nhl_pickem"
-    ) {
-      const {
-        error:
-          nhlEntryError,
-      } =
-        await userClient.rpc(
-          "ensure_nhl_pickem_member_entry",
-          {
-            p_league_id:
-              invitation.league_id,
-
-            p_user_id:
-              user.id,
-
-            p_entry_name:
-              teamName,
-          }
-        );
-
-      if (nhlEntryError) {
-        if (
-          membershipCreated
-        ) {
-          await admin
-            .from(
-              "league_members"
-            )
-            .delete()
-            .eq(
-              "league_id",
-              invitation.league_id
-            )
-            .eq(
-              "user_id",
-              user.id
-            );
-        }
-
-        if (
-          teamOwnershipClaimed &&
-          teamId !== null
-        ) {
-          await admin
-            .from(
-              "fantasy_teams"
-            )
-            .update({
-              owner_id:
-                null,
-
-              updated_at:
-                new Date()
-                  .toISOString(),
-            })
-            .eq(
-              "id",
-              teamId
-            )
-            .eq(
-              "owner_id",
-              user.id
-            );
-        }
-
-        return jsonError(
-          nhlEntryError.message,
-          500
-        );
-      }
-    }
-
     const {
       data:
         acceptedInvitation,
@@ -1213,3 +1133,4 @@ export async function POST(
     );
   }
 }
+

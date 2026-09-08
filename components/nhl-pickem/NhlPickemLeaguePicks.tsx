@@ -524,6 +524,39 @@ export default function NhlPickemLeaguePicks({
     );
 
 
+  const displayWeekByPeriodId =
+    useMemo(() => {
+      const map =
+        new Map<number, number>();
+
+      periods
+        .slice()
+        .sort(
+          (a, b) =>
+            a.period_number -
+            b.period_number
+        )
+        .forEach(
+          (period, index) => {
+            map.set(
+              period.id,
+              index + 1
+            );
+          }
+        );
+
+      return map;
+    }, [periods]);
+
+
+  const selectedDisplayWeek =
+    selectedPeriod
+      ? displayWeekByPeriodId.get(
+          selectedPeriod.id
+        ) ?? 1
+      : null;
+
+
   const resultsByEntry =
     useMemo(() => {
       const map =
@@ -1338,7 +1371,7 @@ export default function NhlPickemLeaguePicks({
             "#aaaab2",
         }}
       >
-        Loading NHL League
+        Loading G365 League
         Picks…
       </main>
     );
@@ -1384,7 +1417,7 @@ export default function NhlPickemLeaguePicks({
               "uppercase",
           }}
         >
-          G365 NHL Pick&apos;em
+          G365 Pick&apos;em
         </div>
 
         <h1
@@ -1487,7 +1520,7 @@ export default function NhlPickemLeaguePicks({
           {periods.length ===
           0 ? (
             <option value="">
-              No period ready
+              No NHL week ready
             </option>
           ) : (
             periods.map(
@@ -1500,9 +1533,11 @@ export default function NhlPickemLeaguePicks({
                     period.id
                   }
                 >
-                  Period{" "}
+                  Week{" "}
                   {
-                    period.period_number
+                    displayWeekByPeriodId.get(
+                      period.id
+                    ) ?? 1
                   }
                 </option>
               )
@@ -1555,14 +1590,14 @@ export default function NhlPickemLeaguePicks({
 
       {!selectedPeriod ? (
         <EmptyState
-          title="The NHL Pick'em period is not ready yet."
-          description="League Picks will appear after an NHL Pick'em period has been initialized."
+          title="The NHL Pick'em week is not ready yet."
+          description="League Picks will appear after the first eligible NHL contest week has been prepared."
         />
       ) : teamGroups.length ===
         0 ? (
         <EmptyState
-          title={`No Period ${selectedPeriod.period_number} entries are available yet.`}
-          description="NHL Pick'em participants will appear here after entries are created."
+          title={`No Week ${selectedDisplayWeek ?? 1} entries are available yet.`}
+          description="G365 Pick'em participants will appear here after the NHL week and entry data are ready."
         />
       ) : (
         <section

@@ -1,10 +1,10 @@
+
 export type ParticipantSlotMode =
   | "existing_slot"
   | "auto_create_slot";
 
 export type AcceptanceInitializer =
-  | "none"
-  | "nhl_pickem";
+  "none";
 
 export type LeagueParticipantPolicy = {
   leagueType: string;
@@ -147,22 +147,6 @@ const PARTICIPANT_POLICIES:
       ) =>
         `/league/${leagueId}`,
     },
-
-    nhl_pickem: {
-      leagueType:
-        "nhl_pickem",
-
-      slotMode:
-        "auto_create_slot",
-
-      acceptanceInitializer:
-        "nhl_pickem",
-
-      getHomePath: (
-        leagueId
-      ) =>
-        `/league/${leagueId}/nhl-pickem`,
-    },
   };
 
 
@@ -221,3 +205,4 @@ export function getLeagueParticipantHomePath(
     `/league/${leagueId}`
   );
 }
+

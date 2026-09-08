@@ -4,7 +4,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 
@@ -18,6 +17,8 @@ type Props = {
   season: number;
   fantasyTeamId: number;
   teamName: string;
+  embedded?: boolean;
+  forcedPeriodNumber?: number | null;
 };
 
 
@@ -434,6 +435,8 @@ export default function NhlPickemMyPicks({
   season,
   fantasyTeamId,
   teamName,
+  embedded = false,
+  forcedPeriodNumber = null,
 }: Props) {
   const supabase =
     useMemo(
@@ -441,16 +444,6 @@ export default function NhlPickemMyPicks({
         createSupabaseBrowserClient(),
       []
     );
-
-
-  const refreshTimerRef =
-    useRef<number | null>(null);
-
-  const refreshBlockedRef =
-    useRef(false);
-
-  const refreshPendingRef =
-    useRef(false);
 
 
   const [
@@ -554,6 +547,39 @@ export default function NhlPickemMyPicks({
         selectedPeriodId,
       ]
     );
+
+
+  const displayWeekByPeriodId =
+    useMemo(() => {
+      const map =
+        new Map<number, number>();
+
+      periods
+        .slice()
+        .sort(
+          (a, b) =>
+            a.period_number -
+            b.period_number
+        )
+        .forEach(
+          (period, index) => {
+            map.set(
+              period.id,
+              index + 1
+            );
+          }
+        );
+
+      return map;
+    }, [periods]);
+
+
+  const selectedDisplayWeek =
+    selectedPeriod
+      ? displayWeekByPeriodId.get(
+          selectedPeriod.id
+        ) ?? 1
+      : null;
 
 
   /*
@@ -798,13 +824,19 @@ export default function NhlPickemMyPicks({
 
         setSelectedPeriodId(
           (current) => {
+            if (forcedPeriodNumber !== null) {
+              return (
+                nextPeriods.find(
+                  (period) =>
+                    period.period_number === forcedPeriodNumber
+                )?.id ?? null
+              );
+            }
+
             if (
-              current !==
-                null &&
+              current !== null &&
               nextPeriods.some(
-                (period) =>
-                  period.id ===
-                  current
+                (period) => period.id === current
               )
             ) {
               return current;
@@ -812,15 +844,12 @@ export default function NhlPickemMyPicks({
 
             const active =
               nextPeriods.find(
-                (period) =>
-                  period.status !==
-                  "final"
+                (period) => period.status !== "final"
               );
 
             return (
               active?.id ??
-              nextPeriods.at(-1)
-                ?.id ??
+              nextPeriods.at(-1)?.id ??
               null
             );
           }
@@ -828,6 +857,7 @@ export default function NhlPickemMyPicks({
       },
       [
         fantasyTeamId,
+        forcedPeriodNumber,
         leagueId,
         season,
         supabase,
@@ -1294,255 +1324,32 @@ export default function NhlPickemMyPicks({
       }
     }
 
-
-    function performRefresh() {
-      if (
-        !active ||
-        document.visibilityState ===
-          "hidden"
-      ) {
-        return;
-      }
-
-      if (
-        refreshBlockedRef.current
-      ) {
-        refreshPendingRef.current =
-          true;
-
-        return;
-      }
-
-      refreshBlockedRef.current =
-        true;
-
-      refreshPendingRef.current =
-        false;
-
-      void run().finally(
-        () => {
-          window.setTimeout(
-            () => {
-              if (!active) {
-                return;
-              }
-
-              refreshBlockedRef.current =
-                false;
-
-              if (
-                refreshPendingRef.current
-              ) {
-                refreshPendingRef.current =
-                  false;
-
-                performRefresh();
-              }
-            },
-            500
-          );
-        }
-      );
-    }
-
-
-    function scheduleRefresh() {
-      if (
-        !active ||
-        document.visibilityState ===
-          "hidden"
-      ) {
-        return;
-      }
-
-      if (
-        refreshTimerRef.current !==
-        null
-      ) {
-        window.clearTimeout(
-          refreshTimerRef.current
-        );
-      }
-
-      refreshTimerRef.current =
-        window.setTimeout(
-          () => {
-            refreshTimerRef.current =
-              null;
-
-            performRefresh();
-          },
-          150
-        );
-    }
-
-
-    /*
-     * Initial period load.
-     */
     void run();
 
 
     /*
-     * Live NHL Pick'em synchronization.
-     *
-     * Realtime database changes immediately
-     * reload the current user's active card.
+     * NHL score/game-state refresh.
      */
-    const channel =
-      supabase
-        .channel(
-          `nhl-pickem-my-picks-${leagueId}-${fantasyTeamId}-${selectedPeriod?.id ?? "none"}`
-        )
-
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table:
-              "nhl_pickem_picks",
-            filter:
-              `league_id=eq.${leagueId}`,
-          },
-          scheduleRefresh
-        )
-
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table:
-              "nhl_pickem_games",
-            filter:
-              `league_id=eq.${leagueId}`,
-          },
-          scheduleRefresh
-        )
-
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table:
-              "nhl_pickem_periods",
-            filter:
-              `league_id=eq.${leagueId}`,
-          },
-          scheduleRefresh
-        )
-
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table:
-              "nhl_pickem_period_results",
-            filter:
-              `league_id=eq.${leagueId}`,
-          },
-          scheduleRefresh
-        )
-
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table:
-              "nhl_pickem_entries",
-            filter:
-              `league_id=eq.${leagueId}`,
-          },
-          scheduleRefresh
-        )
-
-        .subscribe(
-          (status) => {
-            if (
-              status ===
-                "CHANNEL_ERROR" ||
-              status ===
-                "TIMED_OUT"
-            ) {
-              console.error(
-                "NHL Pick'em My Picks realtime error:",
-                status,
-                leagueId,
-                fantasyTeamId
-              );
-            }
-          }
-        );
-
-
-    /*
-     * Safety fallback. Realtime should normally
-     * refresh first; this covers brief websocket
-     * interruptions without requiring a browser
-     * refresh.
-     */
-    const fallbackTimer =
+    const timer =
       window.setInterval(
-        performRefresh,
-        10_000
+        () => {
+          void run();
+        },
+        15000
       );
-
-
-    function handleVisibilityChange() {
-      if (
-        document.visibilityState ===
-          "visible"
-      ) {
-        performRefresh();
-      }
-    }
-
-
-    document.addEventListener(
-      "visibilitychange",
-      handleVisibilityChange
-    );
 
 
     return () => {
       active = false;
 
-      if (
-        refreshTimerRef.current !==
-        null
-      ) {
-        window.clearTimeout(
-          refreshTimerRef.current
-        );
-
-        refreshTimerRef.current =
-          null;
-      }
-
       window.clearInterval(
-        fallbackTimer
-      );
-
-      document.removeEventListener(
-        "visibilitychange",
-        handleVisibilityChange
-      );
-
-      void supabase.removeChannel(
-        channel
+        timer
       );
     };
   }, [
-    fantasyTeamId,
-    leagueId,
     loadPeriod,
     loading,
     selectedPeriod,
-    supabase,
   ]);
 
 
@@ -1887,6 +1694,7 @@ export default function NhlPickemMyPicks({
       `}</style>
 
 
+      {!embedded ? (
       <section
         style={{
           display:
@@ -1913,7 +1721,7 @@ export default function NhlPickemMyPicks({
                 "uppercase",
             }}
           >
-            G365 NHL Pick&apos;em
+            G365 Pick&apos;em
           </div>
 
           <h1
@@ -2020,8 +1828,10 @@ export default function NhlPickemMyPicks({
           graded.
         </div>
       </section>
+      ) : null}
 
 
+      {!embedded ? (
       <section
         style={{
           display: "flex",
@@ -2091,7 +1901,7 @@ export default function NhlPickemMyPicks({
           {periods.length ===
           0 ? (
             <option value="">
-              No period ready
+              No NHL week ready
             </option>
           ) : (
             periods.map(
@@ -2104,9 +1914,11 @@ export default function NhlPickemMyPicks({
                     period.id
                   }
                 >
-                  Period{" "}
+                  Week{" "}
                   {
-                    period.period_number
+                    displayWeekByPeriodId.get(
+                      period.id
+                    ) ?? 1
                   }{" "}
                   ·{" "}
                   {period.status
@@ -2149,6 +1961,7 @@ export default function NhlPickemMyPicks({
           </div>
         ) : null}
       </section>
+      ) : null}
 
 
       {message ? (
@@ -2185,14 +1998,14 @@ export default function NhlPickemMyPicks({
         />
       ) : !selectedPeriod ? (
         <EmptyState
-          title="The NHL Pick'em period is not ready yet."
-          description="A contest period must be initialized before selections can be made."
+          title="The NHL Pick'em week is not ready yet."
+          description="The first NHL contest week will appear automatically once an eligible NHL regular-season slate is prepared."
         />
       ) : displayGames.length ===
         0 ? (
         <EmptyState
-          title={`Period ${selectedPeriod.period_number} has no NHL games loaded yet.`}
-          description="The period exists, but its NHL game slate has not been prepared yet."
+          title={`Week ${selectedDisplayWeek ?? 1} has no NHL games loaded yet.`}
+          description="The NHL contest week exists, but its NHL game slate has not been prepared yet."
         />
       ) : (
         <section

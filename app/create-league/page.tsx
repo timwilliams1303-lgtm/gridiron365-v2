@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -36,8 +37,7 @@ type LeagueFormat = {
     | "season_long_no_salary"
     | "playoffs_salary"
     | "playoffs_no_salary"
-    | "pickem"
-    | "nhl_pickem";
+    | "pickem";
 
   title:
     string;
@@ -145,33 +145,16 @@ const leagueFormats:
         "pickem",
 
       title:
-        "G365 Football Pick'em",
+        "G365 Pick'em",
 
       description:
-        "Pick against the frozen G365 Spread each week across College Football, the NFL, or both. Picks stay private until each selected game kicks off.",
+        "Create one multi-sport Pick'em league and enable College Football, NFL, NHL, or any combination. Football uses frozen G365 spreads/totals and NHL uses frozen G365 puck lines/totals.",
 
       leagueType:
         "pickem",
 
       playerSelectionMode:
         "pickem",
-    },
-
-    {
-      id:
-        "nhl_pickem",
-
-      title:
-        "G365 NHL Pick'em",
-
-      description:
-        "Make weekly NHL picks against frozen G365 Puck Lines and G365 Totals. Official lines are frozen and audited before picks lock at puck drop.",
-
-      leagueType:
-        "nhl_pickem",
-
-      playerSelectionMode:
-        "standard",
     },
   ];
 
@@ -277,16 +260,10 @@ export default function CreateLeaguePage() {
     "pickem";
 
 
-  const isNhlPickem =
-    selectedFormat.leagueType ===
-    "nhl_pickem";
-
-
   const requiresTeamName =
     isTraditional ||
     isSeasonLong ||
-    isPickem ||
-    isNhlPickem;
+    isPickem;
 
 
   const isSalary =
@@ -372,12 +349,7 @@ export default function CreateLeaguePage() {
        * page is built, we can send the
        * commissioner directly there.
        */
-      router.replace(
-        result.leagueType ===
-        "nhl_pickem"
-          ? `/league/${result.leagueId}/nhl-pickem`
-          : "/my-leagues"
-      );
+      router.replace("/my-leagues");
 
       router.refresh();
 
@@ -740,26 +712,26 @@ export default function CreateLeaguePage() {
             ) : null}
 
 
-            {isNhlPickem ? (
+            {isPickem ? (
               <div
                 style={
                   styles.contestInfo
                 }
               >
                 <strong>
-                  G365 NHL Pick'em
+                  G365 Pick'em
                 </strong>
 
                 <span>
-                  Make weekly NHL selections using the frozen G365
-                  Puck Line, G365 Total, or both, depending on the
-                  commissioner settings.
+                  Choose College Football, NFL, NHL, or any combination in
+                  Commissioner Settings. All enabled sports participate in
+                  one G365 Pick'em contest.
                 </span>
 
                 <span>
-                  Picks lock at each game's puck drop. Official G365
-                  lines are frozen from the configured sportsbook
-                  source coverage and remain auditable for grading.
+                  Football uses frozen G365 spreads and totals. NHL uses frozen
+                  G365 puck lines and totals. Required picks, scoring,
+                  standings, recap, and trophies are shared across the league.
                 </span>
               </div>
             ) : null}
@@ -1298,3 +1270,4 @@ const styles = {
       "24px",
   },
 };
+

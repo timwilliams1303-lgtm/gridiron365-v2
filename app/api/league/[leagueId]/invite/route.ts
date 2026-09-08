@@ -1,3 +1,4 @@
+
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -1217,16 +1218,8 @@ export async function POST(
               " "
             );
 
-        const isNhlPickem =
-          league.league_type ===
-          "nhl_pickem";
-
         const baseTeamName =
-          (
-            isNhlPickem
-              ? `${participantName} NHL Pick'em`
-              : `${participantName} Playoff Entry`
-          )
+          `${participantName} Playoff Entry`
             .trim()
             .replace(
               /\s+/g,
@@ -1256,12 +1249,7 @@ export async function POST(
                 null,
 
               team_name:
-                baseTeamName ||
-                (
-                  isNhlPickem
-                    ? "NHL Pick'em Entry"
-                    : "Playoff Entry"
-                ),
+                baseTeamName || "Playoff Entry",
 
               active:
                 true,
@@ -1280,11 +1268,7 @@ export async function POST(
         ) {
           return jsonError(
             createTeamError?.message ??
-              (
-                isNhlPickem
-                  ? "The reserved NHL Pick'em fantasy team could not be created."
-                  : "The reserved NFL Playoffs fantasy team could not be created."
-              ),
+              "The reserved NFL Playoffs fantasy team could not be created.",
             500
           );
         }
