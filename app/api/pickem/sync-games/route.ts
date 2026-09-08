@@ -17,6 +17,15 @@ type FootballScope =
   | "college_only"
   | "nfl_only";
 
+type PickemSport =
+  | "cfb"
+  | "nfl"
+  | "nhl";
+
+type FootballProviderSport =
+  | "ncaaf"
+  | "nfl";
+
 type PickemWeekRow = {
   id: number;
   league_id: string;
@@ -33,6 +42,9 @@ type PickemSettingsRow = {
   league_id: string;
   football_scope:
     FootballScope;
+
+  enabled_sports:
+    PickemSport[] | null;
 };
 
 type EspnTeam = {
@@ -760,32 +772,93 @@ function normalizeCollegeEvent(
   };
 }
 
-function sportsForScope(
-  scope:
-    FootballScope
-) {
+function enabledSportsForSettings(
+  settings:
+    PickemSettingsRow
+): PickemSport[] {
+  const configured =
+    Array.isArray(
+      settings.enabled_sports
+    )
+      ? settings.enabled_sports.filter(
+          (
+            sport
+          ): sport is PickemSport =>
+            sport === "cfb" ||
+            sport === "nfl" ||
+            sport === "nhl"
+        )
+      : [];
+
   if (
-    scope ===
-    "college_only"
+    configured.length >
+    0
   ) {
     return [
-      "ncaaf",
-    ] as const;
+      ...new Set(
+        configured
+      ),
+    ];
   }
 
   if (
-    scope ===
+    settings.football_scope ===
+    "college_only"
+  ) {
+    return [
+      "cfb",
+    ];
+  }
+
+  if (
+    settings.football_scope ===
     "nfl_only"
   ) {
     return [
       "nfl",
-    ] as const;
+    ];
   }
 
   return [
-    "ncaaf",
+    "cfb",
     "nfl",
-  ] as const;
+  ];
+}
+
+function footballSportsForSettings(
+  settings:
+    PickemSettingsRow
+): FootballProviderSport[] {
+  const enabled =
+    enabledSportsForSettings(
+      settings
+    );
+
+  const sports:
+    FootballProviderSport[] =
+    [];
+
+  if (
+    enabled.includes(
+      "cfb"
+    )
+  ) {
+    sports.push(
+      "ncaaf"
+    );
+  }
+
+  if (
+    enabled.includes(
+      "nfl"
+    )
+  ) {
+    sports.push(
+      "nfl"
+    );
+  }
+
+  return sports;
 }
 
 function yyyymmdd(
@@ -1468,7 +1541,7 @@ async function cleanupStalePickemGames(
   week:
     number,
   sport:
-    "ncaaf" | "nfl",
+    FootballProviderSport,
   slateStartsAt:
     string,
   slateEndsAt:
@@ -2094,7 +2167,7 @@ export async function POST(
           true,
 
         source:
-          "G365 shared NFL + ESPN NCAA",
+          "G365 Pick'em multi-sport sync",
 
         weeksProcessed:
           0,
@@ -2140,7 +2213,7 @@ export async function POST(
           "pickem_settings"
         )
         .select(
-          "league_id,football_scope"
+          "league_id,football_scope,enabled_sports"
         )
         .in(
           "league_id",
@@ -2158,7 +2231,7 @@ export async function POST(
     const settingsMap =
       new Map<
         string,
-        FootballScope
+        PickemSettingsRow
       >();
 
     for (
@@ -2169,7 +2242,7 @@ export async function POST(
     ) {
       settingsMap.set(
         row.league_id,
-        row.football_scope
+        row
       );
     }
 
@@ -2215,6 +2288,15 @@ export async function POST(
     let sharedNflLoads =
       0;
 
+    let nhlPeriodsPrepared =
+      0;
+
+    let nhlGamesTouched =
+      0;
+
+    let nhlGamesExcluded =
+      0;
+
     let staleGamesFound =
       0;
 
@@ -2258,12 +2340,12 @@ export async function POST(
       const pickemWeek
       of weeks
     ) {
-      const scope =
+      const settings =
         settingsMap.get(
           pickemWeek.league_id
         );
 
-      if (!scope) {
+      if (!settings) {
         gamesSkipped +=
           1;
 
@@ -2282,11 +2364,19 @@ export async function POST(
         continue;
       }
 
+      const enabledSports =
+        enabledSportsForSettings(
+          settings
+        );
+
+      const footballSports =
+        footballSportsForSettings(
+          settings
+        );
+
       for (
         const sport
-        of sportsForScope(
-          scope
-        )
+        of footballSports
       ) {
         let games:
           NormalizedGame[] =
@@ -2658,6 +2748,334 @@ export async function POST(
       }
 
       /*
+       * =================================================
+       * NHL
+       * =================================================
+       *
+       * NHL continues to use the mature nhl_pickem_* engine.
+       * The unified Pick'em week is mirrored into an NHL
+       * contest period with the same league/season/week and
+       * slate window. NHL games are not duplicated into
+       * public.pickem_games.
+       */
+      if (
+        enabledSports.includes(
+          "nhl"
+        )
+      ) {
+        /*
+         * Do not create empty NHL contest periods before the NHL
+         * regular season starts (or after it ends). Empty periods
+         * could later be finalized and incorrectly count required
+         * NHL picks as missing.
+         *
+         * The mature NHL engine itself also filters to regular-
+         * season games, so use the same eligibility rule here.
+         */
+        const {
+          count:
+            nhlAuthoritativeGameCount,
+          error:
+            nhlAuthoritativeGameError,
+        } =
+          await supabase
+            .from(
+              "nhl_games"
+            )
+            .select(
+              "id",
+              {
+                count:
+                  "exact",
+                head:
+                  true,
+              }
+            )
+            .eq(
+              "season",
+              pickemWeek.season
+            )
+            .gte(
+              "start_time",
+              pickemWeek.slate_starts_at
+            )
+            .lt(
+              "start_time",
+              pickemWeek.slate_ends_at
+            )
+            .or(
+              "season_type.eq.regular,season_type.is.null"
+            );
+
+        if (
+          nhlAuthoritativeGameError
+        ) {
+          throw new Error(
+            `Could not inspect authoritative NHL games for Pick'em week ${pickemWeek.id}: ${nhlAuthoritativeGameError.message}`
+          );
+        }
+
+        if (
+          Number(
+            nhlAuthoritativeGameCount ??
+              0
+          ) === 0
+        ) {
+          details.push({
+            leagueId:
+              pickemWeek.league_id,
+
+            season:
+              pickemWeek.season,
+
+            week:
+              pickemWeek.week,
+
+            sport:
+              "nhl",
+
+            source:
+              "No eligible NHL regular-season games in slate",
+
+            games:
+              0,
+
+            staleCandidates:
+              0,
+
+            staleDeleted:
+              0,
+
+            stalePreserved:
+              0,
+          });
+
+          continue;
+        }
+
+        const now =
+          new Date();
+
+        const startsAt =
+          new Date(
+            pickemWeek.slate_starts_at
+          );
+
+        const endsAt =
+          new Date(
+            pickemWeek.slate_ends_at
+          );
+
+        const nhlStatus =
+          now.getTime() <
+          startsAt.getTime()
+            ? "upcoming"
+            : now.getTime() >=
+                endsAt.getTime()
+              ? "locked"
+              : "open";
+
+        const {
+          data:
+            existingNhlPeriod,
+          error:
+            existingNhlPeriodError,
+        } =
+          await supabase
+            .from(
+              "nhl_pickem_periods"
+            )
+            .select(
+              "id,status"
+            )
+            .eq(
+              "league_id",
+              pickemWeek.league_id
+            )
+            .eq(
+              "season",
+              pickemWeek.season
+            )
+            .eq(
+              "period_number",
+              pickemWeek.week
+            )
+            .maybeSingle();
+
+        if (
+          existingNhlPeriodError
+        ) {
+          throw new Error(
+            `Could not inspect NHL Pick'em period for week ${pickemWeek.id}: ${existingNhlPeriodError.message}`
+          );
+        }
+
+        const safeNhlStatus =
+          existingNhlPeriod
+            ?.status ===
+          "final"
+            ? "final"
+            : nhlStatus;
+
+        const {
+          data:
+            nhlPeriod,
+          error:
+            nhlPeriodError,
+        } =
+          await supabase
+            .from(
+              "nhl_pickem_periods"
+            )
+            .upsert(
+              {
+                league_id:
+                  pickemWeek.league_id,
+
+                season:
+                  pickemWeek.season,
+
+                period_number:
+                  pickemWeek.week,
+
+                starts_at:
+                  pickemWeek.slate_starts_at,
+
+                ends_at:
+                  pickemWeek.slate_ends_at,
+
+                line_day_at:
+                  pickemWeek.line_day_at,
+
+                finalize_not_before:
+                  pickemWeek.finalize_not_before,
+
+                status:
+                  safeNhlStatus,
+
+                updated_at:
+                  new Date()
+                    .toISOString(),
+              },
+              {
+                onConflict:
+                  "league_id,season,period_number",
+
+                ignoreDuplicates:
+                  false,
+              }
+            )
+            .select(
+              "id,status"
+            )
+            .single();
+
+        if (
+          nhlPeriodError
+        ) {
+          throw new Error(
+            `Could not mirror Pick'em week ${pickemWeek.id} into NHL period: ${nhlPeriodError.message}`
+          );
+        }
+
+        if (
+          !nhlPeriod
+        ) {
+          throw new Error(
+            `Could not load mirrored NHL Pick'em period for week ${pickemWeek.id}.`
+          );
+        }
+
+        const {
+          data:
+            nhlPrepareData,
+          error:
+            nhlPrepareError,
+        } =
+          await supabase.rpc(
+            "prepare_nhl_pickem_period_games",
+            {
+              p_nhl_pickem_period_id:
+                nhlPeriod.id,
+            }
+          );
+
+        if (
+          nhlPrepareError
+        ) {
+          throw new Error(
+            `Could not prepare NHL Pick'em period ${nhlPeriod.id}: ${nhlPrepareError.message}`
+          );
+        }
+
+        const nhlResult =
+          (
+            nhlPrepareData ??
+            {}
+          ) as {
+            inserted?:
+              number;
+
+            updated?:
+              number;
+
+            excluded?:
+              number;
+          };
+
+        const nhlTouched =
+          Number(
+            nhlResult.inserted ??
+              0
+          ) +
+          Number(
+            nhlResult.updated ??
+              0
+          );
+
+        nhlPeriodsPrepared +=
+          1;
+
+        nhlGamesTouched +=
+          nhlTouched;
+
+        nhlGamesExcluded +=
+          Number(
+            nhlResult.excluded ??
+              0
+          );
+
+        details.push({
+          leagueId:
+            pickemWeek.league_id,
+
+          season:
+            pickemWeek.season,
+
+          week:
+            pickemWeek.week,
+
+          sport:
+            "nhl",
+
+          source:
+            "G365 shared nhl_games + nhl_pickem engine",
+
+          games:
+            nhlTouched,
+
+          staleCandidates:
+            0,
+
+          staleDeleted:
+            0,
+
+          stalePreserved:
+            0,
+        });
+      }
+
+      /*
        * Mark the schedule synchronization time after all
        * enabled sports for the week have been processed.
        */
@@ -2726,7 +3144,7 @@ export async function POST(
         true,
 
       source:
-        "G365 shared NFL + ESPN NCAA",
+        "G365 Pick'em multi-sport sync",
 
       nflSource:
         "public.nfl_games",
@@ -2734,12 +3152,21 @@ export async function POST(
       collegeSource:
         "ESPN",
 
+      nhlSource:
+        "public.nhl_games + public.nhl_pickem_*",
+
       weeksProcessed:
         weeks.length,
 
       collegeFeedsFetched,
 
       sharedNflLoads,
+
+      nhlPeriodsPrepared,
+
+      nhlGamesTouched,
+
+      nhlGamesExcluded,
 
       gamesUpserted,
 
@@ -2773,7 +3200,7 @@ export async function POST(
           false,
 
         source:
-          "G365 shared NFL + ESPN NCAA",
+          "G365 Pick'em multi-sport sync",
 
         error:
           error instanceof Error
