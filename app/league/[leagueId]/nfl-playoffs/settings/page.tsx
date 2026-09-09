@@ -468,7 +468,7 @@ export default async function NflPlayoffsSettingsPage({
           state
             ?.active_round
         )
-      : 1;
+      : null;
 
   const starterCount =
     settings.starting_qb +
@@ -702,16 +702,22 @@ export default async function NflPlayoffsSettingsPage({
             value={
               leagueComplete
                 ? "Complete"
-                : String(
-                    activeRound
-                  )
+                : activeRound !==
+                    null
+                  ? String(
+                      activeRound
+                    )
+                  : "Not Started"
             }
             detail={
               leagueComplete
                 ? "NFL postseason finished"
-                : fallbackRoundName(
-                    activeRound
-                  )
+                : activeRound !==
+                    null
+                  ? fallbackRoundName(
+                      activeRound
+                    )
+                  : "Waiting for the postseason lifecycle"
             }
           />
 
@@ -749,7 +755,7 @@ export default async function NflPlayoffsSettingsPage({
             >
               <Rule
                 title="Competition Type"
-                text="Total cumulative fantasy points across all four NFL postseason rounds determine the league champion."
+                text="All four finalized NFL postseason rounds contribute to the official cumulative standings. The team ranked No. 1 after the league's championship tiebreak rules are applied is the champion."
               />
 
               <Rule
@@ -769,7 +775,7 @@ export default async function NflPlayoffsSettingsPage({
 
               <Rule
                 title="Super Bowl"
-                text="Round 4 and the final scoring period. Final cumulative points determine the champion."
+                text="Round 4 and the final scoring period. After it is finalized, the official cumulative standings and championship tiebreak rules determine the champion."
               />
 
               <Rule
@@ -834,6 +840,11 @@ export default async function NflPlayoffsSettingsPage({
               <Rule
                 title="Individual Player Locks"
                 text="A selected player locks when that player's actual NFL postseason game begins."
+              />
+
+              <Rule
+                title="Individual Player Reveal"
+                text="Other members see each selected player only after that player's own NFL postseason game reaches kickoff. Players in later games remain private until their individual kickoff."
               />
 
               <Rule
@@ -968,11 +979,32 @@ export default async function NflPlayoffsSettingsPage({
                       )
                     : false;
 
+                const normalizedRoundStatus =
+                  (
+                    round
+                      ?.status ??
+                    ""
+                  )
+                    .trim()
+                    .toLowerCase();
+
+                const roundStatusIsActive =
+                  [
+                    "active",
+                    "open",
+                    "in_progress",
+                    "in progress",
+                    "live",
+                  ].includes(
+                    normalizedRoundStatus
+                  );
+
                 const active =
                   !final &&
                   !leagueComplete &&
                   activeRound ===
-                    roundNumber;
+                    roundNumber &&
+                  roundStatusIsActive;
 
                 return (
                   <article
@@ -1039,7 +1071,19 @@ export default async function NflPlayoffsSettingsPage({
                           ? "FINAL"
                           : active
                             ? "ACTIVE"
-                            : "UPCOMING"}
+                            : normalizedRoundStatus ===
+                                "pending" ||
+                              normalizedRoundStatus ===
+                                "setup" ||
+                              normalizedRoundStatus ===
+                                "not_started" ||
+                              normalizedRoundStatus ===
+                                "not started"
+                              ? "UPCOMING"
+                              : prettyStatus(
+                                  round
+                                    ?.status
+                                ).toUpperCase()}
                       </span>
                     </div>
 
@@ -1131,7 +1175,7 @@ export default async function NflPlayoffsSettingsPage({
 
               <Rule
                 title="Champion"
-                text="After the Super Bowl round is finalized, the highest cumulative postseason score is the NFL Playoffs champion."
+                text="After the Super Bowl round is finalized, the team ranked No. 1 in the official cumulative standings after championship tiebreak rules are applied is the NFL Playoffs champion."
               />
             </div>
           </article>
@@ -1153,7 +1197,7 @@ export default async function NflPlayoffsSettingsPage({
             >
               <Rule
                 title="League Teams"
-                text="Members can review postseason lineups, fantasy points, projections, and completed round results."
+                text="Members can review their own lineup at all times. Another team's individual player selection is revealed only when that player's actual NFL postseason game reaches kickoff; later-game selections remain hidden until their own kickoff."
               />
 
               <Rule

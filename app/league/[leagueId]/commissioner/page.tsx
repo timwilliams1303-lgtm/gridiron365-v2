@@ -321,6 +321,26 @@ function isFinalRound(
 }
 
 
+function isActiveRoundStatus(
+  value:
+    string |
+    null |
+    undefined
+) {
+  return [
+    "active",
+    "open",
+    "in_progress",
+    "in progress",
+    "live",
+  ].includes(
+    normalizedStatus(
+      value
+    )
+  );
+}
+
+
 function roundName(
   roundNumber:
     number
@@ -798,13 +818,19 @@ async function NflPlayoffsCommissionerWorkspace({
 
 
   const activeRoundRaw =
-    Number(
-      state?.active_round ??
-      1
-    );
+    state?.active_round ===
+      null ||
+    state?.active_round ===
+      undefined
+      ? null
+      : Number(
+          state.active_round
+        );
 
 
   const activeRound =
+    activeRoundRaw !==
+      null &&
     Number.isInteger(
       activeRoundRaw
     ) &&
@@ -813,18 +839,21 @@ async function NflPlayoffsCommissionerWorkspace({
     activeRoundRaw <=
       4
       ? activeRoundRaw
-      : 1;
+      : null;
 
 
   const activeRoundRow =
-    rounds.find(
-      (
-        round
-      ) =>
-        round.round_number ===
-        activeRound
-    ) ??
-    null;
+    activeRound ===
+      null
+      ? null
+      : rounds.find(
+          (
+            round
+          ) =>
+            round.round_number ===
+            activeRound
+        ) ??
+        null;
 
 
   const finalizedRounds =
@@ -852,13 +881,16 @@ async function NflPlayoffsCommissionerWorkspace({
 
 
   const activeEntries =
-    entries.filter(
-      (
-        entry
-      ) =>
-        entry.round_number ===
-        activeRound
-    );
+    activeRound ===
+      null
+      ? []
+      : entries.filter(
+          (
+            entry
+          ) =>
+            entry.round_number ===
+            activeRound
+        );
 
 
   const submittedEntries =
@@ -961,9 +993,107 @@ async function NflPlayoffsCommissionerWorkspace({
       ? "Complete"
       : activeRoundRow
           ?.round_name ??
-        roundName(
-          activeRound
+        (
+          activeRound !==
+            null
+            ? roundName(
+                activeRound
+              )
+            : "Not Started"
         );
+
+
+  const renewalReady =
+    finalizedRounds.length ===
+      4 &&
+    Boolean(
+      state?.completed_at
+    ) &&
+    state
+      ?.champion_fantasy_team_id !==
+      null &&
+    state
+      ?.champion_fantasy_team_id !==
+      undefined &&
+    [
+      "complete",
+      "completed",
+      "final",
+      "finalized",
+    ].includes(
+      normalizedStatus(
+        state?.status
+      )
+    );
+
+
+  async function renewLeagueAction() {
+    "use server";
+
+    const actionAccess =
+      await requireLeagueMember(
+        leagueId
+      );
+
+    if (
+      !actionAccess.isCommissioner ||
+      actionAccess.league.leagueType !==
+        "nfl_playoffs"
+    ) {
+      redirect(
+        `/league/${leagueId}`
+      );
+    }
+
+    const actionSupabase =
+      await createSupabaseServerClient();
+
+    const {
+      data,
+      error,
+    } =
+      await actionSupabase.rpc(
+        "renew_nfl_playoff_league",
+        {
+          p_league_id:
+            leagueId,
+        }
+      );
+
+    if (error) {
+      throw new Error(
+        `Could not renew NFL Playoffs league: ${error.message}`
+      );
+    }
+
+    const result =
+      (
+        data ??
+        {}
+      ) as {
+        success?:
+          boolean;
+        leagueId?:
+          string;
+        season?:
+          number;
+        alreadyRenewed?:
+          boolean;
+      };
+
+    if (
+      !result.success ||
+      !result.leagueId
+    ) {
+      throw new Error(
+        "NFL Playoffs renewal did not return a new league."
+      );
+    }
+
+    redirect(
+      `/league/${result.leagueId}/commissioner`
+    );
+  }
 
 
   const defaultSettings = {
@@ -1363,7 +1493,10 @@ async function NflPlayoffsCommissionerWorkspace({
             detail={
               leagueComplete
                 ? "All four rounds finished"
-                : `Round ${activeRound}`
+                : activeRound !==
+                    null
+                  ? `Round ${activeRound}`
+                  : "Waiting for postseason lifecycle"
             }
           />
 
@@ -1581,7 +1714,10 @@ async function NflPlayoffsCommissionerWorkspace({
                     !leagueComplete &&
                     !final &&
                     activeRound ===
-                      roundNumber;
+                      roundNumber &&
+                    isActiveRoundStatus(
+                      round?.status
+                    );
 
                   return (
                     <article
@@ -1627,9 +1763,21 @@ async function NflPlayoffsCommissionerWorkspace({
                             ? "Final"
                             : active
                               ? "Active"
-                              : prettyStatus(
-                                  round?.status
+                              : [
+                                  "",
+                                  "setup",
+                                  "pending",
+                                  "not_started",
+                                  "not started",
+                                ].includes(
+                                  normalizedStatus(
+                                    round?.status
+                                  )
                                 )
+                                ? "Upcoming"
+                                : prettyStatus(
+                                    round?.status
+                                  )
                         }
                       />
 
@@ -1697,21 +1845,36 @@ async function NflPlayoffsCommissionerWorkspace({
                     styles.seasonText
                   }
                 >
-                  {leagueComplete
-                    ? `The ${season} postseason is complete. The next renewal target is ${season + 1}.`
-                    : `Renewal stays unavailable until the ${season} postseason is fully finalized.`}
+                  {renewalReady
+                    ? `The ${season} postseason is fully finalized with a champion. Renewing creates the ${season + 1} league and carries forward members, active entries, lineup settings, scoring, salary settings when applicable, and NFL Playoffs history identity.`
+                    : `Renewal stays unavailable until the ${season} postseason is fully finalized with a champion and all four rounds are final.`}
                 </p>
               </div>
 
-              <div
-                style={
-                  styles.renewPlaceholder
-                }
-              >
-                {leagueComplete
-                  ? `READY FOR ${season + 1} RENEWAL`
-                  : "RENEWAL LOCKED UNTIL COMPLETE"}
-              </div>
+              {renewalReady ? (
+                <form
+                  action={
+                    renewLeagueAction
+                  }
+                >
+                  <button
+                    type="submit"
+                    style={
+                      styles.renewButton
+                    }
+                  >
+                    RENEW FOR {season + 1}
+                  </button>
+                </form>
+              ) : (
+                <div
+                  style={
+                    styles.renewPlaceholder
+                  }
+                >
+                  RENEWAL LOCKED UNTIL COMPLETE
+                </div>
+              )}
             </div>
           </div>
         </AdminPanel>
@@ -2638,6 +2801,36 @@ const styles:
 
       fontWeight:
         900,
+    },
+
+
+    renewButton: {
+      padding:
+        "11px 14px",
+
+      border:
+        "1px solid #d55b22",
+
+      borderRadius:
+        9,
+
+      background:
+        "linear-gradient(135deg,#a32412,#ee6517)",
+
+      color:
+        "#fff",
+
+      cursor:
+        "pointer",
+
+      fontSize:
+        8,
+
+      fontWeight:
+        950,
+
+      letterSpacing:
+        ".04em",
     },
 
 

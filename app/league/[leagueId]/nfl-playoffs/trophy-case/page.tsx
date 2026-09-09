@@ -13,6 +13,10 @@ import {
 } from "@/lib/supabase/server";
 
 import {
+  createSupabaseAdminClient,
+} from "@/lib/supabase/admin";
+
+import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
 
@@ -86,6 +90,145 @@ type StateRow = {
 
   status:
     string | null;
+};
+
+
+type HistoryLeagueRow = {
+  id:
+    string;
+
+  season:
+    number;
+
+  player_selection_mode:
+    string | null;
+};
+
+
+type HistoryFantasyTeamRow = {
+  id:
+    number;
+
+  league_id:
+    string;
+
+  team_name:
+    string;
+
+  owner_id:
+    string | null;
+
+  nfl_playoff_franchise_id:
+    string | null;
+};
+
+
+type HistoryTrophyRawRow = {
+  league_id:
+    string;
+
+  season:
+    number;
+
+  fantasy_team_id:
+    number;
+
+  round_number:
+    number | null;
+
+  award_key:
+    string;
+
+  award_name:
+    string;
+
+  award_category:
+    string;
+
+  award_emoji:
+    string;
+
+  award_value:
+    number |
+    string |
+    null;
+
+  detail:
+    string |
+    null;
+
+  created_at:
+    string;
+};
+
+
+type HistoryTrophyRow =
+  HistoryTrophyRawRow & {
+    team_name:
+      string;
+
+    franchise_id:
+      string | null;
+
+    selection_mode:
+      string | null;
+  };
+
+
+type CareerAward = {
+  awardKey:
+    string;
+
+  awardName:
+    string;
+
+  awardCategory:
+    string;
+
+  awardEmoji:
+    string;
+
+  count:
+    number;
+
+  seasons:
+    number[];
+
+  latestDetail:
+    string | null;
+};
+
+
+type FranchiseCareer = {
+  franchiseId:
+    string;
+
+  teamName:
+    string;
+
+  seasons:
+    number[];
+
+  totalAwards:
+    number;
+
+  achievementCount:
+    number;
+
+  infamyCount:
+    number;
+
+  championships:
+    number;
+
+  runnerUps:
+    number;
+
+  isMyFranchise:
+    boolean;
+
+  awards:
+    CareerAward[];
 };
 
 
@@ -261,6 +404,18 @@ export default async function NflPlayoffsTrophyCasePage({
   const supabase =
     await createSupabaseServerClient();
 
+  /*
+   * The current user has already passed requireLeagueMember().
+   *
+   * The admin client is used only on the server to follow the
+   * league's nfl_playoff_history_id across renewed seasons.
+   * This avoids old-season RLS membership differences from
+   * breaking the continuous Trophy Case while still limiting
+   * the query to this league's exact renewal lineage.
+   */
+  const admin =
+    createSupabaseAdminClient();
+
   const season =
     access.league
       .season;
@@ -387,6 +542,748 @@ export default async function NflPlayoffsTrophyCasePage({
     stateResult.data as
       StateRow |
       null;
+
+  /*
+   * ============================================================
+   * CONTINUOUS NFL PLAYOFFS HISTORY
+   * ============================================================
+   *
+   * Current-season display above still comes from the existing
+   * get_nfl_playoff_trophy_case RPC.
+   *
+   * Career history is assembled only from STORED trophy rows.
+   * Nothing on this page generates, recalculates, or duplicates
+   * an award.
+   *
+   * Renewal continuity is based on:
+   *
+   * leagues.nfl_playoff_history_id
+   * fantasy_teams.nfl_playoff_franchise_id
+   *
+   * Those identities are carried forward by the finalized
+   * NFL Playoffs renewal backend.
+   */
+
+  const currentLeagueHistoryResult =
+    await admin
+      .from(
+        "leagues"
+      )
+      .select(
+        `
+          id,
+          season,
+          nfl_playoff_history_id
+        `
+      )
+      .eq(
+        "id",
+        leagueId
+      )
+      .eq(
+        "league_type",
+        "nfl_playoffs"
+      )
+      .maybeSingle();
+
+  if (
+    currentLeagueHistoryResult.error
+  ) {
+    throw new Error(
+      `Could not load NFL Playoffs history identity: ${currentLeagueHistoryResult.error.message}`
+    );
+  }
+
+  const historyId =
+    currentLeagueHistoryResult.data
+      ?.nfl_playoff_history_id ??
+    null;
+
+  let historyLeagues:
+    HistoryLeagueRow[] =
+    [];
+
+  let historyTrophies:
+    HistoryTrophyRow[] =
+    [];
+
+  let currentFranchiseId:
+    string |
+    null =
+    null;
+
+  if (
+    historyId
+  ) {
+    const historyLeaguesResult =
+      await admin
+        .from(
+          "leagues"
+        )
+        .select(
+          `
+            id,
+            season,
+            player_selection_mode
+          `
+        )
+        .eq(
+          "league_type",
+          "nfl_playoffs"
+        )
+        .eq(
+          "nfl_playoff_history_id",
+          historyId
+        )
+        .order(
+          "season",
+          {
+            ascending:
+              true,
+          }
+        );
+
+    if (
+      historyLeaguesResult.error
+    ) {
+      throw new Error(
+        `Could not load NFL Playoffs renewal lineage: ${historyLeaguesResult.error.message}`
+      );
+    }
+
+    historyLeagues =
+      (
+        historyLeaguesResult.data ??
+        []
+      ) as HistoryLeagueRow[];
+
+    const historyLeagueIds =
+      historyLeagues.map(
+        (
+          league
+        ) =>
+          league.id
+      );
+
+    if (
+      historyLeagueIds.length >
+      0
+    ) {
+      const [
+        historyTeamsResult,
+        historyTrophiesResult,
+      ] =
+        await Promise.all([
+          admin
+            .from(
+              "fantasy_teams"
+            )
+            .select(
+              `
+                id,
+                league_id,
+                team_name,
+                owner_id,
+                nfl_playoff_franchise_id
+              `
+            )
+            .in(
+              "league_id",
+              historyLeagueIds
+            ),
+
+          admin
+            .from(
+              "nfl_playoff_trophies"
+            )
+            .select(
+              `
+                league_id,
+                season,
+                fantasy_team_id,
+                round_number,
+                award_key,
+                award_name,
+                award_category,
+                award_emoji,
+                award_value,
+                detail,
+                created_at
+              `
+            )
+            .in(
+              "league_id",
+              historyLeagueIds
+            )
+            .order(
+              "season",
+              {
+                ascending:
+                  true,
+              }
+            )
+            .order(
+              "created_at",
+              {
+                ascending:
+                  true,
+              }
+            ),
+        ]);
+
+      if (
+        historyTeamsResult.error
+      ) {
+        throw new Error(
+          `Could not load NFL Playoffs historical franchises: ${historyTeamsResult.error.message}`
+        );
+      }
+
+      if (
+        historyTrophiesResult.error
+      ) {
+        throw new Error(
+          `Could not load NFL Playoffs historical trophies: ${historyTrophiesResult.error.message}`
+        );
+      }
+
+      const historyTeams =
+        (
+          historyTeamsResult.data ??
+          []
+        ) as HistoryFantasyTeamRow[];
+
+      const historyTeamMap =
+        new Map<
+          string,
+          HistoryFantasyTeamRow
+        >();
+
+      for (
+        const team of
+        historyTeams
+      ) {
+        historyTeamMap.set(
+          `${team.league_id}:${team.id}`,
+          team
+        );
+
+        if (
+          team.league_id ===
+            leagueId &&
+          team.id ===
+            myTeamId
+        ) {
+          currentFranchiseId =
+            team.nfl_playoff_franchise_id;
+        }
+      }
+
+      const selectionModeMap =
+        new Map<
+          string,
+          string | null
+        >(
+          historyLeagues.map(
+            (
+              league
+            ) => [
+              league.id,
+              league.player_selection_mode,
+            ]
+          )
+        );
+
+      historyTrophies =
+        (
+          historyTrophiesResult.data ??
+          []
+        )
+          .map(
+            (
+              raw
+            ) => {
+              const trophy =
+                raw as HistoryTrophyRawRow;
+
+              const historicalTeam =
+                historyTeamMap.get(
+                  `${trophy.league_id}:${trophy.fantasy_team_id}`
+                );
+
+              return {
+                ...trophy,
+
+                team_name:
+                  historicalTeam
+                    ?.team_name ??
+                  `Team ${trophy.fantasy_team_id}`,
+
+                franchise_id:
+                  historicalTeam
+                    ?.nfl_playoff_franchise_id ??
+                  null,
+
+                selection_mode:
+                  selectionModeMap.get(
+                    trophy.league_id
+                  ) ??
+                  null,
+              };
+            }
+          );
+    }
+  }
+
+  /*
+   * ============================================================
+   * CAREER TROPHY ORGANIZATION
+   * ============================================================
+   */
+
+  const careerMap =
+    new Map<
+      string,
+      {
+        franchiseId:
+          string;
+
+        teamName:
+          string;
+
+        latestSeason:
+          number;
+
+        seasons:
+          Set<number>;
+
+        totalAwards:
+          number;
+
+        achievementCount:
+          number;
+
+        infamyCount:
+          number;
+
+        championships:
+          number;
+
+        runnerUps:
+          number;
+
+        isMyFranchise:
+          boolean;
+
+        awards:
+          Map<
+            string,
+            {
+              awardKey:
+                string;
+
+              awardName:
+                string;
+
+              awardCategory:
+                string;
+
+              awardEmoji:
+                string;
+
+              count:
+                number;
+
+              seasons:
+                Set<number>;
+
+              latestDetail:
+                string | null;
+
+              latestSeason:
+                number;
+            }
+          >;
+      }
+    >();
+
+  for (
+    const trophy of
+    historyTrophies
+  ) {
+    /*
+     * Renewal code guarantees nfl_playoff_franchise_id for
+     * active entries. The fallback prevents an old legacy row
+     * without identity from disappearing from history.
+     */
+    const franchiseKey =
+      trophy.franchise_id ??
+      `${trophy.league_id}:${trophy.fantasy_team_id}`;
+
+    let career =
+      careerMap.get(
+        franchiseKey
+      );
+
+    if (
+      !career
+    ) {
+      career = {
+        franchiseId:
+          franchiseKey,
+
+        teamName:
+          trophy.team_name,
+
+        latestSeason:
+          trophy.season,
+
+        seasons:
+          new Set<number>(),
+
+        totalAwards:
+          0,
+
+        achievementCount:
+          0,
+
+        infamyCount:
+          0,
+
+        championships:
+          0,
+
+        runnerUps:
+          0,
+
+        isMyFranchise:
+          currentFranchiseId !==
+            null &&
+          trophy.franchise_id ===
+            currentFranchiseId,
+
+        awards:
+          new Map(),
+      };
+
+      careerMap.set(
+        franchiseKey,
+        career
+      );
+    }
+
+    if (
+      trophy.season >=
+      career.latestSeason
+    ) {
+      career.latestSeason =
+        trophy.season;
+
+      career.teamName =
+        trophy.team_name;
+    }
+
+    career.seasons.add(
+      trophy.season
+    );
+
+    career.totalAwards +=
+      1;
+
+    if (
+      trophy.award_category ===
+      "INFAMY"
+    ) {
+      career.infamyCount +=
+        1;
+    } else {
+      career.achievementCount +=
+        1;
+    }
+
+    if (
+      trophy.award_key ===
+      "nfl_playoffs_champion"
+    ) {
+      career.championships +=
+        1;
+    }
+
+    if (
+      trophy.award_key ===
+      "nfl_playoffs_runner_up"
+    ) {
+      career.runnerUps +=
+        1;
+    }
+
+    let careerAward =
+      career.awards.get(
+        trophy.award_key
+      );
+
+    if (
+      !careerAward
+    ) {
+      careerAward = {
+        awardKey:
+          trophy.award_key,
+
+        awardName:
+          trophy.award_name,
+
+        awardCategory:
+          trophy.award_category,
+
+        awardEmoji:
+          trophy.award_emoji,
+
+        count:
+          0,
+
+        seasons:
+          new Set<number>(),
+
+        latestDetail:
+          trophy.detail,
+
+        latestSeason:
+          trophy.season,
+      };
+
+      career.awards.set(
+        trophy.award_key,
+        careerAward
+      );
+    }
+
+    careerAward.count +=
+      1;
+
+    careerAward.seasons.add(
+      trophy.season
+    );
+
+    if (
+      trophy.season >=
+      careerAward.latestSeason
+    ) {
+      careerAward.latestSeason =
+        trophy.season;
+
+      careerAward.latestDetail =
+        trophy.detail;
+
+      careerAward.awardName =
+        trophy.award_name;
+
+      careerAward.awardCategory =
+        trophy.award_category;
+
+      careerAward.awardEmoji =
+        trophy.award_emoji;
+    }
+  }
+
+  const careerCases:
+    FranchiseCareer[] =
+    Array.from(
+      careerMap.values()
+    )
+      .map(
+        (
+          career
+        ) => ({
+          franchiseId:
+            career.franchiseId,
+
+          teamName:
+            career.teamName,
+
+          seasons:
+            Array.from(
+              career.seasons
+            ).sort(
+              (
+                a,
+                b
+              ) =>
+                a - b
+            ),
+
+          totalAwards:
+            career.totalAwards,
+
+          achievementCount:
+            career.achievementCount,
+
+          infamyCount:
+            career.infamyCount,
+
+          championships:
+            career.championships,
+
+          runnerUps:
+            career.runnerUps,
+
+          isMyFranchise:
+            career.isMyFranchise,
+
+          awards:
+            Array.from(
+              career.awards.values()
+            )
+              .map(
+                (
+                  award
+                ) => ({
+                  awardKey:
+                    award.awardKey,
+
+                  awardName:
+                    award.awardName,
+
+                  awardCategory:
+                    award.awardCategory,
+
+                  awardEmoji:
+                    award.awardEmoji,
+
+                  count:
+                    award.count,
+
+                  seasons:
+                    Array.from(
+                      award.seasons
+                    ).sort(
+                      (
+                        a,
+                        b
+                      ) =>
+                        a - b
+                    ),
+
+                  latestDetail:
+                    award.latestDetail,
+                })
+              )
+              .sort(
+                (
+                  a,
+                  b
+                ) =>
+                  awardPriority(
+                    a.awardKey
+                  ) -
+                  awardPriority(
+                    b.awardKey
+                  )
+              ),
+        })
+      )
+      .sort(
+        (
+          a,
+          b
+        ) => {
+          if (
+            a.isMyFranchise !==
+            b.isMyFranchise
+          ) {
+            return a.isMyFranchise
+              ? -1
+              : 1;
+          }
+
+          if (
+            b.championships !==
+            a.championships
+          ) {
+            return (
+              b.championships -
+              a.championships
+            );
+          }
+
+          if (
+            b.totalAwards !==
+            a.totalAwards
+          ) {
+            return (
+              b.totalAwards -
+              a.totalAwards
+            );
+          }
+
+          return a.teamName.localeCompare(
+            b.teamName
+          );
+        }
+      );
+
+  const myCareer =
+    careerCases.find(
+      (
+        career
+      ) =>
+        career.isMyFranchise
+    ) ??
+    null;
+
+  const careerChampions =
+    historyTrophies
+      .filter(
+        (
+          trophy
+        ) =>
+          trophy.award_key ===
+          "nfl_playoffs_champion"
+      )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          b.season -
+          a.season
+      );
+
+  const careerRunnerUps =
+    historyTrophies
+      .filter(
+        (
+          trophy
+        ) =>
+          trophy.award_key ===
+          "nfl_playoffs_runner_up"
+      )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          b.season -
+          a.season
+      );
+
+  const historySeasonCount =
+    historyLeagues.length >
+    0
+      ? historyLeagues.length
+      : 1;
+
+  const historyFirstSeason =
+    historyLeagues[0]
+      ?.season ??
+    season;
+
+  const historyLatestSeason =
+    historyLeagues[
+      historyLeagues.length -
+      1
+    ]
+      ?.season ??
+    season;
 
   /*
    * ============================================================
@@ -764,6 +1661,14 @@ export default async function NflPlayoffsTrophyCasePage({
           .g365-nflp-trophy-team-grid {
             grid-template-columns: 1fr !important;
           }
+
+          .g365-nflp-trophy-career-stats {
+            grid-template-columns: repeat(2,minmax(0,1fr)) !important;
+          }
+
+          .g365-nflp-trophy-career-awards {
+            grid-template-columns: 1fr !important;
+          }
         }
 
         @media (max-width: 560px) {
@@ -1133,7 +2038,7 @@ export default async function NflPlayoffsTrophyCasePage({
             }
           >
             <SectionHead
-              eyebrow="MY POSTSEASON HISTORY"
+              eyebrow="MY CURRENT-SEASON TROPHIES"
               title={
                 myCase
                   ?.teamName ??
@@ -1337,8 +2242,8 @@ export default async function NflPlayoffsTrophyCasePage({
           }
         >
           <SectionHead
-            eyebrow="LEAGUE HISTORY"
-            title="Team Trophy Cases"
+            eyebrow="CURRENT SEASON"
+            title={`${season} Team Trophy Cases`}
             badge={`${teamCases.length} TEAMS`}
           />
 
@@ -1484,6 +2389,469 @@ export default async function NflPlayoffsTrophyCasePage({
         </section>
 
         {/* =====================================================
+            CONTINUOUS CAREER TROPHY CASE
+            ===================================================== */}
+
+        <section
+          style={
+            styles.card
+          }
+        >
+          <SectionHead
+            eyebrow="CONTINUOUS LEAGUE HISTORY"
+            title="Career Trophy Case"
+            badge={`${historySeasonCount} SEASON${
+              historySeasonCount ===
+              1
+                ? ""
+                : "S"
+            }`}
+          />
+
+          <div
+            style={
+              styles.careerHistoryIntro
+            }
+          >
+            <strong>
+              {historyFirstSeason ===
+              historyLatestSeason
+                ? `${historyFirstSeason} history`
+                : `${historyFirstSeason}–${historyLatestSeason} history`}
+            </strong>
+
+            <span>
+              Stored NFL Playoffs trophies follow the league&apos;s permanent history ID and each entry&apos;s permanent franchise ID across renewals.
+            </span>
+          </div>
+
+          {careerChampions.length >
+          0 ? (
+            <div
+              style={
+                styles.historyChampions
+              }
+            >
+              <div
+                style={
+                  styles.historyChampionTitle
+                }
+              >
+                CHAMPIONSHIP HISTORY
+              </div>
+
+              <div
+                style={
+                  styles.historyChampionGrid
+                }
+              >
+                {careerChampions.map(
+                  (
+                    championRow
+                  ) => {
+                    const runner =
+                      careerRunnerUps.find(
+                        (
+                          candidate
+                        ) =>
+                          candidate.season ===
+                          championRow.season
+                      ) ??
+                      null;
+
+                    return (
+                      <article
+                        key={`${championRow.season}-${championRow.franchise_id ?? championRow.fantasy_team_id}`}
+                        style={
+                          styles.historyChampionCard
+                        }
+                      >
+                        <div
+                          style={
+                            styles.historyChampionSeason
+                          }
+                        >
+                          {championRow.season}
+                        </div>
+
+                        <div>
+                          <span
+                            style={
+                              styles.sectionEyebrow
+                            }
+                          >
+                            👑 NFL PLAYOFFS CHAMPION
+                          </span>
+
+                          <h3
+                            style={
+                              styles.historyChampionName
+                            }
+                          >
+                            {championRow.team_name}
+                          </h3>
+
+                          {championRow.award_value !==
+                          null ? (
+                            <div
+                              style={
+                                styles.historyChampionPoints
+                              }
+                            >
+                              {n(
+                                championRow.award_value
+                              ).toFixed(
+                                2
+                              )}{" "}
+                              pts
+                            </div>
+                          ) : null}
+
+                          {runner && (
+                            <div
+                              style={
+                                styles.historyRunner
+                              }
+                            >
+                              🥈 Runner-Up:{" "}
+                              <strong>
+                                {runner.team_name}
+                              </strong>
+                            </div>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  }
+                )}
+              </div>
+            </div>
+          ) : (
+            <div
+              style={
+                styles.historyPending
+              }
+            >
+              Championship history will appear after the first completed NFL Playoffs season.
+            </div>
+          )}
+
+          {myTeamId !==
+          null ? (
+            <div
+              style={
+                styles.careerBlock
+              }
+            >
+              <div
+                style={
+                  styles.careerBlockHead
+                }
+              >
+                <div>
+                  <span
+                    style={
+                      styles.sectionEyebrow
+                    }
+                  >
+                    MY CAREER
+                  </span>
+
+                  <h3
+                    style={
+                      styles.careerBlockTitle
+                    }
+                  >
+                    {myCareer
+                      ?.teamName ??
+                    "My Playoff Entry"}
+                  </h3>
+                </div>
+
+                <span
+                  style={
+                    styles.countBadge
+                  }
+                >
+                  {myCareer
+                    ? `${myCareer.totalAwards} AWARDS`
+                    : "0 AWARDS"}
+                </span>
+              </div>
+
+              {myCareer ? (
+                <>
+                  <div
+                    className="g365-nflp-trophy-career-stats"
+                    style={
+                      styles.careerStats
+                    }
+                  >
+                    <CareerStat
+                      label="SEASONS"
+                      value={String(
+                        myCareer.seasons.length
+                      )}
+                    />
+
+                    <CareerStat
+                      label="CHAMPIONSHIPS"
+                      value={String(
+                        myCareer.championships
+                      )}
+                    />
+
+                    <CareerStat
+                      label="RUNNER-UP"
+                      value={String(
+                        myCareer.runnerUps
+                      )}
+                    />
+
+                    <CareerStat
+                      label="TOTAL AWARDS"
+                      value={String(
+                        myCareer.totalAwards
+                      )}
+                    />
+                  </div>
+
+                  <div
+                    className="g365-nflp-trophy-career-awards"
+                    style={
+                      styles.careerAwardGrid
+                    }
+                  >
+                    {myCareer.awards.map(
+                      (
+                        award
+                      ) => (
+                        <CareerAwardCard
+                          key={
+                            award.awardKey
+                          }
+                          award={
+                            award
+                          }
+                        />
+                      )
+                    )}
+                  </div>
+                </>
+              ) : (
+                <EmptyState
+                  text="Your career Trophy Case will grow here as this NFL Playoffs league is renewed into future seasons."
+                />
+              )}
+            </div>
+          ) : null}
+
+          <div
+            style={
+              styles.careerBlock
+            }
+          >
+            <div
+              style={
+                styles.careerBlockHead
+              }
+            >
+              <div>
+                <span
+                  style={
+                    styles.sectionEyebrow
+                  }
+                >
+                  FRANCHISE HISTORY
+                </span>
+
+                <h3
+                  style={
+                    styles.careerBlockTitle
+                  }
+                >
+                  All Career Trophy Cases
+                </h3>
+              </div>
+
+              <span
+                style={
+                  styles.countBadge
+                }
+              >
+                {careerCases.length} FRANCHISE{
+                  careerCases.length ===
+                  1
+                    ? ""
+                    : "S"
+                }
+              </span>
+            </div>
+
+            {careerCases.length >
+            0 ? (
+              <div
+                className="g365-nflp-trophy-team-grid"
+                style={
+                  styles.careerTeamGrid
+                }
+              >
+                {careerCases.map(
+                  (
+                    career
+                  ) => (
+                    <article
+                      key={
+                        career.franchiseId
+                      }
+                      style={{
+                        ...styles.careerTeamCard,
+
+                        ...(career.isMyFranchise
+                          ? styles.myTeamCard
+                          : {}),
+
+                        ...(career.championships >
+                        0
+                          ? styles.championTeamCard
+                          : {}),
+                      }}
+                    >
+                      <div
+                        style={
+                          styles.careerTeamHeader
+                        }
+                      >
+                        <div>
+                          <div
+                            style={
+                              styles.teamTitleLine
+                            }
+                          >
+                            {career.championships >
+                            0 && (
+                              <span
+                                style={
+                                  styles.crown
+                                }
+                              >
+                                👑
+                              </span>
+                            )}
+
+                            <h3
+                              style={
+                                styles.teamName
+                              }
+                            >
+                              {career.teamName}
+                            </h3>
+
+                            {career.isMyFranchise && (
+                              <span
+                                style={
+                                  styles.youBadge
+                                }
+                              >
+                                YOU
+                              </span>
+                            )}
+                          </div>
+
+                          <p
+                            style={
+                              styles.teamMeta
+                            }
+                          >
+                            {career.seasons.length} season{
+                              career.seasons.length ===
+                              1
+                                ? ""
+                                : "s"
+                            }
+                            {" · "}
+                            {career.championships} championship{
+                              career.championships ===
+                              1
+                                ? ""
+                                : "s"
+                            }
+                            {" · "}
+                            {career.totalAwards} awards
+                          </p>
+                        </div>
+
+                        <div
+                          style={
+                            styles.teamAwardTotal
+                          }
+                        >
+                          <strong>
+                            {career.totalAwards}
+                          </strong>
+
+                          <span>
+                            CAREER
+                          </span>
+                        </div>
+                      </div>
+
+                      <div
+                        style={
+                          styles.careerSeasonLine
+                        }
+                      >
+                        SEASONS:{" "}
+                        {career.seasons.join(
+                          " · "
+                        )}
+                      </div>
+
+                      <div
+                        style={
+                          styles.careerMiniAwards
+                        }
+                      >
+                        {career.awards.map(
+                          (
+                            award
+                          ) => (
+                            <div
+                              key={
+                                award.awardKey
+                              }
+                              style={
+                                styles.careerMiniAward
+                              }
+                            >
+                              <span>
+                                {award.awardEmoji}
+                              </span>
+
+                              <strong>
+                                {award.awardName}
+                              </strong>
+
+                              <span>
+                                ×{award.count}
+                              </span>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </article>
+                  )
+                )}
+              </div>
+            ) : (
+              <EmptyState
+                text="Career franchise history will appear after permanent NFL Playoffs trophies have been earned."
+              />
+            )}
+          </div>
+        </section>
+
+        {/* =====================================================
             AWARD GUIDE
             ===================================================== */}
 
@@ -1542,13 +2910,13 @@ export default async function NflPlayoffsTrophyCasePage({
             <GuideItem
               emoji="👑"
               title="NFL Playoffs Champion"
-              text="Highest cumulative fantasy score after all four postseason rounds are finalized."
+              text="Team ranked No. 1 in the official final cumulative standings after all four postseason rounds, including the league's championship tiebreak rules."
             />
 
             <GuideItem
               emoji="🥈"
               title="Runner-Up"
-              text="Second-highest cumulative fantasy score after the Super Bowl round."
+              text="Team ranked No. 2 in the official final cumulative standings after the Super Bowl round and championship tiebreak rules are applied."
             />
           </div>
         </section>
@@ -1561,11 +2929,14 @@ export default async function NflPlayoffsTrophyCasePage({
           Trophy Case awards are
           permanent records generated
           from finalized NFL Playoffs
-          rounds. Live or upcoming
-          rounds do not award trophies,
-          and reopening this page does
-          not recalculate or duplicate
-          stored honors.
+          rounds. Career history follows
+          the league&apos;s permanent history
+          ID and each team&apos;s franchise ID
+          across renewed seasons. Live or
+          upcoming rounds do not award
+          trophies, and reopening this
+          page does not recalculate or
+          duplicate stored honors.
         </div>
       </div>
     </main>
@@ -1967,6 +3338,131 @@ function AwardCard({
             {
               trophy.detail
             }
+          </p>
+        )}
+      </div>
+    </article>
+  );
+}
+
+
+function CareerStat({
+  label,
+  value,
+}: {
+  label:
+    string;
+
+  value:
+    string;
+}) {
+  return (
+    <div
+      style={
+        styles.careerStat
+      }
+    >
+      <span
+        style={
+          styles.summaryLabel
+        }
+      >
+        {label}
+      </span>
+
+      <strong
+        style={
+          styles.careerStatValue
+        }
+      >
+        {value}
+      </strong>
+    </div>
+  );
+}
+
+
+function CareerAwardCard({
+  award,
+}: {
+  award:
+    CareerAward;
+}) {
+  const infamy =
+    award.awardCategory ===
+    "INFAMY";
+
+  return (
+    <article
+      style={{
+        ...styles.careerAwardCard,
+
+        ...(infamy
+          ? styles.awardCardInfamy
+          : {}),
+
+        ...(award.awardKey ===
+        "nfl_playoffs_champion"
+          ? styles.awardCardChampion
+          : {}),
+      }}
+    >
+      <div
+        style={
+          styles.careerAwardEmoji
+        }
+      >
+        {award.awardEmoji}
+      </div>
+
+      <div
+        style={
+          styles.careerAwardBody
+        }
+      >
+        <span
+          style={{
+            ...styles.awardCategory,
+
+            ...(infamy
+              ? styles.infamyText
+              : {}),
+          }}
+        >
+          {award.awardCategory}
+        </span>
+
+        <h4
+          style={
+            styles.careerAwardName
+          }
+        >
+          {award.awardName}
+        </h4>
+
+        <div
+          style={
+            styles.careerAwardMeta
+          }
+        >
+          <strong>
+            ×{award.count}
+          </strong>
+
+          <span>
+            {award.seasons.join(
+              " · "
+            )}
+          </span>
+        </div>
+
+        {award.latestDetail && (
+          <p
+            style={
+              styles.careerAwardDetail
+            }
+          >
+            {award.latestDetail}
           </p>
         )}
       </div>
@@ -3244,6 +4740,436 @@ const styles:
 
     lineHeight:
       1.5,
+  },
+
+  careerHistoryIntro: {
+    display:
+      "flex",
+
+    flexDirection:
+      "column",
+
+    gap:
+      4,
+
+    padding:
+      "14px 18px",
+
+    borderBottom:
+      "1px solid #242424",
+
+    color:
+      "#8b8b8b",
+
+    fontSize:
+      9,
+
+    lineHeight:
+      1.5,
+  },
+
+  historyChampions: {
+    padding:
+      14,
+
+    borderBottom:
+      "1px solid #242424",
+  },
+
+  historyChampionTitle: {
+    marginBottom:
+      10,
+
+    color:
+      "#df5b1d",
+
+    fontSize:
+      8,
+
+    fontWeight:
+      900,
+
+    letterSpacing:
+      ".1em",
+  },
+
+  historyChampionGrid: {
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(240px,1fr))",
+
+    gap:
+      10,
+  },
+
+  historyChampionCard: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      12,
+
+    padding:
+      14,
+
+    border:
+      "1px solid #5a3520",
+
+    borderRadius:
+      12,
+
+    background:
+      "linear-gradient(135deg,#21140e,#151515)",
+  },
+
+  historyChampionSeason: {
+    flex:
+      "0 0 auto",
+
+    minWidth:
+      54,
+
+    padding:
+      "10px 8px",
+
+    border:
+      "1px solid #6d3b20",
+
+    borderRadius:
+      10,
+
+    color:
+      "#ff7a29",
+
+    background:
+      "#26160e",
+
+    fontSize:
+      17,
+
+    fontWeight:
+      900,
+
+    textAlign:
+      "center",
+  },
+
+  historyChampionName: {
+    margin:
+      "4px 0",
+
+    fontSize:
+      15,
+  },
+
+  historyChampionPoints: {
+    color:
+      "#aaa",
+
+    fontSize:
+      9,
+  },
+
+  historyRunner: {
+    marginTop:
+      5,
+
+    color:
+      "#777",
+
+    fontSize:
+      8,
+  },
+
+  historyPending: {
+    padding:
+      16,
+
+    borderBottom:
+      "1px solid #242424",
+
+    color:
+      "#6d6d6d",
+
+    fontSize:
+      9,
+  },
+
+  careerBlock: {
+    padding:
+      14,
+
+    borderBottom:
+      "1px solid #242424",
+  },
+
+  careerBlockHead: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "space-between",
+
+    gap:
+      12,
+
+    marginBottom:
+      12,
+  },
+
+  careerBlockTitle: {
+    margin:
+      "4px 0 0",
+
+    fontSize:
+      17,
+  },
+
+  careerStats: {
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "repeat(4,minmax(0,1fr))",
+
+    gap:
+      8,
+
+    marginBottom:
+      12,
+  },
+
+  careerStat: {
+    padding:
+      11,
+
+    border:
+      "1px solid #2b2b2b",
+
+    borderRadius:
+      10,
+
+    background:
+      "#151515",
+  },
+
+  careerStatValue: {
+    display:
+      "block",
+
+    marginTop:
+      4,
+
+    color:
+      "#fff",
+
+    fontSize:
+      18,
+  },
+
+  careerAwardGrid: {
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "repeat(2,minmax(0,1fr))",
+
+    gap:
+      9,
+  },
+
+  careerAwardCard: {
+    display:
+      "flex",
+
+    gap:
+      10,
+
+    padding:
+      12,
+
+    border:
+      "1px solid #303030",
+
+    borderRadius:
+      11,
+
+    background:
+      "#151515",
+  },
+
+  careerAwardEmoji: {
+    flex:
+      "0 0 auto",
+
+    fontSize:
+      24,
+  },
+
+  careerAwardBody: {
+    minWidth:
+      0,
+
+    flex:
+      1,
+  },
+
+  careerAwardName: {
+    margin:
+      "3px 0",
+
+    color:
+      "#eee",
+
+    fontSize:
+      12,
+  },
+
+  careerAwardMeta: {
+    display:
+      "flex",
+
+    flexWrap:
+      "wrap",
+
+    gap:
+      7,
+
+    color:
+      "#777",
+
+    fontSize:
+      8,
+  },
+
+  careerAwardDetail: {
+    margin:
+      "5px 0 0",
+
+    color:
+      "#6f6f6f",
+
+    fontSize:
+      8,
+
+    lineHeight:
+      1.4,
+  },
+
+  careerTeamGrid: {
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "repeat(2,minmax(0,1fr))",
+
+    gap:
+      10,
+  },
+
+  careerTeamCard: {
+    overflow:
+      "hidden",
+
+    border:
+      "1px solid #303030",
+
+    borderRadius:
+      13,
+
+    background:
+      "#141414",
+  },
+
+  careerTeamHeader: {
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "space-between",
+
+    gap:
+      12,
+
+    padding:
+      13,
+
+    borderBottom:
+      "1px solid #272727",
+  },
+
+  careerSeasonLine: {
+    padding:
+      "9px 12px",
+
+    borderBottom:
+      "1px solid #242424",
+
+    color:
+      "#777",
+
+    fontSize:
+      7,
+
+    fontWeight:
+      800,
+
+    letterSpacing:
+      ".05em",
+  },
+
+  careerMiniAwards: {
+    display:
+      "flex",
+
+    flexWrap:
+      "wrap",
+
+    gap:
+      6,
+
+    padding:
+      12,
+  },
+
+  careerMiniAward: {
+    display:
+      "inline-flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      5,
+
+    padding:
+      "5px 7px",
+
+    border:
+      "1px solid #2d2d2d",
+
+    borderRadius:
+      999,
+
+    color:
+      "#929292",
+
+    background:
+      "#191919",
+
+    fontSize:
+      7,
   },
 
   note: {

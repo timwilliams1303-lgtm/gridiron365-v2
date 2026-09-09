@@ -94,12 +94,19 @@ function points(
 
 function medal(
   rank:
-    number
+    number,
+  leagueComplete:
+    boolean,
+  champion:
+    boolean
 ) {
-  if (
-    rank === 1
-  ) {
+  if (champion) {
     return "🏆";
+  }
+
+
+  if (!leagueComplete) {
+    return `#${rank}`;
   }
 
 
@@ -333,6 +340,11 @@ export default async function NflPlayoffsStandings({
   const championId =
     state
       ?.champion_fantasy_team_id ??
+    null;
+
+
+  const leagueComplete =
+    championId !==
     null;
 
 
@@ -633,7 +645,9 @@ export default async function NflPlayoffsStandings({
                         >
                           {
                             medal(
-                              rank
+                              rank,
+                              leagueComplete,
+                              champion
                             )
                           }
                         </strong>
@@ -659,6 +673,15 @@ export default async function NflPlayoffsStandings({
                               }
                             >
                               G365 CHAMPION
+                            </span>
+                          ) : rank === 1 &&
+                            !leagueComplete ? (
+                            <span
+                              style={
+                                styles.currentLeader
+                              }
+                            >
+                              CURRENT LEADER
                             </span>
                           ) : null}
                         </div>
@@ -1204,6 +1227,33 @@ const styles:
 
       minWidth:
         0,
+    },
+
+
+    currentLeader: {
+      width:
+        "fit-content",
+
+      padding:
+        "3px 6px",
+
+      border:
+        "1px solid rgba(255,106,43,.30)",
+
+      borderRadius:
+        999,
+
+      background:
+        "rgba(255,106,43,.08)",
+
+      color:
+        "#ff8a50",
+
+      fontSize:
+        8,
+
+      fontWeight:
+        950,
     },
 
 

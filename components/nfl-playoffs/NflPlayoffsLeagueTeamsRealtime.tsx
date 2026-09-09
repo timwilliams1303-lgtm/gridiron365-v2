@@ -332,6 +332,15 @@ type TeamDisplay = {
 
   scheduledPlayers:
     number;
+
+  revealedPlayers:
+    number;
+
+  hiddenPlayers:
+    number;
+
+  allPlayersRevealed:
+    boolean;
 };
 
 
@@ -523,6 +532,27 @@ function kickoffText(
           "2-digit",
       }
     );
+}
+
+
+function hasGameStarted(
+  value:
+    string |
+    null |
+    undefined,
+  nowMs: number
+) {
+  if (!value) {
+    return false;
+  }
+
+  const kickoffMs =
+    Date.parse(value);
+
+  return (
+    Number.isFinite(kickoffMs) &&
+    kickoffMs <= nowMs
+  );
 }
 
 
@@ -1130,6 +1160,23 @@ export default function NflPlayoffsLeagueTeamsRealtime({
       new Set()
     );
 
+  const [
+    viewerUserId,
+    setViewerUserId,
+  ] =
+    useState<
+      string |
+      null
+    >(null);
+
+  const [
+    nowMs,
+    setNowMs,
+  ] =
+    useState(() =>
+      Date.now()
+    );
+
   const requestRef =
     useRef(
       0
@@ -1198,6 +1245,23 @@ export default function NflPlayoffsLeagueTeamsRealtime({
         try {
           setError(
             null
+          );
+
+          const {
+            data: authData,
+            error: authError,
+          } =
+            await supabase.auth.getUser();
+
+          if (authError) {
+            throw new Error(
+              `Could not identify the current league member: ${authError.message}`
+            );
+          }
+
+          setViewerUserId(
+            authData.user?.id ??
+              null
           );
 
           const {
@@ -1823,6 +1887,27 @@ export default function NflPlayoffsLeagueTeamsRealtime({
 
   useEffect(
     () => {
+      const timer =
+        window.setInterval(
+          () => {
+            setNowMs(
+              Date.now()
+            );
+          },
+          1000
+        );
+
+      return () => {
+        window.clearInterval(
+          timer
+        );
+      };
+    },
+    []
+  );
+
+  useEffect(
+    () => {
       if (
         !enabled ||
         !supabase
@@ -2220,99 +2305,113 @@ export default function NflPlayoffsLeagueTeamsRealtime({
                         b
                       ) =>
                         slotOrder(
-                          a
-                            .lineup_slot
+                          a.lineup_slot
                         ) -
                           slotOrder(
-                            b
-                              .lineup_slot
+                            b.lineup_slot
                           ) ||
-                        a
-                          .slot_index -
-                          b
-                            .slot_index
+                        a.slot_index -
+                          b.slot_index
                     );
 
-                let fantasyPoints =
-                  0;
+                const isOwnTeam =
+                  Boolean(
+                    viewerUserId &&
+                    team.owner_id ===
+                      viewerUserId
+                  );
 
-                let livePlayers =
-                  0;
+                const isLineupPlayerRevealed =
+                  (lineup: LineupRow) => {
+                    if (isOwnTeam) {
+                      return true;
+                    }
 
-                let finalPlayers =
-                  0;
+                    const projection =
+                      projectionMap.get(
+                        lineup.player_id
+                      );
 
-                let scheduledPlayers =
-                  0;
+                    return (
+                      lineup.is_locked ||
+                      hasGameStarted(
+                        projection?.kickoff_at,
+                        nowMs
+                      )
+                    );
+                  };
+
+                let fantasyPoints = 0;
+                let livePlayers = 0;
+                let finalPlayers = 0;
+                let scheduledPlayers = 0;
+                let revealedPlayers = 0;
 
                 for (
                   const lineup
                   of teamLineup
                 ) {
+                  const revealed =
+                    isLineupPlayerRevealed(
+                      lineup
+                    );
+
+                  if (!revealed) {
+                    continue;
+                  }
+
+                  revealedPlayers += 1;
+
                   const score =
                     scoreMap.get(
-                      lineup
-                        .player_id
+                      lineup.player_id
                     );
 
                   fantasyPoints +=
                     numberValue(
-                      score
-                        ?.fantasy_points
+                      score?.fantasy_points
                     );
 
-                  if (
-                    score
-                      ?.is_live
-                  ) {
-                    livePlayers +=
-                      1;
-                  } else if (
-                    score
-                      ?.is_final
-                  ) {
-                    finalPlayers +=
-                      1;
+                  if (score?.is_live) {
+                    livePlayers += 1;
+                  } else if (score?.is_final) {
+                    finalPlayers += 1;
                   } else {
-                    scheduledPlayers +=
-                      1;
+                    scheduledPlayers += 1;
                   }
                 }
 
+                const hiddenPlayers =
+                  Math.max(
+                    0,
+                    teamLineup.length -
+                      revealedPlayers
+                  );
+
                 return {
                   team,
-
                   entry:
                     entryMap.get(
                       team.id
-                    ) ??
-                    null,
-
-                  lineup:
-                    teamLineup,
-
+                    ) ?? null,
+                  lineup: teamLineup,
                   fantasyPoints,
-
                   livePlayers,
-
                   finalPlayers,
-
                   scheduledPlayers,
+                  revealedPlayers,
+                  hiddenPlayers,
+                  allPlayersRevealed:
+                    hiddenPlayers === 0,
                 };
               }
             );
 
         result.sort(
-          (
-            a,
-            b
-          ) =>
-            a.team
-              .team_name
-              .localeCompare(
-                b.team
-                  .team_name
-              )
+          (a, b) =>
+            a.team.team_name.localeCompare(
+              b.team.team_name
+            )
         );
 
         return result;
@@ -2320,8 +2419,11 @@ export default function NflPlayoffsLeagueTeamsRealtime({
       [
         entryMap,
         lineups,
+        nowMs,
+        projectionMap,
         scoreMap,
         teams,
+        viewerUserId,
       ]
     );
 
@@ -2843,12 +2945,9 @@ export default function NflPlayoffsLeagueTeamsRealtime({
 
                                 {" • "}
 
-                                {
-                                  display
-                                    .lineup
-                                    .length
-                                }{" "}
-                                lineup players
+                                {display.hiddenPlayers > 0
+                                  ? `${display.revealedPlayers} revealed • ${display.hiddenPlayers} hidden`
+                                  : `${display.lineup.length} lineup players`}
                               </div>
                             </div>
                           </div>
@@ -2870,11 +2969,14 @@ export default function NflPlayoffsLeagueTeamsRealtime({
 
                             <SummaryValue
                               label="PROJECTED"
-                              value={formatPoints(
-                                display
-                                  .entry
-                                  ?.projected_points
-                              )}
+                              value={
+                                display.allPlayersRevealed
+                                  ? formatPoints(
+                                      display.entry
+                                        ?.projected_points
+                                    )
+                                  : "HIDDEN"
+                              }
                             />
 
                             <SummaryValue
@@ -2887,7 +2989,7 @@ export default function NflPlayoffsLeagueTeamsRealtime({
 
                             <SummaryValue
                               label="FINAL"
-                              value={`${display.finalPlayers}/${display.lineup.length}`}
+                              value={`${display.finalPlayers}/${display.revealedPlayers}`}
                             />
                           </div>
 
@@ -3035,17 +3137,16 @@ export default function NflPlayoffsLeagueTeamsRealtime({
                             <strong>
                               Projected:
                             </strong>{" "}
-                            {formatPoints(
-                              display
-                                .entry
-                                ?.projected_points
-                            )}
+                            {display.allPlayersRevealed
+                              ? formatPoints(
+                                  display.entry
+                                    ?.projected_points
+                                )
+                              : "Hidden until all players are revealed"}
                           </span>
 
-                          {display
-                            .entry
-                            ?.salary_used !=
-                          null ? (
+                          {display.allPlayersRevealed &&
+                          display.entry?.salary_used != null ? (
                             <span>
                               <strong>
                                 Salary:
@@ -3070,13 +3171,19 @@ export default function NflPlayoffsLeagueTeamsRealtime({
 
                           <span>
                             <strong>
-                              Remaining:
+                              Remaining revealed:
                             </strong>{" "}
-                            {
-                              display
-                                .scheduledPlayers
-                            }
+                            {display.scheduledPlayers}
                           </span>
+
+                          {display.hiddenPlayers > 0 ? (
+                            <span>
+                              <strong>
+                                Hidden:
+                              </strong>{" "}
+                              {display.hiddenPlayers}
+                            </span>
+                          ) : null}
                         </div>
 
                         {display
@@ -3099,15 +3206,58 @@ export default function NflPlayoffsLeagueTeamsRealtime({
                                 (
                                   lineup
                                 ) => {
-                                  const player =
-                                    playerMap.get(
-                                      lineup
-                                        .player_id
-                                    ) ??
-                                    null;
-
                                   const projection =
                                     projectionMap.get(
+                                      lineup.player_id
+                                    ) ?? null;
+
+                                  const isOwnTeam =
+                                    Boolean(
+                                      viewerUserId &&
+                                      display.team.owner_id ===
+                                        viewerUserId
+                                    );
+
+                                  const revealed =
+                                    isOwnTeam ||
+                                    lineup.is_locked ||
+                                    hasGameStarted(
+                                      projection?.kickoff_at,
+                                      nowMs
+                                    );
+
+                                  if (!revealed) {
+                                    return (
+                                      <div
+                                        key={`${display.team.id}-${lineup.lineup_slot}-${lineup.slot_index}`}
+                                        className="g365-player-row"
+                                        style={styles.playerRow}
+                                      >
+                                        <div style={styles.slotBadge}>
+                                          {lineup.lineup_slot}
+                                        </div>
+
+                                        <div style={{ minWidth: 0 }}>
+                                          <div style={styles.playerName}>
+                                            Hidden until kickoff
+                                          </div>
+                                          <div style={styles.playerMeta}>
+                                            This selection will reveal when its NFL game begins.
+                                          </div>
+                                        </div>
+
+                                        <div style={styles.playerPoints}>
+                                          <strong>—</strong>
+                                          <span style={styles.pointsLabel}>
+                                            FPTS
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+
+                                  const player =
+                                    playerMap.get(
                                       lineup
                                         .player_id
                                     ) ??
@@ -3240,8 +3390,11 @@ export default function NflPlayoffsLeagueTeamsRealtime({
                                             nflTeam
                                           }
 
-                                          {lineup
-                                            .is_locked
+                                          {(lineup.is_locked ||
+                                          hasGameStarted(
+                                            projection?.kickoff_at,
+                                            nowMs
+                                          ))
                                             ? " • LOCKED"
                                             : ""}
                                         </div>

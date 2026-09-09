@@ -55,6 +55,50 @@ type StateRow = {
 
   status:
     string | null;
+
+  champion_fantasy_team_id:
+    number | null;
+};
+
+
+type StandingRow = {
+  fantasy_team_id:
+    number;
+
+  total_points:
+    number |
+    string |
+    null;
+
+  rounds_scored:
+    number | null;
+
+  highest_round_score:
+    number |
+    string |
+    null;
+
+  lowest_round_score:
+    number |
+    string |
+    null;
+
+  average_round_score:
+    number |
+    string |
+    null;
+
+  current_rank:
+    number | null;
+};
+
+
+type ProjectionPrivacyRow = {
+  nfl_player_id:
+    number;
+
+  kickoff_at:
+    string | null;
 };
 
 
@@ -575,6 +619,7 @@ export default async function NflPlayoffsRecapPage({
     teamsResult,
     entriesResult,
     lineupsResult,
+    standingsResult,
   ] =
     await Promise.all([
       supabase
@@ -584,7 +629,8 @@ export default async function NflPlayoffsRecapPage({
         .select(
           `
             active_round,
-            status
+            status,
+            champion_fantasy_team_id
           `
         )
         .eq(
@@ -695,6 +741,30 @@ export default async function NflPlayoffsRecapPage({
           "season",
           season
         ),
+
+      supabase
+        .from(
+          "nfl_playoff_standings"
+        )
+        .select(
+          `
+            fantasy_team_id,
+            total_points,
+            rounds_scored,
+            highest_round_score,
+            lowest_round_score,
+            average_round_score,
+            current_rank
+          `
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        ),
     ]);
 
   if (
@@ -737,6 +807,14 @@ export default async function NflPlayoffsRecapPage({
     );
   }
 
+  if (
+    standingsResult.error
+  ) {
+    throw new Error(
+      `Could not load NFL Playoffs standings: ${standingsResult.error.message}`
+    );
+  }
+
   const state =
     stateResult.data as
       StateRow |
@@ -765,6 +843,12 @@ export default async function NflPlayoffsRecapPage({
       lineupsResult.data ??
       []
     ) as LineupRow[];
+
+  const officialStandings =
+    (
+      standingsResult.data ??
+      []
+    ) as StandingRow[];
 
   const activeRound =
     clampRound(
@@ -906,6 +990,129 @@ export default async function NflPlayoffsRecapPage({
       );
     }
   }
+
+  /*
+   * ============================================================
+   * ACTIVE-ROUND LINEUP PRIVACY
+   * ============================================================
+   *
+   * Finalized rounds are fully public.
+   *
+   * During the active round:
+   * - the owner can always see their own selections;
+   * - another team's player becomes public only when that
+   *   player's actual NFL game has reached kickoff.
+   *
+   * This mirrors the League Teams page and prevents Recap from
+   * leaking later-game selections through player names, salary,
+   * projections, awards, or team totals.
+   */
+
+  const projectionPrivacyMap =
+    new Map<
+      number,
+      ProjectionPrivacyRow
+    >();
+
+  if (
+    !selectedRoundFinal &&
+    playerIds.length >
+      0
+  ) {
+    const projectionPrivacyResult =
+      await supabase
+        .from(
+          "nfl_playoff_player_projections"
+        )
+        .select(
+          `
+            nfl_player_id,
+            kickoff_at
+          `
+        )
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        )
+        .eq(
+          "round_number",
+          selectedRoundNumber
+        )
+        .in(
+          "nfl_player_id",
+          playerIds
+        );
+
+    if (
+      projectionPrivacyResult.error
+    ) {
+      throw new Error(
+        `Could not load NFL Playoffs kickoff privacy data: ${projectionPrivacyResult.error.message}`
+      );
+    }
+
+    for (
+      const row of
+      (
+        projectionPrivacyResult.data ??
+        []
+      ) as ProjectionPrivacyRow[]
+    ) {
+      projectionPrivacyMap.set(
+        row.nfl_player_id,
+        row
+      );
+    }
+  }
+
+  const serverNowMs =
+    Date.now();
+
+  const isLineupPlayerVisible =
+    (
+      fantasyTeamId:
+        number,
+      playerId:
+        number
+    ) => {
+      if (
+        selectedRoundFinal ||
+        fantasyTeamId ===
+          myTeamId
+      ) {
+        return true;
+      }
+
+      const kickoffAt =
+        projectionPrivacyMap.get(
+          playerId
+        )
+          ?.kickoff_at ??
+        null;
+
+      if (
+        !kickoffAt
+      ) {
+        return false;
+      }
+
+      const kickoffMs =
+        Date.parse(
+          kickoffAt
+        );
+
+      return (
+        Number.isFinite(
+          kickoffMs
+        ) &&
+        kickoffMs <=
+          serverNowMs
+      );
+    };
 
   /*
    * ============================================================
@@ -1122,7 +1329,7 @@ export default async function NflPlayoffsRecapPage({
       (
         team
       ) => {
-        const teamLineup =
+        const fullTeamLineup =
           lineupMap.get(
             teamRoundKey(
               team.id,
@@ -1130,6 +1337,17 @@ export default async function NflPlayoffsRecapPage({
             )
           ) ??
           [];
+
+        const teamLineup =
+          fullTeamLineup.filter(
+            (
+              lineup
+            ) =>
+              isLineupPlayerVisible(
+                team.id,
+                lineup.player_id
+              )
+          );
 
         const entry =
           entryMap.get(
@@ -1177,10 +1395,14 @@ export default async function NflPlayoffsRecapPage({
                   ),
                 0
               )
-            : n(
-                entry
-                  ?.projected_points
-              );
+            : selectedRoundFinal ||
+                team.id ===
+                  myTeamId
+              ? n(
+                  entry
+                    ?.projected_points
+                )
+              : 0;
 
         const salaryUsed =
           isSalary
@@ -1198,9 +1420,14 @@ export default async function NflPlayoffsRecapPage({
                     ),
                   0
                 )
-              : entry
-                    ?.salary_used !=
-                  null
+              : (
+                  selectedRoundFinal ||
+                  team.id ===
+                    myTeamId
+                ) &&
+                entry
+                  ?.salary_used !=
+                null
                 ? n(
                     entry
                       .salary_used
@@ -1328,6 +1555,15 @@ export default async function NflPlayoffsRecapPage({
         const lineup of
         teamLineup
       ) {
+        if (
+          !isLineupPlayerVisible(
+            team.id,
+            lineup.player_id
+          )
+        ) {
+          continue;
+        }
+
         const player =
           playerMap.get(
             lineup.player_id
@@ -1853,8 +2089,18 @@ export default async function NflPlayoffsRecapPage({
 
   /*
    * ============================================================
-   * POSTSEASON COMPLETION
+   * POSTSEASON COMPLETION + AUTHORITATIVE CHAMPION
    * ============================================================
+   *
+   * The database is the source of truth for the champion.
+   * The backend uses:
+   *
+   * 1. total_points DESC
+   * 2. highest_round_score DESC
+   * 3. average_round_score DESC
+   * 4. fantasy_team_id ASC
+   *
+   * Do not independently crown a champion from frontend totals.
    */
 
   const superBowlRound =
@@ -1885,107 +2131,153 @@ export default async function NflPlayoffsRecapPage({
         .toLowerCase()
     );
 
-  /*
-   * Full champion is only valid after Super Bowl finalization.
-   */
-
-  const fullFinalizedRounds =
-    rounds
-      .filter(
-        (
-          round
-        ) =>
-          isRoundFinal(
-            round
-          ) &&
-          round.nfl_week !==
-            null
-      );
-
-  const finalTotals =
-    teams.map(
-      (
-        team
-      ) => {
-        let total =
-          0;
-
-        for (
-          const round of
-          fullFinalizedRounds
-        ) {
-          if (
-            round.nfl_week ===
-            null
-          ) {
-            continue;
-          }
-
-          const lineup =
-            lineupMap.get(
-              teamRoundKey(
-                team.id,
-                round.round_number
-              )
-            ) ??
-            [];
-
-          total +=
-            lineup.reduce(
-              (
-                sum,
-                player
-              ) =>
-                sum +
-                (
-                  scoreMap.get(
-                    scoreKey(
-                      player.player_id,
-                      round.nfl_week!
-                    )
-                  )
-                    ?.points ??
-                  0
-                ),
-              0
-            );
-        }
-
-        return {
-          teamId:
-            team.id,
-
-          teamName:
-            team.team_name,
-
-          total:
-            Number(
-              total.toFixed(
-                2
-              )
-            ),
-        };
-      }
-    )
+  const officialFinalOrder =
+    [...officialStandings]
       .sort(
         (
           a,
           b
-        ) =>
-          b.total -
-          a.total
+        ) => {
+          const totalDiff =
+            n(
+              b.total_points
+            ) -
+            n(
+              a.total_points
+            );
+
+          if (
+            totalDiff !==
+            0
+          ) {
+            return totalDiff;
+          }
+
+          const highRoundDiff =
+            n(
+              b.highest_round_score
+            ) -
+            n(
+              a.highest_round_score
+            );
+
+          if (
+            highRoundDiff !==
+            0
+          ) {
+            return highRoundDiff;
+          }
+
+          const averageDiff =
+            n(
+              b.average_round_score
+            ) -
+            n(
+              a.average_round_score
+            );
+
+          if (
+            averageDiff !==
+            0
+          ) {
+            return averageDiff;
+          }
+
+          return (
+            a.fantasy_team_id -
+            b.fantasy_team_id
+          );
+        }
       );
 
+  const championTeamId =
+    state
+      ?.champion_fantasy_team_id ??
+    null;
+
+  const championStanding =
+    championTeamId ===
+    null
+      ? null
+      : officialFinalOrder.find(
+          (
+            standing
+          ) =>
+            standing.fantasy_team_id ===
+            championTeamId
+        ) ??
+        null;
+
+  const championTeam =
+    championTeamId ===
+    null
+      ? null
+      : teams.find(
+          (
+            team
+          ) =>
+            team.id ===
+            championTeamId
+        ) ??
+        null;
+
   const postseasonChampion =
-    postseasonComplete
-      ? finalTotals[0] ??
+    postseasonComplete &&
+    championTeamId !==
+      null
+      ? {
+          teamId:
+            championTeamId,
+
+          teamName:
+            championTeam
+              ?.team_name ??
+            teamNameMap.get(
+              championTeamId
+            ) ??
+            "Champion",
+
+          total:
+            n(
+              championStanding
+                ?.total_points
+            ),
+        }
+      : null;
+
+  const runnerUpStanding =
+    postseasonComplete &&
+    postseasonChampion
+      ? officialFinalOrder.find(
+          (
+            standing
+          ) =>
+            standing.fantasy_team_id !==
+            postseasonChampion.teamId
+        ) ??
         null
       : null;
 
   const runnerUp =
-    postseasonComplete
-      ? finalTotals[1] ??
-        null
+    runnerUpStanding
+      ? {
+          teamId:
+            runnerUpStanding
+              .fantasy_team_id,
+
+          teamName:
+            teamNameMap.get(
+              runnerUpStanding
+                .fantasy_team_id
+            ) ??
+            "Runner-up",
+
+          total:
+            n(
+              runnerUpStanding
+                .total_points
+            ),
+        }
       : null;
 
   const selectedRoundIsActive =

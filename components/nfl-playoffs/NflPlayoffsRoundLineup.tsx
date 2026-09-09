@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -20,8 +21,7 @@ import {
 
 type PlayerSelectionMode =
   "salary" |
-  "no_salary" |
-  "draft";
+  "no_salary";
 
 
 type Settings = {
@@ -353,6 +353,31 @@ function formatPoints(
     value ?? 0
   ).toFixed(
     1
+  );
+}
+
+
+function hasGameStarted(
+  gameStartAt:
+    string | null,
+  currentTimeMs:
+    number
+) {
+  if (!gameStartAt) {
+    return false;
+  }
+
+  const kickoffMs =
+    Date.parse(
+      gameStartAt
+    );
+
+  return (
+    Number.isFinite(
+      kickoffMs
+    ) &&
+    kickoffMs <=
+      currentTimeMs
   );
 }
 
@@ -803,6 +828,33 @@ export default function NflPlayoffsRoundLineup({
     "salary";
 
 
+  const [
+    nowMs,
+    setNowMs,
+  ] = useState(
+    () => Date.now()
+  );
+
+
+  useEffect(() => {
+    const timer =
+      window.setInterval(
+        () => {
+          setNowMs(
+            Date.now()
+          );
+        },
+        1000
+      );
+
+    return () => {
+      window.clearInterval(
+        timer
+      );
+    };
+  }, []);
+
+
   const selectedPlayerIds =
     new Set(
       initialLineup.map(
@@ -964,6 +1016,16 @@ export default function NflPlayoffsRoundLineup({
             ) {
               return false;
             }
+          }
+
+
+          if (
+            hasGameStarted(
+              player.gameStartAt,
+              nowMs
+            )
+          ) {
+            return false;
           }
 
 
@@ -1141,10 +1203,10 @@ export default function NflPlayoffsRoundLineup({
             p_player_id:
               player.id,
 
-            p_target_slot:
+            p_lineup_slot:
               activeSlot.slot,
 
-            p_target_slot_index:
+            p_slot_index:
               activeSlot.index,
           }
         );
@@ -1219,9 +1281,20 @@ export default function NflPlayoffsRoundLineup({
     player:
       LineupPlayer
   ) {
+    const playerLocked =
+      player.isLocked ||
+      hasGameStarted(
+        player.gameStartAt,
+        nowMs
+      );
+
     if (
-      player.isLocked
+      playerLocked
     ) {
+      setIsError(true);
+      setMessage(
+        "This player is locked because the NFL game has already started."
+      );
       return;
     }
 
@@ -1374,27 +1447,122 @@ export default function NflPlayoffsRoundLineup({
 
       const validation =
         validationResult.data as {
-          valid?:
-            boolean;
-
-          errors?:
-            string[];
-
-          warnings?:
-            string[];
+          success?: boolean;
+          isValid?: boolean;
+          requiredPlayers?: number;
+          selectedPlayers?: number;
+          salaryCap?: number | null;
+          salaryUsed?: number;
+          salaryValid?: boolean;
+          duplicatePlayers?: number;
+          invalidPoolPlayers?: number;
+          ineligiblePlayers?: number;
+          invalidSlotIndexes?: number;
+          missingSalaryRows?: number;
         } | null;
 
 
       if (
-        !validation?.valid
+        !validation?.isValid
       ) {
+        const validationErrors:
+          string[] = [];
+
+        if (
+          Number(
+            validation
+              ?.selectedPlayers ??
+            0
+          ) !==
+          Number(
+            validation
+              ?.requiredPlayers ??
+            slots.length
+          )
+        ) {
+          validationErrors.push(
+            `Select exactly ${validation?.requiredPlayers ?? slots.length} players before submitting.`
+          );
+        }
+
+        if (
+          Number(
+            validation
+              ?.duplicatePlayers ??
+            0
+          ) > 0
+        ) {
+          validationErrors.push(
+            "The same player cannot be used in more than one lineup slot."
+          );
+        }
+
+        if (
+          Number(
+            validation
+              ?.invalidPoolPlayers ??
+            0
+          ) > 0
+        ) {
+          validationErrors.push(
+            "One or more selected players are no longer available in this playoff round."
+          );
+        }
+
+        if (
+          Number(
+            validation
+              ?.ineligiblePlayers ??
+            0
+          ) > 0
+        ) {
+          validationErrors.push(
+            "One or more selected players are not eligible for their lineup slot."
+          );
+        }
+
+        if (
+          Number(
+            validation
+              ?.invalidSlotIndexes ??
+            0
+          ) > 0
+        ) {
+          validationErrors.push(
+            "One or more lineup slots are invalid for the league configuration."
+          );
+        }
+
+        if (
+          isSalary &&
+          validation?.salaryValid ===
+            false
+        ) {
+          validationErrors.push(
+            "The lineup does not satisfy the league salary-cap rules."
+          );
+        }
+
+        if (
+          isSalary &&
+          Number(
+            validation
+              ?.missingSalaryRows ??
+            0
+          ) > 0
+        ) {
+          validationErrors.push(
+            "One or more selected players do not have a published salary."
+          );
+        }
+
         throw new Error(
-          validation
-            ?.errors
-            ?.join(
-              " "
-            ) ??
-          "Your playoff-round lineup is not valid yet."
+          validationErrors.length >
+            0
+            ? validationErrors.join(
+                " "
+              )
+            : "Your playoff-round lineup is not valid yet."
         );
       }
 
@@ -1930,6 +2098,16 @@ export default function NflPlayoffsRoundLineup({
                       slot.index;
 
 
+                  const playerLocked =
+                    player
+                      ? player.isLocked ||
+                        hasGameStarted(
+                          player.gameStartAt,
+                          nowMs
+                        )
+                      : false;
+
+
                   return (
                     <div
                       key={
@@ -2031,7 +2209,7 @@ export default function NflPlayoffsRoundLineup({
                               styles.slotAction
                             }
                           >
-                            {player.isLocked ? (
+                            {playerLocked ? (
                               <span
                                 style={
                                   styles.lockedBadge
@@ -2083,6 +2261,14 @@ export default function NflPlayoffsRoundLineup({
                           >
                             <button
                               type="button"
+                              disabled={
+                                workingKey !==
+                                  null ||
+                                (
+                                  isSalary &&
+                                  !salaryPublished
+                                )
+                              }
                               onClick={
                                 () =>
                                   setActiveSlot(
@@ -2138,7 +2324,11 @@ export default function NflPlayoffsRoundLineup({
                   workingKey !==
                     null ||
                   !lineupComplete ||
-                  overSalaryCap
+                  overSalaryCap ||
+                  (
+                    isSalary &&
+                    !salaryPublished
+                  )
                 }
                 style={
                   styles.submitButton
@@ -2312,10 +2502,21 @@ export default function NflPlayoffsRoundLineup({
                   (
                     player
                   ) => {
+                    const playerStarted =
+                      hasGameStarted(
+                        player.gameStartAt,
+                        nowMs
+                      );
+
                     const disabled =
                       !activeSlot ||
                       workingKey !==
-                        null;
+                        null ||
+                      playerStarted ||
+                      (
+                        isSalary &&
+                        !salaryPublished
+                      );
 
 
                     return (

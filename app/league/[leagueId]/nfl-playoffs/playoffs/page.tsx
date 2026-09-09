@@ -901,7 +901,7 @@ export default async function NflPlayoffsBracketPage({
 
           <Link
             href={
-              `/league/${leagueId}/standings`
+              `/league/${leagueId}/nfl-playoffs/standings`
             }
             style={
               styles.button

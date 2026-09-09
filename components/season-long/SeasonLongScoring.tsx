@@ -1092,6 +1092,25 @@ function makeComponent(
         scoringCategory
       ];
 
+    const isNflPlayoffs =
+      league?.league_type ===
+      "nfl_playoffs";
+
+    const resolvedDisplayName =
+      isNflPlayoffs
+        ? "NFL PLAYOFFS"
+        : displayName;
+
+    const resolvedEyebrow =
+      isNflPlayoffs
+        ? "GRIDIRON365 · NFL PLAYOFFS · COMMISSIONER"
+        : eyebrow;
+
+    const resolvedModeDescription =
+      isNflPlayoffs
+        ? "Salary and No-Salary NFL Playoffs leagues use this exact same scoring configuration."
+        : modeDescription;
+
     const visibleRules =
       scoringRules.filter(
         (
@@ -1151,7 +1170,7 @@ function makeComponent(
                   styles.eyebrow
                 }
               >
-                {eyebrow}
+                {resolvedEyebrow}
               </div>
 
               <h1
@@ -1181,7 +1200,7 @@ function makeComponent(
                 styles.modeBadge
               }
             >
-              {displayName}
+              {resolvedDisplayName}
             </div>
           </header>
 
@@ -1195,7 +1214,7 @@ function makeComponent(
             </strong>
 
             <span>
-              {modeDescription}
+              {resolvedModeDescription}
               {" "}
               Passing, rushing and receiving use points-per-yard controls. Kicking includes field-goal distance ranges. Bonus families use highest-only non-stacking logic.
             </span>
@@ -2435,3 +2454,4 @@ const SeasonLongScoring =
   );
 
 export default SeasonLongScoring;
+
