@@ -418,6 +418,22 @@ type LineupRow = {
     number |
     string |
     null;
+
+  nfl_game_id:
+    number |
+    null;
+
+  game_start_at:
+    string |
+    null;
+
+  opponent_abbreviation:
+    string |
+    null;
+
+  home_or_away:
+    string |
+    null;
 };
 
 
@@ -1234,7 +1250,11 @@ export async function getSeasonLongMatchupDetailData(
         lineup_slot,
         slot_index,
         is_locked,
-        salary_at_selection
+        salary_at_selection,
+        nfl_game_id,
+        game_start_at,
+        opponent_abbreviation,
+        home_or_away
       `)
       .eq(
         "league_id",
@@ -2397,6 +2417,7 @@ export async function getSeasonLongMatchupDetailData(
 
 
     const nflGameId =
+      lineup.nfl_game_id ??
       score
         ?.nfl_game_id ??
       stats
@@ -2436,10 +2457,12 @@ export async function getSeasonLongMatchupDetailData(
     let opponent:
       string |
       null =
+        lineup.opponent_abbreviation ??
         null;
 
 
     if (
+      !opponent &&
       game &&
       playerTeam
     ) {
@@ -2467,9 +2490,16 @@ export async function getSeasonLongMatchupDetailData(
       "vs" |
       "@" |
       null =
-        null;
+        lineup.home_or_away ===
+          "home"
+          ? "vs"
+          : lineup.home_or_away ===
+              "away"
+            ? "@"
+            : null;
 
     if (
+      !opponentPrefix &&
       game &&
       playerTeam
     ) {
@@ -2481,6 +2511,7 @@ export async function getSeasonLongMatchupDetailData(
     }
 
     const kickoffAt =
+      lineup.game_start_at ??
       game
         ?.kickoff_at ??
       null;

@@ -759,55 +759,87 @@ export default async function SeasonLongEntryPage({
   if (
     isSalary
   ) {
-    const salaryResult =
-      await supabase
-        .from(
-          "season_long_player_salaries"
-        )
-        .select(`
-          nfl_player_id,
-          salary,
-          projected_points,
-          salary_change,
-          salary_change_percent
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .eq(
-          "season",
-          season
-        )
-        .eq(
-          "week",
-          currentWeek
-        )
-        .order(
-          "projected_points",
-          {
-            ascending:
-              false,
-          }
-        );
+    /*
+     * Salary pools can exceed Supabase/PostgREST's normal 1,000-row
+     * response cap. Page through the entire salary table so valid
+     * players are never omitted simply because they fall outside the
+     * first response page. The final My Entry pool defaults to salary
+     * order below; the client can also re-sort by projected points.
+     */
+    const salaryPageSize = 1000;
 
-
-    if (
-      salaryResult.error
+    for (
+      let from = 0;
+      ;
+      from += salaryPageSize
     ) {
-      throw new Error(
-        salaryResult
-          .error
-          .message
+      const to =
+        from +
+        salaryPageSize -
+        1;
+
+      const salaryResult =
+        await supabase
+          .from(
+            "season_long_player_salaries"
+          )
+          .select(`
+            nfl_player_id,
+            salary,
+            projected_points,
+            salary_change,
+            salary_change_percent
+          `)
+          .eq(
+            "league_id",
+            leagueId
+          )
+          .eq(
+            "season",
+            season
+          )
+          .eq(
+            "week",
+            currentWeek
+          )
+          .order(
+            "nfl_player_id",
+            {
+              ascending: true,
+            }
+          )
+          .range(
+            from,
+            to
+          );
+
+      if (
+        salaryResult.error
+      ) {
+        throw new Error(
+          salaryResult
+            .error
+            .message
+        );
+      }
+
+      const pageRows =
+        (
+          salaryResult.data ??
+          []
+        ) as SalaryRow[];
+
+      salaries.push(
+        ...pageRows
       );
+
+      if (
+        pageRows.length <
+        salaryPageSize
+      ) {
+        break;
+      }
     }
-
-
-    salaries =
-      (
-        salaryResult.data ??
-        []
-      ) as SalaryRow[];
   }
 
 
@@ -1652,9 +1684,33 @@ export default async function SeasonLongEntryPage({
         (
           a,
           b
-        ) =>
-          b.projectedPoints -
-          a.projectedPoints
+        ) => {
+          /*
+           * Salary leagues default Available Players to highest salary.
+           * No-Salary leagues keep the existing projected-points order.
+           */
+          if (isSalary) {
+            const salaryDifference =
+              (b.salary ?? 0) -
+              (a.salary ?? 0);
+
+            if (salaryDifference !== 0) {
+              return salaryDifference;
+            }
+          }
+
+          const projectionDifference =
+            b.projectedPoints -
+            a.projectedPoints;
+
+          if (projectionDifference !== 0) {
+            return projectionDifference;
+          }
+
+          return a.name.localeCompare(
+            b.name
+          );
+        }
       );
 
 
@@ -1745,3 +1801,4 @@ export default async function SeasonLongEntryPage({
     />
   );
 }
+

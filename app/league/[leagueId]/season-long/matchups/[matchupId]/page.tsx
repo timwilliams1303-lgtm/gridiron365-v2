@@ -150,27 +150,6 @@ function playerStatus(
     player.gameContext;
 
 
-  /*
-   * Keep the matchup STATUS column intentionally simple:
-   *
-   * BEFORE GAME:
-   *   UPCOMING
-   *
-   * LIVE:
-   *   Q1 12:34
-   *   Q2 04:18
-   *   Q3 09:02
-   *   Q4 00:41
-   *   OT 07:55
-   *
-   * COMPLETE:
-   *   FINAL
-   *
-   * Do not show lineup-lock state, kickoff date/time, or any
-   * other designation in this column. Injury designations stay
-   * beside the player's name where they belong.
-   */
-
   if (
     context
       ?.isActuallyLive
@@ -207,7 +186,66 @@ function playerStatus(
   }
 
 
+  if (
+    !player.nflGameId &&
+    !player.nflOpponent
+  ) {
+    return "BYE";
+  }
+
+
   return "UPCOMING";
+}
+
+
+function playerStatusDetail(
+  player:
+    MatchupDetailPlayer
+) {
+  const context =
+    player.gameContext;
+
+
+  if (
+    player.scoreIsFinal ||
+    context
+      ?.statusCompleted ||
+    context
+      ?.isActuallyLive
+  ) {
+    return null;
+  }
+
+
+  if (
+    !player.nflGameId &&
+    !player.nflOpponent
+  ) {
+    return null;
+  }
+
+
+  const matchup =
+    player.nflOpponent
+      ? `${player.opponentPrefix ?? "vs"} ${player.nflOpponent}`
+      : null;
+
+
+  const kickoff =
+    kickoffLabel(
+      player.kickoffAt
+    );
+
+
+  return [
+    matchup,
+    kickoff !== "—"
+      ? kickoff
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" • ") ||
+    null;
 }
 
 
@@ -2437,19 +2475,39 @@ function CompactPlayerRow({
       </span>
 
 
-      <span
+      <div
         style={
-          player
-            .gameContext
-            ?.isActuallyLive
-            ? styles.liveStatus
-            : styles.playerStatus
+          styles.statusCell
         }
       >
-        {playerStatus(
+        <span
+          style={
+            player
+              .gameContext
+              ?.isActuallyLive
+              ? styles.liveStatus
+              : styles.playerStatus
+          }
+        >
+          {playerStatus(
+            player
+          )}
+        </span>
+
+        {playerStatusDetail(
           player
-        )}
-      </span>
+        ) ? (
+          <span
+            style={
+              styles.playerStatusDetail
+            }
+          >
+            {playerStatusDetail(
+              player
+            )}
+          </span>
+        ) : null}
+      </div>
 
 
       <strong
@@ -4080,11 +4138,40 @@ const styles = {
   },
 
 
+  statusCell: {
+    minWidth: 0,
+
+    display:
+      "grid",
+
+    gap:
+      "2px",
+
+    alignContent:
+      "center",
+  },
+
+
   playerStatus: {
     color:
       "#858b94",
 
     fontSize: "12px",
+  },
+
+
+  playerStatusDetail: {
+    color:
+      "#a7adb6",
+
+    fontSize:
+      "9px",
+
+    lineHeight:
+      1.15,
+
+    whiteSpace:
+      "nowrap" as const,
   },
 
 
@@ -4170,3 +4257,4 @@ const styles = {
       "center" as const,
   },
   };
+

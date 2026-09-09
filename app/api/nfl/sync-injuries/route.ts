@@ -6,10 +6,6 @@ import {
   createClient,
 } from "@supabase/supabase-js";
 
-import {
-  createSupabaseServerClient,
-} from "@/lib/supabase/server";
-
 
 export const dynamic =
   "force-dynamic";
@@ -90,15 +86,6 @@ type EspnInjury = {
     description?: string;
     abbreviation?: string;
   };
-
-  details?: {
-    fantasyStatus?: { description?: string; abbreviation?: string };
-    type?: string;
-    location?: string;
-    detail?: string;
-    side?: string;
-    returnDate?: string;
-  };
 };
 
 
@@ -108,12 +95,6 @@ type EspnTeamInjuries = {
   injuries?: EspnInjury[];
 };
 
-
-type EspnCoreSeasonAthlete = {
-  id?: string;
-  displayName?: string;
-  injuries?: EspnInjury[];
-};
 
 type EspnInjuryResponse = {
   timestamp?: string;
@@ -189,12 +170,6 @@ type ExistingInjury = {
 
   last_seen_at:
     string;
-
-  balldontlie_status:
-    string | null;
-
-  balldontlie_last_synced_at:
-    string | null;
 };
 
 
@@ -230,9 +205,6 @@ type EspnPlayerRecord = {
     string | null;
 
   sourceUpdatedAt:
-    string | null;
-
-  returnDate:
     string | null;
 };
 
@@ -315,59 +287,12 @@ function getAdminClient() {
    AUTHORIZATION
 ========================================================= */
 
-async function authorizeSync(
+function authorizeSync(
   request: Request
 ) {
-  /*
-   * Manual admin sync:
-   * accept the normal Gridiron365 Supabase SSR cookie session.
-   */
-  try {
-    const serverSupabase =
-      await createSupabaseServerClient();
-
-    const {
-      data: {
-        user,
-      },
-      error:
-        userError,
-    } =
-      await serverSupabase.auth
-        .getUser();
-
-    if (
-      !userError &&
-      user
-    ) {
-      return {
-        authorized:
-          true,
-
-        response:
-          null,
-
-        authMode:
-          "user_session",
-      };
-    }
-  } catch {
-    /*
-     * Fall through to the server-secret path.
-     * Automated cron/server callers do not need a browser session.
-     */
-  }
-
-
-  /*
-   * Automated sync:
-   * preserve the existing x-gridiron-sync-secret authorization.
-   */
   const configuredSecret =
-    process.env
-      .GRIDIRON_SYNC_SECRET ??
-    process.env
-      .NFL_SYNC_SECRET;
+  process.env.GRIDIRON_SYNC_SECRET ??
+  process.env.NFL_SYNC_SECRET;
 
   if (!configuredSecret) {
     return {
@@ -381,16 +306,13 @@ async function authorizeSync(
               false,
 
             error:
-              "GRIDIRON_SYNC_SECRET / NFL_SYNC_SECRET is not configured on the server.",
+              "NFL_SYNC_SECRET is not configured on the server.",
           },
           {
             status:
               500,
           }
         ),
-
-      authMode:
-        null,
     };
   }
 
@@ -423,9 +345,6 @@ async function authorizeSync(
               401,
           }
         ),
-
-      authMode:
-        null,
     };
   }
 
@@ -436,11 +355,9 @@ async function authorizeSync(
 
     response:
       null,
-
-    authMode:
-      "sync_secret",
   };
 }
+
 
 /* =========================================================
    ESPN PLAYER ID
@@ -626,24 +543,6 @@ function normalizePosition(
 }
 
 
-function getCurrentNflSeason(
-  referenceDate = new Date()
-) {
-  const year =
-    referenceDate.getUTCFullYear();
-
-  const month =
-    referenceDate.getUTCMonth() + 1;
-
-  // NFL seasons span two calendar years.
-  // July-December belongs to the season starting that year.
-  // January-June belongs to the season that started the prior year.
-  return month >= 7
-    ? year
-    : year - 1;
-}
-
-
 /* =========================================================
    CURRENT INJURY STATUSES
 ========================================================= */
@@ -759,55 +658,77 @@ function normalizeInjuryStatus(
 }
 
 
-function findInjuryLocation(
-  value: string | null | undefined
+function inferInjuryLocation(
+  ...values:
+    Array<
+      string |
+      null |
+      undefined
+    >
 ) {
-  const text = (value ?? "").trim().toLowerCase();
-  if (!text) return null;
+  const text =
+    values
+      .filter(
+        Boolean
+      )
+      .join(
+        " "
+      )
+      .toLowerCase();
 
-  const locations: Array<{ pattern: RegExp; label: string }> = [
-    { pattern: /\bachilles\b/i, label: "Achilles" },
-    { pattern: /\bhamstring\b/i, label: "Hamstring" },
-    { pattern: /\bquadriceps\b|\bquad\b/i, label: "Quadriceps" },
-    { pattern: /\bconcussion\b/i, label: "Concussion" },
-    { pattern: /\bknee\b/i, label: "Knee" },
-    { pattern: /\bankle\b/i, label: "Ankle" },
-    { pattern: /\bshoulder\b/i, label: "Shoulder" },
-    { pattern: /\bfoot\b/i, label: "Foot" },
-    { pattern: /\btoe\b/i, label: "Toe" },
-    { pattern: /\bcalf\b/i, label: "Calf" },
-    { pattern: /\bgroin\b/i, label: "Groin" },
-    { pattern: /\bhip\b/i, label: "Hip" },
-    { pattern: /\bthigh\b/i, label: "Thigh" },
-    { pattern: /\bback\b/i, label: "Back" },
-    { pattern: /\bneck\b/i, label: "Neck" },
-    { pattern: /\bchest\b/i, label: "Chest" },
-    { pattern: /\brib(?:s)?\b/i, label: "Rib" },
-    { pattern: /\belbow\b/i, label: "Elbow" },
-    { pattern: /\bwrist\b/i, label: "Wrist" },
-    { pattern: /\bhand\b/i, label: "Hand" },
-    { pattern: /\bfinger\b/i, label: "Finger" },
-    { pattern: /\bheel\b/i, label: "Heel" },
-    { pattern: /\bleg\b/i, label: "Leg" },
-    { pattern: /\bhead\b/i, label: "Head" },
+  const locations = [
+    "achilles",
+    "ankle",
+    "back",
+    "calf",
+    "chest",
+    "concussion",
+    "elbow",
+    "finger",
+    "foot",
+    "groin",
+    "hamstring",
+    "hand",
+    "head",
+    "heel",
+    "hip",
+    "knee",
+    "leg",
+    "neck",
+    "quadriceps",
+    "quad",
+    "rib",
+    "shoulder",
+    "thigh",
+    "toe",
+    "wrist",
   ];
 
-  for (const location of locations) {
-    if (location.pattern.test(text)) return location.label;
+  for (
+    const location
+    of locations
+  ) {
+    if (
+      text.includes(
+        location
+      )
+    ) {
+      return location ===
+        "quad"
+        ? "Quadriceps"
+        : location
+            .split(" ")
+            .map(
+              part =>
+                part
+                  .charAt(0)
+                  .toUpperCase() +
+                part.slice(1)
+            )
+            .join(" ");
+    }
   }
-  return null;
-}
 
-function inferInjuryLocation(
-  ...values: Array<string | null | undefined>
-) {
-  // Search each source in priority order instead of concatenating all text.
-  // This makes ESPN's explicit injury description win over lower-priority
-  // prose such as "back at practice" in a news note.
-  for (const value of values) {
-    const location = findInjuryLocation(value);
-    if (location) return location;
-  }
   return null;
 }
 
@@ -820,6 +741,38 @@ function hasCredibleInjuryInformation(
     record.injuryType ||
     record.injuryDetail ||
     record.injuryDate
+  );
+}
+
+
+function isExplicitNonInjuryStatus(
+  rawStatus:
+    string |
+    null
+) {
+  const normalized =
+    (rawStatus ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(
+        /[_-]+/g,
+        " "
+      )
+      .replace(
+        /\s+/g,
+        " "
+      );
+
+
+  return [
+    "active",
+    "healthy",
+    "available",
+    "normal",
+    "no injury",
+    "no injury status",
+  ].includes(
+    normalized
   );
 }
 
@@ -837,19 +790,10 @@ function fallbackStatusForInjuryNews(
     return null;
   }
 
-  const normalizedRaw =
-    (
-      rawStatus ??
-      ""
-    )
-      .trim()
-      .toLowerCase();
-
   if (
-    normalizedRaw ===
-      "active" ||
-    normalizedRaw ===
-      "healthy"
+    isExplicitNonInjuryStatus(
+      rawStatus
+    )
   ) {
     return null;
   }
@@ -919,7 +863,7 @@ export async function POST(
   request: Request
 ) {
   const authorization =
-    await authorizeSync(
+    authorizeSync(
       request
     );
 
@@ -1060,7 +1004,8 @@ export async function POST(
       espnData
         .season
         ?.year ??
-      getCurrentNflSeason();
+      new Date()
+        .getFullYear();
 
 
     /* =====================================================
@@ -1289,9 +1234,6 @@ export async function POST(
                 ?.date ??
               espnData.timestamp
             ),
-
-          returnDate:
-            null,
         });
       }
     }
@@ -1411,148 +1353,6 @@ export async function POST(
     }
 
 
-    let coreAthletesChecked = 0;
-    let coreAthletesWithInjuries = 0;
-    let coreInjuryOverrides = 0;
-    let coreFetchFailures = 0;
-
-    /*
-     * The league-wide ESPN injury feed can lag roster transactions.
-     * ESPN's season-scoped Core athlete resource exposes the current
-     * injuries[] array, including IR/PUP/NFI and return-date details.
-     *
-     * Enrich the players already reported by the league-wide feed.
-     * Core reserve designations override stale generic statuses such
-     * as Day-To-Day.
-     */
-    for (const [espnPlayerId, existingRecord] of latestRecordByEspnPlayerId) {
-      const coreUrl =
-        `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${season}/athletes/${espnPlayerId}?lang=en&region=us`;
-
-      try {
-        const coreResponse = await fetch(coreUrl, {
-          method: "GET",
-          cache: "no-store",
-          headers: {
-            Accept: "application/json",
-            "User-Agent": "Mozilla/5.0",
-          },
-        });
-
-        coreAthletesChecked += 1;
-
-        if (!coreResponse.ok) {
-          coreFetchFailures += 1;
-          continue;
-        }
-
-        const coreAthlete =
-          (await coreResponse.json()) as EspnCoreSeasonAthlete;
-
-        const coreInjuries =
-          Array.isArray(coreAthlete.injuries)
-            ? coreAthlete.injuries
-            : [];
-
-        if (coreInjuries.length === 0) continue;
-
-        coreAthletesWithInjuries += 1;
-
-        const latestCoreInjury =
-          coreInjuries
-            .slice()
-            .sort(
-              (a, b) =>
-                new Date(b.date ?? 0).getTime() -
-                new Date(a.date ?? 0).getTime()
-            )[0];
-
-        if (!latestCoreInjury) continue;
-
-        const rawCoreStatus =
-          normalizeText(latestCoreInjury.status) ??
-          normalizeText(latestCoreInjury.type?.description) ??
-          normalizeText(latestCoreInjury.type?.abbreviation) ??
-          normalizeText(latestCoreInjury.type?.name);
-
-        const coreStatus =
-          normalizeInjuryStatus(rawCoreStatus);
-
-        if (!coreStatus) continue;
-
-        const shortComment =
-          normalizeText(latestCoreInjury.shortComment);
-        const longComment =
-          normalizeText(latestCoreInjury.longComment);
-        const details =
-          latestCoreInjury.details;
-
-        const coreInjuryType =
-          normalizeText(details?.type) ??
-          normalizeText(latestCoreInjury.type?.description) ??
-          normalizeText(latestCoreInjury.type?.name);
-
-        const coreLocation =
-          normalizeText(details?.location) ??
-          inferInjuryLocation(
-            details?.type,
-            details?.detail,
-            shortComment,
-            longComment
-          );
-
-        const structuredDetail =
-          [normalizeText(details?.detail), normalizeText(details?.side)]
-            .filter((value): value is string => Boolean(value))
-            .join(" - ") || null;
-
-        const coreInjuryDetail =
-          longComment ??
-          shortComment ??
-          structuredDetail;
-
-        const coreInjuryDate =
-          normalizeDate(latestCoreInjury.date);
-        const coreSourceUpdatedAt =
-          normalizeDateTime(latestCoreInjury.date);
-        const coreReturnDate =
-          normalizeDate(details?.returnDate);
-
-        const existingTime =
-          new Date(existingRecord.sourceUpdatedAt ?? 0).getTime();
-        const coreTime =
-          new Date(coreSourceUpdatedAt ?? 0).getTime();
-
-        const reserveStatuses =
-          new Set(["Injured Reserve", "PUP", "NFI", "Suspended"]);
-
-        if (
-          coreTime < existingTime &&
-          !reserveStatuses.has(coreStatus)
-        ) {
-          continue;
-        }
-
-        latestRecordByEspnPlayerId.set(espnPlayerId, {
-          ...existingRecord,
-          rawStatus: rawCoreStatus ?? existingRecord.rawStatus,
-          status: coreStatus,
-          injuryType: coreInjuryType ?? existingRecord.injuryType,
-          injuryLocation: coreLocation ?? existingRecord.injuryLocation,
-          injuryDetail: coreInjuryDetail ?? existingRecord.injuryDetail,
-          injuryDate: coreInjuryDate ?? existingRecord.injuryDate,
-          sourceUpdatedAt:
-            coreSourceUpdatedAt ?? existingRecord.sourceUpdatedAt,
-          returnDate: coreReturnDate ?? existingRecord.returnDate,
-        });
-
-        coreInjuryOverrides += 1;
-      } catch {
-        coreFetchFailures += 1;
-      }
-    }
-
-
     const latestEspnRecords =
       Array.from(
         latestRecordByEspnPlayerId.values()
@@ -1563,101 +1363,45 @@ export async function POST(
        4. LOAD NFL PLAYERS FROM PUBLIC SCHEMA
     ===================================================== */
 
-    /*
-     * Supabase/PostgREST commonly caps a single select at 1,000 rows.
-     * The NFL player catalog is larger than that, so a one-shot query
-     * silently omits players and prevents Core injury discovery for them.
-     * Page through the full catalog so EVERY ESPN-mapped NFL player is
-     * eligible for current injury discovery.
-     */
-    const playerRows:
-      Array<{
-        id: unknown;
-        espn_player_id: unknown;
-        full_name: unknown;
-        primary_position: unknown;
-        team_abbreviation: unknown;
-      }> =
-      [];
+    const {
+      data:
+        playerRows,
 
-
-    const playerPageSize =
-      1000;
-
-
-    for (
-      let from = 0;
-      ;
-      from += playerPageSize
-    ) {
-      const {
-        data:
-          pageRows,
-
-        error:
-          playerError,
-      } =
-        await supabase
-          .schema(
-            "public"
-          )
-          .from(
-            "nfl_players"
-          )
-          .select(
-            "id, espn_player_id, full_name, primary_position, team_abbreviation"
-          )
-          .not(
-            "espn_player_id",
-            "is",
-            null
-          )
-          .order(
-            "id",
-            {
-              ascending:
-                true,
-            }
-          )
-          .range(
-            from,
-            from +
-              playerPageSize -
-              1
-          );
-
-
-      if (
-        playerError
-      ) {
-        throw new Error(
-          `Unable to load NFL players: ${playerError.message}`
+      error:
+        playerError,
+    } =
+      await supabase
+        .schema(
+          "public"
+        )
+        .from(
+          "nfl_players"
+        )
+        .select(
+          "id, espn_player_id, full_name, primary_position, team_abbreviation"
+        )
+        .not(
+          "espn_player_id",
+          "is",
+          null
         );
-      }
 
 
-      const rows =
-        pageRows ??
-        [];
-
-
-      playerRows.push(
-        ...rows
+    if (
+      playerError
+    ) {
+      throw new Error(
+        `Unable to load NFL players: ${playerError.message}`
       );
-
-
-      if (
-        rows.length <
-        playerPageSize
-      ) {
-        break;
-      }
     }
 
 
     const players:
       NflPlayer[] =
-      playerRows.map(
+      (
+        playerRows ??
+        []
+      ).map(
         (
           row
         ) => ({
@@ -1717,348 +1461,10 @@ export async function POST(
     }
 
 
-    /*
-     * IMPORTANT:
-     * ESPN can remove a player from the league-wide /injuries feed after
-     * a roster transaction even though the season-scoped Core athlete
-     * resource still carries the authoritative injury designation.
-     *
-     * Discover those missing players directly from our current NFL player
-     * catalog. This is what catches IR/PUP/NFI players such as a player who
-     * disappears from the league-wide feed after being moved to reserve.
-     */
-    const coreDiscoveryPositions =
-      new Set([
-        "QB",
-        "RB",
-        "WR",
-        "TE",
-        "K",
-        "DL",
-        "DE",
-        "DT",
-        "NT",
-        "EDGE",
-        "LB",
-        "ILB",
-        "OLB",
-        "MLB",
-        "DB",
-        "CB",
-        "S",
-        "FS",
-        "SS",
-      ]);
-
-
-    let coreCatalogPlayersChecked =
-      0;
-
-    let coreCatalogInjuriesDiscovered =
-      0;
-
-    let coreCatalogFetchFailures =
-      0;
-
-
-    for (
-      const player
-      of players
-    ) {
-      const espnPlayerId =
-        player.espn_player_id;
-
-      if (
-        !espnPlayerId ||
-        latestRecordByEspnPlayerId.has(
-          espnPlayerId
-        ) ||
-        !coreDiscoveryPositions.has(
-          normalizePosition(
-            player.primary_position
-          )
-        )
-      ) {
-        continue;
-      }
-
-
-      const coreUrl =
-        `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${season}/athletes/${espnPlayerId}?lang=en&region=us`;
-
-
-      try {
-        const coreResponse =
-          await fetch(
-            coreUrl,
-            {
-              method:
-                "GET",
-
-              cache:
-                "no-store",
-
-              headers: {
-                Accept:
-                  "application/json",
-
-                "User-Agent":
-                  "Mozilla/5.0",
-              },
-            }
-          );
-
-
-        coreCatalogPlayersChecked +=
-          1;
-
-
-        if (
-          !coreResponse.ok
-        ) {
-          coreCatalogFetchFailures +=
-            1;
-
-          continue;
-        }
-
-
-        const coreAthlete =
-          (
-            await coreResponse.json()
-          ) as EspnCoreSeasonAthlete;
-
-
-        const coreInjuries =
-          Array.isArray(
-            coreAthlete.injuries
-          )
-            ? coreAthlete.injuries
-            : [];
-
-
-        if (
-          coreInjuries.length ===
-          0
-        ) {
-          continue;
-        }
-
-
-        const latestCoreInjury =
-          coreInjuries
-            .slice()
-            .sort(
-              (
-                a,
-                b
-              ) =>
-                new Date(
-                  b.date ??
-                  0
-                ).getTime() -
-                new Date(
-                  a.date ??
-                  0
-                ).getTime()
-            )[0];
-
-
-        if (
-          !latestCoreInjury
-        ) {
-          continue;
-        }
-
-
-        const rawCoreStatus =
-          normalizeText(
-            latestCoreInjury.status
-          ) ??
-          normalizeText(
-            latestCoreInjury
-              .type
-              ?.description
-          ) ??
-          normalizeText(
-            latestCoreInjury
-              .type
-              ?.abbreviation
-          ) ??
-          normalizeText(
-            latestCoreInjury
-              .type
-              ?.name
-          );
-
-
-        const coreStatus =
-          normalizeInjuryStatus(
-            rawCoreStatus
-          );
-
-
-        if (
-          !coreStatus
-        ) {
-          continue;
-        }
-
-
-        const shortComment =
-          normalizeText(
-            latestCoreInjury.shortComment
-          );
-
-        const longComment =
-          normalizeText(
-            latestCoreInjury.longComment
-          );
-
-        const details =
-          latestCoreInjury.details;
-
-
-        const coreInjuryType =
-          normalizeText(
-            details?.type
-          ) ??
-          normalizeText(
-            latestCoreInjury
-              .type
-              ?.description
-          ) ??
-          normalizeText(
-            latestCoreInjury
-              .type
-              ?.name
-          );
-
-
-        const coreLocation =
-          normalizeText(
-            details?.location
-          ) ??
-          inferInjuryLocation(
-            details?.type,
-            details?.detail,
-            shortComment,
-            longComment
-          );
-
-
-        const structuredDetail =
-          [
-            normalizeText(
-              details?.detail
-            ),
-            normalizeText(
-              details?.side
-            ),
-          ]
-            .filter(
-              (
-                value
-              ): value is string =>
-                Boolean(
-                  value
-                )
-            )
-            .join(
-              " - "
-            ) ||
-          null;
-
-
-        const coreInjuryDetail =
-          longComment ??
-          shortComment ??
-          structuredDetail;
-
-
-        latestRecordByEspnPlayerId.set(
-          espnPlayerId,
-          {
-            espnPlayerId,
-
-            fullName:
-              player.full_name,
-
-            team:
-              player.team_abbreviation,
-
-            position:
-              normalizePosition(
-                player.primary_position
-              ) ||
-              null,
-
-            rawStatus:
-              rawCoreStatus,
-
-            status:
-              coreStatus,
-
-            injuryType:
-              coreInjuryType,
-
-            injuryLocation:
-              coreLocation,
-
-            injuryDetail:
-              coreInjuryDetail,
-
-            injuryDate:
-              normalizeDate(
-                latestCoreInjury.date
-              ),
-
-            sourceUpdatedAt:
-              normalizeDateTime(
-                latestCoreInjury.date
-              ),
-
-            returnDate:
-              normalizeDate(
-                details?.returnDate
-              ),
-          }
-        );
-
-
-        coreCatalogInjuriesDiscovered +=
-          1;
-      } catch {
-        coreCatalogFetchFailures +=
-          1;
-      }
-    }
-
-
-    /*
-     * Rebuild after Core catalog discovery so newly discovered reserve
-     * injuries participate in the same canonical insert/update pipeline.
-     */
-    const allCurrentEspnRecords =
-      Array.from(
-        latestRecordByEspnPlayerId.values()
-      );
-
-
     /* =====================================================
-       5. MATCH CURRENT FANTASY + DEFENSIVE INJURIES
+       5. MATCH CURRENT FANTASY INJURIES
     ===================================================== */
 
-    /*
-     * Keep every fantasy-relevant offensive AND defensive position.
-     *
-     * Defensive injuries are required by the G365 matchup engine so
-     * QB/RB/WR/TE matchup difficulty can react to injuries on the
-     * opposing defense instead of only seeing offensive injuries.
-     *
-     * ESPN and our player table can use either broad or specific
-     * defensive position labels, so retain all common variants.
-     */
     const fantasyPositions =
       new Set([
         "QB",
@@ -2066,23 +1472,6 @@ export async function POST(
         "WR",
         "TE",
         "K",
-
-        "DL",
-        "DE",
-        "DT",
-        "NT",
-        "EDGE",
-
-        "LB",
-        "ILB",
-        "OLB",
-        "MLB",
-
-        "DB",
-        "CB",
-        "S",
-        "FS",
-        "SS",
       ]);
 
 
@@ -2123,7 +1512,7 @@ export async function POST(
 
     for (
       const injury
-      of allCurrentEspnRecords
+      of latestEspnRecords
     ) {
       const player =
         playerByEspnId.get(
@@ -2217,7 +1606,7 @@ export async function POST(
           injury.injuryDate,
 
         return_date:
-          injury.returnDate,
+          null,
 
         source_updated_at:
           injury.sourceUpdatedAt,
@@ -2235,24 +1624,12 @@ export async function POST(
             false,
 
           error:
-            "ESPN returned records, but no current fantasy or defensive injury designations could be matched. Existing injury data was left unchanged.",
+            "ESPN returned records, but no current fantasy injury designations could be matched. Existing injury data was left unchanged.",
 
           totalEspnRecords,
 
           latestEspnRecords:
             latestEspnRecords.length,
-
-          allCurrentEspnRecords:
-            allCurrentEspnRecords.length,
-
-          nflPlayersLoaded:
-            players.length,
-
-          coreCatalogPlayersChecked,
-
-          coreCatalogInjuriesDiscovered,
-
-          coreCatalogFetchFailures,
 
           matchedActiveOrNews,
 
@@ -2306,9 +1683,7 @@ export async function POST(
           source_updated_at,
           is_active,
           first_seen_at,
-          last_seen_at,
-          balldontlie_status,
-          balldontlie_last_synced_at
+          last_seen_at
           `
         )
         .eq(
@@ -2423,20 +1798,6 @@ export async function POST(
             String(
               row.last_seen_at
             ),
-
-          balldontlie_status:
-            row.balldontlie_status
-              ? String(
-                  row.balldontlie_status
-                )
-              : null,
-
-          balldontlie_last_synced_at:
-            row.balldontlie_last_synced_at
-              ? String(
-                  row.balldontlie_last_synced_at
-                )
-              : null,
         })
       );
 
@@ -2716,9 +2077,24 @@ export async function POST(
 
     for (
       const record
-      of allCurrentEspnRecords
+      of latestEspnRecords
     ) {
+      /*
+       * A record with a recognized current designation is already
+       * represented by currentlyInjuredPlayerIds.
+       *
+       * Preserve an old active injury only when ESPN still returns
+       * credible injury information but does NOT provide a recognized
+       * designation and does NOT explicitly say the player is Active /
+       * Healthy / Available. This protects ambiguous ESPN news records
+       * without allowing stale PUP/IR/etc. rows to survive after the
+       * player has been activated.
+       */
       if (
+        record.status ||
+        isExplicitNonInjuryStatus(
+          record.rawStatus
+        ) ||
         !hasCredibleInjuryInformation(
           record
         )
@@ -2744,12 +2120,6 @@ export async function POST(
     let injuriesCleared =
       0;
 
-    let injuriesProtectedByBalldontlie =
-      0;
-
-    const balldontlieFreshnessWindowMs =
-      24 * 60 * 60 * 1000;
-
 
     for (
       const existing
@@ -2763,36 +2133,6 @@ export async function POST(
           existing.nfl_player_id
         )
       ) {
-        continue;
-      }
-
-
-      const balldontlieLastSyncedMs =
-        existing.balldontlie_last_synced_at
-          ? new Date(
-              existing.balldontlie_last_synced_at
-            ).getTime()
-          : Number.NaN;
-
-      const balldontlieRecentlyConfirmed =
-        Boolean(
-          existing.balldontlie_status
-        ) &&
-        Number.isFinite(
-          balldontlieLastSyncedMs
-        ) &&
-        (
-          Date.now() -
-          balldontlieLastSyncedMs
-        ) <=
-          balldontlieFreshnessWindowMs;
-
-      if (
-        balldontlieRecentlyConfirmed
-      ) {
-        injuriesProtectedByBalldontlie +=
-          1;
-
         continue;
       }
 
@@ -2839,188 +2179,7 @@ export async function POST(
 
 
     /* =====================================================
-       9. REFRESH FANTASY DATA ONLY WHEN INJURIES CHANGED
-    ===================================================== */
-
-    /*
-     * The ESPN injury feed runs frequently.
-     *
-     * Do not rebuild Traditional projections and Season-Long
-     * matchup/projection data simply because the provider was
-     * checked again.
-     *
-     * A downstream fantasy refresh is required only when the
-     * canonical injury state actually changed:
-     *
-     * - a new injury was inserted
-     * - an existing injury changed
-     * - an existing injury was cleared
-     *
-     * Unchanged injuries only receive freshness timestamps and
-     * therefore must not trigger expensive fantasy recalculation.
-     */
-    const hasMeaningfulInjuryChanges =
-      injuriesInserted > 0 ||
-      injuriesChanged > 0 ||
-      injuriesCleared > 0;
-
-
-    let projectionRefresh:
-      unknown =
-        null;
-
-    let projectionRefreshError:
-      string |
-      null =
-        null;
-
-
-    let seasonLongMatchupRefresh:
-      unknown =
-        null;
-
-    let seasonLongMatchupRefreshError:
-      string |
-      null =
-        null;
-
-
-    let effectiveDraftRankingsRefresh:
-      unknown =
-        null;
-
-    let effectiveDraftRankingsRefreshError:
-      string |
-      null =
-        null;
-
-
-    if (
-      hasMeaningfulInjuryChanges
-    ) {
-      /*
-       * Traditional projections consume the canonical
-       * nfl_player_injuries table.
-       *
-       * Refresh them only when the fantasy-relevant injury
-       * state actually changed.
-       */
-      try {
-        const {
-          data:
-            refreshedProjectionData,
-
-          error:
-            refreshedProjectionError,
-        } =
-          await supabase.rpc(
-            "refresh_active_traditional_weekly_projections"
-          );
-
-
-        if (
-          refreshedProjectionError
-        ) {
-          projectionRefreshError =
-            refreshedProjectionError.message;
-        } else {
-          projectionRefresh =
-            refreshedProjectionData;
-        }
-      } catch (
-        projectionError
-      ) {
-        projectionRefreshError =
-          projectionError instanceof Error
-            ? projectionError.message
-            : "Projection refresh failed.";
-      }
-
-
-      /*
-       * CPU draft rankings use the same canonical injury state.
-       * Rebuild the effective G365 rankings whenever ESPN causes
-       * a meaningful injury/status change so future CPU picks
-       * immediately account for OUT/IR/PUP/NFI/suspension/return dates.
-       */
-      try {
-        const {
-          data:
-            refreshedEffectiveDraftRankingsData,
-
-          error:
-            refreshedEffectiveDraftRankingsError,
-        } =
-          await supabase.rpc(
-            "refresh_traditional_effective_draft_rankings",
-            {
-              p_season:
-                season,
-            }
-          );
-
-
-        if (
-          refreshedEffectiveDraftRankingsError
-        ) {
-          effectiveDraftRankingsRefreshError =
-            refreshedEffectiveDraftRankingsError.message;
-        } else {
-          effectiveDraftRankingsRefresh =
-            refreshedEffectiveDraftRankingsData;
-        }
-      } catch (
-        effectiveRankingsError
-      ) {
-        effectiveDraftRankingsRefreshError =
-          effectiveRankingsError instanceof Error
-            ? effectiveRankingsError.message
-            : "Effective draft rankings refresh failed.";
-      }
-
-
-      /*
-       * Season-Long matchup/projection calculations also
-       * consume injury information.
-       *
-       * As with Traditional, only refresh when the canonical
-       * injury state actually changed.
-       */
-      try {
-        const {
-          data:
-            refreshedSeasonLongData,
-
-          error:
-            refreshedSeasonLongError,
-        } =
-          await supabase.rpc(
-            "refresh_active_season_long_dynamic_matchups"
-          );
-
-
-        if (
-          refreshedSeasonLongError
-        ) {
-          seasonLongMatchupRefreshError =
-            refreshedSeasonLongError.message;
-        } else {
-          seasonLongMatchupRefresh =
-            refreshedSeasonLongData;
-        }
-      } catch (
-        seasonLongError
-      ) {
-        seasonLongMatchupRefreshError =
-          seasonLongError instanceof Error
-            ? seasonLongError.message
-            : "Season-Long dynamic matchup refresh failed.";
-      }
-    }
-
-
-    /* =====================================================
-       10. SUCCESS
+       9. SUCCESS
     ===================================================== */
 
     return NextResponse.json({
@@ -3035,9 +2194,6 @@ export async function POST(
 
       automatic:
         true,
-
-      authMode:
-        authorization.authMode,
 
       espnTimestamp:
         espnData.timestamp ??
@@ -3068,24 +2224,7 @@ export async function POST(
       latestEspnRecords:
         latestEspnRecords.length,
 
-      coreAthletesChecked,
-      coreAthletesWithInjuries,
-      coreInjuryOverrides,
-      coreFetchFailures,
-
-      nflPlayersLoaded:
-        players.length,
-
-      coreCatalogPlayersChecked,
-
-      coreCatalogInjuriesDiscovered,
-
-      coreCatalogFetchFailures,
-
-      allCurrentEspnRecords:
-        allCurrentEspnRecords.length,
-
-      fantasyAndDefensiveInjuriesMatched:
+      fantasyInjuriesMatched:
         normalized.length,
 
       matchedActiveOrNews,
@@ -3104,28 +2243,6 @@ export async function POST(
       injuriesUnchanged,
 
       injuriesCleared,
-
-      injuriesProtectedByBalldontlie,
-
-      balldontlieFreshnessWindowHours:
-        24,
-
-      hasMeaningfulInjuryChanges,
-
-      downstreamFantasyRefreshTriggered:
-        hasMeaningfulInjuryChanges,
-
-      projectionRefresh,
-
-      projectionRefreshError,
-
-      effectiveDraftRankingsRefresh,
-
-      effectiveDraftRankingsRefreshError,
-
-      seasonLongMatchupRefresh,
-
-      seasonLongMatchupRefreshError,
 
       completedAt:
         new Date()
