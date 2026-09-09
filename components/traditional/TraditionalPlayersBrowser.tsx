@@ -722,7 +722,7 @@ export default function TraditionalPlayersBrowser({
             if (
               injuryOnly &&
               !getInjuryDisplay(
-                player.injuryStatus ?? player.nflStatus,
+                player.injuryStatus,
                 player.injuryDetail
               )
             ) {
@@ -1908,7 +1908,7 @@ const PlayerRow = memo(function PlayerRow({
 
   const injury =
     getInjuryDisplay(
-      player.injuryStatus ?? player.nflStatus,
+      player.injuryStatus,
       player.injuryDetail
     );
 
@@ -2001,7 +2001,7 @@ const PlayerRow = memo(function PlayerRow({
 
           {injury ? (
             <InjuryReportButton
-              status={player.injuryStatus ?? player.nflStatus}
+              status={player.injuryStatus}
               injuryDetail={player.injuryDetail}
               playerName={player.fullName}
             />
@@ -3510,4 +3510,5 @@ const styles = {
   },
 };
 import InjuryReportButton from "@/components/ui/InjuryReportButton";
+
 

@@ -10,6 +10,8 @@ import {
 
 import G365MarchMadnessBracket from "@/components/playoffs/G365MarchMadnessBracket";
 
+import SeasonLongPlayoffsRealtime from "@/components/season-long/SeasonLongPlayoffsRealtime";
+
 
 type PageProps = {
   params:
@@ -730,12 +732,27 @@ export default async function SeasonLongPlayoffsPage({
     );
 
   return (
-    <main
-      className="g365-sl-playoffs"
-      style={
-        styles.page
-      }
-    >
+    <>
+      <SeasonLongPlayoffsRealtime
+        leagueId={
+          leagueId
+        }
+        season={
+          season
+        }
+        enabled
+        live={
+          state?.status ===
+          "active"
+        }
+      />
+
+      <main
+        className="g365-sl-playoffs"
+        style={
+          styles.page
+        }
+      >
       <style>{`
         .g365-sl-playoffs,
         .g365-sl-playoffs * {
@@ -1097,7 +1114,8 @@ export default async function SeasonLongPlayoffsPage({
           </section>
         ) : null}
       </div>
-    </main>
+      </main>
+    </>
   );
 }
 

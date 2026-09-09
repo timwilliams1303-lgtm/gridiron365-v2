@@ -10,6 +10,8 @@ import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
 
+import SeasonLongLiveRefresh from "@/components/season-long/SeasonLongLiveRefresh";
+
 
 type SeasonLongLeagueHomeProps = {
   leagueId: string;
@@ -520,6 +522,12 @@ export default async function SeasonLongLeagueHome({
         styles.page
       }
     >
+
+      <SeasonLongLiveRefresh
+        enabled={true}
+        live={true}
+      />
+
 
       <style>{`
         .g365-season-long-mobile,

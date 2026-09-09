@@ -6,6 +6,35 @@ type Props = {
 
 type PickemSport = "cfb" | "nfl" | "nhl";
 
+type PickemSettingsRow = {
+  football_scope: string | null;
+  enabled_sports: PickemSport[] | null;
+  picks_per_week: number;
+  pick_lock_mode: "per_game" | "full_card";
+  reveal_mode: string | null;
+  full_card_lock_dow: number;
+  full_card_lock_hour_et: number;
+  full_card_lock_minute_et: number;
+  full_card_lock_timezone: string | null;
+  minimum_source_books: number;
+  scoring_mode: string;
+  win_points: number | string;
+  push_points: number | string;
+  loss_points: number | string;
+  confidence_points: Array<number | string> | null;
+  confidence_push_multiplier: number | string;
+  missing_pick_policy: string;
+  pick_market_mode: string;
+  hockey_market_mode: string;
+};
+
+type NhlSettingsRow = {
+  pick_lock_mode: string;
+  minimum_source_books: number;
+  line_freeze_local_time: string | null;
+  timezone: string | null;
+};
+
 function enabledSportsLabel(value: unknown, footballScope: string | null) {
   const normalized = Array.isArray(value)
     ? Array.from(
@@ -48,6 +77,26 @@ function hockeyMarketLabel(value: string | null | undefined) {
   return "Moneyline-derived G365 puck line + Over / Under";
 }
 
+function fullCardDeadlineLabel(data: PickemSettingsRow) {
+  const dayNames = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
+
+  const day = dayNames[data.full_card_lock_dow] ?? "Sunday";
+  const hour = Number(data.full_card_lock_hour_et ?? 13);
+  const minute = Number(data.full_card_lock_minute_et ?? 0);
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+
+  return `${day} at ${displayHour}:${String(minute).padStart(2, "0")} ${suffix} ET`;
+}
+
 export default async function PickemReadOnlySettings({ leagueId }: Props) {
   const supabase = await createSupabaseServerClient();
 
@@ -55,7 +104,7 @@ export default async function PickemReadOnlySettings({ leagueId }: Props) {
     supabase
       .from("pickem_settings")
       .select(
-        "football_scope,enabled_sports,picks_per_week,pick_lock_mode,reveal_mode,minimum_source_books,scoring_mode,win_points,push_points,loss_points,confidence_points,confidence_push_multiplier,missing_pick_policy,pick_market_mode,hockey_market_mode"
+        "football_scope,enabled_sports,picks_per_week,pick_lock_mode,reveal_mode,full_card_lock_dow,full_card_lock_hour_et,full_card_lock_minute_et,full_card_lock_timezone,minimum_source_books,scoring_mode,win_points,push_points,loss_points,confidence_points,confidence_push_multiplier,missing_pick_policy,pick_market_mode,hockey_market_mode"
       )
       .eq("league_id", leagueId)
       .single(),
@@ -68,8 +117,9 @@ export default async function PickemReadOnlySettings({ leagueId }: Props) {
 
   if (error) throw new Error(error.message);
 
-  const enabledSports = Array.isArray(data.enabled_sports)
-    ? data.enabled_sports.map((sport) => String(sport).toLowerCase())
+  const settings = data as PickemSettingsRow;
+  const enabledSports = Array.isArray(settings.enabled_sports)
+    ? settings.enabled_sports.map((sport) => String(sport).toLowerCase())
     : [];
   const hasFootball =
     enabledSports.length === 0 ||
@@ -78,46 +128,62 @@ export default async function PickemReadOnlySettings({ leagueId }: Props) {
   const hasNhl = enabledSports.includes("nhl");
 
   const scoringLabel =
-    data.scoring_mode === "record_only"
+    settings.scoring_mode === "record_only"
       ? "Record Only — win / push / loss record, no points"
-      : data.scoring_mode === "confidence"
-        ? `Confidence Points — ${(data.confidence_points ?? []).join(", ")}`
-        : data.scoring_mode === "three_one_zero"
+      : settings.scoring_mode === "confidence"
+        ? `Confidence Points — ${(settings.confidence_points ?? []).join(", ")}`
+        : settings.scoring_mode === "three_one_zero"
           ? "3 / 1 / 0 Points"
-          : data.scoring_mode === "custom"
-            ? `Custom — ${data.win_points} / ${data.push_points} / ${data.loss_points}`
-            : `Standard — ${data.win_points} / ${data.push_points} / ${data.loss_points}`;
+          : settings.scoring_mode === "custom"
+            ? `Custom — ${settings.win_points} / ${settings.push_points} / ${settings.loss_points}`
+            : `Standard — ${settings.win_points} / ${settings.push_points} / ${settings.loss_points}`;
+
+  const deadlineLabel = fullCardDeadlineLabel(settings);
+  const lockModeLabel =
+    settings.pick_lock_mode === "full_card"
+      ? `Full card — ${deadlineLabel}`
+      : "Per-game — each pick locks at that game's scheduled start";
+  const revealLabel =
+    settings.pick_lock_mode === "full_card"
+      ? `The entire remaining card reveals at ${deadlineLabel}. Any game that starts earlier reveals when it starts.`
+      : "Each individual pick becomes visible when that game begins";
 
   const rows: Array<[string, string]> = [
-    ["Enabled Sports", enabledSportsLabel(data.enabled_sports, data.football_scope)],
-    ["Picks Required", `${data.picks_per_week} combined picks per contest period`],
+    ["Enabled Sports", enabledSportsLabel(settings.enabled_sports, settings.football_scope)],
+    ["Picks Required", `${settings.picks_per_week} combined picks per contest period`],
+    ["Lock Mode", lockModeLabel],
     ...(hasFootball
       ? ([
           ["Football Markets", "Spread + Over / Under"],
           [
             "Football G365 Lines",
-            `Median sportsbook consensus for both spread and total; minimum ${data.minimum_source_books} trustworthy books`,
+            `Median sportsbook consensus for both spread and total; minimum ${settings.minimum_source_books} trustworthy books`,
           ],
           [
             "Football Lock",
-            data.pick_lock_mode === "full_card"
-              ? "Full card locks at earliest selected kickoff"
+            settings.pick_lock_mode === "full_card"
+              ? `Full card locks at ${deadlineLabel}; any football game that starts earlier locks at its own kickoff`
               : "Each football pick locks at its own kickoff",
           ],
         ] as Array<[string, string]>)
       : []),
     ...(hasNhl
       ? ([
-          ["NHL Markets", hockeyMarketLabel(data.hockey_market_mode)],
+          ["NHL Markets", hockeyMarketLabel(settings.hockey_market_mode)],
           [
             "NHL Puck Line Method",
             "Consensus home/away moneylines identify the favorite, then G365 converts favorite price to the official puck-line tier; the underdog receives the opposite line.",
           ],
           [
             "NHL Total",
-            `Median sportsbook game total, rounded to the nearest 0.5; minimum ${nhlSettings?.minimum_source_books ?? data.minimum_source_books} trustworthy books`,
+            `Median sportsbook game total, rounded to the nearest 0.5; minimum ${nhlSettings?.minimum_source_books ?? settings.minimum_source_books} trustworthy books`,
           ],
-          ["NHL Lock", "Each NHL pick locks at that game's start"],
+          [
+            "NHL Lock",
+            settings.pick_lock_mode === "full_card"
+              ? `Full card locks at ${deadlineLabel}; any NHL game that starts earlier locks at puck drop`
+              : "Each NHL pick locks at that game's start",
+          ],
           [
             "NHL Line Freeze",
             nhlSettings?.line_freeze_local_time
@@ -126,29 +192,29 @@ export default async function PickemReadOnlySettings({ leagueId }: Props) {
           ],
         ] as Array<[string, string]>)
       : []),
-    ["Pick Reveal", "Each individual pick becomes visible when that game begins"],
+    ["Pick Reveal", revealLabel],
     ["Scoring", scoringLabel],
     [
       "Missing Picks",
-      data.missing_pick_policy === "count_as_losses"
+      settings.missing_pick_policy === "count_as_losses"
         ? "Each missing required pick counts as a loss and earns 0 points"
-        : data.missing_pick_policy === "disqualify_week"
+        : settings.missing_pick_policy === "disqualify_week"
           ? "Incomplete cards are disqualified from the official weekly ranking"
           : "No penalty; missing picks remain unplayed and earn 0 points",
     ],
-    ...(data.scoring_mode === "confidence"
+    ...(settings.scoring_mode === "confidence"
       ? ([
           [
             "Confidence Push Credit",
-            `${Number(data.confidence_push_multiplier) * 100}% of confidence value`,
+            `${Number(settings.confidence_push_multiplier) * 100}% of confidence value`,
           ],
         ] as Array<[string, string]>)
-      : data.scoring_mode === "record_only"
+      : settings.scoring_mode === "record_only"
         ? []
         : ([
             [
               "Win / Push / Loss",
-              `${data.win_points} / ${data.push_points} / ${data.loss_points} points`,
+              `${settings.win_points} / ${settings.push_points} / ${settings.loss_points} points`,
             ],
           ] as Array<[string, string]>)),
     [

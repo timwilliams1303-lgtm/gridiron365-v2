@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -63,6 +64,18 @@ type PeriodRow = {
   ends_at: string;
   status: string;
   finalized_at: string | null;
+};
+
+
+
+
+type MasterWeekRow = {
+  id: number;
+  week: number;
+  status: string;
+  pick_lock_mode: "per_game" | "full_card" | null;
+  reveal_mode: "per_game_kickoff" | "full_card_lock" | null;
+  full_card_lock_at: string | null;
 };
 
 
@@ -258,6 +271,33 @@ function formatStartTime(
 }
 
 
+const PICKEM_DAY_TIME_ZONE = "America/New_York";
+
+function gameDayKey(value: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: PICKEM_DAY_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+
+  const year = parts.find((part) => part.type === "year")?.value ?? "";
+  const month = parts.find((part) => part.type === "month")?.value ?? "";
+  const day = parts.find((part) => part.type === "day")?.value ?? "";
+
+  return `${year}-${month}-${day}`;
+}
+
+function gameDayLabel(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: PICKEM_DAY_TIME_ZONE,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
+
+
 function formatPeriodRange(
   period: PeriodRow
 ) {
@@ -446,6 +486,16 @@ export default function NhlPickemMyPicks({
     );
 
 
+  const refreshTimerRef =
+    useRef<number | null>(null);
+
+  const refreshBlockedRef =
+    useRef(false);
+
+  const refreshPendingRef =
+    useRef(false);
+
+
   const [
     loading,
     setLoading,
@@ -497,12 +547,28 @@ export default function NhlPickemMyPicks({
     >([]);
 
   const [
+    masterWeeks,
+    setMasterWeeks,
+  ] =
+    useState<
+      MasterWeekRow[]
+    >([]);
+
+  const [
     selectedPeriodId,
     setSelectedPeriodId,
   ] =
     useState<
       number | null
     >(null);
+
+  const [
+    selectedGameDayKey,
+    setSelectedGameDayKey,
+  ] =
+    useState<string | null>(
+      null
+    );
 
   const [
     displayGames,
@@ -548,38 +614,102 @@ export default function NhlPickemMyPicks({
       ]
     );
 
+  const selectedMasterWeek =
+    useMemo(
+      () =>
+        selectedPeriod
+          ? masterWeeks.find(
+              (week) =>
+                week.week ===
+                selectedPeriod.period_number
+            ) ?? null
+          : null,
+      [
+        masterWeeks,
+        selectedPeriod,
+      ]
+    );
 
-  const displayWeekByPeriodId =
-    useMemo(() => {
-      const map =
-        new Map<number, number>();
-
-      periods
-        .slice()
-        .sort(
-          (a, b) =>
-            a.period_number -
-            b.period_number
-        )
-        .forEach(
-          (period, index) => {
-            map.set(
-              period.id,
-              index + 1
-            );
-          }
-        );
-
-      return map;
-    }, [periods]);
-
-
-  const selectedDisplayWeek =
-    selectedPeriod
-      ? displayWeekByPeriodId.get(
-          selectedPeriod.id
-        ) ?? 1
+  const fullCardLockAtMs =
+    selectedMasterWeek
+      ?.pick_lock_mode === "full_card" &&
+    selectedMasterWeek.full_card_lock_at
+      ? new Date(
+          selectedMasterWeek.full_card_lock_at
+        ).getTime()
       : null;
+
+  const fullCardLocked =
+    fullCardLockAtMs !== null &&
+    Number.isFinite(fullCardLockAtMs) &&
+    Date.now() >= fullCardLockAtMs;
+
+  const gameDays = useMemo(() => {
+    const groups = new Map<
+      string,
+      { key: string; label: string; games: DisplayGame[]; done: boolean }
+    >();
+
+    for (const item of displayGames) {
+      if (!item.game) {
+        continue;
+      }
+
+      const key = gameDayKey(item.game.start_time);
+      const existing = groups.get(key);
+
+      if (existing) {
+        existing.games.push(item);
+      } else {
+        groups.set(key, {
+          key,
+          label: gameDayLabel(item.game.start_time),
+          games: [item],
+          done: false,
+        });
+      }
+    }
+
+    return [...groups.values()]
+      .sort((a, b) =>
+        new Date(a.games[0]?.game?.start_time ?? 0).getTime() -
+        new Date(b.games[0]?.game?.start_time ?? 0).getTime()
+      )
+      .map((group) => ({
+        ...group,
+        done:
+          group.games.length > 0 &&
+          group.games.every((item) => Boolean(item.game?.status_completed)),
+      }));
+  }, [displayGames]);
+
+  const selectedDayGames = useMemo(() => {
+    if (!selectedGameDayKey) {
+      return [];
+    }
+
+    return displayGames.filter((item) =>
+      item.game
+        ? gameDayKey(item.game.start_time) === selectedGameDayKey
+        : false
+    );
+  }, [displayGames, selectedGameDayKey]);
+
+  useEffect(() => {
+    if (gameDays.length === 0) {
+      setSelectedGameDayKey(null);
+      return;
+    }
+
+    const current = gameDays.find((day) => day.key === selectedGameDayKey);
+
+    if (current && !current.done) {
+      return;
+    }
+
+    const nextAvailable = gameDays.find((day) => !day.done);
+    setSelectedGameDayKey(nextAvailable?.key ?? null);
+  }, [gameDays, selectedGameDayKey]);
 
 
   /*
@@ -683,6 +813,7 @@ export default function NhlPickemMyPicks({
           settingsResult,
           periodsResult,
           entryResult,
+          masterWeeksResult,
         ] =
           await Promise.all([
             supabase
@@ -745,6 +876,26 @@ export default function NhlPickemMyPicks({
                 true
               )
               .maybeSingle(),
+
+            supabase
+              .from(
+                "pickem_weeks"
+              )
+              .select(
+                "id,week,status,pick_lock_mode,reveal_mode,full_card_lock_at"
+              )
+              .eq(
+                "league_id",
+                leagueId
+              )
+              .eq(
+                "season",
+                season
+              )
+              .order(
+                "week",
+                { ascending: true }
+              ),
           ]);
 
 
@@ -775,6 +926,19 @@ export default function NhlPickemMyPicks({
           );
         }
 
+        if (
+          masterWeeksResult.error
+        ) {
+          /*
+           * Standalone legacy NHL Pick'em leagues may not have master
+           * pickem_weeks. Do not fail the NHL card in that case.
+           */
+          console.warn(
+            "Pick'em master week lock data unavailable:",
+            masterWeeksResult.error.message
+          );
+        }
+
 
         const nextSettings =
           settingsResult.data as
@@ -799,6 +963,12 @@ export default function NhlPickemMyPicks({
 
         setPeriods(
           nextPeriods
+        );
+
+        setMasterWeeks(
+          masterWeeksResult.error
+            ? []
+            : ((masterWeeksResult.data ?? []) as MasterWeekRow[])
         );
 
         setEntry(
@@ -834,9 +1004,12 @@ export default function NhlPickemMyPicks({
             }
 
             if (
-              current !== null &&
+              current !==
+                null &&
               nextPeriods.some(
-                (period) => period.id === current
+                (period) =>
+                  period.id ===
+                  current
               )
             ) {
               return current;
@@ -844,12 +1017,15 @@ export default function NhlPickemMyPicks({
 
             const active =
               nextPeriods.find(
-                (period) => period.status !== "final"
+                (period) =>
+                  period.status !==
+                  "final"
               );
 
             return (
               active?.id ??
-              nextPeriods.at(-1)?.id ??
+              nextPeriods.at(-1)
+                ?.id ??
               null
             );
           }
@@ -1324,32 +1500,255 @@ export default function NhlPickemMyPicks({
       }
     }
 
+
+    function performRefresh() {
+      if (
+        !active ||
+        document.visibilityState ===
+          "hidden"
+      ) {
+        return;
+      }
+
+      if (
+        refreshBlockedRef.current
+      ) {
+        refreshPendingRef.current =
+          true;
+
+        return;
+      }
+
+      refreshBlockedRef.current =
+        true;
+
+      refreshPendingRef.current =
+        false;
+
+      void run().finally(
+        () => {
+          window.setTimeout(
+            () => {
+              if (!active) {
+                return;
+              }
+
+              refreshBlockedRef.current =
+                false;
+
+              if (
+                refreshPendingRef.current
+              ) {
+                refreshPendingRef.current =
+                  false;
+
+                performRefresh();
+              }
+            },
+            500
+          );
+        }
+      );
+    }
+
+
+    function scheduleRefresh() {
+      if (
+        !active ||
+        document.visibilityState ===
+          "hidden"
+      ) {
+        return;
+      }
+
+      if (
+        refreshTimerRef.current !==
+        null
+      ) {
+        window.clearTimeout(
+          refreshTimerRef.current
+        );
+      }
+
+      refreshTimerRef.current =
+        window.setTimeout(
+          () => {
+            refreshTimerRef.current =
+              null;
+
+            performRefresh();
+          },
+          150
+        );
+    }
+
+
+    /*
+     * Initial period load.
+     */
     void run();
 
 
     /*
-     * NHL score/game-state refresh.
+     * Live NHL Pick'em synchronization.
+     *
+     * Realtime database changes immediately
+     * reload the current user's active card.
      */
-    const timer =
+    const channel =
+      supabase
+        .channel(
+          `nhl-pickem-my-picks-${leagueId}-${fantasyTeamId}-${selectedPeriod?.id ?? "none"}`
+        )
+
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table:
+              "nhl_pickem_picks",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          scheduleRefresh
+        )
+
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table:
+              "nhl_pickem_games",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          scheduleRefresh
+        )
+
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table:
+              "nhl_pickem_periods",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          scheduleRefresh
+        )
+
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table:
+              "nhl_pickem_period_results",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          scheduleRefresh
+        )
+
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table:
+              "nhl_pickem_entries",
+            filter:
+              `league_id=eq.${leagueId}`,
+          },
+          scheduleRefresh
+        )
+
+        .subscribe(
+          (status) => {
+            if (
+              status ===
+                "CHANNEL_ERROR" ||
+              status ===
+                "TIMED_OUT"
+            ) {
+              console.error(
+                "NHL Pick'em My Picks realtime error:",
+                status,
+                leagueId,
+                fantasyTeamId
+              );
+            }
+          }
+        );
+
+
+    /*
+     * Safety fallback. Realtime should normally
+     * refresh first; this covers brief websocket
+     * interruptions without requiring a browser
+     * refresh.
+     */
+    const fallbackTimer =
       window.setInterval(
-        () => {
-          void run();
-        },
-        15000
+        performRefresh,
+        10_000
       );
+
+
+    function handleVisibilityChange() {
+      if (
+        document.visibilityState ===
+          "visible"
+      ) {
+        performRefresh();
+      }
+    }
+
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
 
 
     return () => {
       active = false;
 
+      if (
+        refreshTimerRef.current !==
+        null
+      ) {
+        window.clearTimeout(
+          refreshTimerRef.current
+        );
+
+        refreshTimerRef.current =
+          null;
+      }
+
       window.clearInterval(
-        timer
+        fallbackTimer
+      );
+
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+
+      void supabase.removeChannel(
+        channel
       );
     };
   }, [
+    fantasyTeamId,
+    leagueId,
     loadPeriod,
     loading,
     selectedPeriod,
+    supabase,
   ]);
 
 
@@ -1424,6 +1823,10 @@ export default function NhlPickemMyPicks({
       await loadPeriod(
         selectedPeriod
       );
+
+      window.dispatchEvent(new CustomEvent("g365-pickem-card-change", {
+        detail: { leagueId, week: selectedPeriod.period_number },
+      }));
 
       setMessage(
         "NHL pick saved."
@@ -1512,6 +1915,10 @@ export default function NhlPickemMyPicks({
         selectedPeriod
       );
 
+      window.dispatchEvent(new CustomEvent("g365-pickem-card-change", {
+        detail: { leagueId, week: selectedPeriod.period_number },
+      }));
+
       setMessage(
         "NHL pick removed."
       );
@@ -1586,6 +1993,10 @@ export default function NhlPickemMyPicks({
       await loadPeriod(
         selectedPeriod
       );
+
+      window.dispatchEvent(new CustomEvent("g365-pickem-card-change", {
+        detail: { leagueId, week: selectedPeriod.period_number },
+      }));
 
       setMessage(
         "Confidence value updated."
@@ -1695,7 +2106,7 @@ export default function NhlPickemMyPicks({
 
 
       {!embedded ? (
-      <section
+<section
         style={{
           display:
             "grid",
@@ -1721,7 +2132,7 @@ export default function NhlPickemMyPicks({
                 "uppercase",
             }}
           >
-            G365 Pick&apos;em
+            G365 NHL Pick&apos;em
           </div>
 
           <h1
@@ -1818,21 +2229,17 @@ export default function NhlPickemMyPicks({
             lineHeight: 1.5,
           }}
         >
-          Every NHL selection
-          remains private until that
-          game reaches its start
-          time. The frozen G365 puck
-          line or total attached to
-          your selection is the line
-          used when the pick is
-          graded.
+          {selectedMasterWeek?.pick_lock_mode ===
+          "full_card"
+            ? "Your NHL selections stay private and editable until the Full Card deadline. If an NHL game starts before that deadline, that game's pick locks and reveals at puck drop. The frozen G365 puck line or total attached to your selection is the line used when the pick is graded."
+            : "Each NHL selection stays private and editable until that game's puck drop, when that pick locks and reveals. The frozen G365 puck line or total attached to your selection is the line used when the pick is graded."}
         </div>
       </section>
       ) : null}
 
 
       {!embedded ? (
-      <section
+<section
         style={{
           display: "flex",
           gap: 10,
@@ -1901,7 +2308,7 @@ export default function NhlPickemMyPicks({
           {periods.length ===
           0 ? (
             <option value="">
-              No NHL week ready
+              No period ready
             </option>
           ) : (
             periods.map(
@@ -1914,11 +2321,9 @@ export default function NhlPickemMyPicks({
                     period.id
                   }
                 >
-                  Week{" "}
+                  Period{" "}
                   {
-                    displayWeekByPeriodId.get(
-                      period.id
-                    ) ?? 1
+                    period.period_number
                   }{" "}
                   ·{" "}
                   {period.status
@@ -1998,14 +2403,14 @@ export default function NhlPickemMyPicks({
         />
       ) : !selectedPeriod ? (
         <EmptyState
-          title="The NHL Pick'em week is not ready yet."
-          description="The first NHL contest week will appear automatically once an eligible NHL regular-season slate is prepared."
+          title="The NHL Pick'em period is not ready yet."
+          description="A contest period must be initialized before selections can be made."
         />
       ) : displayGames.length ===
         0 ? (
         <EmptyState
-          title={`Week ${selectedDisplayWeek ?? 1} has no NHL games loaded yet.`}
-          description="The NHL contest week exists, but its NHL game slate has not been prepared yet."
+          title={`Period ${selectedPeriod.period_number} has no NHL games loaded yet.`}
+          description="The period exists, but its NHL game slate has not been prepared yet."
         />
       ) : (
         <section
@@ -2014,7 +2419,101 @@ export default function NhlPickemMyPicks({
             gap: 12,
           }}
         >
-          {displayGames.map(
+          {fullCardLocked ? (
+            <div
+              style={{
+                padding: "12px 14px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,184,74,0.35)",
+                background: "rgba(110,65,0,0.18)",
+                color: "#ffc96f",
+                fontWeight: 800,
+              }}
+            >
+              Your full Pick'em card is locked and revealed because the commissioner deadline has been reached.
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              overflowX: "auto",
+              padding: "2px 0 4px",
+              WebkitOverflowScrolling: "touch",
+            }}
+          >
+            {gameDays.map((day) => {
+              const selected = day.key === selectedGameDayKey;
+
+              return (
+                <button
+                  key={day.key}
+                  type="button"
+                  disabled={day.done}
+                  onClick={() => {
+                    if (!day.done) {
+                      setSelectedGameDayKey(day.key);
+                    }
+                  }}
+                  style={{
+                    flex: "0 0 auto",
+                    minWidth: 112,
+                    padding: "10px 13px",
+                    borderRadius: 11,
+                    border: selected
+                      ? "1px solid rgba(255,112,35,0.75)"
+                      : "1px solid rgba(255,255,255,0.10)",
+                    background: day.done
+                      ? "rgba(255,255,255,0.025)"
+                      : selected
+                        ? "linear-gradient(135deg, rgba(175,25,15,0.58), rgba(255,105,25,0.24))"
+                        : "#111115",
+                    color: day.done
+                      ? "#5f6068"
+                      : selected
+                        ? "#fff"
+                        : "#b7b7bf",
+                    cursor: day.done ? "not-allowed" : "pointer",
+                    opacity: day.done ? 0.55 : 1,
+                    fontWeight: 900,
+                    whiteSpace: "nowrap",
+                  }}
+                  title={
+                    day.done
+                      ? `${day.label} is complete`
+                      : `Show NHL games for ${day.label}`
+                  }
+                >
+                  <span style={{ display: "block", fontSize: 12 }}>
+                    {day.label}
+                  </span>
+                  <span
+                    style={{
+                      display: "block",
+                      marginTop: 3,
+                      fontSize: 10,
+                      letterSpacing: "0.06em",
+                      color: day.done ? "#686871" : "#ff9b59",
+                    }}
+                  >
+                    {day.done
+                      ? "DONE"
+                      : `${day.games.length} GAME${day.games.length === 1 ? "" : "S"}`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {gameDays.length > 0 && selectedGameDayKey === null ? (
+            <EmptyState
+              title="All NHL game days are complete."
+              description="Every NHL game day in this contest period has finished. Completed days are no longer selectable on My Picks."
+            />
+          ) : null}
+
+          {selectedDayGames.map(
             ({
               contest,
               game,
@@ -2029,6 +2528,7 @@ export default function NhlPickemMyPicks({
               const gameLocked =
                 state.started ||
                 state.final ||
+                fullCardLocked ||
                 Boolean(
                   picksByGame
                     .get(

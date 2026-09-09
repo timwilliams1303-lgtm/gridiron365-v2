@@ -18,6 +18,7 @@ import {
 } from "@/lib/traditional/matchup-detail.service";
 
 import InjuryReportButton from "@/components/ui/InjuryReportButton";
+import TraditionalLiveRefresh from "@/components/traditional/TraditionalLiveRefresh";
 
 import {
   requireTraditionalLeague,
@@ -509,6 +510,51 @@ export default async function TraditionalMatchupDetailPage({
     hasActuallyLiveGame;
 
 
+  /*
+   * ============================================================
+   * NFL GAMES USED BY THIS FANTASY MATCHUP
+   * ============================================================
+   *
+   * Subscribe to every NFL game represented by either fantasy
+   * roster, not only games that are already live. This lets the
+   * matchup page react immediately when a scheduled game crosses
+   * kickoff and when play-by-play updates arrive.
+   *
+   * TraditionalLiveRefresh only listens to Supabase changes and
+   * refreshes server-rendered data. It does not call ESPN or run
+   * fantasy scoring.
+   */
+  const matchupNflGameIds =
+    Array.from(
+      new Set(
+        [
+          ...data.away.starters,
+          ...data.away.bench,
+          ...data.home.starters,
+          ...data.home.bench,
+        ]
+          .map(
+            (
+              player
+            ) =>
+              Number(
+                player.nflGameId
+              )
+          )
+          .filter(
+            (
+              nflGameId
+            ) =>
+              Number.isInteger(
+                nflGameId
+              ) &&
+              nflGameId >
+                0
+          )
+      )
+    );
+
+
   const awayDisplayPoints =
     data.away.points;
 
@@ -552,11 +598,22 @@ export default async function TraditionalMatchupDetailPage({
 
 
   return (
-    <main
-      style={
-        styles.page
-      }
-    >
+    <>
+      <TraditionalLiveRefresh
+        leagueId={
+          leagueId
+        }
+        mode="games"
+        nflGameIds={
+          matchupNflGameIds
+        }
+      />
+
+      <main
+        style={
+          styles.page
+        }
+      >
       <style>{`
         @media (max-width: 760px) {
           .g365-matchup-topbar {
@@ -1218,7 +1275,8 @@ export default async function TraditionalMatchupDetailPage({
           />
         </section>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
 
@@ -4262,4 +4320,5 @@ const styles = {
       "center" as const,
   },
 };
+
 

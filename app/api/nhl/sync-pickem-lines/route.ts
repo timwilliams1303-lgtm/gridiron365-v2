@@ -108,6 +108,28 @@ type BookmakerLine = {
 const NHL_ODDS_SPORT_KEY =
   "icehockey_nhl";
 
+
+const G365_APPROVED_SPORTSBOOK_KEYS = new Set([
+  "draftkings",
+  "fanduel",
+  "betmgm",
+  "betrivers",
+  "williamhill_us", // Caesars
+]);
+
+
+function isApprovedG365Sportsbook(
+  sportsbookKey: string | null | undefined
+) {
+  if (!sportsbookKey) {
+    return false;
+  }
+
+  return G365_APPROVED_SPORTSBOOK_KEYS.has(
+    sportsbookKey.toLowerCase()
+  );
+}
+
 function getEnv() {
   const supabaseUrl =
     process.env
@@ -119,9 +141,7 @@ function getEnv() {
 
   const syncSecret =
     process.env
-      .GRIDIRON_SYNC_SECRET ??
-    process.env
-      .NFL_SYNC_SECRET;
+      .NHL_SYNC_SECRET;
 
   const oddsApiKey =
     process.env
@@ -134,7 +154,7 @@ function getEnv() {
     !oddsApiKey
   ) {
     throw new Error(
-      "Required NHL Pick'em line-sync environment variables are missing. THE_ODDS_API_KEY must be configured."
+      "Required NHL Pick'em line-sync environment variables are missing. NHL_SYNC_SECRET and THE_ODDS_API_KEY must be configured."
     );
   }
 
@@ -492,7 +512,12 @@ function extractBookmakerLine(
   event:
     OddsEvent
 ): BookmakerLine | null {
-  if (!bookmaker.key) {
+  if (
+    !bookmaker.key ||
+    !isApprovedG365Sportsbook(
+      bookmaker.key
+    )
+  ) {
     return null;
   }
 
@@ -709,6 +734,13 @@ async function fetchNhlOdds(
   url.searchParams.set(
     "regions",
     "us"
+  );
+
+  url.searchParams.set(
+    "bookmakers",
+    Array.from(
+      G365_APPROVED_SPORTSBOOK_KEYS
+    ).join(",")
   );
 
   url.searchParams.set(
@@ -1353,6 +1385,12 @@ export async function POST(
           match.event.bookmakers ??
           []
         )
+          .filter(
+            (bookmaker) =>
+              isApprovedG365Sportsbook(
+                bookmaker.key
+              )
+          )
           .map(
             (bookmaker) =>
               extractBookmakerLine(
@@ -1467,6 +1505,9 @@ export async function POST(
           raw_audit: {
             provider:
               "the-odds-api",
+
+            approvedG365Sportsbook:
+              true,
 
             providerSportKey:
               match.event

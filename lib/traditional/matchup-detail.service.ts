@@ -792,7 +792,7 @@ function isLiveGameStatus(
  */
 
 const LIVE_UI_TEST = {
-  enabled: true,
+  enabled: false,
   leagueId:
     "984564ec-abcf-41e5-bab2-ac383da512b5",
   fantasyTeamId: 1,
@@ -1922,12 +1922,160 @@ export async function getTraditionalMatchupDetailData(
    * =====================================================
    * NFL GAMES
    * =====================================================
+   *
+   * IMPORTANT:
+   *
+   * A matchup page must know each lineup player's NFL game
+   * BEFORE kickoff. Waiting for fantasy_player_game_scores or
+   * nfl_player_game_stats would mean the browser cannot subscribe
+   * to nfl_game_plays until after the game has already produced
+   * data.
+   *
+   * Load the NFL week schedule first, then keep only games involving
+   * an NFL team represented by this fantasy matchup.
    */
 
+  const matchupNflTeamIds =
+    new Set<number>();
+
+
+  for (
+    const player
+    of playerMap.values()
+  ) {
+    if (
+      !player.team_abbreviation
+    ) {
+      continue;
+    }
+
+
+    const nflTeam =
+      nflTeamByAbbreviation.get(
+        player.team_abbreviation
+      );
+
+
+    if (
+      nflTeam
+    ) {
+      matchupNflTeamIds.add(
+        nflTeam.id
+      );
+    }
+  }
+
+
+  const {
+    data:
+      scheduledWeekGameData,
+
+    error:
+      scheduledWeekGameError,
+  } =
+    await supabase
+      .from(
+        "nfl_games"
+      )
+      .select(`
+        id,
+        home_team_id,
+        away_team_id,
+        status_name,
+        status_completed,
+        kickoff_at
+      `)
+      .eq(
+        "season",
+        nflSeason
+      )
+      .eq(
+        "season_type",
+        nflSeasonType
+      )
+      .eq(
+        "week",
+        nflWeek
+      );
+
+
+  if (
+    scheduledWeekGameError
+  ) {
+    throw new Error(
+      `Could not load NFL week schedule: ${scheduledWeekGameError.message}`
+    );
+  }
+
+
+  const scheduledMatchupGames =
+    (
+      scheduledWeekGameData ??
+      []
+    )
+      .map(
+        (
+          game
+        ) =>
+          game as NflGameRow
+      )
+      .filter(
+        (
+          game
+        ) =>
+          matchupNflTeamIds.has(
+            game.home_team_id
+          ) ||
+          matchupNflTeamIds.has(
+            game.away_team_id
+          )
+      );
+
+
+  /*
+   * Map each NFL team in the matchup to its scheduled game.
+   *
+   * During a normal NFL week each team has at most one game.
+   */
+  const scheduledGameIdByTeamId =
+    new Map<
+      number,
+      number
+    >();
+
+
+  for (
+    const game
+    of scheduledMatchupGames
+  ) {
+    scheduledGameIdByTeamId.set(
+      game.home_team_id,
+      game.id
+    );
+
+    scheduledGameIdByTeamId.set(
+      game.away_team_id,
+      game.id
+    );
+  }
+
+
+  /*
+   * Preserve exact game IDs already attached to fantasy-score/stat
+   * rows, while also including scheduled games so the Realtime
+   * listener can connect before kickoff.
+   */
   const gameIds =
     Array.from(
       new Set(
         [
+          ...scheduledMatchupGames.map(
+            (
+              game
+            ) =>
+              game.id
+          ),
+
           ...Array.from(
             scoreMap.values()
           ).map(
@@ -1945,23 +2093,33 @@ export async function getTraditionalMatchupDetailData(
             ) =>
               stat.nfl_game_id
           ),
-        ].filter(
-          (
-            id
-          ) =>
-            Number.isInteger(
+        ]
+          .map(
+            (
               id
-            )
-        )
+            ) =>
+              Number(
+                id
+              )
+          )
+          .filter(
+            (
+              id
+            ) =>
+              Number.isInteger(
+                id
+              ) &&
+              id >
+                0
+          )
       )
     );
 
 
   /*
-   * Keep game 318 available to the temporary UI test even
-   * if no production fantasy score row exists for it.
+   * Keep game 318 available only when the isolated temporary QA
+   * override is explicitly enabled.
    */
-
   if (
     liveUiTestEnabled &&
     !gameIds.includes(
@@ -1981,8 +2139,38 @@ export async function getTraditionalMatchupDetailData(
     >();
 
 
+  /*
+   * Seed the map with the scheduled matchup games we already loaded.
+   */
+  for (
+    const game
+    of scheduledMatchupGames
+  ) {
+    gameMap.set(
+      game.id,
+      game
+    );
+  }
+
+
+  /*
+   * Load any additional score/stat-linked games not present in the
+   * current scheduled matchup set. This preserves historical/final
+   * and QA compatibility.
+   */
+  const missingGameIds =
+    gameIds.filter(
+      (
+        gameId
+      ) =>
+        !gameMap.has(
+          gameId
+        )
+    );
+
+
   if (
-    gameIds.length >
+    missingGameIds.length >
     0
   ) {
     const {
@@ -2006,7 +2194,7 @@ export async function getTraditionalMatchupDetailData(
         `)
         .in(
           "id",
-          gameIds
+          missingGameIds
         );
 
 
@@ -2331,12 +2519,37 @@ export async function getTraditionalMatchupDetailData(
       );
 
 
+    const playerTeam =
+      player
+        ?.team_abbreviation
+        ? nflTeamByAbbreviation.get(
+            player
+              .team_abbreviation
+          )
+        : undefined;
+
+
+    /*
+     * Prefer the exact game linked to the fantasy score/stat row.
+     *
+     * Before kickoff those rows may not exist yet, so fall back to
+     * the player's NFL team's scheduled game for this NFL week.
+     * This is what allows the matchup-detail browser to subscribe
+     * to nfl_game_plays before the first live play occurs.
+     */
     const nflGameId =
       score
         ?.nfl_game_id ??
       stats
         ?.nfl_game_id ??
-      null;
+      (
+        playerTeam
+          ? scheduledGameIdByTeamId.get(
+              playerTeam.id
+            ) ??
+            null
+          : null
+      );
 
 
     const game =
@@ -2356,16 +2569,6 @@ export async function getTraditionalMatchupDetailData(
           ) ??
           null
         : null;
-
-
-    const playerTeam =
-      player
-        ?.team_abbreviation
-        ? nflTeamByAbbreviation.get(
-            player
-              .team_abbreviation
-          )
-        : undefined;
 
 
     let opponent:

@@ -27,6 +27,9 @@ type WeekRow = {
   week: number;
   status: string;
   required_picks: number;
+  pick_lock_mode: "per_game" | "full_card";
+  reveal_mode: string | null;
+  full_card_lock_at: string | null;
 };
 
 type FantasyTeamRow = {
@@ -65,8 +68,11 @@ type FootballPickRow = {
   status_detail: string | null;
   is_final: boolean;
   pick_visible: boolean;
-  selected_side: "home" | "away" | null;
+  market_type: "spread" | "total" | null;
+  selected_side: "home" | "away" | "over" | "under" | null;
   frozen_home_spread: number | string | null;
+  frozen_total: number | string | null;
+  confidence_value: number | string | null;
   pick_result: "pending" | "win" | "loss" | "push" | "void" | null;
   points_awarded: number | string | null;
 };
@@ -264,7 +270,7 @@ export default function MixedPickemLeaguePicks({
     const [weeksResult, teamsResult] = await Promise.all([
       supabase
         .from("pickem_weeks")
-        .select("id,week,status,required_picks")
+        .select("id,week,status,required_picks,pick_lock_mode,reveal_mode,full_card_lock_at")
         .eq("league_id", leagueId)
         .eq("season", season)
         .order("week", { ascending: true }),
@@ -325,7 +331,7 @@ export default function MixedPickemLeaguePicks({
       enabledSports.includes("nhl");
 
     const footballPromise = wantsFootball
-      ? supabase.rpc("get_pickem_league_picks", {
+      ? supabase.rpc("get_pickem_league_picks_v3", {
           p_league_id: leagueId,
           p_season: season,
           p_week: selectedWeek,
@@ -615,6 +621,7 @@ export default function MixedPickemLeaguePicks({
         !row.pick_visible ||
         row.pick_id === null ||
         row.selected_side === null ||
+        row.market_type === null ||
         row.sport === null
       ) {
         continue;
@@ -629,32 +636,46 @@ export default function MixedPickemLeaguePicks({
         continue;
       }
 
-      const homeSpread =
-        numeric(row.frozen_home_spread);
+      let selection = "Selection";
 
-      const awaySpread =
-        homeSpread === null
-          ? null
-          : -homeSpread;
+      if (row.market_type === "total") {
+        const total =
+          numeric(row.frozen_total);
 
-      const selectedTeam =
-        row.selected_side === "home"
-          ? row.home_team_name
-          : row.away_team_name;
+        selection =
+          `${row.selected_side === "over" ? "OVER" : "UNDER"}${
+            total !== null
+              ? ` ${total.toFixed(1)}`
+              : ""
+          }`;
+      } else {
+        const homeSpread =
+          numeric(row.frozen_home_spread);
 
-      const selectedLine =
-        row.selected_side === "home"
-          ? homeSpread
-          : awaySpread;
+        const awaySpread =
+          homeSpread === null
+            ? null
+            : -homeSpread;
 
-      const selection =
-        selectedTeam
-          ? `${selectedTeam}${
-              selectedLine !== null
-                ? ` ${signed(selectedLine)}`
-                : ""
-            }`
-          : "Selection";
+        const selectedTeam =
+          row.selected_side === "home"
+            ? row.home_team_name
+            : row.away_team_name;
+
+        const selectedLine =
+          row.selected_side === "home"
+            ? homeSpread
+            : awaySpread;
+
+        selection =
+          selectedTeam
+            ? `${selectedTeam}${
+                selectedLine !== null
+                  ? ` ${signed(selectedLine)}`
+                  : ""
+              }`
+            : "Selection";
+      }
 
       const final =
         row.is_final ||
@@ -671,7 +692,7 @@ export default function MixedPickemLeaguePicks({
         selection,
         result: resultLabel(row.pick_result),
         points: numeric(row.points_awarded),
-        confidence: null,
+        confidence: numeric(row.confidence_value),
         final,
         liveText:
           final && row.away_score !== null && row.home_score !== null
@@ -949,9 +970,10 @@ export default function MixedPickemLeaguePicks({
             lineHeight: 1.6,
           }}
         >
-          Each team has one combined G365 card. CFB, NFL and NHL picks
-          reveal according to their normal game-lock rules, then update
-          together inside the same team card.
+          Each team has one combined G365 card. In Per-Game mode, picks
+          reveal when their individual game starts. In Full Card mode, the
+          whole card reveals at the commissioner deadline, while any earlier
+          starting game still reveals at its own start.
         </p>
       </section>
 
@@ -1615,3 +1637,4 @@ export default function MixedPickemLeaguePicks({
     </main>
   );
 }
+

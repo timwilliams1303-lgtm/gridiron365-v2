@@ -96,6 +96,28 @@ const ODDS_SPORT_KEYS = {
 } as const;
 
 
+const G365_APPROVED_SPORTSBOOK_KEYS = new Set([
+  "draftkings",
+  "fanduel",
+  "betmgm",
+  "betrivers",
+  "williamhill_us", // Caesars
+]);
+
+
+function isApprovedG365Sportsbook(
+  sportsbookKey: string | null | undefined
+) {
+  if (!sportsbookKey) {
+    return false;
+  }
+
+  return G365_APPROVED_SPORTSBOOK_KEYS.has(
+    sportsbookKey.toLowerCase()
+  );
+}
+
+
 function getEnv() {
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -344,6 +366,14 @@ function getBookmakerSpreads(
     const bookmaker of
     event.bookmakers ?? []
   ) {
+    if (
+      !isApprovedG365Sportsbook(
+        bookmaker.key
+      )
+    ) {
+      continue;
+    }
+
     const spreadMarket =
       (
         bookmaker.markets ??
@@ -428,6 +458,14 @@ function getBookmakerTotals(
     const bookmaker of
     event.bookmakers ?? []
   ) {
+    if (
+      !isApprovedG365Sportsbook(
+        bookmaker.key
+      )
+    ) {
+      continue;
+    }
+
     const totalMarket =
       (
         bookmaker.markets ??
@@ -585,6 +623,12 @@ async function fetchOdds(
   url.searchParams.set(
     "regions",
     "us"
+  );
+  url.searchParams.set(
+    "bookmakers",
+    Array.from(
+      G365_APPROVED_SPORTSBOOK_KEYS
+    ).join(",")
   );
   url.searchParams.set(
     "markets",
@@ -1302,6 +1346,14 @@ export async function POST(
         const bookmaker of
         event.bookmakers ?? []
       ) {
+        if (
+          !isApprovedG365Sportsbook(
+            bookmaker.key
+          )
+        ) {
+          continue;
+        }
+
         const spreadMarket =
           (
             bookmaker.markets ??
@@ -1376,6 +1428,8 @@ export async function POST(
           raw_audit: {
             provider:
               "the-odds-api",
+            approvedG365Sportsbook:
+              true,
             providerSportKey:
               event.sport_key ??
               ODDS_SPORT_KEYS[
@@ -1443,6 +1497,8 @@ export async function POST(
           raw_audit: {
             provider:
               "the-odds-api",
+            approvedG365Sportsbook:
+              true,
             providerSportKey:
               event.sport_key ??
               ODDS_SPORT_KEYS[

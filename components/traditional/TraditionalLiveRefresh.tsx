@@ -35,6 +35,11 @@ type Props = {
  *
  * This component NEVER calls ESPN and NEVER calculates scores.
  *
+ * Realtime is the PRIMARY browser update path.
+ *
+ * Polling is only a fallback so a missed Realtime event does
+ * not leave the matchup page stale.
+ *
  * MODE: league
  * ------------------------------------------------------------
  * Listens for league-specific fantasy changes:
@@ -42,10 +47,16 @@ type Props = {
  *   traditional_matchups
  *   weekly_lineups
  *
+ * Fallback:
+ *   refresh visible matchup pages every 10 seconds.
+ *
  * MODE: games
  * ------------------------------------------------------------
  * Listens only for nfl_game_plays belonging to NFL games
  * displayed in the current fantasy matchup.
+ *
+ * Fallback:
+ *   refresh visible matchup detail every 5 seconds.
  */
 export default function TraditionalLiveRefresh({
   leagueId,
@@ -194,7 +205,7 @@ export default function TraditionalLiveRefresh({
     () => {
       /*
        * League mode is intentionally inactive everywhere except
-       * the matchup area.
+       * the Traditional matchup area.
        *
        * Game mode is mounted directly by a matchup-detail page.
        */
@@ -255,6 +266,10 @@ export default function TraditionalLiveRefresh({
        * ========================================================
        * SAFE REFRESH
        * ========================================================
+       *
+       * Multiple scoring/stat events can land almost together.
+       * Debounce those into one refresh and prevent overlapping
+       * router.refresh() calls.
        */
       function performRefresh() {
         if (
@@ -312,7 +327,7 @@ export default function TraditionalLiveRefresh({
                 performRefresh();
               }
             },
-            1500
+            1200
           );
       }
 
@@ -354,14 +369,14 @@ export default function TraditionalLiveRefresh({
 
               performRefresh();
             },
-            400
+            250
           );
       }
 
 
       /*
        * ========================================================
-       * LEAGUE MODE
+       * REALTIME CHANNELS
        * ========================================================
        */
       const channels:
@@ -371,6 +386,17 @@ export default function TraditionalLiveRefresh({
           [];
 
 
+      /*
+       * ========================================================
+       * LEAGUE MODE
+       * ========================================================
+       *
+       * traditional_matchups:
+       *   live team totals / final state / winner changes
+       *
+       * weekly_lineups:
+       *   lineup changes and lock-related lineup state
+       */
       if (
         mode ===
           "league"
@@ -484,6 +510,10 @@ export default function TraditionalLiveRefresh({
        *
        * One filtered listener per relevant NFL game.
        *
+       * nfl_game_plays is updated by the same centralized NFL
+       * worker that updates player stats/scoring, so play changes
+       * provide a fast browser refresh signal.
+       *
        * DO NOT replace this with an unfiltered nfl_game_plays
        * subscription.
        */
@@ -580,6 +610,48 @@ export default function TraditionalLiveRefresh({
 
       /*
        * ========================================================
+       * POLLING FALLBACK
+       * ========================================================
+       *
+       * Realtime remains primary.
+       *
+       * This only rerenders server data already stored in
+       * Supabase. It does NOT call ESPN or run scoring.
+       *
+       * games:
+       *   5 seconds because this is the live matchup-detail mode.
+       *
+       * league:
+       *   10 seconds because Realtime should normally handle
+       *   changes and the page does not need an aggressive timer.
+       */
+      const fallbackIntervalMs =
+        mode ===
+          "games"
+          ? 5_000
+          : 10_000;
+
+
+      const fallbackInterval =
+        window.setInterval(
+          () => {
+            if (
+              cancelled ||
+              document.visibilityState !==
+                "visible"
+            ) {
+              return;
+            }
+
+
+            scheduleRefresh();
+          },
+          fallbackIntervalMs
+        );
+
+
+      /*
+       * ========================================================
        * CATCH-UP
        * ========================================================
        */
@@ -627,6 +699,11 @@ export default function TraditionalLiveRefresh({
       return () => {
         cancelled =
           true;
+
+
+        window.clearInterval(
+          fallbackInterval
+        );
 
 
         if (

@@ -19,6 +19,8 @@ import {
 
 import InjuryReportButton from "@/components/ui/InjuryReportButton";
 
+import SeasonLongMatchupRealtime from "@/components/season-long/SeasonLongMatchupRealtime";
+
 import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
@@ -517,11 +519,31 @@ export default async function SeasonLongMatchupDetailPage({
 
 
   return (
-    <main
-      style={
-        styles.page
-      }
-    >
+    <>
+      <SeasonLongMatchupRealtime
+        leagueId={
+          leagueId
+        }
+        matchupId={
+          data.matchupId
+        }
+        season={
+          data.season
+        }
+        week={
+          data.week
+        }
+        enabled
+        live={
+          displayIsLive
+        }
+      />
+
+      <main
+        style={
+          styles.page
+        }
+      >
       <div
         style={
           styles.shell
@@ -1116,7 +1138,8 @@ export default async function SeasonLongMatchupDetailPage({
           />
         </section>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
 
@@ -4257,4 +4280,5 @@ const styles = {
       "center" as const,
   },
   };
+
 

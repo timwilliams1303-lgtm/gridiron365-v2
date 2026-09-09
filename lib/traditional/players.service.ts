@@ -1161,20 +1161,18 @@ export async function getTraditionalPlayersData(
 
   /*
    * =====================================================
-   * AVAILABLE PLAYER POOL ONLY
+   * COMPLETE TRADITIONAL PLAYER BROWSER POOL
    * =====================================================
    *
-   * Once a player belongs to any fantasy roster in this
-   * league, the player must not appear on the Players tab.
+   * Keep rostered players in the Players page dataset so the
+   * All Players / Rostered / My Team filters work correctly.
+   * The browser already prevents Add/Claim actions for rostered
+   * players, so ownership controls availability without making
+   * players disappear.
    */
 
-  const availablePlayers =
-    players.filter(
-      (
-        player
-      ) =>
-        !player.isRostered
-    );
+  const browserPlayers =
+    [...players];
 
 
   /*
@@ -1183,7 +1181,7 @@ export async function getTraditionalPlayersData(
    * without a projection sort after projected players.
    */
 
-  availablePlayers.sort(
+  browserPlayers.sort(
     (a, b) => {
       const aProjection =
         a.weeklyProjectedPoints;
@@ -1239,12 +1237,13 @@ export async function getTraditionalPlayersData(
 
   for (
     let index = 0;
-    index < availablePlayers.length;
+    index < browserPlayers.length;
     index += 1
   ) {
-    availablePlayers[index].weeklyRank =
+    browserPlayers[index].weeklyRank =
       index + 1;
   }
+
 
 
   /*
@@ -1257,7 +1256,7 @@ export async function getTraditionalPlayersData(
 
   for (
     const player
-    of availablePlayers
+    of browserPlayers
   ) {
     if (
       player.teamAbbreviation
@@ -1271,13 +1270,13 @@ export async function getTraditionalPlayersData(
 
   return {
     players:
-      availablePlayers,
+      browserPlayers,
 
     totalPlayers:
-      availablePlayers.length,
+      browserPlayers.length,
 
     freeAgents:
-      availablePlayers.filter(
+      browserPlayers.filter(
         (
           player
         ) =>
@@ -1286,10 +1285,15 @@ export async function getTraditionalPlayersData(
       ).length,
 
     rosteredPlayers:
-      0,
+      browserPlayers.filter(
+        (
+          player
+        ) =>
+          player.isRostered
+      ).length,
 
     injuredPlayers:
-      availablePlayers.filter(
+      browserPlayers.filter(
         (
           player
         ) =>
@@ -1299,7 +1303,7 @@ export async function getTraditionalPlayersData(
       ).length,
 
     waiverPlayers:
-      availablePlayers.filter(
+      browserPlayers.filter(
         (
           player
         ) =>

@@ -2036,6 +2036,25 @@ export async function getSeasonLongMatchupDetailData(
             ) =>
               stat.nfl_game_id
           ),
+
+          // Pregame matchup context must also include games referenced
+          // directly by saved lineup rows. This lets kickoff-based
+          // opponent visibility work before a score/stat row exists.
+          ...lineups
+            .map(
+              (
+                lineup
+              ) =>
+                lineup.nfl_game_id
+            )
+            .filter(
+              (
+                id
+              ): id is number =>
+                Number.isInteger(
+                  id
+                )
+            ),
         ].filter(
           (
             id
@@ -2190,6 +2209,120 @@ export async function getSeasonLongMatchupDetailData(
 
   /*
    * =====================================================
+   * OPPONENT LINEUP PRIVACY
+   * =====================================================
+   *
+   * The viewer always sees their own complete lineup.
+   * An opponent selection becomes public only after that
+   * individual player is locked / has reached kickoff.
+   *
+   * We intentionally check several authoritative signals so a
+   * player cannot remain hidden because one lock-sync path is a
+   * few seconds behind another:
+   *   - saved lineup is_locked
+   *   - scheduled kickoff has arrived
+   *   - NFL game is live or complete
+   *   - fantasy score row is live or final
+   */
+
+  const nowMs =
+    Date.now();
+
+
+  function lineupHasReachedKickoff(
+    lineup:
+      LineupRow
+  ) {
+    const score =
+      scoreMap.get(
+        lineup.player_id
+      );
+
+
+    const stats =
+      statsMap.get(
+        lineup.player_id
+      );
+
+
+    const nflGameId =
+      lineup.nfl_game_id ??
+      score?.nfl_game_id ??
+      stats?.nfl_game_id ??
+      null;
+
+
+    const game =
+      nflGameId !== null
+        ? gameMap.get(
+            nflGameId
+          )
+        : undefined;
+
+
+    const context =
+      nflGameId !== null
+        ? contextMap.get(
+            nflGameId
+          )
+        : undefined;
+
+
+    const kickoffAt =
+      lineup.game_start_at ??
+      game?.kickoff_at ??
+      null;
+
+
+    const kickoffMs =
+      kickoffAt
+        ? Date.parse(
+            kickoffAt
+          )
+        : Number.NaN;
+
+
+    return (
+      lineup.is_locked ||
+      (
+        Number.isFinite(
+          kickoffMs
+        ) &&
+        kickoffMs <=
+          nowMs
+      ) ||
+      Boolean(
+        context?.isActuallyLive ||
+        context?.statusCompleted ||
+        score?.is_live ||
+        score?.is_final
+      )
+    );
+  }
+
+
+  function lineupIsVisibleToViewer(
+    lineup:
+      LineupRow
+  ) {
+    const isViewerTeam =
+      myFantasyTeamId !==
+        null &&
+      lineup.fantasy_team_id ===
+        myFantasyTeamId;
+
+
+    return (
+      isViewerTeam ||
+      lineupHasReachedKickoff(
+        lineup
+      )
+    );
+  }
+
+
+  /*
+   * =====================================================
    * RECENT SCORING PLAYS
    * =====================================================
    *
@@ -2223,6 +2356,9 @@ export async function getSeasonLongMatchupDetailData(
             ) =>
               isStarterSlot(
                 lineup.lineup_slot
+              ) &&
+              lineupIsVisibleToViewer(
+                lineup
               )
           )
           .map(
@@ -2877,7 +3013,10 @@ export async function getSeasonLongMatchupDetailData(
             row
           ) =>
             row.fantasy_team_id ===
-              fantasyTeamId
+              fantasyTeamId &&
+            lineupIsVisibleToViewer(
+              row
+            )
         )
         .map(
           buildPlayer

@@ -38,6 +38,9 @@ type WeekRow = {
   id?: number;
   week: number;
   status: string;
+  pick_lock_mode?: "per_game" | "full_card";
+  reveal_mode?: string | null;
+  full_card_lock_at?: string | null;
 };
 
 function normalizeStatus(raw: unknown): UnifiedStatus {
@@ -145,7 +148,7 @@ export default function MixedPickemMyPicks({
       if (targetWeek === null) {
         const { data, error } = await supabase
           .from("pickem_weeks")
-          .select("week,status")
+          .select("week,status,pick_lock_mode,reveal_mode,full_card_lock_at")
           .eq("league_id", leagueId)
           .eq("season", season)
           .order("week", { ascending: true });
@@ -196,6 +199,33 @@ export default function MixedPickemMyPicks({
     // component/week changes, but do not subscribe, poll, or force refreshes.
     void loadUnifiedStatus();
   }, [loadUnifiedStatus]);
+
+  useEffect(() => {
+    function handleCardChange(event: Event) {
+      const detail = (event as CustomEvent<{ leagueId?: string; week?: number }>).detail;
+      if (detail?.leagueId !== leagueId) return;
+      if (week !== null && detail.week !== undefined && detail.week !== week) return;
+      void loadUnifiedStatus();
+    }
+
+    window.addEventListener("g365-pickem-card-change", handleCardChange);
+    return () => window.removeEventListener("g365-pickem-card-change", handleCardChange);
+  }, [leagueId, loadUnifiedStatus, week]);
+
+  const selectedWeekRow = weeks.find((row) => row.week === week) ?? null;
+
+  const fullCardDeadline =
+    selectedWeekRow?.pick_lock_mode === "full_card" && selectedWeekRow.full_card_lock_at
+      ? new Date(selectedWeekRow.full_card_lock_at).toLocaleString(undefined, {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          timeZone: "America/New_York",
+          timeZoneName: "short",
+        })
+      : null;
 
   const sportLabel = [
     enabledSports.includes("cfb") ? "College Football" : null,
@@ -323,6 +353,20 @@ export default function MixedPickemMyPicks({
               status?.isComplete ? "#3fd47a" : "#ffb84a"
             }
           />
+          {status?.scoringMode === "confidence" ? (
+            <>
+              <Stat
+                label="Confidence Assigned"
+                value={loadingStatus ? "—" : `${status.confidenceAssigned} / ${status.selectedPicks}`}
+                accent={status.missingConfidence === 0 ? "#3fd47a" : "#ffb84a"}
+              />
+              <Stat
+                label="Missing Confidence"
+                value={loadingStatus ? "—" : String(status.missingConfidence)}
+                accent={status.missingConfidence === 0 ? "#3fd47a" : "#ff6b6f"}
+              />
+            </>
+          ) : null}
         </div>
 
         <div
@@ -334,6 +378,12 @@ export default function MixedPickemMyPicks({
         >
           The required-pick number is one combined G365 card.
           Football and NHL selections count toward the same total.
+        </div>
+
+        <div style={{ padding: "11px 13px", borderRadius: 12, border: "1px solid rgba(255,118,39,0.18)", background: "rgba(255,118,39,0.06)", color: "#c6c6cd", fontSize: 12, lineHeight: 1.55 }}>
+          {selectedWeekRow?.pick_lock_mode === "full_card"
+            ? `Full Card mode: the combined CFB/NFL/NHL card locks and reveals at ${fullCardDeadline ?? "the commissioner deadline"}. Any game that starts earlier still locks and reveals at its own start.`
+            : "Per-Game mode: each CFB, NFL and NHL pick remains editable and private until that game's authoritative start, then locks and reveals individually."}
         </div>
       </section>
 

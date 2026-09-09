@@ -13,6 +13,8 @@ import {
 
 type PickemSport = "cfb" | "nfl" | "nhl";
 type SportFilter = "all" | PickemSport;
+type FootballMarketMode = "spread_only" | "total_only" | "spread_total";
+type NhlMarketMode = "puck_line_only" | "total_only" | "puck_line_and_total";
 
 type Props = {
   leagueId: string;
@@ -126,6 +128,32 @@ type NhlDisplayGame = {
   homeTeam: NhlTeamRow | null;
   awayTeam: NhlTeamRow | null;
 };
+
+const PICKEM_DAY_TIME_ZONE = "America/New_York";
+
+function gameDayKey(value: string | null): string {
+  if (!value) return "unknown";
+  const date = new Date(value);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: PICKEM_DAY_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const get = (type: string) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function gameDayLabel(value: string | null): string {
+  if (!value) return "TBD";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: PICKEM_DAY_TIME_ZONE,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
 
 function numeric(
   value: number | string | null | undefined
@@ -457,6 +485,13 @@ export default function MixedPickemGames({
   const [sportFilter, setSportFilter] =
     useState<SportFilter>("all");
 
+  const [footballMarketMode, setFootballMarketMode] =
+    useState<FootballMarketMode>("spread_total");
+  const [nhlMarketMode, setNhlMarketMode] =
+    useState<NhlMarketMode>("puck_line_and_total");
+  const [selectedGameDayKey, setSelectedGameDayKey] =
+    useState<string | null>(null);
+
   const selectedWeekRow =
     weeks.find((row) => row.week === selectedWeek) ?? null;
 
@@ -466,6 +501,56 @@ export default function MixedPickemGames({
 
   const includesNhl =
     enabledSports.includes("nhl");
+
+  const loadSettings = useCallback(async () => {
+    const [footballSettings, nhlSettings] = await Promise.all([
+      includesFootball
+        ? supabase
+            .from("pickem_settings")
+            .select("pick_market_mode")
+            .eq("league_id", leagueId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      includesNhl
+        ? supabase
+            .from("nhl_pickem_settings")
+            .select("market_mode")
+            .eq("league_id", leagueId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+
+    if (footballSettings.error) {
+      throw new Error(footballSettings.error.message);
+    }
+    if (nhlSettings.error) {
+      throw new Error(nhlSettings.error.message);
+    }
+
+    const nextFootball = String(
+      (footballSettings.data as { pick_market_mode?: string } | null)
+        ?.pick_market_mode ?? "spread_total"
+    );
+    if (
+      nextFootball === "spread_only" ||
+      nextFootball === "total_only" ||
+      nextFootball === "spread_total"
+    ) {
+      setFootballMarketMode(nextFootball);
+    }
+
+    const nextNhl = String(
+      (nhlSettings.data as { market_mode?: string } | null)
+        ?.market_mode ?? "puck_line_and_total"
+    );
+    if (
+      nextNhl === "puck_line_only" ||
+      nextNhl === "total_only" ||
+      nextNhl === "puck_line_and_total"
+    ) {
+      setNhlMarketMode(nextNhl);
+    }
+  }, [includesFootball, includesNhl, leagueId, supabase]);
 
   const loadWeeks = useCallback(async () => {
     const { data, error } =
@@ -782,7 +867,10 @@ export default function MixedPickemGames({
       setMessage("");
 
       try {
-        await loadWeeks();
+        await Promise.all([
+          loadWeeks(),
+          loadSettings(),
+        ]);
       } catch (error) {
         if (!active) return;
 
@@ -803,7 +891,7 @@ export default function MixedPickemGames({
     return () => {
       active = false;
     };
-  }, [loadWeeks]);
+  }, [loadSettings, loadWeeks]);
 
   useEffect(() => {
     if (loading) return;
@@ -954,9 +1042,93 @@ export default function MixedPickemGames({
       sportFilter === "nhl"
     );
 
-  const totalGameCount =
-    footballVisible.length +
-    (showNhl ? nhlGames.length : 0);
+  const combinedDayGames = useMemo(() => {
+    const items: Array<{
+      key: string;
+      kickoff: string | null;
+      final: boolean;
+      kind: "football" | "nhl";
+      football?: FootballGameRow;
+      nhl?: NhlDisplayGame;
+    }> = [];
+
+    for (const game of footballVisible) {
+      items.push({
+        key: `football-${game.id}`,
+        kickoff: game.kickoff_at,
+        final: game.is_final,
+        kind: "football",
+        football: game,
+      });
+    }
+
+    if (showNhl) {
+      for (const item of nhlGames) {
+        items.push({
+          key: `nhl-${item.contest.id}`,
+          kickoff: item.game?.start_time ?? null,
+          final: Boolean(item.game?.status_completed),
+          kind: "nhl",
+          nhl: item,
+        });
+      }
+    }
+
+    return items.sort((a, b) => {
+      const aTime = a.kickoff ? new Date(a.kickoff).getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = b.kickoff ? new Date(b.kickoff).getTime() : Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
+    });
+  }, [footballVisible, nhlGames, showNhl]);
+
+  const gameDays = useMemo(() => {
+    const map = new Map<
+      string,
+      { key: string; label: string; kickoff: string | null; count: number; done: boolean }
+    >();
+
+    for (const item of combinedDayGames) {
+      const key = gameDayKey(item.kickoff);
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, {
+          key,
+          label: gameDayLabel(item.kickoff),
+          kickoff: item.kickoff,
+          count: 1,
+          done: item.final,
+        });
+      } else {
+        existing.count += 1;
+        existing.done = existing.done && item.final;
+      }
+    }
+
+    return [...map.values()].sort((a, b) => {
+      const aTime = a.kickoff ? new Date(a.kickoff).getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = b.kickoff ? new Date(b.kickoff).getTime() : Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
+    });
+  }, [combinedDayGames]);
+
+  useEffect(() => {
+    if (gameDays.length === 0) {
+      setSelectedGameDayKey(null);
+      return;
+    }
+
+    if (
+      selectedGameDayKey &&
+      gameDays.some((day) => day.key === selectedGameDayKey)
+    ) {
+      return;
+    }
+
+    const next = gameDays.find((day) => !day.done) ?? gameDays.at(-1) ?? null;
+    setSelectedGameDayKey(next?.key ?? null);
+  }, [gameDays, selectedGameDayKey]);
+
+  const totalGameCount = combinedDayGames.length;
 
   if (loading) {
     return (
@@ -1051,8 +1223,9 @@ export default function MixedPickemGames({
           }}
         >
           Follow one combined G365 contest slate. Football keeps its
-          frozen G365 Spread and G365 Total, while NHL keeps its frozen
-          G365 Puck Line and official total.
+          enabled frozen markets, while NHL keeps its own mature line
+          engine. Only commissioner-enabled markets are shown below, and
+          excluded games remain visible with their exclusion reason.
         </p>
       </section>
 
@@ -1196,6 +1369,59 @@ export default function MixedPickemGames({
         ) : null}
       </section>
 
+      {gameDays.length > 0 ? (
+        <section
+          style={{
+            display: "flex",
+            gap: 8,
+            overflowX: "auto",
+            padding: "10px 2px 2px",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          {gameDays.map((day) => {
+            const active = day.key === selectedGameDayKey;
+            return (
+              <button
+                key={day.key}
+                type="button"
+                onClick={() => setSelectedGameDayKey(day.key)}
+                style={{
+                  flex: "0 0 auto",
+                  minWidth: 128,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: active
+                    ? "1px solid rgba(255,118,39,0.85)"
+                    : "1px solid rgba(255,255,255,0.09)",
+                  background: active
+                    ? "linear-gradient(135deg,rgba(141,16,24,.92),rgba(240,90,27,.92))"
+                    : "#0d0d11",
+                  color: active ? "#fff" : "#b2b2ba",
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 1000 }}>
+                  {day.label}
+                </div>
+                <div
+                  style={{
+                    marginTop: 3,
+                    color: active ? "rgba(255,255,255,.82)" : "#767680",
+                    fontSize: 10,
+                    fontWeight: 900,
+                  }}
+                >
+                  {day.count} {day.count === 1 ? "GAME" : "GAMES"}
+                  {day.done ? " · FINAL" : ""}
+                </div>
+              </button>
+            );
+          })}
+        </section>
+      ) : null}
+
       {message ? (
         <div
           style={{
@@ -1252,8 +1478,12 @@ export default function MixedPickemGames({
             gap: 12,
           }}
         >
-          {footballVisible.map(
-            (game) => {
+          {footballVisible
+            .filter((game) =>
+              selectedGameDayKey === null ||
+              gameDayKey(game.kickoff_at) === selectedGameDayKey
+            )
+            .map((game) => {
               const homeSpread =
                 numeric(
                   game.g365_home_spread
@@ -1459,6 +1689,7 @@ export default function MixedPickemGames({
                         paddingTop: 4,
                       }}
                     >
+                      {footballMarketMode !== "total_only" ? (
                       <span
                         style={{
                           color:
@@ -1479,7 +1710,9 @@ export default function MixedPickemGames({
                             )}`
                           : "G365 Spread pending"}
                       </span>
+                      ) : null}
 
+                      {footballMarketMode !== "spread_only" ? (
                       <span
                         style={{
                           color:
@@ -1500,6 +1733,7 @@ export default function MixedPickemGames({
                             )}`
                           : "G365 Total pending"}
                       </span>
+                      ) : null}
                     </div>
 
                     <div
@@ -1509,28 +1743,13 @@ export default function MixedPickemGames({
                         fontSize: 10,
                       }}
                     >
-                      Spread{" "}
-                      {normalizeStatus(
-                        game.spread_status ??
-                          "pending"
-                      )}
-                      {" · "}
-                      {
-                        game.consensus_source_count ??
-                        0
-                      }{" "}
-                      books
-                      {" · "}Total{" "}
-                      {normalizeStatus(
-                        game.total_status ??
-                          "pending"
-                      )}
-                      {" · "}
-                      {
-                        game.total_consensus_source_count ??
-                        0
-                      }{" "}
-                      books
+                      {game.is_eligible ? "ELIGIBLE" : `EXCLUDED${game.exclusion_reason ? ` · ${game.exclusion_reason}` : ""}`}
+                      {footballMarketMode !== "total_only"
+                        ? ` · Spread ${normalizeStatus(game.spread_status ?? "pending")} · ${game.consensus_source_count ?? 0} books`
+                        : ""}
+                      {footballMarketMode !== "spread_only"
+                        ? ` · Total ${normalizeStatus(game.total_status ?? "pending")} · ${game.total_consensus_source_count ?? 0} books`
+                        : ""}
                     </div>
                   </div>
                 </article>
@@ -1539,7 +1758,12 @@ export default function MixedPickemGames({
           )}
 
           {showNhl
-            ? nhlGames.map(
+            ? nhlGames
+                .filter((item) =>
+                  selectedGameDayKey === null ||
+                  gameDayKey(item.game?.start_time ?? null) === selectedGameDayKey
+                )
+                .map(
                 ({
                   contest,
                   game,
@@ -1691,10 +1915,11 @@ export default function MixedPickemGames({
                               4,
                           }}
                         >
+                          {nhlMarketMode !== "total_only" ? (
                           <span
                             style={{
                               color:
-                                contest.is_frozen
+                                contest.is_frozen && homeLine !== null && awayLine !== null
                                   ? "#8fc2ff"
                                   : "#888891",
                               fontSize:
@@ -1703,11 +1928,13 @@ export default function MixedPickemGames({
                                 900,
                             }}
                           >
-                            {contest.is_frozen
+                            {contest.is_frozen && homeLine !== null && awayLine !== null
                               ? "G365 Puck Line frozen"
                               : "G365 Puck Line pending"}
                           </span>
+                          ) : null}
 
+                          {nhlMarketMode !== "puck_line_only" ? (
                           <span
                             style={{
                               color:
@@ -1728,6 +1955,7 @@ export default function MixedPickemGames({
                                 )}`
                               : "G365 Total pending"}
                           </span>
+                          ) : null}
                         </div>
 
                         <div
@@ -1738,20 +1966,14 @@ export default function MixedPickemGames({
                               10,
                           }}
                         >
-                          Puck Line{" "}
-                          {
-                            contest.puck_line_source_count
-                          }{" "}
-                          books
-                          {" · "}Total{" "}
-                          {
-                            contest.total_source_count
-                          }{" "}
-                          books
-                          {" · "}
-                          {normalizeStatus(
-                            contest.line_status
-                          )}
+                          {contest.eligible ? "ELIGIBLE" : `EXCLUDED${contest.excluded_reason ? ` · ${contest.excluded_reason}` : ""}`}
+                          {nhlMarketMode !== "total_only"
+                            ? ` · Puck Line ${contest.puck_line_source_count} books`
+                            : ""}
+                          {nhlMarketMode !== "puck_line_only"
+                            ? ` · Total ${contest.total_source_count} books`
+                            : ""}
+                          {` · ${normalizeStatus(contest.line_status)}`}
                         </div>
 
                         {game?.venue_name ? (
@@ -1779,3 +2001,4 @@ export default function MixedPickemGames({
     </main>
   );
 }
+

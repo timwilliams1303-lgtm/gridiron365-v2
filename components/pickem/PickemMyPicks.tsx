@@ -51,6 +51,8 @@ type SettingsRow = {
   pick_lock_mode: PickLockMode;
   pick_market_mode:
     PickMarketMode;
+  scoring_mode: string;
+  confidence_points: number[] | string[];
 };
 
 
@@ -62,6 +64,9 @@ type WeekRow = {
   required_picks: number;
   line_day_at: string | null;
   finalize_not_before: string | null;
+  pick_lock_mode: PickLockMode;
+  reveal_mode: string;
+  full_card_lock_at: string | null;
 };
 
 
@@ -127,6 +132,7 @@ type PickRow = {
     | "push"
     | "void";
   points_awarded: number | string | null;
+  confidence_value: number | string | null;
 };
 
 
@@ -197,6 +203,31 @@ function formatKickoff(
   );
 }
 
+
+const PICKEM_DAY_TIME_ZONE = "America/New_York";
+
+function gameDayKey(value: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: PICKEM_DAY_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+
+  const year = parts.find((part) => part.type === "year")?.value ?? "";
+  const month = parts.find((part) => part.type === "month")?.value ?? "";
+  const day = parts.find((part) => part.type === "day")?.value ?? "";
+  return `${year}-${month}-${day}`;
+}
+
+function gameDayLabel(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: PICKEM_DAY_TIME_ZONE,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
 
 function sportLabel(
   sport: "ncaaf" | "nfl"
@@ -386,6 +417,11 @@ export default function PickemMyPicks({
     useState<GameRow[]>([]);
 
   const [
+    selectedGameDayKey,
+    setSelectedGameDayKey,
+  ] = useState<string | null>(null);
+
+  const [
     picks,
     setPicks,
   ] =
@@ -446,40 +482,6 @@ export default function PickemMyPicks({
     }, [picks]);
 
 
-  const earliestSelectedKickoff =
-    useMemo(() => {
-      const selectedKickoffs =
-        games
-          .filter((game) =>
-            pickByGameId.has(
-              game.id
-            )
-          )
-          .map((game) =>
-            new Date(
-              game.kickoff_at
-            ).getTime()
-          )
-          .filter(
-            Number.isFinite
-          );
-
-      if (
-        selectedKickoffs.length ===
-        0
-      ) {
-        return null;
-      }
-
-      return Math.min(
-        ...selectedKickoffs
-      );
-    }, [
-      games,
-      pickByGameId,
-    ]);
-
-
   const visibleGames = useMemo(() => {
     if (!visibleSports || visibleSports.length === 0) {
       return games;
@@ -491,16 +493,90 @@ export default function PickemMyPicks({
     });
   }, [games, visibleSports]);
 
+  const gameDays = useMemo(() => {
+    const groups = new Map<
+      string,
+      { key: string; label: string; games: GameRow[]; done: boolean }
+    >();
+
+    for (const game of visibleGames) {
+      const key = gameDayKey(game.kickoff_at);
+      const existing = groups.get(key);
+
+      if (existing) {
+        existing.games.push(game);
+      } else {
+        groups.set(key, {
+          key,
+          label: gameDayLabel(game.kickoff_at),
+          games: [game],
+          done: false,
+        });
+      }
+    }
+
+    return [...groups.values()]
+      .sort((a, b) =>
+        new Date(a.games[0]?.kickoff_at ?? 0).getTime() -
+        new Date(b.games[0]?.kickoff_at ?? 0).getTime()
+      )
+      .map((group) => ({
+        ...group,
+        done:
+          group.games.length > 0 &&
+          group.games.every((game) => game.is_final),
+      }));
+  }, [visibleGames]);
+
+  const selectedDayGames = useMemo(() => {
+    if (!selectedGameDayKey) {
+      return [];
+    }
+
+    return visibleGames.filter(
+      (game) => gameDayKey(game.kickoff_at) === selectedGameDayKey
+    );
+  }, [selectedGameDayKey, visibleGames]);
+
+  const fullCardLockAtMs =
+    selectedWeek?.pick_lock_mode === "full_card" &&
+    selectedWeek.full_card_lock_at
+      ? new Date(selectedWeek.full_card_lock_at).getTime()
+      : null;
 
   const fullCardLocked =
-    settings
-      ?.pick_lock_mode ===
-      "full_card" &&
-    earliestSelectedKickoff !==
-      null &&
-    Date.now() >=
-      earliestSelectedKickoff;
+    fullCardLockAtMs !== null &&
+    Number.isFinite(fullCardLockAtMs) &&
+    Date.now() >= fullCardLockAtMs;
 
+  const confidenceMode =
+    settings?.scoring_mode === "confidence";
+
+  const confidenceChoices = useMemo(() => {
+    const raw = settings?.confidence_points ?? [];
+    return raw
+      .map((value) => Number(value))
+      .filter(Number.isFinite)
+      .sort((a, b) => b - a);
+  }, [settings]);
+
+  useEffect(() => {
+    if (gameDays.length === 0) {
+      setSelectedGameDayKey(null);
+      return;
+    }
+
+    const current = gameDays.find(
+      (day) => day.key === selectedGameDayKey
+    );
+
+    if (current && !current.done) {
+      return;
+    }
+
+    const nextAvailable = gameDays.find((day) => !day.done);
+    setSelectedGameDayKey(nextAvailable?.key ?? null);
+  }, [gameDays, selectedGameDayKey]);
 
   const loadLeagueShell =
     useCallback(
@@ -515,7 +591,7 @@ export default function PickemMyPicks({
                 "pickem_settings"
               )
               .select(
-                "football_scope,picks_per_week,pick_lock_mode,pick_market_mode"
+                "football_scope,picks_per_week,pick_lock_mode,pick_market_mode,scoring_mode,confidence_points"
               )
               .eq(
                 "league_id",
@@ -528,7 +604,7 @@ export default function PickemMyPicks({
                 "pickem_weeks"
               )
               .select(
-                "id,season,week,status,required_picks,line_day_at,finalize_not_before"
+                "id,season,week,status,required_picks,line_day_at,finalize_not_before,pick_lock_mode,reveal_mode,full_card_lock_at"
               )
               .eq(
                 "league_id",
@@ -694,7 +770,7 @@ export default function PickemMyPicks({
                 "pickem_picks"
               )
               .select(
-                "id,pickem_week_id,fantasy_team_id,pickem_game_id,market_type,selected_side,frozen_home_spread,frozen_total,submitted_at,updated_at,result,points_awarded"
+                "id,pickem_week_id,fantasy_team_id,pickem_game_id,market_type,selected_side,frozen_home_spread,frozen_total,submitted_at,updated_at,result,points_awarded,confidence_value"
               )
               .eq(
                 "league_id",
@@ -903,6 +979,10 @@ export default function PickemMyPicks({
         selectedWeek
       );
 
+      window.dispatchEvent(new CustomEvent("g365-pickem-card-change", {
+        detail: { leagueId, week: selectedWeek.week },
+      }));
+
       setMessage(
         "Pick saved."
       );
@@ -975,6 +1055,10 @@ export default function PickemMyPicks({
         selectedWeek
       );
 
+      window.dispatchEvent(new CustomEvent("g365-pickem-card-change", {
+        detail: { leagueId, week: selectedWeek.week },
+      }));
+
       setMessage(
         "Pick removed."
       );
@@ -989,6 +1073,48 @@ export default function PickemMyPicks({
       setWorkingGameId(
         null
       );
+    }
+  }
+
+
+  async function setConfidence(
+    gameId: number,
+    value: number
+  ) {
+    if (!selectedWeek || workingGameId !== null) return;
+
+    setWorkingGameId(gameId);
+    setMessage("");
+    setIsError(false);
+
+    try {
+      const { error } = await supabase.rpc(
+        "set_pickem_confidence_value",
+        {
+          p_league_id: leagueId,
+          p_season: season,
+          p_week: selectedWeek.week,
+          p_pickem_game_id: gameId,
+          p_confidence_value: value,
+        }
+      );
+
+      if (error) throw new Error(error.message);
+
+      await loadWeek(selectedWeek);
+      window.dispatchEvent(new CustomEvent("g365-pickem-card-change", {
+        detail: { leagueId, week: selectedWeek.week },
+      }));
+      setMessage("Confidence value updated.");
+    } catch (error) {
+      setIsError(true);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "The confidence value could not be updated."
+      );
+    } finally {
+      setWorkingGameId(null);
     }
   }
 
@@ -1364,11 +1490,90 @@ export default function PickemMyPicks({
                   800,
               }}
             >
-              Your full weekly card is locked because the earliest selected game has kicked off.
+              Your full weekly card is locked and revealed because the commissioner deadline has been reached.
             </div>
           ) : null}
 
-          {visibleGames.map(
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              overflowX: "auto",
+              padding: "2px 0 4px",
+              WebkitOverflowScrolling: "touch",
+            }}
+          >
+            {gameDays.map((day) => {
+              const selected = day.key === selectedGameDayKey;
+
+              return (
+                <button
+                  key={day.key}
+                  type="button"
+                  disabled={day.done}
+                  onClick={() => {
+                    if (!day.done) {
+                      setSelectedGameDayKey(day.key);
+                    }
+                  }}
+                  style={{
+                    flex: "0 0 auto",
+                    minWidth: 112,
+                    padding: "10px 13px",
+                    borderRadius: 11,
+                    border: selected
+                      ? "1px solid rgba(255,112,35,0.75)"
+                      : "1px solid rgba(255,255,255,0.10)",
+                    background: day.done
+                      ? "rgba(255,255,255,0.025)"
+                      : selected
+                        ? "linear-gradient(135deg, rgba(175,25,15,0.58), rgba(255,105,25,0.24))"
+                        : "#111115",
+                    color: day.done
+                      ? "#5f6068"
+                      : selected
+                        ? "#fff"
+                        : "#b7b7bf",
+                    cursor: day.done ? "not-allowed" : "pointer",
+                    opacity: day.done ? 0.55 : 1,
+                    fontWeight: 900,
+                    whiteSpace: "nowrap",
+                  }}
+                  title={
+                    day.done
+                      ? `${day.label} is complete`
+                      : `Show games for ${day.label}`
+                  }
+                >
+                  <span style={{ display: "block", fontSize: 12 }}>
+                    {day.label}
+                  </span>
+                  <span
+                    style={{
+                      display: "block",
+                      marginTop: 3,
+                      fontSize: 10,
+                      letterSpacing: "0.06em",
+                      color: day.done ? "#686871" : "#ff9b59",
+                    }}
+                  >
+                    {day.done
+                      ? "DONE"
+                      : `${day.games.length} GAME${day.games.length === 1 ? "" : "S"}`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {gameDays.length > 0 && selectedGameDayKey === null ? (
+            <EmptyState
+              title="All game days are complete."
+              description="Every game day in this Pick'em week has finished. Completed days are no longer selectable on My Picks."
+            />
+          ) : null}
+
+          {selectedDayGames.map(
             (game) => {
               const pick =
                 pickByGameId.get(
@@ -1865,12 +2070,40 @@ export default function PickemMyPicks({
                       ) : hasFrozenLine ? (
                         locked
                           ? "This game is locked."
-                          : "Choose one side against the frozen G365 Spread."
+                          : canSelectSpread && canSelectTotal
+                            ? "Choose the frozen G365 Spread or G365 Total."
+                            : canSelectTotal
+                              ? "Choose OVER or UNDER against the frozen G365 Total."
+                              : "Choose one side against the frozen G365 Spread."
                       ) : (
                         game.exclusion_reason ??
                         "This game is not currently selectable."
                       )}
                     </div>
+
+                    {pick && confidenceMode && !locked ? (
+                      <label style={{ display: "grid", gap: 5, minWidth: 150 }}>
+                        <span style={{ color: "#8f8f98", fontSize: 10, fontWeight: 900, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                          Confidence
+                        </span>
+                        <select
+                          value={numericValue(pick.confidence_value) ?? ""}
+                          onChange={(event) => {
+                            const value = Number(event.target.value);
+                            if (Number.isFinite(value)) {
+                              void setConfidence(game.id, value);
+                            }
+                          }}
+                          disabled={working}
+                          style={{ padding: "8px 10px", borderRadius: 9, border: "1px solid rgba(255,118,39,0.30)", background: "#09090c", color: "#fff", fontWeight: 900 }}
+                        >
+                          <option value="">Assign value</option>
+                          {confidenceChoices.map((value) => (
+                            <option key={value} value={value}>{value}</option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
 
                     {pick &&
                     !locked ? (
@@ -2304,4 +2537,5 @@ function EmptyState({
     </section>
   );
 }
+
 

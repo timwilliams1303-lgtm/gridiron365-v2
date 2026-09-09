@@ -26,6 +26,9 @@ type WeekRow = {
   week: number;
   status: string;
   required_picks: number;
+  pick_lock_mode: "per_game" | "full_card" | null;
+  reveal_mode: "per_game_kickoff" | "full_card_lock" | null;
+  full_card_lock_at: string | null;
 };
 
 
@@ -186,6 +189,25 @@ function formatKickoff(
         "2-digit",
     }
   );
+}
+
+
+function formatFullCardDeadline(
+  value: string | null
+) {
+  if (!value) {
+    return "the commissioner deadline";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(new Date(value));
 }
 
 
@@ -759,7 +781,7 @@ export default function PickemLeaguePicks({
               "pickem_weeks"
             )
             .select(
-              "id,week,status,required_picks"
+              "id,week,status,required_picks,pick_lock_mode,reveal_mode,full_card_lock_at"
             )
             .eq(
               "league_id",
@@ -874,7 +896,7 @@ export default function PickemLeaguePicks({
         ] =
           await Promise.all([
             supabase.rpc(
-              "get_pickem_league_picks",
+              "get_pickem_league_picks_v2",
               {
                 p_league_id:
                   leagueId,
@@ -1124,7 +1146,8 @@ export default function PickemLeaguePicks({
      * - the week's lifecycle/status changes
      *
      * The privacy-safe RPC is re-read after each event, so hidden picks
-     * remain hidden until their individual game reaches kickoff.
+     * remain hidden until the selected week's authoritative reveal condition
+     * is reached: per-game start or the commissioner full-card deadline.
      */
     const channel =
       supabase
@@ -1376,7 +1399,11 @@ export default function PickemLeaguePicks({
               1.6,
           }}
         >
-          Every participant&apos;s selections stay hidden until each individual game kicks off. As games begin, those specific picks reveal automatically with the frozen G365 Spread and live ATS position.
+          {selectedWeek?.pick_lock_mode === "full_card"
+            ? `Every participant's card stays hidden until ${formatFullCardDeadline(
+                selectedWeek.full_card_lock_at
+              )}. At that deadline the full card locks and reveals. Any game that starts earlier still locks and reveals at its own start.`
+            : "Every participant's selections stay hidden until each individual game starts. As games begin, those specific picks reveal automatically with the frozen G365 line and live result position."}
         </p>
       </section>
 
@@ -2448,3 +2475,4 @@ function EmptyState({
     </section>
   );
 }
+

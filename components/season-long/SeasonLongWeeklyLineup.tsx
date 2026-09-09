@@ -978,6 +978,20 @@ export default function SeasonLongWeeklyLineup({
 
 
   const [
+    sortMode,
+    setSortMode,
+  ] =
+    useState<
+      "salary" | "projected"
+    >(
+      playerSelectionMode ===
+      "salary"
+        ? "salary"
+        : "projected"
+    );
+
+
+  const [
     workingKey,
     setWorkingKey,
   ] =
@@ -1214,26 +1228,61 @@ export default function SeasonLongWeeklyLineup({
           }
 
 
-          if (
-            isSalary &&
-            activeSlot &&
-            (
-              player.salary ??
-              0
-            ) >
-              salaryRemaining
-          ) {
-            return false;
-          }
-
-
           return true;
         }
       )
-      .slice(
-        0,
-        250
+      .sort(
+        (a, b) => {
+          if (
+            isSalary &&
+            sortMode ===
+              "salary"
+          ) {
+            if (
+              a.salary === null &&
+              b.salary !== null
+            ) {
+              return 1;
+            }
+
+            if (
+              b.salary === null &&
+              a.salary !== null
+            ) {
+              return -1;
+            }
+
+            const salaryDifference =
+              (b.salary ?? 0) -
+              (a.salary ?? 0);
+
+            if (
+              salaryDifference !==
+              0
+            ) {
+              return salaryDifference;
+            }
+          }
+
+
+          const projectionDifference =
+            b.projectedPoints -
+            a.projectedPoints;
+
+          if (
+            projectionDifference !==
+            0
+          ) {
+            return projectionDifference;
+          }
+
+
+          return a.name.localeCompare(
+            b.name
+          );
+        }
       );
+
 
 
   async function openPlayerProfile(
@@ -2802,6 +2851,34 @@ export default function SeasonLongWeeklyLineup({
                 }
               />
 
+              {isSalary ? (
+                <select
+                  value={
+                    sortMode
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setSortMode(
+                      event.target.value as
+                        "salary" | "projected"
+                    )
+                  }
+                  style={
+                    styles.searchInput
+                  }
+                  aria-label="Sort available players"
+                >
+                  <option value="salary">
+                    Sort: Salary
+                  </option>
+                  <option value="projected">
+                    Sort: Projected Points
+                  </option>
+                </select>
+              ) : null}
+
+
               <div
                 style={
                   styles.filterRow
@@ -2881,10 +2958,24 @@ export default function SeasonLongWeeklyLineup({
                   (
                     player
                   ) => {
+                    const salaryPending =
+                      isSalary &&
+                      player.salary ===
+                        null;
+
+                    const overRemainingSalary =
+                      isSalary &&
+                      player.salary !==
+                        null &&
+                      player.salary >
+                        salaryRemaining;
+
                     const disabled =
                       !activeSlot ||
                       workingKey !==
-                        null;
+                        null ||
+                      salaryPending ||
+                      overRemainingSalary;
 
 
                     return (
@@ -2992,10 +3083,12 @@ export default function SeasonLongWeeklyLineup({
                             }
                           >
                             <strong>
-                              {formatMoney(
-                                player.salary ??
-                                0
-                              )}
+                              {player.salary ===
+                              null
+                                ? "Salary Pending"
+                                : formatMoney(
+                                    player.salary
+                                  )}
                             </strong>
 
                           </div>
@@ -3035,7 +3128,11 @@ export default function SeasonLongWeeklyLineup({
                           {workingKey ===
                           `add:${player.id}`
                             ? "Adding..."
-                            : "Add"}
+                            : salaryPending
+                              ? "Salary Pending"
+                              : overRemainingSalary
+                                ? "Over Cap"
+                                : "Add"}
                         </button>
                       </div>
                     );
@@ -4603,3 +4700,4 @@ const styles = {
   },
 
 };
+

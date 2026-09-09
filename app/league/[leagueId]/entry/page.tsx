@@ -859,79 +859,36 @@ export default async function SeasonLongEntryPage({
     );
 
 
-  const playerIds =
-    Array.from(
-      new Set(
-        [
-          ...lineup.map(
-            (
-              row
-            ) =>
-              row.player_id
-          ),
-
-          ...salaries.map(
-            (
-              row
-            ) =>
-              row.nfl_player_id
-          ),
-        ]
-      )
-    );
-
-
-  let players:
+  /*
+   * ============================================================
+   * COMPLETE NFL PLAYER POOL
+   * ============================================================
+   *
+   * My Entry must be based on nfl_players, not on salary or
+   * projection coverage. Supporting rows are merged on afterward.
+   * This keeps every fantasy-eligible NFL player visible even if a
+   * salary/projection row is temporarily missing.
+   */
+  const players:
     NflPlayerRow[] = [];
 
 
-  if (
-    isSalary &&
-    playerIds.length >
-      0
+  const nflPlayerPageSize =
+    1000;
+
+
+  for (
+    let from = 0;
+    ;
+    from += nflPlayerPageSize
   ) {
-    const playerResult =
-      await supabase
-        .from(
-          "nfl_players"
-        )
-        .select(`
-          id,
-          full_name,
-          primary_position,
-          team_abbreviation,
-          status,
-          is_active
-        `)
-        .in(
-          "id",
-          playerIds
-        );
+    const to =
+      from +
+      nflPlayerPageSize -
+      1;
 
 
-    if (
-      playerResult.error
-    ) {
-      throw new Error(
-        playerResult
-          .error
-          .message
-      );
-    }
-
-
-    players =
-      (
-        playerResult.data ??
-        []
-      ) as NflPlayerRow[];
-
-  } else {
-    /*
-     * No-Salary leagues do not require a generated salary row,
-     * so load the active NFL player pool directly.
-     */
-    const playerResult =
+    const playerPageResult =
       await supabase
         .from(
           "nfl_players"
@@ -959,34 +916,48 @@ export default async function SeasonLongEntryPage({
           ]
         )
         .order(
-          "full_name",
+          "id",
           {
-            ascending:
-              true,
+            ascending: true,
           }
         )
-        .limit(
-          1200
+        .range(
+          from,
+          to
         );
 
 
     if (
-      playerResult.error
+      playerPageResult.error
     ) {
       throw new Error(
-        playerResult
+        playerPageResult
           .error
           .message
       );
     }
 
 
-    players =
+    const pageRows =
       (
-        playerResult.data ??
+        playerPageResult.data ??
         []
       ) as NflPlayerRow[];
+
+
+    players.push(
+      ...pageRows
+    );
+
+
+    if (
+      pageRows.length <
+      nflPlayerPageSize
+    ) {
+      break;
+    }
   }
+
 
 
   const playerMap =
@@ -1315,67 +1286,46 @@ export default async function SeasonLongEntryPage({
    * This is more useful than the generic nfl_players.status value
    * because it includes the actual designation and injury detail.
    */
-  const injuryPlayerIds =
-    Array.from(
-      new Set(
-        players.map(
-          (
-            player
-          ) =>
-            player.id
-        )
+  /*
+   * Current injury rows are already scoped to active/current injury
+   * records. Load the season directly instead of putting the entire
+   * player pool into a large PostgREST IN clause.
+   */
+  const injuryResult =
+    await supabase
+      .from(
+        "current_nfl_player_injuries"
       )
-    );
-
-
-  let injuryRows:
-    InjuryRow[] = [];
+      .select(`
+        nfl_player_id,
+        status,
+        injury_type,
+        injury_location,
+        injury_detail,
+        return_date
+      `)
+      .eq(
+        "season",
+        season
+      );
 
 
   if (
-    injuryPlayerIds.length >
-      0
+    injuryResult.error
   ) {
-    const injuryResult =
-      await supabase
-        .from(
-          "current_nfl_player_injuries"
-        )
-        .select(`
-          nfl_player_id,
-          status,
-          injury_type,
-          injury_location,
-          injury_detail,
-          return_date
-        `)
-        .eq(
-          "season",
-          season
-        )
-        .in(
-          "nfl_player_id",
-          injuryPlayerIds
-        );
-
-
-    if (
-      injuryResult.error
-    ) {
-      throw new Error(
-        injuryResult
-          .error
-          .message
-      );
-    }
-
-
-    injuryRows =
-      (
-        injuryResult.data ??
-        []
-      ) as InjuryRow[];
+    throw new Error(
+      injuryResult
+        .error
+        .message
+    );
   }
+
+
+  const injuryRows =
+    (
+      injuryResult.data ??
+      []
+    ) as InjuryRow[];
 
 
   const injuryMap =
@@ -1438,8 +1388,6 @@ export default async function SeasonLongEntryPage({
           injuryStatus:
             injury
               ?.status ??
-            player
-              ?.status ??
             null,
 
           injuryType:
@@ -1476,6 +1424,12 @@ export default async function SeasonLongEntryPage({
 
           projectedPoints:
             projectionNumber(
+              weeklyProjection
+                ?.projected_points ??
+              salaryMap.get(
+                row.player_id
+              )
+                ?.projected_points ??
               row.projected_points_at_selection
             ),
 
@@ -1632,10 +1586,16 @@ export default async function SeasonLongEntryPage({
 
             salary:
               isSalary
-                ? toNumber(
-                    salary
-                      ?.salary
-                  )
+                ? salary
+                    ?.salary ===
+                    null ||
+                  salary
+                    ?.salary ===
+                    undefined
+                  ? null
+                  : toNumber(
+                      salary.salary
+                    )
                 : null,
 
             projectedPoints:
@@ -1647,18 +1607,28 @@ export default async function SeasonLongEntryPage({
               ),
 
             salaryChange:
-              isSalary
+              isSalary &&
+              salary
+                ?.salary_change !==
+                null &&
+              salary
+                ?.salary_change !==
+                undefined
                 ? toNumber(
-                    salary
-                      ?.salary_change
+                    salary.salary_change
                   )
                 : null,
 
             salaryChangePercent:
-              isSalary
+              isSalary &&
+              salary
+                ?.salary_change_percent !==
+                null &&
+              salary
+                ?.salary_change_percent !==
+                undefined
                 ? toNumber(
-                    salary
-                      ?.salary_change_percent
+                    salary.salary_change_percent
                   )
                 : null,
 
@@ -1667,18 +1637,6 @@ export default async function SeasonLongEntryPage({
               false,
           };
         }
-      )
-      .filter(
-        (
-          player
-        ) =>
-          !isSalary ||
-          (
-            player.salary !==
-            null &&
-            player.salary >
-              0
-          )
       )
       .sort(
         (
@@ -1690,6 +1648,14 @@ export default async function SeasonLongEntryPage({
            * No-Salary leagues keep the existing projected-points order.
            */
           if (isSalary) {
+            if (a.salary === null && b.salary !== null) {
+              return 1;
+            }
+
+            if (b.salary === null && a.salary !== null) {
+              return -1;
+            }
+
             const salaryDifference =
               (b.salary ?? 0) -
               (a.salary ?? 0);
@@ -1801,4 +1767,3 @@ export default async function SeasonLongEntryPage({
     />
   );
 }
-

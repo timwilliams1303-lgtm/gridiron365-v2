@@ -8,6 +8,8 @@ import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
 
+import SeasonLongLiveRefresh from "@/components/season-long/SeasonLongLiveRefresh";
+
 
 type Props = {
   leagueId: string;
@@ -454,29 +456,27 @@ export default async function SeasonLongStandings({
     settings?.competition_format ===
     "head_to_head";
 
-  const {
-    error:
-      rebuildError,
-  } =
-    await supabase.rpc(
-      isH2H
-        ? "rebuild_season_long_h2h_standings"
-        : "rebuild_season_long_standings",
-      {
-        p_league_id:
-          leagueId,
-        p_season:
-          season,
-      }
-    );
-
-  if (
-    rebuildError
-  ) {
-    throw new Error(
-      `Could not rebuild Season-Long standings: ${rebuildError.message}`
-    );
-  }
+  /*
+   * ============================================================
+   * IMPORTANT: DO NOT REBUILD STANDINGS DURING PAGE RENDER
+   * ============================================================
+   *
+   * Total Points standings are maintained live by:
+   *
+   *   season_long_weekly_scores
+   *     -> trg_season_long_total_points_live_standings
+   *     -> refresh_season_long_total_points_live_standings()
+   *     -> season_long_standings
+   *
+   * Calling rebuild_season_long_standings() here would replace the
+   * live cumulative total with FINAL-week-only totals every time the
+   * page refreshes.
+   *
+   * H2H standings are also maintained by the Season-Long scoring /
+   * matchup lifecycle. A read-only standings page should never mutate
+   * league scoring state simply because somebody viewed/refreshed it.
+   * ============================================================
+   */
 
   const [
     teamsResult,
@@ -1051,6 +1051,18 @@ export default async function SeasonLongStandings({
         styles.page
       }
     >
+
+      {/*
+       * Realtime is the primary browser update path.
+       * The component also keeps a 5-second fallback while this page
+       * is open so live standings cannot sit stale if a Realtime event
+       * is missed temporarily.
+       */}
+      <SeasonLongLiveRefresh
+        enabled={true}
+        live={true}
+      />
+
       <style>{`
         .g365-sl-standings,
         .g365-sl-standings * {
@@ -1628,7 +1640,7 @@ export default async function SeasonLongStandings({
         >
           {isH2H
             ? "H2H standings rebuild from finalized weekly matchups. Playoff odds automatically evolve as the regular season is played."
-            : "Total Points runs through the full configured season. Final cumulative fantasy points determine the champion; there is no fantasy playoff cutoff."}
+            : "Total Points updates live as locked players score. Completed weeks remain official in weekly statistics, and final cumulative fantasy points determine the champion; there is no fantasy playoff cutoff."}
         </div>
       </div>
     </main>
@@ -1959,3 +1971,4 @@ const styles:
       fontSize: "12px",
     },
   };
+
