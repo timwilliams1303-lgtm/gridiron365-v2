@@ -290,11 +290,26 @@ function getAdminClient() {
 function authorizeSync(
   request: Request
 ) {
-  const configuredSecret =
-  process.env.GRIDIRON_SYNC_SECRET ??
-  process.env.NFL_SYNC_SECRET;
+  const suppliedSecret =
+    request.headers.get(
+      "x-gridiron-sync-secret"
+    );
 
-  if (!configuredSecret) {
+  const configuredSecrets = [
+    process.env.GRIDIRON_SYNC_SECRET,
+    process.env.NFL_SYNC_SECRET,
+  ].filter(
+    (value): value is string =>
+      Boolean(
+        value &&
+        value.trim()
+      )
+  );
+
+  if (
+    configuredSecrets.length ===
+    0
+  ) {
     return {
       authorized:
         false,
@@ -306,7 +321,7 @@ function authorizeSync(
               false,
 
             error:
-              "NFL_SYNC_SECRET is not configured on the server.",
+              "No Gridiron365 sync secret is configured on the server.",
           },
           {
             status:
@@ -316,16 +331,11 @@ function authorizeSync(
     };
   }
 
-
-  const suppliedSecret =
-    request.headers.get(
-      "x-gridiron-sync-secret"
-    );
-
-
   if (
-    suppliedSecret !==
-    configuredSecret
+    !suppliedSecret ||
+    !configuredSecrets.includes(
+      suppliedSecret
+    )
   ) {
     return {
       authorized:
@@ -347,7 +357,6 @@ function authorizeSync(
         ),
     };
   }
-
 
   return {
     authorized:
