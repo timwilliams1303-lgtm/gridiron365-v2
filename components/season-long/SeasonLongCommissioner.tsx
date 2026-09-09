@@ -116,6 +116,7 @@ type SeasonLongMatchup = {
 
 
 type ManualMatchup = {
+  matchupId?: number | null;
   homeTeamId: number | null;
   awayTeamId: number | null;
 };
@@ -376,6 +377,23 @@ export default function SeasonLongCommissioner({
                   ManualMatchup[]
                 > = {};
 
+              const activeTeamIds =
+                typed.teams
+                  .filter(
+                    (
+                      team
+                    ) =>
+                      team.active
+                  )
+                  .map(
+                    (
+                      team
+                    ) =>
+                      Number(
+                        team.id
+                      )
+                  );
+
               for (
                 const matchup
                 of typed.matchups ?? []
@@ -393,6 +411,15 @@ export default function SeasonLongCommissioner({
                 }
 
                 grouped[week].push({
+                  matchupId:
+                    matchup.id ===
+                      null ||
+                    matchup.id ===
+                      undefined
+                      ? null
+                      : Number(
+                          matchup.id
+                        ),
                   homeTeamId:
                     matchup.home_team_id ===
                       null
@@ -408,6 +435,66 @@ export default function SeasonLongCommissioner({
                           matchup.away_team_id
                         ),
                 });
+              }
+
+              for (
+                const [
+                  weekKey,
+                  rows,
+                ]
+                of Object.entries(
+                  grouped
+                )
+              ) {
+                const usedTeamIds =
+                  new Set(
+                    rows.flatMap(
+                      (
+                        row
+                      ) => [
+                        row.homeTeamId,
+                        row.awayTeamId,
+                      ]
+                    )
+                      .filter(
+                        (
+                          teamId
+                        ): teamId is number =>
+                          teamId !==
+                          null
+                      )
+                  );
+
+                const byeTeamIds =
+                  activeTeamIds.filter(
+                    (
+                      teamId
+                    ) =>
+                      !usedTeamIds.has(
+                        teamId
+                      )
+                  );
+
+                for (
+                  const byeTeamId
+                  of byeTeamIds
+                ) {
+                  rows.push({
+                    matchupId:
+                      null,
+                    homeTeamId:
+                      byeTeamId,
+                    awayTeamId:
+                      null,
+                  });
+                }
+
+                grouped[
+                  Number(
+                    weekKey
+                  )
+                ] =
+                  rows;
               }
 
               return grouped;
@@ -813,6 +900,8 @@ export default function SeasonLongCommissioner({
       index += 2
     ) {
       rows.push({
+        matchupId:
+          null,
         homeTeamId:
           activeTeams[index]
             ?.id ??
@@ -878,6 +967,8 @@ export default function SeasonLongCommissioner({
           rowIndex
         ) {
           rows.push({
+            matchupId:
+              null,
             homeTeamId:
               null,
             awayTeamId:
@@ -923,7 +1014,7 @@ export default function SeasonLongCommissioner({
 
     if (
       !window.confirm(
-        "Randomize the full Season-Long Head-to-Head regular-season schedule? This will replace the existing matchup schedule."
+        "Randomize the full Season-Long Head-to-Head regular-season schedule? This is only allowed before regular-season play begins and will replace the current regular-season schedule."
       )
     ) {
       return;
@@ -1087,6 +1178,9 @@ export default function SeasonLongCommissioner({
                 matchups:
                   rows.map(
                     (row) => ({
+                      matchupId:
+                        row.matchupId ??
+                        null,
                       homeTeamId:
                         row.homeTeamId,
                       awayTeamId:
@@ -2204,7 +2298,7 @@ export default function SeasonLongCommissioner({
                   styles.warning
                 }
               >
-                Randomize Full Schedule replaces the current Head-to-Head schedule. Manual edits below save only the selected week.
+                Randomize Full Schedule is available only before regular-season play begins. Manual edits below save only the selected future week, and BYE / OPEN leaves that team unmatched for that week.
               </div>
 
               <div
@@ -3540,3 +3634,4 @@ const styles:
         "rgba(20,20,24,.94)",
     },
 };
+

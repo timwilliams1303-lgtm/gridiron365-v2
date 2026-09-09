@@ -524,15 +524,17 @@ export async function GET(
         .from(
           "season_long_matchups"
         )
-        .select(
-          "id",
-          {
-            count:
-              "exact",
-            head:
-              true,
-          }
-        )
+        .select(`
+          id,
+          week,
+          home_fantasy_team_id,
+          away_fantasy_team_id,
+          home_points,
+          away_points,
+          home_score_final,
+          away_score_final,
+          is_final
+        `)
         .eq(
           "league_id",
           leagueId
@@ -544,6 +546,20 @@ export async function GET(
         .eq(
           "matchup_type",
           "regular_season"
+        )
+        .order(
+          "week",
+          {
+            ascending:
+              true,
+          }
+        )
+        .order(
+          "id",
+          {
+            ascending:
+              true,
+          }
         ),
 
       admin
@@ -622,8 +638,45 @@ export async function GET(
       h2hStandingsResult.data ??
       [],
     h2hMatchupCount:
-      h2hMatchupsResult.count ??
-      0,
+      (
+        h2hMatchupsResult.data ??
+        []
+      ).length,
+    regularSeasonWeeks:
+      integer(
+        settingsResult.data?.regular_season_weeks,
+        14,
+        1,
+        18
+      ),
+    matchups:
+      (
+        h2hMatchupsResult.data ??
+        []
+      ).map(
+        (
+          matchup
+        ) => ({
+          id:
+            matchup.id,
+          week:
+            matchup.week,
+          home_team_id:
+            matchup.home_fantasy_team_id,
+          away_team_id:
+            matchup.away_fantasy_team_id,
+          home_points:
+            matchup.home_points,
+          away_points:
+            matchup.away_points,
+          home_score_final:
+            matchup.home_score_final,
+          away_score_final:
+            matchup.away_score_final,
+          is_final:
+            matchup.is_final,
+        })
+      ),
     activeWeek,
     submittedEntries:
       submittedResult.count ??
@@ -1021,46 +1074,230 @@ export async function POST(
 
   if (
     action ===
-    "build-h2h-schedule"
+    "randomize-h2h-schedule"
   ) {
     const {
       data:
-        settingsData,
+        result,
       error:
-        settingsError,
+        resultError,
     } =
-      await admin
-        .from(
-          "season_long_settings"
-        )
-        .select(`
-          competition_format,
-          regular_season_weeks
-        `)
-        .eq(
-          "league_id",
-          leagueId
-        )
-        .maybeSingle();
+      await userClient.rpc(
+        "commissioner_generate_season_long_h2h_schedule",
+        {
+          p_league_id:
+            leagueId,
+          p_season:
+            league.season,
+          p_randomize:
+            true,
+        }
+      );
 
 
     if (
-      settingsError
+      resultError
     ) {
       return jsonError(
-        settingsError.message,
-        500
+        resultError.message,
+        409
+      );
+    }
+
+
+    return NextResponse.json({
+      success:
+        true,
+      result,
+    });
+  }
+
+
+  if (
+    action ===
+    "save-h2h-schedule-week"
+  ) {
+    const week =
+      integer(
+        body.week,
+        0,
+        1,
+        18
+      );
+
+
+    if (!week) {
+      return jsonError(
+        "A valid regular-season week is required.",
+        400
       );
     }
 
 
     if (
-      !settingsData ||
-      settingsData.competition_format !==
-        "head_to_head"
+      !Array.isArray(
+        body.matchups
+      )
     ) {
       return jsonError(
-        "Set League Format to Head-to-Head and save the settings before building the schedule.",
+        "Matchups must be supplied as an array.",
+        400
+      );
+    }
+
+
+    const normalizedMatchups =
+      body.matchups.map(
+        (
+          matchup
+        ) => {
+          const source =
+            (
+              matchup ??
+              {}
+            ) as Record<
+              string,
+              unknown
+            >;
+
+          const homeRaw =
+            source.homeTeamId;
+
+          const awayRaw =
+            source.awayTeamId;
+
+          const homeTeamId =
+            homeRaw ===
+              null ||
+            homeRaw ===
+              undefined ||
+            homeRaw ===
+              ""
+              ? null
+              : integer(
+                  homeRaw,
+                  0,
+                  1,
+                  Number.MAX_SAFE_INTEGER
+                );
+
+          const awayTeamId =
+            awayRaw ===
+              null ||
+            awayRaw ===
+              undefined ||
+            awayRaw ===
+              ""
+              ? null
+              : integer(
+                  awayRaw,
+                  0,
+                  1,
+                  Number.MAX_SAFE_INTEGER
+                );
+
+          return {
+            homeTeamId:
+              homeTeamId ||
+              null,
+            awayTeamId:
+              awayTeamId ||
+              null,
+          };
+        }
+      );
+
+
+    const {
+      data:
+        result,
+      error:
+        resultError,
+    } =
+      await userClient.rpc(
+        "commissioner_replace_season_long_h2h_week",
+        {
+          p_league_id:
+            leagueId,
+          p_season:
+            league.season,
+          p_week:
+            week,
+          p_matchups:
+            normalizedMatchups,
+        }
+      );
+
+
+    if (
+      resultError
+    ) {
+      return jsonError(
+        resultError.message,
+        409
+      );
+    }
+
+
+    return NextResponse.json({
+      success:
+        true,
+      result,
+    });
+  }
+
+
+  if (
+    action ===
+    "set-h2h-matchup"
+  ) {
+    const week =
+      integer(
+        body.week,
+        0,
+        1,
+        18
+      );
+
+    const homeFantasyTeamId =
+      integer(
+        body.homeFantasyTeamId,
+        0,
+        1,
+        Number.MAX_SAFE_INTEGER
+      );
+
+    const awayFantasyTeamId =
+      integer(
+        body.awayFantasyTeamId,
+        0,
+        1,
+        Number.MAX_SAFE_INTEGER
+      );
+
+    const matchupId =
+      body.matchupId ===
+        null ||
+      body.matchupId ===
+        undefined ||
+      body.matchupId ===
+        ""
+        ? null
+        : integer(
+            body.matchupId,
+            0,
+            1,
+            Number.MAX_SAFE_INTEGER
+          );
+
+
+    if (
+      !week ||
+      !homeFantasyTeamId ||
+      !awayFantasyTeamId
+    ) {
+      return jsonError(
+        "Week, home team and away team are required.",
         400
       );
     }
@@ -1072,13 +1309,21 @@ export async function POST(
       error:
         resultError,
     } =
-      await admin.rpc(
-        "build_season_long_h2h_schedule",
+      await userClient.rpc(
+        "commissioner_set_season_long_h2h_matchup",
         {
           p_league_id:
             leagueId,
           p_season:
             league.season,
+          p_week:
+            week,
+          p_home_fantasy_team_id:
+            homeFantasyTeamId,
+          p_away_fantasy_team_id:
+            awayFantasyTeamId,
+          p_matchup_id:
+            matchupId,
         }
       );
 
@@ -1088,7 +1333,7 @@ export async function POST(
     ) {
       return jsonError(
         resultError.message,
-        500
+        409
       );
     }
 
@@ -1096,11 +1341,111 @@ export async function POST(
     return NextResponse.json({
       success:
         true,
-      matchupsCreated:
-        Number(
-          result ??
-          0
-        ),
+      result,
+    });
+  }
+
+
+  if (
+    action ===
+    "delete-h2h-matchup"
+  ) {
+    const matchupId =
+      integer(
+        body.matchupId,
+        0,
+        1,
+        Number.MAX_SAFE_INTEGER
+      );
+
+
+    if (!matchupId) {
+      return jsonError(
+        "A valid matchup ID is required.",
+        400
+      );
+    }
+
+
+    const {
+      data:
+        result,
+      error:
+        resultError,
+    } =
+      await userClient.rpc(
+        "commissioner_delete_season_long_h2h_matchup",
+        {
+          p_league_id:
+            leagueId,
+          p_season:
+            league.season,
+          p_matchup_id:
+            matchupId,
+        }
+      );
+
+
+    if (
+      resultError
+    ) {
+      return jsonError(
+        resultError.message,
+        409
+      );
+    }
+
+
+    return NextResponse.json({
+      success:
+        true,
+      result,
+    });
+  }
+
+
+  if (
+    action ===
+    "build-h2h-schedule"
+  ) {
+    /*
+     * Compatibility action for any older UI still calling
+     * "build-h2h-schedule". Route it through the new protected
+     * commissioner generator instead of the legacy unguarded builder.
+     */
+    const {
+      data:
+        result,
+      error:
+        resultError,
+    } =
+      await userClient.rpc(
+        "commissioner_generate_season_long_h2h_schedule",
+        {
+          p_league_id:
+            leagueId,
+          p_season:
+            league.season,
+          p_randomize:
+            false,
+        }
+      );
+
+
+    if (
+      resultError
+    ) {
+      return jsonError(
+        resultError.message,
+        409
+      );
+    }
+
+
+    return NextResponse.json({
+      success:
+        true,
+      result,
     });
   }
 

@@ -111,6 +111,20 @@ export async function GET(
         )
       );
 
+    const requestedThroughWeek =
+      Number(
+        url.searchParams.get(
+          "week"
+        )
+      );
+
+    const throughWeek =
+      Number.isInteger(requestedThroughWeek) &&
+      requestedThroughWeek >= 1 &&
+      requestedThroughWeek <= 18
+        ? requestedThroughWeek
+        : null;
+
     const playerId =
       Number(rawPlayerId);
 
@@ -367,7 +381,7 @@ export async function GET(
       );
 
 
-    const weekly =
+    const allWeekly =
       weeks.map((week) => {
         const stat =
           statsByWeek.get(week) ??
@@ -435,6 +449,31 @@ export async function GET(
           stats: stat,
         };
       });
+
+
+    /*
+     * Build the weekly profile progressively as the season moves.
+     *
+     * When the lineup page supplies ?week=N, only Weeks 1..N are shown
+     * in the modal. This prevents future projection-only weeks from
+     * pre-populating the weekly-stat box before those weeks arrive.
+     *
+     * If week is omitted, fall back to rows that have actual/live/final
+     * game data so older callers still get a progressive profile.
+     */
+    const weekly =
+      throughWeek === null
+        ? allWeekly.filter(
+            (row) =>
+              row.stats !== null ||
+              row.fantasyPoints !== null ||
+              row.isLive ||
+              row.isFinal
+          )
+        : allWeekly.filter(
+            (row) =>
+              row.week <= throughWeek
+          );
 
 
     const playedWeeks =

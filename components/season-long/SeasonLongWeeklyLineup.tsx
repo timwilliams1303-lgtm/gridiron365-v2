@@ -1259,12 +1259,11 @@ export default function SeasonLongWeeklyLineup({
     try {
       const response =
         await fetch(
-          `/api/league/${leagueId}/season-long/players/${player.id}/stats?season=${season}`,
-          {
-            cache:
-              "no-store",
-          }
-        );
+  `/api/league/${leagueId}/season-long/players/${player.id}/stats?season=${season}&week=${week}`,
+  {
+    cache: "no-store",
+  }
+);
 
       const data =
         (
