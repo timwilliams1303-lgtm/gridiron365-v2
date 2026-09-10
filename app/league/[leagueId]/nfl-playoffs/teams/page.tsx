@@ -13,6 +13,10 @@ import {
 } from "@/lib/supabase/server";
 
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+
 type PageProps = {
   params: Promise<{
     leagueId: string;
@@ -34,21 +38,15 @@ function validRound(
     undefined
 ) {
   const parsed =
-    Number(
-      value
-    );
-
+    Number(value);
 
   if (
-    !Number.isInteger(
-      parsed
-    ) ||
+    !Number.isInteger(parsed) ||
     parsed < 1 ||
     parsed > 4
   ) {
     return 1;
   }
-
 
   return parsed;
 }
@@ -62,12 +60,10 @@ export default async function NflPlayoffsTeamsPage({
   } =
     await params;
 
-
   const access =
     await requireLeagueMember(
       leagueId
     );
-
 
   if (
     access.league.leagueType !==
@@ -78,21 +74,15 @@ export default async function NflPlayoffsTeamsPage({
     );
   }
 
-
   const supabase =
     await createSupabaseServerClient();
-
 
   const season =
     access.league.season;
 
-
   const {
-    data:
-      stateData,
-
-    error:
-      stateError,
+    data: stateData,
+    error: stateError,
   } =
     await supabase
       .from(
@@ -111,39 +101,43 @@ export default async function NflPlayoffsTeamsPage({
       )
       .maybeSingle();
 
-
-  if (
-    stateError
-  ) {
+  if (stateError) {
     throw new Error(
       `Could not load NFL Playoffs league state: ${stateError.message}`
     );
   }
-
 
   const state =
     stateData as
       LeagueStateRow |
       null;
 
-
   const roundNumber =
     validRound(
       state?.active_round
     );
 
-
   return (
-    <NflPlayoffsLeagueTeamsRealtime
-      leagueId={
-        leagueId
-      }
-      season={
-        season
-      }
-      roundNumber={
-        roundNumber
-      }
-    />
+    <main
+      style={{
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+        overflowX: "hidden",
+      }}
+    >
+      <NflPlayoffsLeagueTeamsRealtime
+        leagueId={
+          leagueId
+        }
+        season={
+          season
+        }
+        roundNumber={
+          roundNumber
+        }
+      />
+    </main>
   );
 }
+

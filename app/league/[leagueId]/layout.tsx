@@ -7,16 +7,26 @@ import {
   redirect,
 } from "next/navigation";
 
-import SeasonLongLeagueNav from "@/components/season-long/SeasonLongLeagueNav";
-import PickemLeagueNav from "@/components/pickem/PickemLeagueNav";
-import NflPlayoffsLeagueNav from "@/components/nfl-playoffs/NflPlayoffsLeagueNav";
 
-import TraditionalLeagueNav from "@/components/traditional/TraditionalLeagueNav";
 import TraditionalLiveRefresh from "@/components/traditional/TraditionalLiveRefresh";
+
+import LeagueNav from "@/components/leagues/LeagueNav";
 
 import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
+
+import {
+  getLeaguePrimaryAction,
+} from "@/lib/leagues/leagueRoutes";
+
+import type {
+  G365LeagueType,
+} from "@/lib/leagues/leagueCapabilities";
+
+import {
+  getLeagueDisplayLabels,
+} from "@/lib/leagues/leagueDisplayLabels";
 
 import {
   createSupabaseServerClient,
@@ -43,156 +53,6 @@ function isUuid(
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value
   );
-}
-
-
-function getLeagueTypeLabel(
-  leagueType:
-    string,
-  playerSelectionMode:
-    string
-) {
-  if (
-    leagueType ===
-    "traditional"
-  ) {
-    return "TRADITIONAL";
-  }
-
-
-  if (
-    leagueType ===
-    "season_long"
-  ) {
-    return "SEASON-LONG";
-  }
-
-
-  if (
-    leagueType ===
-    "nfl_playoffs"
-  ) {
-    return "NFL PLAYOFFS";
-  }
-
-
-  if (
-    leagueType ===
-    "pickem"
-  ) {
-    return "G365 PICK'EM";
-  }
-
-
-  return "GRIDIRON365";
-}
-
-
-function getSelectionModeLabel(
-  leagueType:
-    string,
-  playerSelectionMode:
-    string
-) {
-  if (
-    leagueType ===
-    "traditional"
-  ) {
-    return null;
-  }
-
-
-  if (
-    playerSelectionMode ===
-    "salary"
-  ) {
-    return "SALARY CAP";
-  }
-
-
-  if (
-    playerSelectionMode ===
-    "no_salary"
-  ) {
-    return "NO SALARY CAP";
-  }
-
-
-  return null;
-}
-
-
-
-function getMobileLeagueTypeLabel(
-  leagueType:
-    string,
-  seasonLongCompetitionFormat:
-    | "total_points"
-    | "head_to_head"
-) {
-  if (
-    leagueType ===
-    "traditional"
-  ) {
-    return "TRAD";
-  }
-
-  if (
-    leagueType ===
-    "season_long"
-  ) {
-    return seasonLongCompetitionFormat ===
-      "head_to_head"
-      ? "SL-H2H"
-      : "SL-TP";
-  }
-
-  if (
-    leagueType ===
-    "nfl_playoffs"
-  ) {
-    return "NFLP";
-  }
-
-  if (
-    leagueType ===
-    "pickem"
-  ) {
-    return "PICK'EM";
-  }
-
-  return "G365";
-}
-
-
-function getMobileSelectionModeLabel(
-  leagueType:
-    string,
-  playerSelectionMode:
-    string
-) {
-  if (
-    leagueType ===
-    "traditional"
-  ) {
-    return null;
-  }
-
-  if (
-    playerSelectionMode ===
-    "salary"
-  ) {
-    return "SAL";
-  }
-
-  if (
-    playerSelectionMode ===
-    "no_salary"
-  ) {
-    return "NO SAL";
-  }
-
-  return null;
 }
 
 
@@ -266,16 +126,6 @@ export default async function LeagueLayout({
     "season_long";
 
 
-  const isNflPlayoffs =
-    league.leagueType ===
-    "nfl_playoffs";
-
-
-  const isPickem =
-    league.leagueType ===
-    "pickem";
-
-
   /*
    * ============================================================
    * SEASON-LONG NAVIGATION SETTINGS
@@ -347,54 +197,38 @@ export default async function LeagueLayout({
   }
 
 
-  const leagueTypeLabel =
-    getLeagueTypeLabel(
-      league.leagueType,
-      league.playerSelectionMode
-    );
+  const leagueType =
+    league.leagueType as
+      G365LeagueType;
 
 
-  const selectionModeLabel =
-    getSelectionModeLabel(
-      league.leagueType,
-      league.playerSelectionMode
-    );
+  const {
+    leagueTypeLabel,
+    mobileLeagueTypeLabel,
+    selectionModeLabel,
+    mobileSelectionModeLabel,
+  } =
+    getLeagueDisplayLabels({
+      leagueType,
+      playerSelectionMode:
+        league.playerSelectionMode,
+      seasonLongCompetitionFormat,
+    });
 
 
-  const mobileLeagueTypeLabel =
-    getMobileLeagueTypeLabel(
-      league.leagueType,
-      seasonLongCompetitionFormat
-    );
-
-
-  const mobileSelectionModeLabel =
-    getMobileSelectionModeLabel(
-      league.leagueType,
-      league.playerSelectionMode
-    );
+  const primaryAction =
+    getLeaguePrimaryAction({
+      leagueId,
+      leagueType,
+    });
 
 
   const primaryActionLabel =
-    isTraditional
-      ? "My Team"
-      : isSeasonLong ||
-          isNflPlayoffs
-        ? "My Entry"
-        : isPickem
-          ? "My Picks"
-          : "League Home";
+    primaryAction.label;
 
 
   const primaryActionHref =
-    isTraditional
-      ? `/league/${leagueId}/team`
-      : isSeasonLong ||
-          isNflPlayoffs
-        ? `/league/${leagueId}/entry`
-        : isPickem
-          ? `/league/${leagueId}/pickem/my-picks`
-          : `/league/${leagueId}`;
+    primaryAction.href;
 
 
   return (
@@ -405,216 +239,28 @@ export default async function LeagueLayout({
           TRADITIONAL REALTIME ONLY
       =================================================== */}
 
-      {isTraditional ? (
-        <TraditionalLiveRefresh
-          leagueId={
-            leagueId
-          }
-          mode="league"
-        />
-      ) : null}
-
-
-      {/* ==================================================
-          COMPACT LEAGUE HEADER
-      =================================================== */}
-
-      <header
-        className="g365-league-header"
-      >
-        {/* LOGO */}
-
-        <div
-          className="g365-league-logo-wrap"
-        >
-          <Link
-            href={`/league/${leagueId}`}
-            aria-label="Gridiron365 League Home"
-          >
-            <Image
-              src="/branding/gridiron365-logo-full.png"
-              alt="Gridiron365"
-              width={300}
-              height={170}
-              priority
-              className="g365-league-logo"
-            />
-          </Link>
-        </div>
-
-
-        {/* LEAGUE */}
-
-        <div
-          className="g365-league-identity"
-        >
-          <div
-            className="g365-league-badges"
-          >
-            <span
-              className="g365-league-badge"
-            >
-              <span className="g365-header-label-desktop">
-                {leagueTypeLabel}
-              </span>
-              <span className="g365-header-label-mobile">
-                {mobileLeagueTypeLabel}
-              </span>
-            </span>
-
-
-            {selectionModeLabel ? (
-              <span
-                className="
-                  g365-league-badge
-                  g365-league-badge-muted
-                "
-              >
-                <span className="g365-header-label-desktop">
-                  {selectionModeLabel}
-                </span>
-                <span className="g365-header-label-mobile">
-                  {mobileSelectionModeLabel}
-                </span>
-              </span>
-            ) : null}
-
-
-            <span
-              className="
-                g365-league-badge
-                g365-league-badge-muted
-              "
-            >
-              {league.season}
-            </span>
-
-
-            {isCommissioner ? (
-              <span
-                className="g365-league-badge"
-              >
-                <span className="g365-header-label-desktop">
-                  COMMISSIONER
-                </span>
-                <span className="g365-header-label-mobile">
-                  COMMISH
-                </span>
-              </span>
-            ) : null}
-          </div>
-
-
-          <h1
-            className="g365-league-title"
-          >
-            {league.name}
-          </h1>
-
-
-          {fantasyTeam ? (
-            <span
-              className="g365-league-team"
-            >
-              {fantasyTeam.teamName}
-            </span>
-          ) : (
-            <span
-              className="g365-league-team"
-            >
-              League Member
-            </span>
-          )}
-        </div>
-
-
-        {/* ACTIONS */}
-
-        <div
-          className="g365-league-actions"
-        >
-          <Link
-            href="/my-leagues"
-            className="g365-league-action"
-          >
-            My Leagues
-          </Link>
-
-
-          {fantasyTeam ? (
-            <Link
-              href={
-                primaryActionHref
-              }
-              className="
-                g365-league-action
-                g365-league-action-primary
-              "
-            >
-              {primaryActionLabel}
-            </Link>
-          ) : null}
-        </div>
-      </header>
-
-
-      {/* ==================================================
-          LEAGUE NAVIGATION
-      =================================================== */}
-
-      {isTraditional ? (
-        <TraditionalLeagueNav
-          leagueId={
-            leagueId
-          }
-          isCommissioner={
-            isCommissioner
-          }
-        />
-      ) : null}
-
-
-      {isSeasonLong ? (
-        <SeasonLongLeagueNav
-          leagueId={
-            leagueId
-          }
-          isCommissioner={
-            isCommissioner
-          }
-          competitionFormat={
-            seasonLongCompetitionFormat
-          }
-          playoffsEnabled={
-            seasonLongPlayoffsEnabled
-          }
-        />
-      ) : null}
-
-
-      {isPickem ? (
-        <PickemLeagueNav
-          leagueId={leagueId}
-          isCommissioner={
-            isCommissioner
-          }
-        />
-      ) : null}
-
-
-      {isNflPlayoffs ? (
-        <NflPlayoffsLeagueNav
-          leagueId={
-            leagueId
-          }
-          season={
-            league.season
-          }
-          isCommissioner={
-            isCommissioner
-          }
-        />
-      ) : null}
+      <LeagueNav
+        leagueId={
+          leagueId
+        }
+        leagueType={
+          leagueType
+        }
+        isCommissioner={
+          isCommissioner
+        }
+        competitionFormat={
+          isSeasonLong
+            ? seasonLongCompetitionFormat
+            : null
+        }
+        playoffsEnabled={
+          isSeasonLong
+            ? seasonLongPlayoffsEnabled
+            : false
+        }
+        ariaLabel="League Navigation"
+      />
 
 
       {/* ==================================================
@@ -629,4 +275,3 @@ export default async function LeagueLayout({
     </div>
   );
 }
-

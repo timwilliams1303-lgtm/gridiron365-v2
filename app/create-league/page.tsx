@@ -3,6 +3,7 @@
 
 import {
   FormEvent,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -159,6 +160,18 @@ const leagueFormats:
   ];
 
 
+
+type TraditionalCreationStatus = {
+  season: number;
+  allowed: boolean;
+  scheduleReady: boolean;
+  firstKickoffAt: string | null;
+  cutoffAt: string | null;
+  timeZone: string;
+  message: string;
+};
+
+
 export default function CreateLeaguePage() {
   const router =
     useRouter();
@@ -178,7 +191,7 @@ export default function CreateLeaguePage() {
     useState<
       LeagueFormat["id"]
     >(
-      "traditional"
+      "season_long_salary"
     );
 
 
@@ -229,6 +242,22 @@ export default function CreateLeaguePage() {
     useState(false);
 
 
+  const [
+    traditionalCreationStatus,
+    setTraditionalCreationStatus,
+  ] =
+    useState<
+      TraditionalCreationStatus | null
+    >(null);
+
+
+  const [
+    traditionalStatusLoading,
+    setTraditionalStatusLoading,
+  ] =
+    useState(true);
+
+
   const selectedFormat =
     leagueFormats.find(
       (
@@ -238,6 +267,106 @@ export default function CreateLeaguePage() {
         selectedFormatId
     ) ??
     leagueFormats[0];
+
+
+  const parsedSeasonForAvailability =
+    Number(
+      season
+    );
+
+
+  useEffect(
+    () => {
+      let cancelled =
+        false;
+
+      async function loadTraditionalCreationStatus() {
+        if (
+          !Number.isInteger(
+            parsedSeasonForAvailability
+          ) ||
+          parsedSeasonForAvailability <
+            2000 ||
+          parsedSeasonForAvailability >
+            2200
+        ) {
+          if (!cancelled) {
+            setTraditionalCreationStatus(
+              null
+            );
+
+            setTraditionalStatusLoading(
+              false
+            );
+          }
+
+          return;
+        }
+
+        setTraditionalStatusLoading(
+          true
+        );
+
+        const {
+          data,
+          error,
+        } =
+          await supabase.rpc(
+            "get_traditional_league_creation_status",
+            {
+              p_season:
+                parsedSeasonForAvailability,
+            }
+          );
+
+        if (cancelled) {
+          return;
+        }
+
+        if (
+          error ||
+          !data ||
+          typeof data !==
+            "object"
+        ) {
+          setTraditionalCreationStatus(
+            null
+          );
+
+          setTraditionalStatusLoading(
+            false
+          );
+
+          return;
+        }
+
+        setTraditionalCreationStatus(
+          data as TraditionalCreationStatus
+        );
+
+        setTraditionalStatusLoading(
+          false
+        );
+      }
+
+      void loadTraditionalCreationStatus();
+
+      return () => {
+        cancelled =
+          true;
+      };
+    },
+    [
+      parsedSeasonForAvailability,
+      supabase,
+    ]
+  );
+
+
+  const traditionalCreationClosed =
+    traditionalCreationStatus
+      ?.allowed ===
+    false;
 
 
   const isTraditional =
@@ -292,6 +421,21 @@ export default function CreateLeaguePage() {
         Number(
           season
         );
+
+
+      if (
+        selectedFormat
+          .leagueType ===
+          "traditional" &&
+        traditionalCreationStatus
+          ?.allowed ===
+          false
+      ) {
+        throw new Error(
+          traditionalCreationStatus
+            .message
+        );
+      }
 
 
       const result =
@@ -448,14 +592,28 @@ export default function CreateLeaguePage() {
                 selectedFormatId;
 
 
+              const unavailable =
+                format.leagueType ===
+                  "traditional" &&
+                traditionalCreationClosed;
+
               return (
                 <button
                   key={
                     format.id
                   }
                   type="button"
+                  disabled={
+                    unavailable
+                  }
                   onClick={
                     () => {
+                      if (
+                        unavailable
+                      ) {
+                        return;
+                      }
+
                       setSelectedFormatId(
                         format.id
                       );
@@ -469,6 +627,10 @@ export default function CreateLeaguePage() {
 
                     ...(selected
                       ? styles.formatButtonSelected
+                      : {}),
+
+                    ...(unavailable
+                      ? styles.formatButtonDisabled
                       : {}),
                   }}
                 >
@@ -501,13 +663,32 @@ export default function CreateLeaguePage() {
 
                   {format.leagueType ===
                   "traditional" ? (
-                    <span
-                      style={
-                        styles.traditionalBadge
-                      }
-                    >
-                      UP TO 12 TEAMS
-                    </span>
+                    <>
+                      <span
+                        style={
+                          unavailable
+                            ? styles.closedBadge
+                            : styles.traditionalBadge
+                        }
+                      >
+                        {traditionalStatusLoading
+                          ? "CHECKING AVAILABILITY"
+                          : unavailable
+                            ? "CLOSED"
+                            : "UP TO 12 TEAMS"}
+                      </span>
+
+                      {unavailable &&
+                      traditionalCreationStatus ? (
+                        <span
+                          style={
+                            styles.closedMessage
+                          }
+                        >
+                          {traditionalCreationStatus.message}
+                        </span>
+                      ) : null}
+                    </>
                   ) : (
                     <span
                       style={
@@ -792,7 +973,11 @@ export default function CreateLeaguePage() {
               <Button
                 type="submit"
                 disabled={
-                  working
+                  working ||
+                  (
+                    isTraditional &&
+                    traditionalCreationClosed
+                  )
                 }
                 style={
                   styles.submitButton
@@ -1051,6 +1236,57 @@ const styles = {
       ".09em",
   },
 
+  formatButtonDisabled: {
+    opacity:
+      0.58,
+
+    cursor:
+      "not-allowed",
+
+    border:
+      "1px solid rgba(255,80,80,.30)",
+
+    background:
+      "linear-gradient(180deg,rgba(85,16,20,.42),rgba(14,14,18,.96))",
+  },
+
+  closedBadge: {
+    marginTop:
+      "auto",
+
+    paddingTop:
+      "17px",
+
+    color:
+      "#ff7e84",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      900,
+
+    letterSpacing:
+      ".09em",
+  },
+
+  closedMessage: {
+    marginTop:
+      "6px",
+
+    color:
+      "#ff9a9e",
+
+    fontSize:
+      "10px",
+
+    fontWeight:
+      800,
+
+    lineHeight:
+      1.4,
+  },
+
   traditionalBadge: {
     marginTop:
       "auto",
@@ -1270,4 +1506,3 @@ const styles = {
       "24px",
   },
 };
-

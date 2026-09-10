@@ -33,7 +33,7 @@ type PickemGameRow = {
   id: number;
   league_id: string;
   pickem_week_id: number;
-  sport: "ncaaf" | "nfl";
+  sport: "ncaaf" | "nfl" | "ncaamb";
   kickoff_at: string;
   away_team_name: string;
   home_team_name: string;
@@ -93,6 +93,7 @@ type SyncResult = {
 const ODDS_SPORT_KEYS = {
   nfl: "americanfootball_nfl",
   ncaaf: "americanfootball_ncaaf",
+  ncaamb: "basketball_ncaab",
 } as const;
 
 
@@ -607,7 +608,7 @@ function toOddsApiTime(
 
 async function fetchOdds(
   apiKey: string,
-  sport: "ncaaf" | "nfl",
+  sport: "ncaaf" | "nfl" | "ncaamb",
   from: string,
   to: string
 ) {
@@ -1030,10 +1031,50 @@ export async function POST(
         6 * 60 * 60 * 1000
       ).toISOString();
 
+    const basketballHorizon =
+      now.getTime() +
+      48 * 60 * 60 * 1000;
+
+    const gamesForOdds =
+      preview
+        ? games
+        : games.filter(
+            (game) => {
+              if (
+                game.sport !==
+                "ncaamb"
+              ) {
+                return (
+                  game.spread_status !==
+                  "frozen" &&
+                  game.spread_status !==
+                  "excluded"
+                );
+              }
+
+              const tipoff =
+                new Date(
+                  game.kickoff_at
+                ).getTime();
+
+              return (
+                Number.isFinite(
+                  tipoff
+                ) &&
+                tipoff <=
+                  basketballHorizon &&
+                game.spread_status !==
+                  "frozen" &&
+                game.spread_status !==
+                  "excluded"
+              );
+            }
+          );
+
     const sports =
       Array.from(
         new Set(
-          games.map(
+          gamesForOdds.map(
             (game) =>
               game.sport
           )
@@ -1042,11 +1083,12 @@ export async function POST(
 
     const oddsBySport:
       Record<
-        "ncaaf" | "nfl",
+        "ncaaf" | "nfl" | "ncaamb",
         OddsEvent[]
       > = {
         ncaaf: [],
         nfl: [],
+        ncaamb: [],
       };
 
     for (
@@ -1275,7 +1317,7 @@ export async function POST(
       new Set<number>();
 
     for (
-      const game of games
+      const game of gamesForOdds
     ) {
       if (
         game.spread_status ===
@@ -1300,6 +1342,36 @@ export async function POST(
         result.unmatchedGames +=
           1;
 
+        if (
+          game.sport ===
+          "ncaamb"
+        ) {
+          const tipoff =
+            new Date(
+              game.kickoff_at
+            ).getTime();
+
+          /*
+           * Basketball lines are published on a rolling daily
+           * basis. If a game is still more than six hours away,
+           * keep it pending and let the existing hourly worker
+           * retry rather than permanently excluding it too early.
+           */
+          if (
+            Number.isFinite(
+              tipoff
+            ) &&
+            tipoff >
+              now.getTime() +
+                6 * 60 * 60 * 1000
+          ) {
+            weekFailures.add(
+              game.pickem_week_id
+            );
+            continue;
+          }
+        }
+
         await supabase
           .from(
             "pickem_games"
@@ -1310,7 +1382,10 @@ export async function POST(
             is_eligible:
               false,
             exclusion_reason:
-              "No trustworthy matching sportsbook event was available from The Odds API on G365 Line Day.",
+              game.sport ===
+              "ncaamb"
+                ? "No trustworthy matching sportsbook event became available before the NCAAMB game approached tipoff."
+                : "No trustworthy matching sportsbook event was available from The Odds API on G365 Line Day.",
             updated_at:
               nowIso,
           })
@@ -1607,6 +1682,31 @@ export async function POST(
           game.pickem_week_id
         );
         continue;
+      }
+    }
+
+    /*
+     * NCAAMB line availability is rolling. Keep the master week
+     * eligible for hourly line-sync retries until every basketball
+     * game on that card has either frozen or been excluded.
+     *
+     * The rows here are the pre-run snapshot, so a week may require
+     * one harmless extra hourly pass after its last game freezes.
+     */
+    for (
+      const game of games
+    ) {
+      if (
+        game.sport ===
+          "ncaamb" &&
+        game.spread_status !==
+          "frozen" &&
+        game.spread_status !==
+          "excluded"
+      ) {
+        weekFailures.add(
+          game.pickem_week_id
+        );
       }
     }
 

@@ -9,6 +9,10 @@ import {
 } from "@/lib/leagues/requireLeagueMember";
 
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+
 type PageProps = {
   params: Promise<{
     leagueId: string;
@@ -24,12 +28,10 @@ export default async function NflPlayoffsStandingsPage({
   } =
     await params;
 
-
   const access =
     await requireLeagueMember(
       leagueId
     );
-
 
   if (
     access.league.leagueType !==
@@ -40,12 +42,20 @@ export default async function NflPlayoffsStandingsPage({
     );
   }
 
-
   return (
-    <NflPlayoffsStandings
-      leagueId={
-        leagueId
-      }
-    />
+    <main
+      style={{
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+        overflowX: "hidden",
+      }}
+    >
+      <NflPlayoffsStandings
+        leagueId={
+          leagueId
+        }
+      />
+    </main>
   );
 }

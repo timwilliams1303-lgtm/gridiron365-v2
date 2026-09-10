@@ -368,11 +368,32 @@ export default async function NflPlayoffsStandings({
           }
 
           .g365-nflp-standings-summary {
-            grid-template-columns: repeat(2,minmax(0,1fr)) !important;
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            gap: 8px !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-x: contain;
+          }
+
+          .g365-nflp-standings-summary > * {
+            flex: 0 0 145px !important;
+            min-width: 145px !important;
+          }
+
+          .g365-nflp-standings-table-wrap {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-x: contain;
+            scrollbar-width: thin;
           }
 
           .g365-nflp-standings-table {
-            min-width: 760px;
+            min-width: 760px !important;
           }
         }
 

@@ -12,7 +12,7 @@ import {
   createSupabaseBrowserClient,
 } from "@/lib/supabase/browser";
 
-type PickemSport = "cfb" | "nfl" | "nhl";
+type PickemSport = "cfb" | "nfl" | "ncaamb" | "nhl";
 type SportFilter = "all" | PickemSport;
 
 type Props = {
@@ -57,7 +57,7 @@ type FootballPickRow = {
   team_name: string;
   pick_id: number | null;
   game_id: number | null;
-  sport: "ncaaf" | "nfl" | null;
+  sport: "ncaaf" | "nfl" | "ncaamb" | null;
   kickoff_at: string | null;
   away_team_name: string | null;
   home_team_name: string | null;
@@ -119,7 +119,7 @@ type NhlTeamRow = {
 type UnifiedPick =
   | {
       key: string;
-      sport: "cfb" | "nfl";
+      sport: "cfb" | "nfl" | "ncaamb";
       fantasyTeamId: number;
       kickoffAt: string | null;
       matchup: string;
@@ -206,6 +206,7 @@ function resultColor(value: string): string {
 function sportText(sport: PickemSport): string {
   if (sport === "cfb") return "CFB";
   if (sport === "nfl") return "NFL";
+  if (sport === "ncaamb") return "NCAAMB";
   return "NHL";
 }
 
@@ -323,14 +324,15 @@ export default function MixedPickemLeaguePicks({
       return;
     }
 
-    const wantsFootball =
+    const wantsSharedSports =
       enabledSports.includes("cfb") ||
-      enabledSports.includes("nfl");
+      enabledSports.includes("nfl") ||
+      enabledSports.includes("ncaamb");
 
     const wantsNhl =
       enabledSports.includes("nhl");
 
-    const footballPromise = wantsFootball
+    const footballPromise = wantsSharedSports
       ? supabase.rpc("get_pickem_league_picks_v3", {
           p_league_id: leagueId,
           p_season: season,
@@ -627,10 +629,12 @@ export default function MixedPickemLeaguePicks({
         continue;
       }
 
-      const sport: "cfb" | "nfl" =
+      const sport: "cfb" | "nfl" | "ncaamb" =
         row.sport === "ncaaf"
           ? "cfb"
-          : "nfl";
+          : row.sport === "ncaamb"
+            ? "ncaamb"
+            : "nfl";
 
       if (!enabledSports.includes(sport)) {
         continue;
@@ -1060,6 +1064,9 @@ export default function MixedPickemLeaguePicks({
                 : []),
               ...(enabledSports.includes("nfl")
                 ? [["nfl", "NFL"]]
+                : []),
+              ...(enabledSports.includes("ncaamb")
+                ? [["ncaamb", "NCAAMB"]]
                 : []),
               ...(enabledSports.includes("nhl")
                 ? [["nhl", "NHL"]]
@@ -1637,4 +1644,3 @@ export default function MixedPickemLeaguePicks({
     </main>
   );
 }
-

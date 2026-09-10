@@ -14,11 +14,7 @@ import {
   type MatchupDetailGameContext,
   type MatchupDetailPlayer,
   type MatchupDetailTeam,
-  type TraditionalMatchupDetailData,
 } from "@/lib/traditional/matchup-detail.service";
-
-import InjuryReportButton from "@/components/ui/InjuryReportButton";
-import TraditionalLiveRefresh from "@/components/traditional/TraditionalLiveRefresh";
 
 import {
   requireTraditionalLeague,
@@ -38,15 +34,6 @@ function points(
   value: number
 ) {
   return value.toFixed(2);
-}
-
-
-function projectionPoints(
-  value: number
-) {
-  return Number(
-    value ?? 0
-  ).toFixed(1);
 }
 
 
@@ -160,63 +147,19 @@ function playerStatus(
     player.gameContext;
 
 
-  /*
-   * STATUS display rules:
-   *
-   * BYE:
-   *   BYE
-   *
-   * BEFORE GAME:
-   *   SUN 1:00 PM
-   *   SUN 4:25 PM
-   *   MON 8:15 PM
-   *
-   * LIVE:
-   *   Q1 12:34
-   *   Q2 04:18
-   *   Q3 09:02
-   *   Q4 00:41
-   *   OT 07:55
-   *
-   * COMPLETE:
-   *   FINAL
-   *
-   * The OPP column shows the scheduled opponent. The STATUS
-   * column shows kickoff day/time before the game, live clock
-   * while the game is active, and FINAL when complete.
-   */
-
-  if (
-    !player.nflOpponent
-  ) {
-    return "BYE";
-  }
-
-
   if (
     context
       ?.isActuallyLive
   ) {
-    const liveGameStatus =
-      [
-        quarter(
-          context.period
-        ),
+    return [
+      quarter(
+        context.period
+      ),
 
-        context.clock,
-      ]
-        .filter(
-          Boolean
-        )
-        .join(
-          " "
-        );
-
-
-    return (
-      liveGameStatus ||
-      "LIVE"
-    );
+      context.clock,
+    ]
+      .filter(Boolean)
+      .join(" ");
   }
 
 
@@ -229,82 +172,23 @@ function playerStatus(
   }
 
 
-  const scheduledKickoff =
-    kickoffLabel(
-      player.kickoffAt
-    );
+  if (
+    player.isLocked
+  ) {
+    return "LOCKED";
+  }
 
-
-  return scheduledKickoff !==
-    "—"
-    ? scheduledKickoff.toUpperCase()
-    : "UPCOMING";
-}
-
-
-
-
-function getInjuryDisplay(
-  status:
-    string |
-    null |
-    undefined,
-  detail?:
-    string |
-    null
-) {
-  const normalized =
-    (status ?? "")
-      .trim()
-      .toUpperCase();
 
   if (
-    !normalized ||
-    ["ACTIVE", "HEALTHY", "NORMAL"].includes(normalized)
+    player.nflOpponent
   ) {
-    return null;
+    return kickoffLabel(
+      player.kickoffAt
+    );
   }
 
-  let code: string;
-  let label: string;
 
-  if (normalized.includes("QUESTION") || normalized === "Q") {
-    code = "Q";
-    label = "Questionable";
-  } else if (normalized.includes("DOUBT") || normalized === "D") {
-    code = "D";
-    label = "Doubtful";
-  } else if (normalized === "O" || normalized.includes("OUT")) {
-    code = "OUT";
-    label = "Out";
-  } else if (normalized.includes("INJURED RESERVE") || normalized === "IR") {
-    code = "IR";
-    label = "Injured Reserve";
-  } else if (normalized.includes("PUP") || normalized.includes("PHYSICALLY UNABLE")) {
-    code = "PUP";
-    label = "Physically Unable to Perform";
-  } else if (normalized.includes("NFI") || normalized.includes("NON-FOOTBALL")) {
-    code = "NFI";
-    label = "Non-Football Injury";
-  } else if (normalized.includes("SUSPEND") || normalized === "SUS") {
-    code = "SUSP";
-    label = "Suspended";
-  } else if (normalized.includes("DAY-TO-DAY") || normalized.includes("DAY TO DAY")) {
-    code = "DTD";
-    label = "Day-to-Day";
-  } else {
-    code = normalized.length <= 6 ? normalized : "INJ";
-    label = status ?? "Injury status";
-  }
-
-  const cleanDetail = detail?.trim() || null;
-
-  return {
-    code,
-    label,
-    detail: cleanDetail,
-    text: cleanDetail ? `${code} · ${cleanDetail}` : code,
-  };
+  return "BYE";
 }
 
 
@@ -510,51 +394,6 @@ export default async function TraditionalMatchupDetailPage({
     hasActuallyLiveGame;
 
 
-  /*
-   * ============================================================
-   * NFL GAMES USED BY THIS FANTASY MATCHUP
-   * ============================================================
-   *
-   * Subscribe to every NFL game represented by either fantasy
-   * roster, not only games that are already live. This lets the
-   * matchup page react immediately when a scheduled game crosses
-   * kickoff and when play-by-play updates arrive.
-   *
-   * TraditionalLiveRefresh only listens to Supabase changes and
-   * refreshes server-rendered data. It does not call ESPN or run
-   * fantasy scoring.
-   */
-  const matchupNflGameIds =
-    Array.from(
-      new Set(
-        [
-          ...data.away.starters,
-          ...data.away.bench,
-          ...data.home.starters,
-          ...data.home.bench,
-        ]
-          .map(
-            (
-              player
-            ) =>
-              Number(
-                player.nflGameId
-              )
-          )
-          .filter(
-            (
-              nflGameId
-            ) =>
-              Number.isInteger(
-                nflGameId
-              ) &&
-              nflGameId >
-                0
-          )
-      )
-    );
-
-
   const awayDisplayPoints =
     data.away.points;
 
@@ -598,101 +437,73 @@ export default async function TraditionalMatchupDetailPage({
 
 
   return (
-    <>
-      <TraditionalLiveRefresh
-        leagueId={
-          leagueId
-        }
-        mode="games"
-        nflGameIds={
-          matchupNflGameIds
-        }
-      />
-
-      <main
-        style={
-          styles.page
-        }
-      >
+    <main
+      style={
+        styles.page
+      }
+    >
       <style>{`
+        .g365-mobile-matchup-compare,
+        .g365-mobile-matchup-center,
+        .g365-mobile-bench-compare {
+          display: none;
+        }
+
         @media (max-width: 760px) {
-          .g365-matchup-topbar {
-            grid-template-columns: minmax(0, 1fr) auto !important;
-            gap: 6px !important;
-            padding: 8px !important;
-          }
-
-          .g365-matchup-topbar > :nth-child(2) {
+          .g365-desktop-game-center,
+          .g365-desktop-bench-grid {
             display: none !important;
           }
 
-          .g365-matchup-scoreboard {
-            grid-template-columns: minmax(0, 1fr) !important;
-            gap: 10px !important;
-            padding: 12px 8px !important;
-          }
-
-          .g365-matchup-scoreboard > :nth-child(2) {
-            order: -1;
-          }
-
-          .g365-matchup-summary {
-            grid-template-columns: minmax(0, 1fr) !important;
-            gap: 8px !important;
-          }
-
-          .g365-matchup-main-grid {
-            grid-template-columns: minmax(0, 1fr) !important;
-            gap: 10px !important;
-          }
-
-          .g365-matchup-center-column {
-            grid-column: 1 !important;
-            grid-row: auto !important;
-          }
-
-          .g365-matchup-bench-grid {
-            grid-template-columns: minmax(0, 1fr) !important;
-            gap: 10px !important;
-          }
-
-          .g365-matchup-bench-grid > :nth-child(2) {
-            display: none !important;
-          }
-
-          .g365-matchup-roster {
+          .g365-mobile-matchup-compare,
+          .g365-mobile-bench-compare {
+            display: block !important;
             width: 100% !important;
-            min-width: 0 !important;
-            overflow: hidden !important;
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-x: contain;
+            padding-bottom: 6px;
           }
 
-          .g365-matchup-table-header,
-          .g365-matchup-player-row {
-            grid-template-columns:
-              42px minmax(0, 1fr) 44px 58px 46px 50px !important;
-            gap: 5px !important;
+          .g365-mobile-matchup-compare-inner,
+          .g365-mobile-bench-compare-inner {
+            display: grid !important;
+            grid-template-columns: 430px 430px !important;
+            gap: 8px !important;
+            width: max-content !important;
+            min-width: 868px !important;
           }
 
-          .g365-matchup-player-cell,
-          .g365-matchup-player-names {
-            min-width: 0 !important;
+          .g365-mobile-matchup-center {
+            display: grid !important;
+            gap: 8px !important;
+            margin-top: 8px !important;
+          }
+
+          .g365-mobile-swipe-hint {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 10px !important;
+            margin: 0 0 6px !important;
+            color: #858c96 !important;
+            font-size: 10px !important;
+            font-weight: 850 !important;
+            letter-spacing: .04em !important;
           }
         }
 
         @media (max-width: 430px) {
-          .g365-matchup-table-header,
-          .g365-matchup-player-row {
-            grid-template-columns:
-              38px minmax(0, 1fr) 42px 50px 44px !important;
-            gap: 4px !important;
-          }
-
-          .g365-matchup-table-header > :nth-child(3),
-          .g365-matchup-player-row > :nth-child(3) {
-            display: none !important;
+          .g365-mobile-matchup-compare-inner,
+          .g365-mobile-bench-compare-inner {
+            grid-template-columns: 405px 405px !important;
+            min-width: 818px !important;
           }
         }
       `}</style>
+
       <div
         style={
           styles.shell
@@ -703,7 +514,6 @@ export default async function TraditionalMatchupDetailPage({
         =================================================== */}
 
         <div
-          className="g365-matchup-topbar"
           style={
             styles.topBar
           }
@@ -742,7 +552,6 @@ export default async function TraditionalMatchupDetailPage({
         =================================================== */}
 
         <section
-          className="g365-matchup-scoreboard"
           style={
             styles.scoreboard
           }
@@ -989,7 +798,6 @@ export default async function TraditionalMatchupDetailPage({
         =================================================== */}
 
         <section
-          className="g365-matchup-summary"
           style={
             styles.summaryBar
           }
@@ -1013,21 +821,9 @@ export default async function TraditionalMatchupDetailPage({
                 styles.scoringText
               }
             >
-              {latestScoringPlay ? (
-                <HighlightedScoringPlayText
-                  text={
-                    latestScoringPlay.text
-                  }
-                  participants={
-                    scoringParticipantHighlights(
-                      data,
-                      latestScoringPlay
-                    )
-                  }
-                />
-              ) : (
-                "No scoring play yet"
-              )}
+              {latestScoringPlay
+                ?.text ??
+                "No scoring play yet"}
             </strong>
 
 
@@ -1091,7 +887,7 @@ export default async function TraditionalMatchupDetailPage({
         =================================================== */}
 
         <section
-          className="g365-matchup-main-grid"
+          className="g365-desktop-game-center"
           style={
             styles.mainGrid
           }
@@ -1108,7 +904,6 @@ export default async function TraditionalMatchupDetailPage({
 
 
           <div
-            className="g365-matchup-center-column"
             style={
               styles.centerColumn
             }
@@ -1196,17 +991,7 @@ export default async function TraditionalMatchupDetailPage({
                           </strong>
 
                           <span>
-                            <HighlightedScoringPlayText
-                              text={
-                                play.text
-                              }
-                              participants={
-                                scoringParticipantHighlights(
-                                  data,
-                                  play
-                                )
-                              }
-                            />
+                            {play.text}
                           </span>
                         </div>
 
@@ -1248,12 +1033,85 @@ export default async function TraditionalMatchupDetailPage({
         </section>
 
 
+        <section className="g365-mobile-game-center">
+          <div className="g365-mobile-swipe-hint">
+            <span>STARTING LINEUPS • SIDE-BY-SIDE</span>
+            <span>SWIPE ↔</span>
+          </div>
+
+          <div className="g365-mobile-matchup-compare">
+            <div className="g365-mobile-matchup-compare-inner">
+              <CompactRoster
+                team={data.away}
+                label="STARTERS"
+                week={data.week}
+              />
+
+              <CompactRoster
+                team={data.home}
+                label="STARTERS"
+                week={data.week}
+              />
+            </div>
+          </div>
+
+          <div className="g365-mobile-matchup-center">
+            <Panel title={`LIVE NFL GAMES • ${liveNflGamesCount}`}>
+              {data.liveGames.length > 0 ? (
+                data.liveGames
+                  .slice(0, 3)
+                  .map((game) => (
+                    <LiveGame
+                      key={game.nflGameId}
+                      game={game}
+                    />
+                  ))
+              ) : (
+                <div style={styles.emptyCenter}>
+                  No NFL games currently live.
+                </div>
+              )}
+            </Panel>
+
+            <Panel title="RECENT SCORING PLAYS">
+              {data.recentScoringPlays.length > 0 ? (
+                data.recentScoringPlays
+                  .slice(0, 5)
+                  .map((play) => (
+                    <div
+                      key={play.espnPlayId}
+                      style={styles.scoringRow}
+                    >
+                      <span style={styles.scoringDot}>TD</span>
+
+                      <div style={styles.scoringRowText}>
+                        <strong>
+                          {play.possessionTeamAbbreviation ?? "NFL"}
+                        </strong>
+                        <span>{play.text}</span>
+                      </div>
+
+                      <span style={styles.scoringPoints}>
+                        {play.scoreValue ? `+${play.scoreValue}` : ""}
+                      </span>
+                    </div>
+                  ))
+              ) : (
+                <div style={styles.emptyCenter}>
+                  No scoring plays yet.
+                </div>
+              )}
+            </Panel>
+          </div>
+        </section>
+
+
         {/* ==================================================
             COMPACT BENCH
         =================================================== */}
 
         <section
-          className="g365-matchup-bench-grid"
+          className="g365-desktop-bench-grid"
           style={
             styles.benchGrid
           }
@@ -1274,9 +1132,22 @@ export default async function TraditionalMatchupDetailPage({
             }
           />
         </section>
+
+        <section className="g365-mobile-bench-section">
+          <div className="g365-mobile-swipe-hint">
+            <span>BENCH • SIDE-BY-SIDE</span>
+            <span>SWIPE ↔</span>
+          </div>
+
+          <div className="g365-mobile-bench-compare">
+            <div className="g365-mobile-bench-compare-inner">
+              <CompactBench team={data.away} />
+              <CompactBench team={data.home} />
+            </div>
+          </div>
+        </section>
       </div>
-      </main>
-    </>
+    </main>
   );
 }
 
@@ -1409,7 +1280,7 @@ function ScoreTeam({
           styles.teamProjection
         }
       >
-        PROJ {projectionPoints(
+        PROJ {points(
           projectedPoints
         )}
       </span>
@@ -1617,606 +1488,6 @@ function LiveGame({
 }
 
 
-function formatPlayerStatLine(
-  player:
-    MatchupDetailPlayer
-): string | null {
-  const stats =
-    player.stats;
-
-  const parts:
-    string[] = [];
-
-
-  switch (
-    player.position
-      .trim()
-      .toUpperCase()
-  ) {
-    case "QB": {
-      if (
-        stats.passingAttempts >
-          0 ||
-        stats.passingCompletions >
-          0 ||
-        stats.passingYards !==
-          0 ||
-        stats.passingTouchdowns >
-          0 ||
-        stats.passingInterceptions >
-          0
-      ) {
-        parts.push(
-          `${stats.passingCompletions}/${stats.passingAttempts} CMP`,
-          `${stats.passingYards} PASS YDS`
-        );
-
-        if (
-          stats.passingTouchdowns >
-          0
-        ) {
-          parts.push(
-            `${stats.passingTouchdowns} PASS TD`
-          );
-        }
-
-        if (
-          stats.passingInterceptions >
-          0
-        ) {
-          parts.push(
-            `${stats.passingInterceptions} INT`
-          );
-        }
-      }
-
-
-      if (
-        stats.rushingAttempts >
-          0 ||
-        stats.rushingYards !==
-          0 ||
-        stats.rushingTouchdowns >
-          0
-      ) {
-        parts.push(
-          `${stats.rushingAttempts} CAR`,
-          `${stats.rushingYards} RUSH YDS`
-        );
-
-        if (
-          stats.rushingTouchdowns >
-          0
-        ) {
-          parts.push(
-            `${stats.rushingTouchdowns} RUSH TD`
-          );
-        }
-      }
-
-      break;
-    }
-
-
-    case "RB": {
-      if (
-        stats.rushingAttempts >
-          0 ||
-        stats.rushingYards !==
-          0 ||
-        stats.rushingTouchdowns >
-          0
-      ) {
-        parts.push(
-          `${stats.rushingAttempts} CAR`,
-          `${stats.rushingYards} RUSH YDS`
-        );
-
-        if (
-          stats.rushingTouchdowns >
-          0
-        ) {
-          parts.push(
-            `${stats.rushingTouchdowns} RUSH TD`
-          );
-        }
-      }
-
-
-      if (
-        stats.receivingTargets >
-          0 ||
-        stats.receptions >
-          0 ||
-        stats.receivingYards !==
-          0 ||
-        stats.receivingTouchdowns >
-          0
-      ) {
-        parts.push(
-          `${stats.receptions}/${stats.receivingTargets} REC/TGT`,
-          `${stats.receivingYards} REC YDS`
-        );
-
-        if (
-          stats.receivingTouchdowns >
-          0
-        ) {
-          parts.push(
-            `${stats.receivingTouchdowns} REC TD`
-          );
-        }
-      }
-
-      break;
-    }
-
-
-    case "WR":
-    case "TE": {
-      if (
-        stats.receivingTargets >
-          0 ||
-        stats.receptions >
-          0 ||
-        stats.receivingYards !==
-          0 ||
-        stats.receivingTouchdowns >
-          0
-      ) {
-        parts.push(
-          `${stats.receptions}/${stats.receivingTargets} REC/TGT`,
-          `${stats.receivingYards} REC YDS`
-        );
-
-        if (
-          stats.receivingTouchdowns >
-          0
-        ) {
-          parts.push(
-            `${stats.receivingTouchdowns} REC TD`
-          );
-        }
-      }
-
-
-      if (
-        stats.rushingAttempts >
-          0 ||
-        stats.rushingYards !==
-          0 ||
-        stats.rushingTouchdowns >
-          0
-      ) {
-        parts.push(
-          `${stats.rushingAttempts} CAR`,
-          `${stats.rushingYards} RUSH YDS`
-        );
-
-        if (
-          stats.rushingTouchdowns >
-          0
-        ) {
-          parts.push(
-            `${stats.rushingTouchdowns} RUSH TD`
-          );
-        }
-      }
-
-      break;
-    }
-
-
-    case "K":
-    case "PK": {
-      if (
-        stats.fieldGoalsAttempted >
-          0 ||
-        stats.fieldGoalsMade >
-          0
-      ) {
-        parts.push(
-          `${stats.fieldGoalsMade}/${stats.fieldGoalsAttempted} FG`
-        );
-      }
-
-
-      if (
-        stats.extraPointsAttempted >
-          0 ||
-        stats.extraPointsMade >
-          0
-      ) {
-        parts.push(
-          `${stats.extraPointsMade}/${stats.extraPointsAttempted} XP`
-        );
-      }
-
-      break;
-    }
-
-
-    case "DST":
-    case "DEF": {
-      if (
-        stats.dstSacks !==
-        0
-      ) {
-        parts.push(
-          `${stats.dstSacks} SACK`
-        );
-      }
-
-      if (
-        stats.dstInterceptions >
-        0
-      ) {
-        parts.push(
-          `${stats.dstInterceptions} INT`
-        );
-      }
-
-      if (
-        stats.dstFumbleRecoveries >
-        0
-      ) {
-        parts.push(
-          `${stats.dstFumbleRecoveries} FR`
-        );
-      }
-
-      if (
-        stats.dstTouchdowns >
-        0
-      ) {
-        parts.push(
-          `${stats.dstTouchdowns} TD`
-        );
-      }
-
-      if (
-        stats.dstSafeties >
-        0
-      ) {
-        parts.push(
-          `${stats.dstSafeties} SAFETY`
-        );
-      }
-
-      if (
-        stats.dstBlockedKicks >
-        0
-      ) {
-        parts.push(
-          `${stats.dstBlockedKicks} BLK`
-        );
-      }
-
-      parts.push(
-        `${stats.dstPointsAllowed} PA`,
-        `${stats.dstYardsAllowed} YA`
-      );
-
-      break;
-    }
-
-
-    default: {
-      if (
-        stats.rushingAttempts >
-          0 ||
-        stats.rushingYards !==
-          0
-      ) {
-        parts.push(
-          `${stats.rushingAttempts} CAR`,
-          `${stats.rushingYards} RUSH YDS`
-        );
-      }
-
-      if (
-        stats.receivingTargets >
-          0 ||
-        stats.receptions >
-          0 ||
-        stats.receivingYards !==
-          0
-      ) {
-        parts.push(
-          `${stats.receptions}/${stats.receivingTargets} REC/TGT`,
-          `${stats.receivingYards} REC YDS`
-        );
-      }
-    }
-  }
-
-
-  if (
-    stats.fumblesLost >
-    0
-  ) {
-    parts.push(
-      `${stats.fumblesLost} FUM LOST`
-    );
-  }
-
-
-  if (
-    parts.length >
-    0
-  ) {
-    return parts.join(
-      " • "
-    );
-  }
-
-
-  return null;
-}
-
-
-type ScoringParticipantHighlight = {
-  aliases: string[];
-  isMyTeam: boolean;
-};
-
-
-function playerScoringAliases(
-  fullName:
-    string
-) {
-  const clean =
-    fullName.trim();
-
-  const parts =
-    clean.split(
-      /\s+/
-    );
-
-  const aliases =
-    new Set<string>();
-
-
-  if (clean) {
-    aliases.add(
-      clean
-    );
-  }
-
-
-  if (
-    parts.length >=
-      2 &&
-    parts[0]
-  ) {
-    const firstInitial =
-      parts[0][0];
-
-    const lastName =
-      parts[
-        parts.length -
-          1
-      ];
-
-
-    if (
-      firstInitial &&
-      lastName
-    ) {
-      aliases.add(
-        `${firstInitial}.${lastName}`
-      );
-
-      aliases.add(
-        `${firstInitial}. ${lastName}`
-      );
-    }
-  }
-
-
-  return Array.from(
-    aliases
-  );
-}
-
-
-function scoringParticipantHighlights(
-  data:
-    TraditionalMatchupDetailData,
-  play:
-    TraditionalMatchupDetailData[
-      "recentScoringPlays"
-    ][number]
-):
-  ScoringParticipantHighlight[] {
-  const players = [
-    ...data.away.starters.map(
-      (
-        player
-      ) => ({
-        player,
-        isMyTeam:
-          data.away
-            .isMyTeam,
-      })
-    ),
-
-    ...data.home.starters.map(
-      (
-        player
-      ) => ({
-        player,
-        isMyTeam:
-          data.home
-            .isMyTeam,
-      })
-    ),
-  ];
-
-
-  return players
-    .filter(
-      ({
-        player,
-      }) =>
-        Boolean(
-          player.espnPlayerId &&
-          play
-            .participantEspnPlayerIds
-            .includes(
-              player.espnPlayerId
-            )
-        )
-    )
-    .map(
-      ({
-        player,
-        isMyTeam,
-      }) => ({
-        aliases:
-          playerScoringAliases(
-            player.fullName
-          ),
-        isMyTeam,
-      })
-    );
-}
-
-
-function HighlightedScoringPlayText({
-  text,
-  participants,
-}: {
-  text:
-    string |
-    null;
-
-  participants:
-    ScoringParticipantHighlight[];
-}) {
-  const value =
-    text ??
-    "";
-
-
-  const aliases =
-    participants.flatMap(
-      (
-        participant
-      ) =>
-        participant.aliases.map(
-          (
-            alias
-          ) => ({
-            alias,
-            isMyTeam:
-              participant.isMyTeam,
-          })
-        )
-    )
-    .filter(
-      (
-        item
-      ) =>
-        item.alias.length >
-        0
-    )
-    .sort(
-      (
-        a,
-        b
-      ) =>
-        b.alias.length -
-        a.alias.length
-    );
-
-
-  if (
-    aliases.length ===
-    0
-  ) {
-    return (
-      <>
-        {value}
-      </>
-    );
-  }
-
-
-  const escaped =
-    aliases.map(
-      (
-        item
-      ) =>
-        item.alias.replace(
-          /[.*+?^${}()|[\]\\]/g,
-          "\\$&"
-        )
-    );
-
-
-  const pattern =
-    new RegExp(
-      `(${escaped.join("|")})`,
-      "gi"
-    );
-
-
-  return (
-    <>
-      {value.split(
-        pattern
-      ).map(
-        (
-          part,
-          index
-        ) => {
-          const match =
-            aliases.find(
-              (
-                item
-              ) =>
-                item.alias.toLowerCase() ===
-                part.toLowerCase()
-            );
-
-
-          if (
-            !match
-          ) {
-            return (
-              <span
-                key={
-                  `${part}-${index}`
-                }
-              >
-                {part}
-              </span>
-            );
-          }
-
-
-          return (
-            <strong
-              key={
-                `${part}-${index}`
-              }
-              style={
-                match.isMyTeam
-                  ? styles.scoringPlayMyPlayerName
-                  : styles.scoringPlayOpponentPlayerName
-              }
-            >
-              {part}
-            </strong>
-          );
-        }
-      )}
-    </>
-  );
-}
-
-
 function CompactRoster({
   team,
   label,
@@ -2231,7 +1502,6 @@ function CompactRoster({
 }) {
   return (
     <div
-      className="g365-matchup-roster"
       style={
         styles.rosterPanel
       }
@@ -2279,7 +1549,6 @@ function CompactRoster({
       ) : (
         <>
           <div
-            className="g365-matchup-table-header"
             style={
               styles.tableHeader
             }
@@ -2327,9 +1596,6 @@ function CompactRoster({
                 player={
                   player
                 }
-                isMyTeam={
-                  team.isMyTeam
-                }
               />
             )
           )}
@@ -2349,7 +1615,7 @@ function CompactRoster({
                 styles.totalProjection
               }
             >
-              PROJ {projectionPoints(
+              PROJ {points(
                 team.expectedFinalPoints
               )}
             </span>
@@ -2375,7 +1641,6 @@ function CompactBench({
 }) {
   return (
     <div
-      className="g365-matchup-roster"
       style={
         styles.rosterPanel
       }
@@ -2420,9 +1685,6 @@ function CompactBench({
                   player
                 }
                 bench
-                isMyTeam={
-                  team.isMyTeam
-                }
               />
             )
           )
@@ -2435,14 +1697,11 @@ function CompactBench({
 function CompactPlayerRow({
   player,
   bench = false,
-  isMyTeam = false,
 }: {
   player:
     MatchupDetailPlayer;
 
   bench?: boolean;
-
-  isMyTeam?: boolean;
 }) {
   const possession =
     !bench &&
@@ -2460,7 +1719,6 @@ function CompactPlayerRow({
 
   return (
     <div
-      className="g365-matchup-player-row"
       style={{
         ...styles.playerRow,
 
@@ -2485,7 +1743,6 @@ function CompactPlayerRow({
 
 
       <div
-        className="g365-matchup-player-cell"
         style={
           styles.playerCell
         }
@@ -2516,7 +1773,6 @@ function CompactPlayerRow({
 
 
         <div
-          className="g365-matchup-player-names"
           style={
             styles.playerNames
           }
@@ -2533,26 +1789,6 @@ function CompactPlayerRow({
             >
               {player.fullName}
             </strong>
-
-
-            <span
-              style={
-                styles.playerPositionTeam
-              }
-            >
-              {player.position}
-              {" • "}
-              {player.teamAbbreviation ??
-                "FA"}
-            </span>
-
-
-            <InjuryReportButton
-              status={player.injuryStatus}
-              injuryType={player.injuryType}
-              injuryDetail={player.injuryDetail}
-              playerName={player.fullName}
-            />
 
 
             {redZone ? (
@@ -2576,28 +1812,17 @@ function CompactPlayerRow({
 
 
           <span
-            title={
-              formatPlayerStatLine(
-                player
-              ) ??
-              undefined
-            }
             style={
-              player
-                .gameContext
-                ?.isActuallyLive
-                ? styles.playerStatLineLive
-                : styles.playerStatLine
+              styles.playerSub
             }
           >
-            {formatPlayerStatLine(
-              player
-            ) ??
-              (
-                player.nflOpponent
-                  ? "NO STATS AVAILABLE"
-                  : "NO STATS AVAILABLE"
-              )}
+            {player.teamAbbreviation ??
+              "FA"}{" "}
+            {player.position}
+
+            {player.injuryStatus
+              ? ` • ${player.injuryStatus}`
+              : ""}
           </span>
         </div>
       </div>
@@ -2632,12 +1857,9 @@ function CompactPlayerRow({
       <strong
         title={
           player.projectionSource ===
-            "weekly"
-            ? "Weekly player projection"
-            : player.projectionSource ===
-                "season_average"
-              ? "Weekly baseline from current season projection"
-              : "No projection available"
+            "season_average"
+            ? "Weekly baseline from current season projection"
+            : "No projection available"
         }
         style={
           styles.playerProjection
@@ -2645,7 +1867,7 @@ function CompactPlayerRow({
       >
         {player.projectedPoints >
         0
-          ? projectionPoints(
+          ? points(
               player.projectedPoints
             )
           : "—"}
@@ -3864,7 +3086,7 @@ const styles = {
 
   playerRow: {
     minHeight:
-      "52px",
+      "44px",
 
     padding:
       "3px 7px",
@@ -4016,36 +3238,6 @@ const styles = {
   },
 
 
-  scoringPlayerName: {
-    color:
-      "#43d982",
-  },
-
-
-  nonScoringPlayerName: {
-    color:
-      "#ff5a50",
-  },
-
-
-  scoringPlayMyPlayerName: {
-    color:
-      "#43d982",
-
-    fontWeight:
-      950,
-  },
-
-
-  scoringPlayOpponentPlayerName: {
-    color:
-      "#ff5a50",
-
-    fontWeight:
-      950,
-  },
-
-
   playerName: {
     overflow:
       "hidden",
@@ -4068,111 +3260,6 @@ const styles = {
       "#686e77",
 
     fontSize: "11px",
-  },
-
-
-  playerPositionTeam: {
-    flex:
-      "0 0 auto",
-
-    color:
-      "#858b94",
-
-    fontSize:
-      "10px",
-
-    fontWeight:
-      850,
-
-    whiteSpace:
-      "nowrap" as const,
-  },
-
-
-  playerStatLine: {
-    overflow:
-      "hidden",
-
-    textOverflow:
-      "ellipsis",
-
-    whiteSpace:
-      "nowrap" as const,
-
-    color:
-      "#a6adb7",
-
-    fontSize:
-      "10px",
-
-    fontWeight:
-      750,
-
-    fontVariantNumeric:
-      "tabular-nums",
-  },
-
-
-  playerStatLineLive: {
-    overflow:
-      "hidden",
-
-    textOverflow:
-      "ellipsis",
-
-    whiteSpace:
-      "nowrap" as const,
-
-    color:
-      "#ff9a43",
-
-    fontSize:
-      "10px",
-
-    fontWeight:
-      850,
-
-    fontVariantNumeric:
-      "tabular-nums",
-  },
-
-
-  injuryBadge: {
-    display:
-      "inline-flex",
-
-    alignItems:
-      "center",
-
-    minHeight:
-      "16px",
-
-    padding:
-      "1px 5px",
-
-    border:
-      "1px solid rgba(255,171,64,.45)",
-
-    borderRadius:
-      "999px",
-
-    background:
-      "rgba(255,145,0,.10)",
-
-    color:
-      "#ffad55",
-
-    fontSize:
-      "9px",
-
-    fontWeight:
-      950,
-
-    lineHeight:
-      1,
-
-    whiteSpace:
-      "nowrap" as const,
   },
 
 
@@ -4320,5 +3407,3 @@ const styles = {
       "center" as const,
   },
 };
-
-

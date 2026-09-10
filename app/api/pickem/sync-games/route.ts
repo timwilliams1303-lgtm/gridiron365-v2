@@ -20,11 +20,13 @@ type FootballScope =
 type PickemSport =
   | "cfb"
   | "nfl"
-  | "nhl";
+  | "nhl"
+  | "ncaamb";
 
-type FootballProviderSport =
+type SharedProviderSport =
   | "ncaaf"
-  | "nfl";
+  | "nfl"
+  | "ncaamb";
 
 type PickemWeekRow = {
   id: number;
@@ -36,6 +38,19 @@ type PickemWeekRow = {
   finalize_not_before: string | null;
   slate_starts_at: string | null;
   slate_ends_at: string | null;
+};
+
+type PickemWeekSportRow = {
+  pickem_week_id: number;
+  league_id: string;
+  season: number;
+  week: number;
+  sport: PickemSport;
+  period_starts_at: string;
+  period_ends_at: string;
+  opens_at: string | null;
+  line_day_at: string | null;
+  finalize_not_before: string | null;
 };
 
 type PickemSettingsRow = {
@@ -786,7 +801,8 @@ function enabledSportsForSettings(
           ): sport is PickemSport =>
             sport === "cfb" ||
             sport === "nfl" ||
-            sport === "nhl"
+            sport === "nhl" ||
+            sport === "ncaamb"
         )
       : [];
 
@@ -825,17 +841,17 @@ function enabledSportsForSettings(
   ];
 }
 
-function footballSportsForSettings(
+function sharedSportsForSettings(
   settings:
     PickemSettingsRow
-): FootballProviderSport[] {
+): SharedProviderSport[] {
   const enabled =
     enabledSportsForSettings(
       settings
     );
 
   const sports:
-    FootballProviderSport[] =
+    SharedProviderSport[] =
     [];
 
   if (
@@ -855,6 +871,16 @@ function footballSportsForSettings(
   ) {
     sports.push(
       "nfl"
+    );
+  }
+
+  if (
+    enabled.includes(
+      "ncaamb"
+    )
+  ) {
+    sports.push(
+      "ncaamb"
     );
   }
 
@@ -918,7 +944,6 @@ function collegeScoreboardUrl(
     )}-${yyyymmdd(
       endExclusive
     )}` +
-    "&seasontype=2" +
     "&limit=1000"
   );
 }
@@ -996,16 +1021,20 @@ async function fetchCollegeScoreboard(
   ).filter(
     (event) => {
       /*
-       * Pick'em regular season only.
+       * Pick'em includes both regular season and postseason.
        *
        * ESPN:
        * 1 = preseason
        * 2 = regular season
        * 3 = postseason
        */
+      const seasonType =
+        event.season?.type;
+
       if (
-        event.season?.type !==
-        2
+        seasonType !== undefined &&
+        seasonType !== 2 &&
+        seasonType !== 3
       ) {
         return false;
       }
@@ -1031,6 +1060,150 @@ async function fetchCollegeScoreboard(
         kickoffMs >=
           startMs &&
         kickoffMs <
+          endMs
+      );
+    }
+  );
+}
+
+/*
+ * =====================================================
+ * NCAA MEN'S BASKETBALL ESPN SCOREBOARD
+ * =====================================================
+ */
+function basketballScoreboardUrl(
+  slateStartsAt:
+    string,
+  slateEndsAt:
+    string
+) {
+  const start =
+    new Date(
+      slateStartsAt
+    );
+
+  const endExclusive =
+    new Date(
+      slateEndsAt
+    );
+
+  return (
+    "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard" +
+    `?dates=${yyyymmdd(
+      start
+    )}-${yyyymmdd(
+      endExclusive
+    )}` +
+    "&limit=1000"
+  );
+}
+
+async function fetchBasketballScoreboard(
+  slateStartsAt:
+    string,
+  slateEndsAt:
+    string
+) {
+  const response =
+    await fetch(
+      basketballScoreboardUrl(
+        slateStartsAt,
+        slateEndsAt
+      ),
+      {
+        method:
+          "GET",
+
+        cache:
+          "no-store",
+
+        headers: {
+          Accept:
+            "application/json",
+
+          "User-Agent":
+            "Mozilla/5.0 Gridiron365/2.0",
+        },
+      }
+    );
+
+  const text =
+    await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `ESPN NCAAMB scoreboard returned HTTP ${response.status}: ${text.slice(
+        0,
+        180
+      )}`
+    );
+  }
+
+  let payload:
+    EspnScoreboard;
+
+  try {
+    payload =
+      JSON.parse(
+        text
+      ) as EspnScoreboard;
+  } catch {
+    throw new Error(
+      "ESPN NCAAMB scoreboard returned invalid JSON."
+    );
+  }
+
+  const startMs =
+    new Date(
+      slateStartsAt
+    ).getTime();
+
+  const endMs =
+    new Date(
+      slateEndsAt
+    ).getTime();
+
+  return (
+    payload.events ??
+    []
+  ).filter(
+    (event) => {
+      const seasonType =
+        event.season?.type;
+
+      /*
+       * Include regular season and postseason.
+       * ESPN commonly uses 2 for regular season and 3 for postseason.
+       */
+      if (
+        seasonType !== undefined &&
+        seasonType !== 2 &&
+        seasonType !== 3
+      ) {
+        return false;
+      }
+
+      const raw =
+        event.competitions?.[0]
+          ?.date ??
+        event.date;
+
+      if (!raw) {
+        return false;
+      }
+
+      const startTimeMs =
+        new Date(
+          raw
+        ).getTime();
+
+      return (
+        Number.isFinite(
+          startTimeMs
+        ) &&
+        startTimeMs >=
+          startMs &&
+        startTimeMs <
           endMs
       );
     }
@@ -1092,9 +1265,9 @@ async function loadSharedNflGames(
         "season",
         season
       )
-      .eq(
+      .in(
         "season_type",
-        2
+        [2, 3]
       )
       .gte(
         "kickoff_at",
@@ -1541,7 +1714,7 @@ async function cleanupStalePickemGames(
   week:
     number,
   sport:
-    FootballProviderSport,
+    SharedProviderSport,
   slateStartsAt:
     string,
   slateEndsAt:
@@ -2029,7 +2202,7 @@ export async function POST(
         requestedWeek <
           1 ||
         requestedWeek >
-          30
+          52
       )
     ) {
       return NextResponse.json(
@@ -2060,11 +2233,24 @@ export async function POST(
         );
 
     /*
-     * Explicit league requests are allowed to target a
-     * specific setup/test week.
+     * Explicit league requests may target any specific
+     * setup/test week.
      *
-     * Normal cron operation ignores final weeks and only
-     * considers a reasonable current/future lifecycle window.
+     * Automatic/cron operation no longer filters master weeks
+     * using the legacy parent slate window.
+     *
+     * Sport-specific activity is authoritative in
+     * pickem_week_sports:
+     *
+     *   NFL:
+     *     Tuesday -> Tuesday
+     *
+     *   CFB / NCAAMB / NHL:
+     *     Monday -> Monday
+     *
+     * We first load non-final master weeks here. After their
+     * child lifecycle rows are loaded below, automatic mode
+     * filters them using those child sport periods.
      */
     if (
       body.leagueId
@@ -2075,43 +2261,11 @@ export async function POST(
           body.leagueId
         );
     } else {
-      const now =
-        new Date();
-
-      const lower =
-        new Date(
-          now.getTime() -
-          2 *
-            24 *
-            60 *
-            60 *
-            1000
-        ).toISOString();
-
-      const upper =
-        new Date(
-          now.getTime() +
-          14 *
-            24 *
-            60 *
-            60 *
-            1000
-        ).toISOString();
-
       weeksQuery =
-        weeksQuery
-          .neq(
-            "status",
-            "final"
-          )
-          .gte(
-            "slate_ends_at",
-            lower
-          )
-          .lte(
-            "slate_starts_at",
-            upper
-          );
+        weeksQuery.neq(
+          "status",
+          "final"
+        );
     }
 
     if (
@@ -2192,6 +2346,149 @@ export async function POST(
       });
     }
 
+    const weekIds =
+      weeks.map(
+        (row) =>
+          row.id
+      );
+
+    const {
+      data:
+        weekSportData,
+      error:
+        weekSportError,
+    } =
+      await supabase
+        .from(
+          "pickem_week_sports"
+        )
+        .select(
+          "pickem_week_id,league_id,season,week,sport,period_starts_at,period_ends_at,opens_at,line_day_at,finalize_not_before"
+        )
+        .in(
+          "pickem_week_id",
+          weekIds
+        );
+
+    if (
+      weekSportError
+    ) {
+      throw new Error(
+        `Could not load Pick'em sport lifecycle periods: ${weekSportError.message}`
+      );
+    }
+
+    /*
+     * =====================================================
+     * AUTOMATIC SPORT-LIFECYCLE WINDOW
+     * =====================================================
+     *
+     * Explicit league/week requests are intentionally not
+     * restricted here so commissioners/tests can target a
+     * specific week.
+     *
+     * Normal cron operation keeps a master week when at least
+     * one of its sport lifecycle rows overlaps the automatic
+     * sync horizon.
+     *
+     * This replaces the old parent:
+     *
+     *   pickem_weeks.slate_starts_at
+     *   pickem_weeks.slate_ends_at
+     *
+     * dependency.
+     */
+    let weeksToProcess =
+      weeks;
+
+    if (
+      !body.leagueId
+    ) {
+      const now =
+        new Date();
+
+      const lowerMs =
+        now.getTime() -
+        2 *
+          24 *
+          60 *
+          60 *
+          1000;
+
+      const upperMs =
+        now.getTime() +
+        14 *
+          24 *
+          60 *
+          60 *
+          1000;
+
+      const activeWeekIds =
+        new Set<number>();
+
+      for (
+        const row of (
+          weekSportData ??
+          []
+        ) as PickemWeekSportRow[]
+      ) {
+        const startsMs =
+          new Date(
+            row.period_starts_at
+          ).getTime();
+
+        const endsMs =
+          new Date(
+            row.period_ends_at
+          ).getTime();
+
+        if (
+          Number.isFinite(
+            startsMs
+          ) &&
+          Number.isFinite(
+            endsMs
+          ) &&
+          endsMs >=
+            lowerMs &&
+          startsMs <=
+            upperMs
+        ) {
+          activeWeekIds.add(
+            Number(
+              row.pickem_week_id
+            )
+          );
+        }
+      }
+
+      weeksToProcess =
+        weeks.filter(
+          (row) =>
+            activeWeekIds.has(
+              row.id
+            )
+        );
+    }
+
+    const weekSportMap =
+      new Map<
+        string,
+        PickemWeekSportRow
+      >();
+
+    for (
+      const row of (
+        weekSportData ??
+        []
+      ) as PickemWeekSportRow[]
+    ) {
+      weekSportMap.set(
+        `${row.pickem_week_id}:${row.sport}`,
+        row
+      );
+    }
+
     const leagueIds =
       [
         ...new Set(
@@ -2267,6 +2564,12 @@ export async function POST(
         NormalizedGame[]
       >();
 
+    const basketballCache =
+      new Map<
+        string,
+        EspnEvent[]
+      >();
+
     let gamesUpserted =
       0;
 
@@ -2286,6 +2589,9 @@ export async function POST(
       0;
 
     let sharedNflLoads =
+      0;
+
+    let basketballFeedsFetched =
       0;
 
     let nhlPeriodsPrepared =
@@ -2338,7 +2644,7 @@ export async function POST(
 
     for (
       const pickemWeek
-      of weeks
+      of weeksToProcess
     ) {
       const settings =
         settingsMap.get(
@@ -2352,32 +2658,65 @@ export async function POST(
         continue;
       }
 
-      if (
-        !pickemWeek
-          .slate_starts_at ||
-        !pickemWeek
-          .slate_ends_at
-      ) {
-        gamesSkipped +=
-          1;
-
-        continue;
-      }
-
       const enabledSports =
         enabledSportsForSettings(
           settings
         );
 
-      const footballSports =
-        footballSportsForSettings(
+      const sharedSports =
+        sharedSportsForSettings(
           settings
         );
 
       for (
         const sport
-        of footballSports
+        of sharedSports
       ) {
+        const lifecycleSport:
+          PickemSport =
+          sport ===
+          "ncaaf"
+            ? "cfb"
+            : sport;
+
+        const sportPeriod =
+          weekSportMap.get(
+            `${pickemWeek.id}:${lifecycleSport}`
+          );
+
+        if (!sportPeriod) {
+          gamesSkipped +=
+            1;
+
+          details.push({
+            leagueId:
+              pickemWeek.league_id,
+            season:
+              pickemWeek.season,
+            week:
+              pickemWeek.week,
+            sport,
+            source:
+              "Missing sport lifecycle period",
+            games:
+              0,
+            staleCandidates:
+              0,
+            staleDeleted:
+              0,
+            stalePreserved:
+              0,
+          });
+
+          continue;
+        }
+
+        const sportStartsAt =
+          sportPeriod.period_starts_at;
+
+        const sportEndsAt =
+          sportPeriod.period_ends_at;
+
         let games:
           NormalizedGame[] =
           [];
@@ -2397,7 +2736,7 @@ export async function POST(
           "ncaaf"
         ) {
           const cacheKey =
-            `${pickemWeek.slate_starts_at}:${pickemWeek.slate_ends_at}`;
+            `${sportStartsAt}:${sportEndsAt}`;
 
           let events =
             collegeCache.get(
@@ -2407,8 +2746,8 @@ export async function POST(
           if (!events) {
             events =
               await fetchCollegeScoreboard(
-                pickemWeek.slate_starts_at,
-                pickemWeek.slate_ends_at
+                sportStartsAt,
+                sportEndsAt
               );
 
             collegeCache.set(
@@ -2439,6 +2778,59 @@ export async function POST(
 
         /*
          * =================================================
+         * NCAA MEN'S BASKETBALL
+         * =================================================
+         *
+         * Direct ESPN source using the same shared Pick'em
+         * game/pick engine as football.
+         */
+        if (
+          sport ===
+          "ncaamb"
+        ) {
+          const cacheKey =
+            `${sportStartsAt}:${sportEndsAt}`;
+
+          let events =
+            basketballCache.get(
+              cacheKey
+            );
+
+          if (!events) {
+            events =
+              await fetchBasketballScoreboard(
+                sportStartsAt,
+                sportEndsAt
+              );
+
+            basketballCache.set(
+              cacheKey,
+              events
+            );
+
+            basketballFeedsFetched +=
+              1;
+          }
+
+          games =
+            events
+              .map(
+                normalizeCollegeEvent
+              )
+              .filter(
+                (
+                  game
+                ): game is NormalizedGame =>
+                  game !==
+                  null
+              );
+
+          source =
+            "ESPN NCAA men's basketball";
+        }
+
+        /*
+         * =================================================
          * NFL
          * =================================================
          *
@@ -2451,7 +2843,7 @@ export async function POST(
           "nfl"
         ) {
           const cacheKey =
-            `${pickemWeek.season}:${pickemWeek.slate_starts_at}:${pickemWeek.slate_ends_at}`;
+            `${pickemWeek.season}:${sportStartsAt}:${sportEndsAt}`;
 
           let sharedGames =
             nflCache.get(
@@ -2463,8 +2855,8 @@ export async function POST(
               await loadSharedNflGames(
                 supabase,
                 pickemWeek.season,
-                pickemWeek.slate_starts_at,
-                pickemWeek.slate_ends_at
+                sportStartsAt,
+                sportEndsAt
               );
 
             nflCache.set(
@@ -2612,34 +3004,171 @@ export async function POST(
                 .last_play_text,
           };
 
-          const {
-            data:
-              upsertedData,
-            error:
-              upsertError,
-          } =
-            await supabase
-              .from(
-                "pickem_games"
-              )
-              .upsert(
-                payload,
-                {
-                  onConflict:
-                    "league_id,provider,provider_event_id",
-                }
-              )
-              .select(
-                "id,is_final"
-              )
-              .single();
+          let upsertedData:
+            {
+              id: number;
+              is_final: boolean;
+            } | null =
+            null;
 
           if (
-            upsertError
+            sport ===
+            "ncaamb"
           ) {
-            throw new Error(
-              `Could not upsert ${sport.toUpperCase()} game ${normalized.provider_event_id}: ${upsertError.message}`
-            );
+            const {
+              data:
+                basketballUpsertData,
+              error:
+                basketballUpsertError,
+            } =
+              await supabase.rpc(
+                "upsert_ncaamb_pickem_game",
+                {
+                  p_league_id:
+                    pickemWeek.league_id,
+                  p_pickem_week_id:
+                    pickemWeek.id,
+                  p_season:
+                    pickemWeek.season,
+                  p_week:
+                    pickemWeek.week,
+                  p_provider_event_id:
+                    normalized.provider_event_id,
+                  p_start_at:
+                    normalized.kickoff_at,
+                  p_away_team_name:
+                    normalized.away_team_name,
+                  p_away_team_abbreviation:
+                    normalized.away_team_abbreviation,
+                  p_home_team_name:
+                    normalized.home_team_name,
+                  p_home_team_abbreviation:
+                    normalized.home_team_abbreviation,
+                  p_status_type:
+                    normalized.status_type,
+                  p_status_name:
+                    normalized.status_name,
+                  p_status_detail:
+                    normalized.status_detail,
+                  p_is_started:
+                    normalized.is_started,
+                  p_is_final:
+                    normalized.is_final,
+                  p_away_score:
+                    normalized.away_score,
+                  p_home_score:
+                    normalized.home_score,
+                }
+              );
+
+            if (
+              basketballUpsertError
+            ) {
+              throw new Error(
+                `Could not upsert NCAAMB game ${normalized.provider_event_id}: ${basketballUpsertError.message}`
+              );
+            }
+
+            const basketballResult =
+              (
+                basketballUpsertData ??
+                {}
+              ) as {
+                gameId?: number;
+              };
+
+            const gameId =
+              Number(
+                basketballResult.gameId
+              );
+
+            if (
+              !Number.isInteger(
+                gameId
+              )
+            ) {
+              throw new Error(
+                `NCAAMB upsert did not return a valid game ID for ESPN event ${normalized.provider_event_id}.`
+              );
+            }
+
+            const {
+              error:
+                basketballScoreError,
+            } =
+              await supabase.rpc(
+                "sync_ncaamb_pickem_score",
+                {
+                  p_pickem_game_id:
+                    gameId,
+                  p_away_score:
+                    normalized.away_score,
+                  p_home_score:
+                    normalized.home_score,
+                  p_status_type:
+                    normalized.status_type,
+                  p_status_name:
+                    normalized.status_name,
+                  p_status_detail:
+                    normalized.status_detail,
+                  p_period:
+                    normalized.period,
+                  p_display_clock:
+                    normalized.display_clock,
+                  p_is_started:
+                    normalized.is_started,
+                  p_is_final:
+                    normalized.is_final,
+                }
+              );
+
+            if (
+              basketballScoreError
+            ) {
+              throw new Error(
+                `Could not sync NCAAMB score for game ${gameId}: ${basketballScoreError.message}`
+              );
+            }
+
+            upsertedData = {
+              id:
+                gameId,
+              is_final:
+                normalized.is_final,
+            };
+          } else {
+            const {
+              data:
+                sharedUpsertData,
+              error:
+                sharedUpsertError,
+            } =
+              await supabase
+                .from(
+                  "pickem_games"
+                )
+                .upsert(
+                  payload,
+                  {
+                    onConflict:
+                      "league_id,provider,provider_event_id",
+                  }
+                )
+                .select(
+                  "id,is_final"
+                )
+                .single();
+
+            if (
+              sharedUpsertError
+            ) {
+              throw new Error(
+                `Could not upsert ${sport.toUpperCase()} game ${normalized.provider_event_id}: ${sharedUpsertError.message}`
+              );
+            }
+
+            upsertedData =
+              sharedUpsertData;
           }
 
           gamesUpserted +=
@@ -2706,8 +3235,8 @@ export async function POST(
             pickemWeek.season,
             pickemWeek.week,
             sport,
-            pickemWeek.slate_starts_at,
-            pickemWeek.slate_ends_at
+            sportStartsAt,
+            sportEndsAt
           );
 
         staleGamesFound +=
@@ -2763,14 +3292,60 @@ export async function POST(
           "nhl"
         )
       ) {
+        const nhlSportPeriod =
+          weekSportMap.get(
+            `${pickemWeek.id}:nhl`
+          );
+
+        if (!nhlSportPeriod) {
+          gamesSkipped +=
+            1;
+
+          details.push({
+            leagueId:
+              pickemWeek.league_id,
+
+            season:
+              pickemWeek.season,
+
+            week:
+              pickemWeek.week,
+
+            sport:
+              "nhl",
+
+            source:
+              "Missing NHL sport lifecycle period",
+
+            games:
+              0,
+
+            staleCandidates:
+              0,
+
+            staleDeleted:
+              0,
+
+            stalePreserved:
+              0,
+          });
+
+          continue;
+        }
+
+        const nhlStartsAt =
+          nhlSportPeriod.period_starts_at;
+
+        const nhlEndsAt =
+          nhlSportPeriod.period_ends_at;
         /*
-         * Do not create empty NHL contest periods before the NHL
-         * regular season starts (or after it ends). Empty periods
-         * could later be finalized and incorrectly count required
-         * NHL picks as missing.
+         * Do not create empty NHL contest periods when there are no
+         * authoritative NHL games in this sport lifecycle window.
          *
-         * The mature NHL engine itself also filters to regular-
-         * season games, so use the same eligibility rule here.
+         * Postseason games are intentionally included. The unified
+         * Pick'em calendar extends through the Stanley Cup and must
+         * not treat playoff periods as empty merely because their
+         * season_type is not regular.
          */
         const {
           count:
@@ -2797,14 +3372,11 @@ export async function POST(
             )
             .gte(
               "start_time",
-              pickemWeek.slate_starts_at
+              nhlStartsAt
             )
             .lt(
               "start_time",
-              pickemWeek.slate_ends_at
-            )
-            .or(
-              "season_type.eq.regular,season_type.is.null"
+              nhlEndsAt
             );
 
         if (
@@ -2858,12 +3430,12 @@ export async function POST(
 
         const startsAt =
           new Date(
-            pickemWeek.slate_starts_at
+            nhlStartsAt
           );
 
         const endsAt =
           new Date(
-            pickemWeek.slate_ends_at
+            nhlEndsAt
           );
 
         const nhlStatus =
@@ -2939,16 +3511,16 @@ export async function POST(
                   pickemWeek.week,
 
                 starts_at:
-                  pickemWeek.slate_starts_at,
+                  nhlStartsAt,
 
                 ends_at:
-                  pickemWeek.slate_ends_at,
+                  nhlEndsAt,
 
                 line_day_at:
-                  pickemWeek.line_day_at,
+                  nhlSportPeriod.line_day_at,
 
                 finalize_not_before:
-                  pickemWeek.finalize_not_before,
+                  nhlSportPeriod.finalize_not_before,
 
                 status:
                   safeNhlStatus,
@@ -3152,13 +3724,18 @@ export async function POST(
       collegeSource:
         "ESPN",
 
+      basketballSource:
+        "ESPN men's college basketball",
+
       nhlSource:
         "public.nhl_games + public.nhl_pickem_*",
 
       weeksProcessed:
-        weeks.length,
+        weeksToProcess.length,
 
       collegeFeedsFetched,
+
+      basketballFeedsFetched,
 
       sharedNflLoads,
 

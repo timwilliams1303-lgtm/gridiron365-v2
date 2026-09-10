@@ -17,7 +17,7 @@ type Props = {
   season: number;
   viewerFantasyTeamId:
     number | null;
-  enabledSports: Array<"cfb" | "nfl" | "nhl">;
+  enabledSports: Array<"cfb" | "nfl" | "ncaamb" | "nhl">;
 };
 
 
@@ -212,6 +212,9 @@ export default function MixedPickemRecap({
         : null,
       enabledSports.includes("nfl")
         ? "NFL"
+        : null,
+      enabledSports.includes("ncaamb")
+        ? "NCAAMB"
         : null,
       enabledSports.includes("nhl")
         ? "NHL"

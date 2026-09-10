@@ -2,7 +2,6 @@ import {
   redirect,
 } from "next/navigation";
 
-
 import PickemMyPicks from "@/components/pickem/PickemMyPicks";
 import NhlPickemMyPicks from "@/components/nhl-pickem/NhlPickemMyPicks";
 import MixedPickemMyPicks from "@/components/pickem/MixedPickemMyPicks";
@@ -15,19 +14,17 @@ import {
   createSupabaseServerClient,
 } from "@/lib/supabase/server";
 
-
 type PageProps = {
   params: Promise<{
     leagueId: string;
   }>;
 };
 
-
 type PickemSport =
   | "cfb"
   | "nfl"
+  | "ncaamb"
   | "nhl";
-
 
 function normalizeEnabledSports(
   enabledSports: unknown,
@@ -37,87 +34,147 @@ function normalizeEnabledSports(
     const normalized =
       enabledSports
         .map((value) =>
-          String(value).trim().toLowerCase()
+          String(value)
+            .trim()
+            .toLowerCase()
         )
         .filter(
-          (value): value is PickemSport =>
+          (
+            value
+          ): value is PickemSport =>
             value === "cfb" ||
             value === "nfl" ||
+            value === "ncaamb" ||
             value === "nhl"
         );
 
     if (normalized.length > 0) {
-      return Array.from(new Set(normalized));
+      return Array.from(
+        new Set(normalized)
+      );
     }
   }
 
-  if (footballScope === "college_only") {
+  if (
+    footballScope ===
+    "college_only"
+  ) {
     return ["cfb"];
   }
 
-  if (footballScope === "nfl_only") {
+  if (
+    footballScope ===
+    "nfl_only"
+  ) {
     return ["nfl"];
   }
 
   return ["cfb", "nfl"];
 }
 
-
 export default async function PickemMyPicksPage({
   params,
 }: PageProps) {
-  const { leagueId } = await params;
+  const {
+    leagueId,
+  } =
+    await params;
 
   const access =
-    await requireLeagueMember(leagueId);
+    await requireLeagueMember(
+      leagueId
+    );
 
   if (
-    access.league.leagueType !== "pickem"
+    access.league.leagueType !==
+    "pickem"
   ) {
-    redirect(`/league/${leagueId}`);
+    redirect(
+      `/league/${leagueId}`
+    );
   }
 
   if (!access.fantasyTeam) {
-    redirect(`/league/${leagueId}`);
+    redirect(
+      `/league/${leagueId}`
+    );
   }
 
   const supabase =
     await createSupabaseServerClient();
 
-  const { data: settingsData } =
+  const {
+    data:
+      settingsData,
+  } =
     await supabase
-      .from("pickem_settings")
-      .select("enabled_sports,football_scope")
-      .eq("league_id", leagueId)
+      .from(
+        "pickem_settings"
+      )
+      .select(
+        "enabled_sports,football_scope"
+      )
+      .eq(
+        "league_id",
+        leagueId
+      )
       .maybeSingle();
 
   const enabledSports =
     normalizeEnabledSports(
-      settingsData?.enabled_sports,
-      settingsData?.football_scope ?? null
+      settingsData
+        ?.enabled_sports,
+      settingsData
+        ?.football_scope ??
+        null
     );
 
   const nhlOnly =
-    enabledSports.length === 1 &&
-    enabledSports[0] === "nhl";
+    enabledSports.length ===
+      1 &&
+    enabledSports[0] ===
+      "nhl";
+
+  const sharedSports =
+    enabledSports.filter(
+      (
+        sport
+      ): sport is
+        | "cfb"
+        | "nfl"
+        | "ncaamb" =>
+        sport === "cfb" ||
+        sport === "nfl" ||
+        sport === "ncaamb"
+    );
 
   const includesNhl =
-    enabledSports.includes("nhl");
+    enabledSports.includes(
+      "nhl"
+    );
 
-  const includesFootball =
-    enabledSports.includes("cfb") ||
-    enabledSports.includes("nfl");
+  const includesShared =
+    sharedSports.length > 0;
 
   const mixed =
-    includesNhl && includesFootball;
+    includesNhl &&
+    includesShared;
 
   if (nhlOnly) {
     return (
       <NhlPickemMyPicks
-        leagueId={leagueId}
-        season={access.league.season}
-        fantasyTeamId={access.fantasyTeam.id}
-        teamName={access.fantasyTeam.teamName}
+        leagueId={
+          leagueId
+        }
+        season={
+          access.league.season
+        }
+        fantasyTeamId={
+          access.fantasyTeam.id
+        }
+        teamName={
+          access.fantasyTeam.teamName
+        }
       />
     );
   }
@@ -125,21 +182,42 @@ export default async function PickemMyPicksPage({
   if (mixed) {
     return (
       <MixedPickemMyPicks
-        leagueId={leagueId}
-        season={access.league.season}
-        fantasyTeamId={access.fantasyTeam.id}
-        teamName={access.fantasyTeam.teamName}
-        enabledSports={enabledSports}
+        leagueId={
+          leagueId
+        }
+        season={
+          access.league.season
+        }
+        fantasyTeamId={
+          access.fantasyTeam.id
+        }
+        teamName={
+          access.fantasyTeam.teamName
+        }
+        enabledSports={
+          enabledSports
+        }
       />
     );
   }
 
   return (
     <PickemMyPicks
-      leagueId={leagueId}
-      season={access.league.season}
-      fantasyTeamId={access.fantasyTeam.id}
-      teamName={access.fantasyTeam.teamName}
+      leagueId={
+        leagueId
+      }
+      season={
+        access.league.season
+      }
+      fantasyTeamId={
+        access.fantasyTeam.id
+      }
+      teamName={
+        access.fantasyTeam.teamName
+      }
+      visibleSports={
+        sharedSports
+      }
     />
   );
 }

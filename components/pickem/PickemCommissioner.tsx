@@ -35,6 +35,7 @@ type FootballScope =
 type PickemSport =
   | "cfb"
   | "nfl"
+  | "ncaamb"
   | "nhl";
 
 
@@ -124,7 +125,8 @@ type GameRow = {
   pickem_week_id: number;
   sport:
     | "ncaaf"
-    | "nfl";
+    | "nfl"
+    | "ncaamb";
   kickoff_at:
     string;
   away_team_name:
@@ -1646,6 +1648,7 @@ export default function PickemCommissioner({
                 [
                   ["cfb", "College Football"],
                   ["nfl", "NFL"],
+                  ["ncaamb", "NCAA Men's Basketball"],
                   ["nhl", "NHL"],
                 ] as const
               ).map(([sport, label]) => {
@@ -1715,13 +1718,14 @@ export default function PickemCommissioner({
           </div>
 
           {(enabledSports.includes("cfb") ||
-            enabledSports.includes("nfl")) ? (
+            enabledSports.includes("nfl") ||
+            enabledSports.includes("ncaamb")) ? (
           <label
             style={
               styles.label
             }
           >
-            Football Pick Markets
+            Shared Pick Markets
             <select
               value={pickMarketMode}
               onChange={(event) =>
@@ -1746,7 +1750,7 @@ export default function PickemCommissioner({
                 styles.help
               }
             >
-              Choose which football markets are available to members. When both are enabled, a football game still counts as one pick and the member chooses either the spread or the over/under for that game.
+              Choose which shared markets are available to members. College Football, NFL, and NCAA Men&apos;s Basketball use the G365 Spread and G365 Over / Under system. When both are enabled, a game still counts as one pick and the member chooses either the spread or the over/under for that game.
             </span>
           </label>
           ) : null}
@@ -2244,13 +2248,35 @@ export default function PickemCommissioner({
                 lineHeight: 1.65,
               }}
             >
-              <div>
-                <strong style={{ color: "#fff" }}>
-                  G365 line windows:
-                </strong>{" "}
-                Tuesday 10:00 AM ET for Tuesday–Thursday games,
-                then Thursday 10:00 AM ET for Friday–Monday games.
-              </div>
+              {(enabledSports.includes("cfb") ||
+                enabledSports.includes("nfl")) ? (
+                <div>
+                  <strong style={{ color: "#fff" }}>
+                    Football G365 line windows:
+                  </strong>{" "}
+                  Tuesday 10:00 AM ET for Tuesday–Thursday games,
+                  then Thursday 10:00 AM ET for Friday–Monday games.
+                </div>
+              ) : null}
+
+              {enabledSports.includes("ncaamb") ? (
+                <div>
+                  <strong style={{ color: "#fff" }}>
+                    NCAAMB G365 line windows:
+                  </strong>{" "}
+                  Sunday 10:00 AM ET for Monday–Thursday games,
+                  then Thursday 10:00 AM ET for Friday–Sunday games.
+                </div>
+              ) : null}
+
+              {enabledSports.includes("nhl") ? (
+                <div>
+                  <strong style={{ color: "#fff" }}>
+                    NHL:
+                  </strong>{" "}
+                  Uses the NHL Pick&apos;em line and freeze lifecycle.
+                </div>
+              ) : null}
               <div>
                 <strong style={{ color: "#fff" }}>
                   Finalization gate:
@@ -2303,7 +2329,7 @@ export default function PickemCommissioner({
                     <input
                       type="number"
                       min={1}
-                      max={25}
+                      max={52}
                       value={weekNumber}
                       onChange={(event) =>
                         setWeekNumber(
@@ -3173,4 +3199,5 @@ const styles:
       "pointer",
   },
 };
+
 

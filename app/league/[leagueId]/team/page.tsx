@@ -193,12 +193,18 @@ export default async function TraditionalTeamPage({
             -webkit-overflow-scrolling: touch;
           }
 
-          .g365-mobile-summary-grid,
+          .g365-mobile-summary-grid { display: none !important; }
           .g365-mobile-team-grid,
           .g365-mobile-matchup-grid {
             grid-template-columns: repeat(2, minmax(0,1fr)) !important;
             gap: 8px !important;
           }
+
+          .g365-mobile-page-header { gap: 7px !important; }
+          .g365-mobile-page-header p { font-size: 10px !important; }
+          .g365-mobile-header-actions { gap: 6px !important; }
+          .g365-mobile-header-actions a { min-height: 34px !important; padding: 0 10px !important; font-size: 9px !important; }
+          .g365-mobile-section-header { margin-bottom: 7px !important; gap: 5px !important; }
 
           .g365-mobile-player-row,
           .g365-mobile-team-row {
@@ -228,7 +234,6 @@ export default async function TraditionalTeamPage({
         }
 
         @media (max-width: 430px) {
-          .g365-mobile-summary-grid,
           .g365-mobile-team-grid,
           .g365-mobile-matchup-grid {
             grid-template-columns: minmax(0,1fr) !important;

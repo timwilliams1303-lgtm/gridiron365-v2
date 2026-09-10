@@ -539,7 +539,185 @@ export default async function SeasonLongMatchupDetailPage({
         }
       />
 
+      <style>{`
+        .g365-season-matchup,
+        .g365-season-matchup * {
+          box-sizing: border-box;
+        }
+
+        @media (max-width: 760px) {
+          .g365-season-matchup {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            padding: 8px 8px 14px !important;
+            overflow-x: hidden !important;
+          }
+
+          .g365-season-matchup .g365-sl-topbar {
+            grid-template-columns: minmax(0, 1fr) auto !important;
+            gap: 6px !important;
+            min-height: 34px !important;
+          }
+
+          .g365-season-matchup .g365-sl-topbar > :nth-child(2) {
+            display: none !important;
+          }
+
+          .g365-season-matchup .g365-sl-scoreboard {
+            grid-template-columns: minmax(0, 1fr) 78px minmax(0, 1fr) !important;
+            gap: 6px !important;
+            padding: 9px 7px !important;
+            min-height: 82px !important;
+          }
+
+          .g365-season-matchup .g365-sl-scoreboard strong,
+          .g365-season-matchup .g365-sl-scoreboard span {
+            min-width: 0;
+          }
+
+          .g365-season-matchup .g365-sl-win-prob {
+            padding: 7px 9px !important;
+          }
+
+          .g365-season-matchup .g365-sl-quick-summary {
+            grid-template-columns: repeat(3, minmax(118px, 1fr)) !important;
+            overflow-x: auto !important;
+            overscroll-behavior-x: contain;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+          }
+
+          /*
+           * ESPN-style lineup comparison:
+           * away and home starters share the first row side-by-side.
+           * Live NFL games/scoring move below both lineups.
+           */
+          .g365-season-matchup .g365-sl-main-grid {
+            width: 100% !important;
+            max-width: 100% !important;
+            grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr) !important;
+            grid-template-rows: auto auto !important;
+            gap: 8px !important;
+            overflow-x: auto !important;
+            overscroll-behavior-x: contain;
+            -webkit-overflow-scrolling: touch;
+            scroll-snap-type: x proximity;
+            padding-bottom: 4px;
+          }
+
+          .g365-season-matchup .g365-sl-main-grid > .g365-sl-roster:first-child {
+            grid-column: 1 !important;
+            grid-row: 1 !important;
+            min-width: 320px !important;
+            scroll-snap-align: start;
+          }
+
+          .g365-season-matchup .g365-sl-main-grid > .g365-sl-center-column {
+            grid-column: 1 / -1 !important;
+            grid-row: 2 !important;
+            min-width: 648px !important;
+          }
+
+          .g365-season-matchup .g365-sl-main-grid > .g365-sl-roster:last-child {
+            grid-column: 2 !important;
+            grid-row: 1 !important;
+            min-width: 320px !important;
+            scroll-snap-align: start;
+          }
+
+          .g365-season-matchup .g365-sl-roster {
+            width: 100% !important;
+            max-width: none !important;
+            overflow: hidden !important;
+          }
+
+          .g365-season-matchup .g365-sl-table-header,
+          .g365-season-matchup .g365-sl-player-row {
+            grid-template-columns:
+              32px minmax(104px, 1fr) 42px 54px 40px 42px !important;
+            gap: 4px !important;
+          }
+
+          .g365-season-matchup .g365-sl-player-row {
+            min-height: 47px !important;
+            padding: 3px 5px !important;
+          }
+
+          .g365-season-matchup .g365-sl-table-header {
+            padding: 4px 5px !important;
+            font-size: 9px !important;
+          }
+
+          .g365-season-matchup .g365-sl-bench-grid {
+            width: 100% !important;
+            max-width: 100% !important;
+            grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr) !important;
+            gap: 8px !important;
+            overflow-x: auto !important;
+            overscroll-behavior-x: contain;
+            -webkit-overflow-scrolling: touch;
+            scroll-snap-type: x proximity;
+            padding-bottom: 4px;
+          }
+
+          .g365-season-matchup .g365-sl-bench-grid > :nth-child(1) {
+            grid-column: 1 !important;
+            min-width: 320px !important;
+            scroll-snap-align: start;
+          }
+
+          .g365-season-matchup .g365-sl-bench-grid > :nth-child(2) {
+            display: none !important;
+          }
+
+          .g365-season-matchup .g365-sl-bench-grid > :nth-child(3) {
+            grid-column: 2 !important;
+            min-width: 320px !important;
+            scroll-snap-align: start;
+          }
+        }
+
+        @media (max-width: 430px) {
+          .g365-season-matchup {
+            padding-left: 6px !important;
+            padding-right: 6px !important;
+          }
+
+          .g365-season-matchup .g365-sl-scoreboard {
+            grid-template-columns: minmax(0, 1fr) 62px minmax(0, 1fr) !important;
+            gap: 4px !important;
+            padding-left: 5px !important;
+            padding-right: 5px !important;
+          }
+
+          .g365-season-matchup .g365-sl-main-grid,
+          .g365-season-matchup .g365-sl-bench-grid {
+            grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr) !important;
+          }
+
+          .g365-season-matchup .g365-sl-main-grid > .g365-sl-roster:first-child,
+          .g365-season-matchup .g365-sl-main-grid > .g365-sl-roster:last-child,
+          .g365-season-matchup .g365-sl-bench-grid > :nth-child(1),
+          .g365-season-matchup .g365-sl-bench-grid > :nth-child(3) {
+            min-width: 300px !important;
+          }
+
+          .g365-season-matchup .g365-sl-main-grid > .g365-sl-center-column {
+            min-width: 608px !important;
+          }
+
+          .g365-season-matchup .g365-sl-table-header,
+          .g365-season-matchup .g365-sl-player-row {
+            grid-template-columns:
+              30px minmax(98px, 1fr) 40px 50px 38px 40px !important;
+            gap: 3px !important;
+          }
+        }
+      `}</style>
+
       <main
+        className="g365-season-matchup"
         style={
           styles.page
         }
@@ -554,6 +732,7 @@ export default async function SeasonLongMatchupDetailPage({
         =================================================== */}
 
         <div
+          className="g365-sl-topbar"
           style={
             styles.topBar
           }
@@ -610,6 +789,7 @@ export default async function SeasonLongMatchupDetailPage({
         =================================================== */}
 
         <section
+          className="g365-sl-scoreboard"
           style={
             styles.scoreboard
           }
@@ -723,6 +903,7 @@ export default async function SeasonLongMatchupDetailPage({
         =================================================== */}
 
         <section
+          className="g365-sl-win-prob"
           style={
             styles.winProbabilityPanel
           }
@@ -856,9 +1037,11 @@ export default async function SeasonLongMatchupDetailPage({
         =================================================== */}
 
         <section
-          style={
-            styles.summaryBar
-          }
+          className="g365-sl-quick-summary"
+          style={{
+            ...styles.summaryBar,
+            overflowX: "auto",
+          }}
         >
           <div
             style={
@@ -957,6 +1140,7 @@ export default async function SeasonLongMatchupDetailPage({
         =================================================== */}
 
         <section
+          className="g365-sl-main-grid"
           style={
             styles.mainGrid
           }
@@ -973,6 +1157,7 @@ export default async function SeasonLongMatchupDetailPage({
 
 
           <div
+            className="g365-sl-center-column"
             style={
               styles.centerColumn
             }
@@ -1117,6 +1302,7 @@ export default async function SeasonLongMatchupDetailPage({
         =================================================== */}
 
         <section
+          className="g365-sl-bench-grid"
           style={
             styles.benchGrid
           }
@@ -2102,6 +2288,7 @@ function CompactRoster({
 }) {
   return (
     <div
+      className="g365-sl-roster"
       style={
         styles.rosterPanel
       }
@@ -2149,6 +2336,7 @@ function CompactRoster({
       ) : (
         <>
           <div
+            className="g365-sl-table-header"
             style={
               styles.tableHeader
             }
@@ -2244,6 +2432,7 @@ function CompactBench({
 }) {
   return (
     <div
+      className="g365-sl-roster"
       style={
         styles.rosterPanel
       }
@@ -2328,6 +2517,7 @@ function CompactPlayerRow({
 
   return (
     <div
+      className="g365-sl-player-row"
       style={{
         ...styles.playerRow,
 
@@ -4280,5 +4470,6 @@ const styles = {
       "center" as const,
   },
   };
+
 
 

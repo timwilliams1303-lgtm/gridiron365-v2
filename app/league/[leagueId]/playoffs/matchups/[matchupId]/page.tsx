@@ -388,87 +388,142 @@ export default async function TraditionalPlayoffMatchupDetailPage({
 
   return (
     <main
+      className="g365-playoff-matchup"
       style={
         styles.page
       }
     >
       <style>{`
+        .g365-playoff-matchup,
+        .g365-playoff-matchup * {
+          box-sizing: border-box;
+        }
+
         @media (max-width: 760px) {
+          .g365-playoff-matchup {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            padding: 8px 8px 14px !important;
+            overflow-x: hidden !important;
+          }
+
           .g365-matchup-topbar {
             grid-template-columns: minmax(0, 1fr) auto !important;
             gap: 6px !important;
             padding: 8px !important;
           }
 
-          .g365-matchup-topbar > :nth-child(2) {
-            display: none !important;
-          }
+          .g365-matchup-topbar > :nth-child(2) { display: none !important; }
 
           .g365-matchup-scoreboard {
-            grid-template-columns: minmax(0, 1fr) !important;
-            gap: 10px !important;
-            padding: 12px 8px !important;
-          }
-
-          .g365-matchup-scoreboard > :nth-child(2) {
-            order: -1;
+            grid-template-columns: minmax(0, 1fr) 78px minmax(0, 1fr) !important;
+            gap: 6px !important;
+            padding: 10px 7px !important;
           }
 
           .g365-matchup-summary {
-            grid-template-columns: minmax(0, 1fr) !important;
-            gap: 8px !important;
+            grid-template-columns: repeat(3, minmax(118px, 1fr)) !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
           }
 
+          /* ESPN-style: both lineups remain side-by-side. */
           .g365-matchup-main-grid {
-            grid-template-columns: minmax(0, 1fr) !important;
-            gap: 10px !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr) !important;
+            grid-template-rows: auto auto !important;
+            gap: 8px !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-x: contain;
+            scroll-snap-type: x proximity;
+            padding-bottom: 4px;
           }
 
-          .g365-matchup-center-column {
+          .g365-matchup-main-grid > .g365-matchup-roster:first-child {
             grid-column: 1 !important;
-            grid-row: auto !important;
+            grid-row: 1 !important;
+            min-width: 320px !important;
+            scroll-snap-align: start;
           }
 
-          .g365-matchup-bench-grid {
-            grid-template-columns: minmax(0, 1fr) !important;
-            gap: 10px !important;
+          .g365-matchup-main-grid > .g365-matchup-center-column {
+            grid-column: 1 / -1 !important;
+            grid-row: 2 !important;
+            min-width: 648px !important;
           }
 
-          .g365-matchup-bench-grid > :nth-child(2) {
-            display: none !important;
+          .g365-matchup-main-grid > .g365-matchup-roster:last-child {
+            grid-column: 2 !important;
+            grid-row: 1 !important;
+            min-width: 320px !important;
+            scroll-snap-align: start;
           }
 
           .g365-matchup-roster {
             width: 100% !important;
-            min-width: 0 !important;
+            max-width: none !important;
             overflow: hidden !important;
           }
 
           .g365-matchup-table-header,
           .g365-matchup-player-row {
-            grid-template-columns:
-              42px minmax(0, 1fr) 44px 58px 46px 50px !important;
-            gap: 5px !important;
+            grid-template-columns: 32px minmax(104px, 1fr) 42px 54px 40px 42px !important;
+            gap: 4px !important;
           }
 
-          .g365-matchup-player-cell,
-          .g365-matchup-player-names {
-            min-width: 0 !important;
+          .g365-matchup-player-row {
+            min-height: 47px !important;
+            padding: 3px 5px !important;
+          }
+
+          .g365-matchup-bench-grid {
+            width: 100% !important;
+            max-width: 100% !important;
+            grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr) !important;
+            gap: 8px !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-x: contain;
+            scroll-snap-type: x proximity;
+            padding-bottom: 4px;
+          }
+
+          .g365-matchup-bench-grid > :nth-child(1) {
+            grid-column: 1 !important;
+            min-width: 320px !important;
+            scroll-snap-align: start;
+          }
+
+          .g365-matchup-bench-grid > :nth-child(2) { display: none !important; }
+
+          .g365-matchup-bench-grid > :nth-child(3) {
+            grid-column: 2 !important;
+            min-width: 320px !important;
+            scroll-snap-align: start;
           }
         }
 
         @media (max-width: 430px) {
-          .g365-matchup-table-header,
-          .g365-matchup-player-row {
-            grid-template-columns:
-              38px minmax(0, 1fr) 42px 50px 44px !important;
+          .g365-matchup-scoreboard {
+            grid-template-columns: minmax(0, 1fr) 62px minmax(0, 1fr) !important;
             gap: 4px !important;
           }
 
-          .g365-matchup-table-header > :nth-child(3),
-          .g365-matchup-player-row > :nth-child(3) {
-            display: none !important;
+          .g365-matchup-main-grid,
+          .g365-matchup-bench-grid {
+            grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr) !important;
           }
+
+          .g365-matchup-main-grid > .g365-matchup-roster:first-child,
+          .g365-matchup-main-grid > .g365-matchup-roster:last-child,
+          .g365-matchup-bench-grid > :nth-child(1),
+          .g365-matchup-bench-grid > :nth-child(3) { min-width: 300px !important; }
+
+          .g365-matchup-main-grid > .g365-matchup-center-column { min-width: 608px !important; }
         }
       `}</style>
       <div
@@ -3359,4 +3414,5 @@ const styles = {
       "center" as const,
   },
 };
+
 

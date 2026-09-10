@@ -15,7 +15,7 @@ type Props = {
   leagueId: string;
   season: number;
   viewerFantasyTeamId: number | null;
-  enabledSports: Array<"cfb" | "nfl" | "nhl">;
+  enabledSports: Array<"cfb" | "nfl" | "ncaamb" | "nhl">;
 };
 
 type ScoringMode =
@@ -789,6 +789,11 @@ export default function MixedPickemStandings({
         ? "NFL"
         : null,
       enabledSports.includes(
+        "ncaamb"
+      )
+        ? "NCAAMB"
+        : null,
+      enabledSports.includes(
         "nhl"
       )
         ? "NHL"
@@ -864,7 +869,7 @@ export default function MixedPickemStandings({
               1.6,
           }}
         >
-          Official season standings use the finalized combined G365 card across all enabled sports. Football and NHL selections count together toward one weekly record, one points total, and one missing-pick result.
+          Official season standings use the finalized combined G365 card across all enabled sports. CFB, NFL, NCAAMB, and NHL selections count together toward one weekly record, one points total, and one missing-pick result.
         </p>
       </section>
 
@@ -923,7 +928,7 @@ export default function MixedPickemStandings({
         }
         subtitle={
           activeWeek
-            ? "Unofficial live snapshot across Football and NHL until the combined week is finalized."
+            ? "Unofficial live snapshot across all enabled G365 sports until the combined week is finalized."
             : "There is no active unfinished week."
         }
         rows={

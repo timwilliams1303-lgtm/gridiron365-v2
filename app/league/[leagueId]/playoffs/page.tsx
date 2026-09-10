@@ -1,3344 +1,2009 @@
-"use client";
+import {
+  createSupabaseServerClient,
+} from "@/lib/supabase/server";
 
 import {
-  type CSSProperties,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import {
-  useParams,
-  useRouter,
-} from "next/navigation";
+  requireTraditionalLeague,
+} from "@/lib/traditional/requireTraditionalLeague";
 
-import G365MarchMadnessBracket from "@/components/playoffs/G365MarchMadnessBracket";
+import TraditionalPlayoffLiveRefresh from "@/components/traditional/TraditionalPlayoffLiveRefresh";
 
-import {
-  createBrowserClient,
-} from "@supabase/ssr";
 
-const supabase =
-  createBrowserClient(
-    process.env
-      .NEXT_PUBLIC_SUPABASE_URL!,
-
-    process.env
-      .NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env
-      .NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
-type LeagueRow = {
-  id: string;
-  name: string;
-  league_type: string;
-  season: number;
+type PageProps = {
+  params:
+    Promise<{
+      leagueId: string;
+    }>;
 };
 
-type MembershipRow = {
-  role: string;
-};
 
-type SettingsRow = {
-  regular_season_weeks: number;
-  playoff_team_count: number;
+type PlayoffSettingsRow = {
+  playoff_teams: number;
   playoff_start_week: number;
-  playoff_weeks: number;
-  playoff_reseeding: boolean;
-  consolation_bracket_enabled: boolean;
-  standings_tiebreaker: string;
+  championship_week: number;
+  reseed_each_round: boolean;
 };
 
-type ProjectedPlayoffRow = {
-  team_id: number;
-  team_name: string;
+
+type SeasonStateRow = {
+  active_week: number;
+  phase: string;
+  regular_season_complete: boolean;
+  playoffs_started: boolean;
+  season_complete: boolean;
+  last_completed_week:
+    number |
+    null;
+};
+
+
+type SeedRow = {
+  seed: number;
+  fantasy_team_id: number;
   wins: number;
   losses: number;
   ties: number;
-  points_for: number | string;
-  games_played: number;
-  seed: number;
-  playoff_probability:
-    | number
-    | string;
-  projected_playoff_team: boolean;
+  points_for:
+    number |
+    string;
+  points_against:
+    number |
+    string;
 };
 
-type ProjectedTeam = {
-  teamId: number;
+
+type StandingRow = {
+  fantasy_team_id: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  games_played: number;
+  points_for:
+    number |
+    string;
+  points_against:
+    number |
+    string;
+};
+
+
+type FantasyTeamRow = {
+  id: number;
+  team_name: string;
+};
+
+
+type PlayoffMatchupRow = {
+  id: number;
+  playoff_week: number;
+  round_number: number;
+  round_name: string;
+  matchup_number: number;
+  home_seed:
+    number |
+    null;
+  away_seed:
+    number |
+    null;
+  home_fantasy_team_id:
+    number |
+    null;
+  away_fantasy_team_id:
+    number |
+    null;
+  home_points:
+    number |
+    string;
+  away_points:
+    number |
+    string;
+  is_bye: boolean;
+  is_live: boolean;
+  is_final: boolean;
+  winner_fantasy_team_id:
+    number |
+    null;
+  tied: boolean;
+  finalized_at:
+    string |
+    null;
+};
+
+
+type SeasonResultRow = {
+  champion_fantasy_team_id: number;
+  runner_up_fantasy_team_id:
+    number |
+    null;
+  champion_seed:
+    number |
+    null;
+  runner_up_seed:
+    number |
+    null;
+  championship_home_points:
+    number |
+    string;
+  championship_away_points:
+    number |
+    string;
+  championship_matchup_id:
+    number |
+    null;
+  completed_at: string;
+};
+
+
+type BracketTeam = {
+  fantasyTeamId:
+    number |
+    null;
+  seed:
+    number |
+    null;
+  teamName: string;
+  points: number;
+  isWinner: boolean;
+};
+
+
+type ProjectedSeed = {
+  seed: number;
+  fantasyTeamId: number;
   teamName: string;
   wins: number;
   losses: number;
   ties: number;
+  winPct: number;
   pointsFor: number;
-  gamesPlayed: number;
-  seed: number;
-  playoffProbability: number;
-  projectedPlayoffTeam: boolean;
 };
 
-type TraditionalStandingRow = {
-  seed: number;
-  team_id: number;
-  team_name: string;
-  wins: number;
-  losses: number;
-  ties: number;
-  games_played: number;
-  win_percentage:
-    | number
-    | string;
-  points_for:
-    | number
-    | string;
-  points_against:
-    | number
-    | string;
-  point_differential:
-    | number
-    | string;
-  streak: string;
-};
 
-type SeedTieResolutionRow = {
-  team_id: number;
-  resolved_seed: number;
-  reason: string | null;
-};
-
-type PlayoffSeedTieGroup = {
-  originalSeed: number;
-  teams: TraditionalStandingRow[];
-  firstAllowedSeed: number;
-  lastAllowedSeed: number;
-  isResolved: boolean;
-};
-
-type LeaguePlayoffRow = {
-  id: number;
-  league_id: string;
-  season: number;
-  playoff_team_count: number;
-  playoff_start_week: number;
-  playoff_weeks: number;
-  current_round: number | null;
-  status: string;
-  started_at: string | null;
-  completed_at: string | null;
-  champion_team_id: number | null;
-  updated_at: string;
-};
-
-type PlayoffSeedRow = {
-  team_id: number;
-  seed: number;
-};
-
-type TeamRow = {
-  id: number;
-  team_name: string | null;
-  wins: number;
-  losses: number;
-  ties: number;
-};
-
-type PlayoffMatchupRow = {
-  id: number;
-  league_id: string;
-  season: number;
-  week: number;
-  home_team_id: number | null;
-  away_team_id: number | null;
-  home_projected_points:
-    | number
-    | string;
-  away_projected_points:
-    | number
-    | string;
-  home_points:
-    | number
-    | string;
-  away_points:
-    | number
-    | string;
-  winner_team_id: number | null;
-  is_tie: boolean;
-  matchup_type: string;
-  playoff_round: number | null;
-  playoff_slot: number | null;
-  home_seed: number | null;
-  away_seed: number | null;
-  status: string;
-  finalized_at: string | null;
-  updated_at: string;
-};
-
-type PlayoffMatchupView = {
-  id: number;
-  week: number;
-  round: number;
-  slot: number;
-  matchupType:
-    | "playoff"
-    | "championship"
-    | "consolation";
-  homeTeam: TeamRow | null;
-  awayTeam: TeamRow | null;
-  homeSeed: number | null;
-  awaySeed: number | null;
-  homeProjectedPoints: number;
-  awayProjectedPoints: number;
-  homePoints: number;
-  awayPoints: number;
-  winnerTeamId: number | null;
-  isTie: boolean;
-  status: string;
-};
-
-type ProjectedMatchup = {
-  key: string;
-  round: number;
-  label: string;
-  home: ProjectedTeam | null;
-  away: ProjectedTeam | null;
-  byeTeam: ProjectedTeam | null;
-};
-
-export default function PlayoffsPage() {
-  const params =
-    useParams();
-
-  const router =
-    useRouter();
-
-  const leagueId =
-    typeof params.leagueId ===
-    "string"
-      ? params.leagueId
-      : "";
-
-  const [
-    league,
-    setLeague,
-  ] =
-    useState<LeagueRow | null>(
-      null
+function numberValue(
+  value:
+    number |
+    string |
+    null |
+    undefined
+) {
+  const parsed =
+    Number(
+      value ??
+      0
     );
 
-  const [
-    settings,
-    setSettings,
-  ] =
-    useState<SettingsRow | null>(
-      null
-    );
 
-  const [
-    projectedTeams,
-    setProjectedTeams,
-  ] =
-    useState<ProjectedTeam[]>(
-      []
-    );
-
-  const [
-    playoffState,
-    setPlayoffState,
-  ] =
-    useState<LeaguePlayoffRow | null>(
-      null
-    );
-
-  const [
-    playoffMatchups,
-    setPlayoffMatchups,
-  ] =
-    useState<PlayoffMatchupView[]>(
-      []
-    );
-
-  const [
-    championTeam,
-    setChampionTeam,
-  ] =
-    useState<TeamRow | null>(
-      null
-    );
-
-  const [
-    currentWeek,
-    setCurrentWeek,
-  ] =
-    useState(1);
-
-
-  const [
-    isCommissioner,
-    setIsCommissioner,
-  ] =
-    useState(false);
-
-  const [
-    loading,
-    setLoading,
-  ] =
-    useState(true);
-
-  const [
-    working,
-    setWorking,
-  ] =
-    useState(false);
-
-  const [
-    autoRefreshing,
-    setAutoRefreshing,
-  ] =
-    useState(false);
-
-  const [
-    resolvingTiebreakMatchupId,
-    setResolvingTiebreakMatchupId,
-  ] = useState<number | null>(null);
-
-  const [
-    finalStandings,
-    setFinalStandings,
-  ] =
-    useState<
-      TraditionalStandingRow[]
-    >([]);
-
-  const [
-    seedTieResolutions,
-    setSeedTieResolutions,
-  ] =
-    useState<
-      SeedTieResolutionRow[]
-    >([]);
-
-  const [
-    resolvingSeedTeamId,
-    setResolvingSeedTeamId,
-  ] =
-    useState<number | null>(
-      null
-    );
-
-  const [
-    message,
-    setMessage,
-  ] =
-    useState("");
-
-  const [
-    isError,
-    setIsError,
-  ] =
-    useState(false);
-
-  const loadPage =
-    useCallback(
-      async () => {
-        if (!leagueId) {
-          return;
-        }
-
-        setLoading(true);
-        setMessage("");
-        setIsError(false);
-
-        try {
-          const {
-            data:
-              userData,
-            error:
-              userError,
-          } =
-            await supabase.auth
-              .getUser();
-
-          const user =
-            userData.user;
-
-          if (
-            userError ||
-            !user
-          ) {
-            router.replace("/");
-            return;
-          }
-
-          const [
-            leagueResult,
-            membershipResult,
-            settingsResult,
-          ] =
-            await Promise.all([
-              supabase
-                .from("leagues")
-                .select(`
-                  id,
-                  name,
-                  league_type,
-                  season
-                `)
-                .eq(
-                  "id",
-                  leagueId
-                )
-                .single(),
-
-              supabase
-                .from(
-                  "league_members"
-                )
-                .select("role")
-                .eq(
-                  "league_id",
-                  leagueId
-                )
-                .eq(
-                  "user_id",
-                  user.id
-                )
-                .maybeSingle(),
-
-              supabase
-                .from(
-                  "league_settings"
-                )
-                .select(`
-                  regular_season_weeks,
-                  playoff_team_count,
-                  playoff_start_week,
-                  playoff_weeks,
-                  playoff_reseeding,
-                  consolation_bracket_enabled,
-                  standings_tiebreaker
-                `)
-                .eq(
-                  "league_id",
-                  leagueId
-                )
-                .single(),
-            ]);
-
-          if (
-            leagueResult.error ||
-            !leagueResult.data
-          ) {
-            throw new Error(
-              leagueResult.error
-                ?.message ??
-                "League could not be loaded."
-            );
-          }
-
-          if (
-            membershipResult.error ||
-            !membershipResult.data
-          ) {
-            throw new Error(
-              "You must belong to this league."
-            );
-          }
-
-          if (
-            settingsResult.error ||
-            !settingsResult.data
-          ) {
-            throw new Error(
-              settingsResult.error
-                ?.message ??
-                "Playoff settings could not be loaded."
-            );
-          }
-
-          const loadedLeague =
-            leagueResult.data as
-              LeagueRow;
-
-          const loadedSettings =
-            settingsResult.data as
-              SettingsRow;
-
-          if (
-            loadedLeague
-              .league_type !==
-            "traditional"
-          ) {
-            throw new Error(
-              "Playoffs are only available for Traditional leagues."
-            );
-          }
-
-          const {
-            data:
-              seasonStateData,
-
-            error:
-              seasonStateError,
-          } =
-            await supabase
-              .from(
-                "traditional_season_state"
-              )
-              .select(
-                "active_week"
-              )
-              .eq(
-                "league_id",
-                loadedLeague.id
-              )
-              .eq(
-                "season",
-                loadedLeague.season
-              )
-              .maybeSingle();
-
-          if (
-            seasonStateError
-          ) {
-            throw new Error(
-              seasonStateError.message
-            );
-          }
-
-          setLeague(
-            loadedLeague
-          );
-
-          setSettings(
-            loadedSettings
-          );
-
-          setCurrentWeek(
-            Number(
-              seasonStateData
-                ?.active_week ??
-              1
-            )
-          );
-
-          setIsCommissioner(
-            [
-              "commissioner",
-              "co_commissioner",
-            ].includes(
-              (
-                membershipResult.data as
-                  MembershipRow
-              ).role
-            )
-          );
-
-          const loadedActiveWeek =
-            Number(
-              seasonStateData
-                ?.active_week ??
-              1
-            );
-
-          const beforePlayoffs =
-            loadedActiveWeek <
-            loadedSettings
-              .playoff_start_week;
-
-          if (beforePlayoffs) {
-            const {
-              data:
-                projectionData,
-              error:
-                projectionError,
-            } =
-              await supabase.rpc(
-                "get_projected_playoff_field",
-                {
-                  p_league_id:
-                    leagueId,
-                }
-              );
-
-            if (
-              projectionError
-            ) {
-              throw new Error(
-                projectionError.message
-              );
-            }
-
-            setProjectedTeams(
-              (
-                projectionData ??
-                []
-              ).map(
-                (
-                  row:
-                    ProjectedPlayoffRow
-                ): ProjectedTeam => ({
-                  teamId:
-                    row.team_id,
-
-                  teamName:
-                    row.team_name,
-
-                  wins:
-                    row.wins,
-
-                  losses:
-                    row.losses,
-
-                  ties:
-                    row.ties,
-
-                  pointsFor:
-                    Number(
-                      row.points_for ??
-                        0
-                    ),
-
-                  gamesPlayed:
-                    row.games_played,
-
-                  seed:
-                    row.seed,
-
-                  playoffProbability:
-                    Number(
-                      row.playoff_probability ??
-                        0
-                    ),
-
-                  projectedPlayoffTeam:
-                    row.projected_playoff_team,
-                })
-              )
-            );
-
-            setPlayoffState(
-              null
-            );
-
-            setPlayoffMatchups(
-              []
-            );
-
-            setChampionTeam(
-              null
-            );
-
-            setFinalStandings(
-              []
-            );
-
-            setSeedTieResolutions(
-              []
-            );
-
-            return;
-          }
-
-          const {
-            data:
-              playoffData,
-            error:
-              playoffError,
-          } =
-            await supabase
-              .from(
-                "league_playoffs"
-              )
-              .select(`
-                id,
-                league_id,
-                season,
-                playoff_team_count,
-                playoff_start_week,
-                playoff_weeks,
-                current_round,
-                status,
-                started_at,
-                completed_at,
-                champion_team_id,
-                updated_at
-              `)
-              .eq(
-                "league_id",
-                leagueId
-              )
-              .eq(
-                "season",
-                loadedLeague.season
-              )
-              .maybeSingle();
-
-          if (
-            playoffError
-          ) {
-            throw new Error(
-              playoffError.message
-            );
-          }
-
-          const loadedPlayoff =
-            playoffData
-              ? playoffData as
-                  LeaguePlayoffRow
-              : null;
-
-          setPlayoffState(
-            loadedPlayoff
-          );
-
-          if (
-            !loadedPlayoff
-          ) {
-            const [
-              standingsResult,
-              resolutionsResult,
-            ] =
-              await Promise.all([
-                supabase.rpc(
-                  "get_traditional_standings",
-                  {
-                    p_league_id:
-                      leagueId,
-                  }
-                ),
-
-                supabase
-                  .from(
-                    "playoff_seed_tie_resolutions"
-                  )
-                  .select(`
-                    team_id,
-                    resolved_seed,
-                    reason
-                  `)
-                  .eq(
-                    "league_id",
-                    leagueId
-                  )
-                  .eq(
-                    "season",
-                    loadedLeague.season
-                  ),
-              ]);
-
-            if (
-              standingsResult.error
-            ) {
-              throw new Error(
-                standingsResult.error
-                  .message
-              );
-            }
-
-            if (
-              resolutionsResult.error
-            ) {
-              throw new Error(
-                resolutionsResult.error
-                  .message
-              );
-            }
-
-            setFinalStandings(
-              (
-                standingsResult.data ??
-                []
-              ) as
-                TraditionalStandingRow[]
-            );
-
-            setSeedTieResolutions(
-              (
-                resolutionsResult.data ??
-                []
-              ) as
-                SeedTieResolutionRow[]
-            );
-
-            setPlayoffMatchups(
-              []
-            );
-
-            setChampionTeam(
-              null
-            );
-
-            return;
-          }
-
-          setFinalStandings(
-            []
-          );
-
-          setSeedTieResolutions(
-            []
-          );
-
-          const [
-            matchupResult,
-            teamsResult,
-            seedResult,
-          ] =
-            await Promise.all([
-              supabase
-                .from(
-                  "fantasy_matchups"
-                )
-                .select(`
-                  id,
-                  league_id,
-                  season,
-                  week,
-                  home_team_id,
-                  away_team_id,
-                  home_projected_points,
-                  away_projected_points,
-                  home_points,
-                  away_points,
-                  winner_team_id,
-                  is_tie,
-                  matchup_type,
-                  playoff_round,
-                  playoff_slot,
-                  home_seed,
-                  away_seed,
-                  status,
-                  finalized_at,
-                  updated_at
-                `)
-                .eq(
-                  "league_id",
-                  leagueId
-                )
-                .eq(
-                  "season",
-                  loadedLeague.season
-                )
-                .in(
-                  "matchup_type",
-                  [
-                    "playoff",
-                    "championship",
-                    "consolation",
-                  ]
-                )
-                .order(
-                  "playoff_round",
-                  {
-                    ascending:
-                      true,
-                  }
-                )
-                .order(
-                  "playoff_slot",
-                  {
-                    ascending:
-                      true,
-                  }
-                ),
-
-              supabase
-                .from(
-                  "fantasy_teams"
-                )
-                .select(`
-                  id,
-                  team_name,
-                  wins,
-                  losses,
-                  ties
-                `)
-                .eq(
-                  "league_id",
-                  leagueId
-                )
-                .eq(
-                  "active",
-                  true
-                ),
-
-              supabase
-                .from(
-                  "league_playoff_seeds"
-                )
-                .select(`
-                  team_id,
-                  seed
-                `)
-                .eq(
-                  "league_id",
-                  leagueId
-                )
-                .eq(
-                  "season",
-                  loadedLeague.season
-                ),
-            ]);
-
-          if (
-            matchupResult.error
-          ) {
-            throw new Error(
-              matchupResult.error
-                .message
-            );
-          }
-
-          if (
-            teamsResult.error
-          ) {
-            throw new Error(
-              teamsResult.error
-                .message
-            );
-          }
-
-          if (
-            seedResult.error
-          ) {
-            throw new Error(
-              seedResult.error
-                .message
-            );
-          }
-
-          const teams =
-            (teamsResult.data ??
-              []) as
-              TeamRow[];
-
-          const teamMap =
-            new Map(
-              teams.map(
-                (team) => [
-                  team.id,
-                  team,
-                ]
-              )
-            );
-
-          const seedMap =
-            new Map<number, number>(
-              (
-                seedResult.data ??
-                []
-              ).map(
-                (
-                  row:
-                    PlayoffSeedRow
-                ) => [
-                  row.team_id,
-                  row.seed,
-                ]
-              )
-            );
-
-          const builtMatchups =
-            (
-              matchupResult.data ??
-              []
-            ).map(
-              (
-                row:
-                  PlayoffMatchupRow
-              ):
-                PlayoffMatchupView => ({
-                  id:
-                    row.id,
-
-                  week:
-                    row.week,
-
-                  round:
-                    Number(
-                      row.playoff_round ??
-                        1
-                    ),
-
-                  slot:
-                    Number(
-                      row.playoff_slot ??
-                        1
-                    ),
-
-                  matchupType:
-                    row.matchup_type as
-                      | "playoff"
-                      | "championship"
-                      | "consolation",
-
-                  homeTeam:
-                    row.home_team_id
-                      ? teamMap.get(
-                          row.home_team_id
-                        ) ??
-                        null
-                      : null,
-
-                  awayTeam:
-                    row.away_team_id
-                      ? teamMap.get(
-                          row.away_team_id
-                        ) ??
-                        null
-                      : null,
-
-                  homeSeed:
-                    row.home_seed ??
-                    (
-                      row.home_team_id
-                        ? seedMap.get(
-                            row.home_team_id
-                          ) ??
-                          null
-                        : null
-                    ),
-
-                  awaySeed:
-                    row.away_seed ??
-                    (
-                      row.away_team_id
-                        ? seedMap.get(
-                            row.away_team_id
-                          ) ??
-                          null
-                        : null
-                    ),
-
-                  homeProjectedPoints:
-                    Number(
-                      row.home_projected_points ??
-                        0
-                    ),
-
-                  awayProjectedPoints:
-                    Number(
-                      row.away_projected_points ??
-                        0
-                    ),
-
-                  homePoints:
-                    Number(
-                      row.home_points ??
-                        0
-                    ),
-
-                  awayPoints:
-                    Number(
-                      row.away_points ??
-                        0
-                    ),
-
-                  winnerTeamId:
-                    row.winner_team_id,
-
-                  isTie:
-                    row.is_tie,
-
-                  status:
-                    row.status,
-                })
-            );
-
-          setPlayoffMatchups(
-            builtMatchups
-          );
-
-          setChampionTeam(
-            loadedPlayoff
-              .champion_team_id
-              ? teamMap.get(
-                  loadedPlayoff
-                    .champion_team_id
-                ) ??
-                null
-              : null
-          );
-        } catch (error) {
-          setIsError(
-            true
-          );
-
-          setMessage(
-            error instanceof Error
-              ? error.message
-              : "The playoffs page could not be loaded."
-          );
-        } finally {
-          setLoading(
-            false
-          );
-        }
-      },
-      [
-        leagueId,
-        router,
-      ]
-    );
-
-  useEffect(() => {
-    void loadPage();
-  }, [loadPage]);
-
-  const beforePlayoffs =
-    settings !== null &&
-    playoffState === null &&
-    currentWeek <
-      settings.playoff_start_week;
-
-  const projectedField =
-    useMemo(
-      () => {
-        if (!settings) {
-          return [];
-        }
-
-        const orderedTeams =
-          [...projectedTeams].sort(
-            (
-              first,
-              second
-            ) => {
-              const seedDifference =
-                first.seed -
-                second.seed;
-
-              if (
-                seedDifference !== 0
-              ) {
-                return seedDifference;
-              }
-
-              const probabilityDifference =
-                second.playoffProbability -
-                first.playoffProbability;
-
-              if (
-                probabilityDifference !== 0
-              ) {
-                return probabilityDifference;
-              }
-
-              return first.teamName.localeCompare(
-                second.teamName
-              );
-            }
-          );
-
-        const explicitlyProjected =
-          orderedTeams.filter(
-            (team) =>
-              team.projectedPlayoffTeam
-          );
-
-        const source =
-          explicitlyProjected.length >=
-          settings.playoff_team_count
-            ? explicitlyProjected
-            : orderedTeams;
-
-        return source
-          .slice(
-            0,
-            settings.playoff_team_count
-          )
-          .map(
-            (team, index) => ({
-              ...team,
-              seed: index + 1,
-            })
-          );
-      },
-      [
-        projectedTeams,
-        settings,
-      ]
-    );
-
-  const projectedBracket =
-    useMemo(
-      () =>
-        settings
-          ? buildProjectedBracket(
-              projectedField,
-              settings.playoff_team_count
-            )
-          : [],
-      [
-        projectedField,
-        settings,
-      ]
-    );
-
-  const playoffSeedTieGroups =
-    useMemo<
-      PlayoffSeedTieGroup[]
-    >(
-      () => {
-        if (!settings) {
-          return [];
-        }
-
-        const grouped =
-          new Map<
-            number,
-            TraditionalStandingRow[]
-          >();
-
-        for (
-          const standing
-          of finalStandings
-        ) {
-          const current =
-            grouped.get(
-              standing.seed
-            ) ??
-            [];
-
-          current.push(
-            standing
-          );
-
-          grouped.set(
-            standing.seed,
-            current
-          );
-        }
-
-        return Array.from(
-          grouped.entries()
-        )
-          .filter(
-            ([
-              originalSeed,
-              teams,
-            ]) =>
-              teams.length > 1 &&
-              originalSeed <=
-                settings.playoff_team_count
-          )
-          .map(
-            ([
-              originalSeed,
-              teams,
-            ]) => {
-              const firstAllowedSeed =
-                originalSeed;
-
-              const lastAllowedSeed =
-                originalSeed +
-                teams.length -
-                1;
-
-              const resolutions =
-                teams
-                  .map(
-                    (team) =>
-                      seedTieResolutions.find(
-                        (resolution) =>
-                          resolution.team_id ===
-                          team.team_id
-                      )
-                  )
-                  .filter(
-                    (resolution):
-                      resolution is
-                        SeedTieResolutionRow =>
-                      resolution !==
-                      undefined
-                  );
-
-              const assignedSeeds =
-                resolutions.map(
-                  (resolution) =>
-                    resolution.resolved_seed
-                );
-
-              const everyTeamResolved =
-                resolutions.length ===
-                teams.length;
-
-              const seedsUnique =
-                new Set(
-                  assignedSeeds
-                ).size ===
-                assignedSeeds.length;
-
-              const seedsInRange =
-                assignedSeeds.every(
-                  (seed) =>
-                    seed >=
-                      firstAllowedSeed &&
-                    seed <=
-                      lastAllowedSeed
-                );
-
-              return {
-                originalSeed,
-
-                teams:
-                  [...teams].sort(
-                    (
-                      first,
-                      second
-                    ) =>
-                      first.team_name.localeCompare(
-                        second.team_name
-                      )
-                  ),
-
-                firstAllowedSeed,
-                lastAllowedSeed,
-
-                isResolved:
-                  everyTeamResolved &&
-                  seedsUnique &&
-                  seedsInRange,
-              };
-            }
-          )
-          .sort(
-            (
-              first,
-              second
-            ) =>
-              first.originalSeed -
-              second.originalSeed
-          );
-      },
-      [
-        finalStandings,
-        seedTieResolutions,
-        settings,
-      ]
-    );
-
-  const hasUnresolvedSeedTies =
-    useMemo(
-      () =>
-        playoffSeedTieGroups.some(
-          (group) =>
-            !group.isResolved
-        ),
-      [
-        playoffSeedTieGroups,
-      ]
-    );
-
-  const rounds =
-    useMemo(
-      () => {
-        const grouped =
-          new Map<
-            number,
-            PlayoffMatchupView[]
-          >();
-
-        for (
-          const matchup
-          of playoffMatchups
-        ) {
-          const existing =
-            grouped.get(
-              matchup.round
-            ) ??
-            [];
-
-          existing.push(
-            matchup
-          );
-
-          grouped.set(
-            matchup.round,
-            existing
-          );
-        }
-
-        return Array.from(
-          grouped.entries()
-        )
-          .sort(
-            (
-              first,
-              second
-            ) =>
-              first[0] -
-              second[0]
-          )
-          .map(
-            ([
-              round,
-              matchups,
-            ]) => ({
-              round,
-              matchups:
-                [...matchups].sort(
-                  (
-                    first,
-                    second
-                  ) =>
-                    first.slot -
-                    second.slot
-                ),
-            })
-          );
-      },
-      [
-        playoffMatchups,
-      ]
-    );
-
-  const hasActivePlayoffMatchups =
-    useMemo(
-      () =>
-        playoffMatchups.some(
-          (matchup) =>
-            matchup.status ===
-              "scheduled" ||
-            matchup.status ===
-              "live"
-        ),
-      [
-        playoffMatchups,
-      ]
-    );
-
-  const currentPlayoffWeek =
-    useMemo(
-      () => {
-        const active =
-          playoffMatchups.find(
-            (matchup) =>
-              matchup.status ===
-                "live" ||
-              matchup.status ===
-                "scheduled"
-          );
-
-        return active
-          ?.week ??
-          currentWeek;
-      },
-      [
-        playoffMatchups,
-        currentWeek,
-      ]
-    );
-
-  async function resolveSeedTie(
-    teamId: number,
-    resolvedSeed: number
+  return Number.isFinite(
+    parsed
+  )
+    ? parsed
+    : 0;
+}
+
+
+function formatPoints(
+  value:
+    number |
+    string
+) {
+  return numberValue(
+    value
+  ).toFixed(
+    2
+  );
+}
+
+
+function calculateWinPct(
+  wins: number,
+  ties: number,
+  gamesPlayed: number
+) {
+  if (
+    gamesPlayed <=
+    0
   ) {
-    if (
-      !league ||
-      !isCommissioner ||
-      resolvingSeedTeamId !==
-        null
-    ) {
-      return;
-    }
-
-    setResolvingSeedTeamId(
-      teamId
-    );
-
-    setMessage(
-      ""
-    );
-
-    setIsError(
-      false
-    );
-
-    try {
-      const {
-        error,
-      } =
-        await supabase.rpc(
-          "resolve_playoff_seed_tie",
-          {
-            p_league_id:
-              league.id,
-
-            p_team_id:
-              teamId,
-
-            p_resolved_seed:
-              resolvedSeed,
-
-            p_reason:
-              "Commissioner playoff seeding tiebreak",
-          }
-        );
-
-      if (error) {
-        throw new Error(
-          error.message
-        );
-      }
-
-      setMessage(
-        `Playoff seed ${resolvedSeed} was assigned successfully.`
-      );
-
-      await loadPage();
-    } catch (error) {
-      setIsError(
-        true
-      );
-
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "The playoff seed tie could not be resolved."
-      );
-    } finally {
-      setResolvingSeedTeamId(
-        null
-      );
-    }
+    return 0;
   }
 
-  async function startPlayoffs() {
-    if (
-      !league ||
-      !isCommissioner
-    ) {
-      return;
-    }
 
-    setWorking(
-      true
-    );
+  return (
+    wins +
+    ties *
+      0.5
+  ) /
+    gamesPlayed;
+}
 
-    setMessage("");
-    setIsError(false);
 
-    try {
-      const {
-        data,
-        error,
-      } =
-        await supabase.rpc(
-          "start_traditional_playoffs",
-          {
-            p_league_id:
-              league.id,
-          }
-        );
-
-      if (error) {
-        throw new Error(
-          error.message
-        );
-      }
-
-      const {
-        error:
-          phaseError,
-      } =
-        await supabase.rpc(
-          "mark_traditional_playoffs_active",
-          {
-            p_league_id:
-              league.id,
-          }
-        );
-
-      if (phaseError) {
-        throw new Error(
-          phaseError.message
-        );
-      }
-
-      setMessage(
-        data
-          ? "The playoff bracket was created."
-          : "The playoff bracket was created."
-      );
-
-      await loadPage();
-    } catch (error) {
-      setIsError(true);
-
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "The playoff bracket could not be created."
-      );
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  async function advanceBracket(
-    quiet = false
+function statusLabel(
+  matchup:
+    PlayoffMatchupRow
+) {
+  if (
+    matchup.is_final
   ) {
-    if (!league) {
-      return;
-    }
-
-    if (!quiet) {
-      setWorking(
-        true
-      );
-
-      setMessage("");
-      setIsError(false);
-    }
-
-    try {
-      const {
-        error,
-      } =
-        await supabase.rpc(
-          "advance_traditional_playoffs",
-          {
-            p_league_id:
-              league.id,
-          }
-        );
-
-      if (error) {
-        throw new Error(
-          error.message
-        );
-      }
-
-      if (!quiet) {
-        setMessage(
-          "The playoff bracket was checked and advanced where possible."
-        );
-      }
-
-      await loadPage();
-    } catch (error) {
-      if (!quiet) {
-        setIsError(true);
-
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "The playoff bracket could not be advanced."
-        );
-      }
-    } finally {
-      if (!quiet) {
-        setWorking(false);
-      }
-    }
+    return matchup.tied
+      ? "FINAL • TIEBREAK"
+      : "FINAL";
   }
 
-  async function resolvePlayoffTiebreak(
-    matchupId: number,
-    winnerTeamId: number
-  ) {
-    if (
-      !league ||
-      !isCommissioner ||
-      resolvingTiebreakMatchupId !== null
-    ) {
-      return;
-    }
-
-    setResolvingTiebreakMatchupId(matchupId);
-    setMessage("");
-    setIsError(false);
-
-    try {
-      const { error } = await supabase.rpc(
-        "resolve_playoff_tiebreak",
-        {
-          p_league_id: league.id,
-          p_matchup_id: matchupId,
-          p_winner_team_id: winnerTeamId,
-        }
-      );
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      await syncCurrentPlayoffWeek(true);
-      setMessage("Playoff tiebreak resolved and bracket updated.");
-      await loadPage();
-    } catch (error) {
-      setIsError(true);
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "The playoff tiebreak could not be resolved."
-      );
-    } finally {
-      setResolvingTiebreakMatchupId(null);
-    }
-  }
-
-  async function syncCurrentPlayoffWeek(
-    quiet = false
-  ) {
-    if (
-      !league ||
-      !playoffState
-    ) {
-      return;
-    }
-
-    if (quiet) {
-      setAutoRefreshing(
-        true
-      );
-    } else {
-      setWorking(
-        true
-      );
-
-      setMessage("");
-      setIsError(false);
-    }
-
-    try {
-      const {
-        data:
-          sessionData,
-        error:
-          sessionError,
-      } =
-        await supabase.auth
-          .getSession();
-
-      if (
-        sessionError
-      ) {
-        throw new Error(
-          sessionError.message
-        );
-      }
-
-      const token =
-        sessionData.session
-          ?.access_token;
-
-      if (!token) {
-        throw new Error(
-          "Your login session has expired."
-        );
-      }
-
-      const response =
-        await fetch(
-          `/api/leagues/${league.id}/playoffs/sync-week`,
-          {
-            method:
-              "POST",
-
-            headers: {
-              Authorization:
-                `Bearer ${token}`,
-
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify({
-                season:
-                  league.season,
-
-                week:
-                  currentPlayoffWeek,
-              }),
-          }
-        );
-
-      let result:
-        Record<
-          string,
-          unknown
-        > = {};
-
-      try {
-        result =
-          await response.json();
-      } catch {
-        result = {};
-      }
-
-      if (
-        !response.ok
-      ) {
-        throw new Error(
-          typeof result.error ===
-            "string"
-            ? result.error
-            : "Playoff scoring could not be refreshed."
-        );
-      }
-
-      if (!quiet) {
-        setMessage(
-          "Playoff scores and bracket refreshed."
-        );
-      }
-
-      await loadPage();
-    } catch (error) {
-      if (!quiet) {
-        setIsError(true);
-
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "Playoff scoring could not be refreshed."
-        );
-      }
-    } finally {
-      if (quiet) {
-        setAutoRefreshing(
-          false
-        );
-      } else {
-        setWorking(
-          false
-        );
-      }
-    }
-  }
-
-  useEffect(() => {
-    if (
-      beforePlayoffs ||
-      !league ||
-      !playoffState ||
-      playoffState.status ===
-        "completed" ||
-      !hasActivePlayoffMatchups
-    ) {
-      return;
-    }
-
-    const intervalId =
-      window.setInterval(
-        () => {
-          if (
-            working ||
-            autoRefreshing
-          ) {
-            return;
-          }
-
-          void syncCurrentPlayoffWeek(
-            true
-          );
-        },
-        30000
-      );
-
-    return () => {
-      window.clearInterval(
-        intervalId
-      );
-    };
-  }, [
-    beforePlayoffs,
-    league,
-    playoffState,
-    hasActivePlayoffMatchups,
-    currentPlayoffWeek,
-    working,
-    autoRefreshing,
-  ]);
-
-  if (loading) {
-    return (
-      <main
-        style={
-          styles.page
-        }
-      >
-
-      <style>{`
-        @media (max-width: 760px) {
-          .g365-playoffs-container {
-            width: 100% !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
-          }
-
-          .g365-playoffs-header {
-            align-items: flex-start !important;
-            flex-direction: column !important;
-            gap: 14px !important;
-          }
-
-          .g365-playoffs-header-right {
-            width: 100% !important;
-            min-width: 0 !important;
-            align-items: stretch !important;
-          }
-
-          .g365-playoffs-header-stats {
-            width: 100% !important;
-            display: grid !important;
-            grid-template-columns: repeat(3,minmax(0,1fr)) !important;
-            gap: 7px !important;
-          }
-
-          .g365-playoffs-actions {
-            width: 100% !important;
-            display: grid !important;
-            grid-template-columns: repeat(2,minmax(0,1fr)) !important;
-            gap: 8px !important;
-          }
-
-          .g365-playoffs-actions > button {
-            width: 100% !important;
-            min-width: 0 !important;
-            min-height: 42px !important;
-          }
-
-          .g365-playoffs-bracket-intro {
-            flex-direction: column !important;
-            align-items: stretch !important;
-            gap: 12px !important;
-          }
-
-          .g365-playoffs-countdown {
-            width: 100% !important;
-            min-width: 0 !important;
-          }
-
-          .g365-playoffs-bracket-scroller {
-            width: 100% !important;
-            max-width: 100% !important;
-            overflow-x: auto !important;
-            overflow-y: visible !important;
-            -webkit-overflow-scrolling: touch;
-            overscroll-behavior-x: contain;
-            scrollbar-width: thin;
-          }
-
-          .g365-playoffs-seed-header,
-          .g365-playoffs-seed-team {
-            align-items: flex-start !important;
-            flex-direction: column !important;
-            gap: 10px !important;
-          }
-
-          .g365-playoffs-seed-actions {
-            width: 100% !important;
-            display: grid !important;
-            grid-template-columns: repeat(2,minmax(0,1fr)) !important;
-          }
-
-          .g365-playoffs-seed-actions > button {
-            width: 100% !important;
-            min-height: 40px !important;
-          }
-        }
-
-        @media (max-width: 430px) {
-          .g365-playoffs-header-stats {
-            grid-template-columns: minmax(0,1fr) !important;
-          }
-
-          .g365-playoffs-actions,
-          .g365-playoffs-seed-actions {
-            grid-template-columns: minmax(0,1fr) !important;
-          }
-        }
-      `}</style>
-        Loading playoffs...
-      </main>
-    );
-  }
 
   if (
-    !league ||
-    !settings
+    matchup.is_live
   ) {
-    return (
-      <main
-        style={
-          styles.page
-        }
-      >
-        <section
-          style={
-            styles.errorCard
-          }
-        >
-          {message ||
-            "Playoffs are unavailable."}
-        </section>
-      </main>
+    return "LIVE";
+  }
+
+
+  if (
+    matchup.home_fantasy_team_id &&
+    matchup.away_fantasy_team_id
+  ) {
+    return `WEEK ${matchup.playoff_week}`;
+  }
+
+
+  return "TBD";
+}
+
+
+function getRoundTitle(
+  roundNumber: number
+) {
+  switch (
+    roundNumber
+  ) {
+    case 1:
+      return "OPENING ROUND";
+
+    case 2:
+      return "SEMIFINALS";
+
+    case 3:
+      return "CHAMPIONSHIP";
+
+    default:
+      return `ROUND ${roundNumber}`;
+  }
+}
+
+
+function getProjectedByeCount(
+  playoffTeams: number
+) {
+  if (
+    playoffTeams ===
+    4
+  ) {
+    return 0;
+  }
+
+
+  return Math.max(
+    0,
+    8 -
+      playoffTeams
+  );
+}
+
+
+function getProjectedOpeningRoundName(
+  playoffTeams: number
+) {
+  if (
+    playoffTeams ===
+    4
+  ) {
+    return "Semifinals";
+  }
+
+
+  if (
+    playoffTeams ===
+    8
+  ) {
+    return "Quarterfinals";
+  }
+
+
+  return "Wild Card";
+}
+
+
+function getPlayoffFormatLabel(
+  playoffTeams: number
+) {
+  if (
+    playoffTeams ===
+    4
+  ) {
+    return "4 Teams • Semifinals";
+  }
+
+
+  if (
+    playoffTeams ===
+    5
+  ) {
+    return "5 Teams • 3 Byes";
+  }
+
+
+  if (
+    playoffTeams ===
+    6
+  ) {
+    return "6 Teams • 2 Byes";
+  }
+
+
+  if (
+    playoffTeams ===
+    7
+  ) {
+    return "7 Teams • 1 Bye";
+  }
+
+
+  return "8 Teams • No Byes";
+}
+
+
+function getProjectedFormatSteps(
+  playoffTeams: number
+) {
+  if (
+    playoffTeams ===
+    4
+  ) {
+    return [
+      {
+        title:
+          "Semifinals",
+
+        text:
+          "#1 vs #4 and #2 vs #3",
+      },
+
+      {
+        title:
+          "Championship",
+
+        text:
+          "Semifinal winners play for the league title",
+      },
+    ];
+  }
+
+
+  if (
+    playoffTeams ===
+    5
+  ) {
+    return [
+      {
+        title:
+          "Wild Card",
+
+        text:
+          "#4 vs #5 • Seeds #1, #2 and #3 receive byes",
+      },
+
+      {
+        title:
+          "Semifinals",
+
+        text:
+          "#1 vs winner #4/#5 and #2 vs #3",
+      },
+
+      {
+        title:
+          "Championship",
+
+        text:
+          "Semifinal winners play for the league title",
+      },
+    ];
+  }
+
+
+  if (
+    playoffTeams ===
+    6
+  ) {
+    return [
+      {
+        title:
+          "Wild Card",
+
+        text:
+          "#3 vs #6 and #4 vs #5 • Seeds #1 and #2 receive byes",
+      },
+
+      {
+        title:
+          "Semifinals",
+
+        text:
+          "#1 vs winner #4/#5 and #2 vs winner #3/#6",
+      },
+
+      {
+        title:
+          "Championship",
+
+        text:
+          "Semifinal winners play for the league title",
+      },
+    ];
+  }
+
+
+  if (
+    playoffTeams ===
+    7
+  ) {
+    return [
+      {
+        title:
+          "Wild Card",
+
+        text:
+          "#2 vs #7, #3 vs #6 and #4 vs #5 • Seed #1 receives a bye",
+      },
+
+      {
+        title:
+          "Semifinals",
+
+        text:
+          "#1 vs winner #4/#5 plus the other two Wild Card winners",
+      },
+
+      {
+        title:
+          "Championship",
+
+        text:
+          "Semifinal winners play for the league title",
+      },
+    ];
+  }
+
+
+  return [
+    {
+      title:
+        "Quarterfinals",
+
+      text:
+        "#1 vs #8, #2 vs #7, #3 vs #6 and #4 vs #5",
+    },
+
+    {
+      title:
+        "Semifinals",
+
+      text:
+        "Quarterfinal winners advance",
+    },
+
+    {
+      title:
+        "Championship",
+
+      text:
+        "Semifinal winners play for the league title",
+    },
+  ];
+}
+
+
+export default async function TraditionalPlayoffsPage({
+  params,
+}: PageProps) {
+  const {
+    leagueId,
+  } =
+    await params;
+
+
+  const access =
+    await requireTraditionalLeague(
+      leagueId
+    );
+
+
+  const season =
+    access.league.season;
+
+
+  const supabase =
+    await createSupabaseServerClient();
+
+
+  /*
+   * Ensure the league always has playoff settings.
+   * This does NOT start or build the bracket.
+   */
+  const {
+    error:
+      ensureSettingsError,
+  } =
+    await supabase.rpc(
+      "ensure_traditional_playoff_settings",
+      {
+        p_league_id:
+          leagueId,
+
+        p_season:
+          season,
+      }
+    );
+
+
+  if (
+    ensureSettingsError
+  ) {
+    throw new Error(
+      `Could not ensure playoff settings: ${ensureSettingsError.message}`
     );
   }
+
+
+  const [
+    settingsResult,
+    stateResult,
+    seedsResult,
+    matchupsResult,
+    resultsResult,
+    teamsResult,
+    standingsResult,
+  ] =
+    await Promise.all([
+      supabase
+        .from(
+          "traditional_playoff_settings"
+        )
+        .select(`
+          playoff_teams,
+          playoff_start_week,
+          championship_week,
+          reseed_each_round
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        )
+        .maybeSingle(),
+
+      supabase
+        .from(
+          "traditional_season_state"
+        )
+        .select(`
+          active_week,
+          phase,
+          regular_season_complete,
+          playoffs_started,
+          season_complete,
+          last_completed_week
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        )
+        .maybeSingle(),
+
+      supabase
+        .from(
+          "traditional_playoff_seeds"
+        )
+        .select(`
+          seed,
+          fantasy_team_id,
+          wins,
+          losses,
+          ties,
+          points_for,
+          points_against
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        )
+        .order(
+          "seed",
+          {
+            ascending:
+              true,
+          }
+        ),
+
+      supabase
+        .from(
+          "traditional_playoff_matchups"
+        )
+        .select(`
+          id,
+          playoff_week,
+          round_number,
+          round_name,
+          matchup_number,
+          home_seed,
+          away_seed,
+          home_fantasy_team_id,
+          away_fantasy_team_id,
+          home_points,
+          away_points,
+          is_bye,
+          is_live,
+          is_final,
+          winner_fantasy_team_id,
+          tied,
+          finalized_at
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        )
+        .order(
+          "round_number",
+          {
+            ascending:
+              true,
+          }
+        )
+        .order(
+          "matchup_number",
+          {
+            ascending:
+              true,
+          }
+        ),
+
+      supabase
+        .from(
+          "traditional_season_results"
+        )
+        .select(`
+          champion_fantasy_team_id,
+          runner_up_fantasy_team_id,
+          champion_seed,
+          runner_up_seed,
+          championship_home_points,
+          championship_away_points,
+          championship_matchup_id,
+          completed_at
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        )
+        .maybeSingle(),
+
+      supabase
+        .from(
+          "fantasy_teams"
+        )
+        .select(
+          "id, team_name"
+        )
+        .eq(
+          "league_id",
+          leagueId
+        ),
+
+      supabase
+        .from(
+          "traditional_standings"
+        )
+        .select(`
+          fantasy_team_id,
+          wins,
+          losses,
+          ties,
+          games_played,
+          points_for,
+          points_against
+        `)
+        .eq(
+          "league_id",
+          leagueId
+        )
+        .eq(
+          "season",
+          season
+        ),
+    ]);
+
+
+  const errors =
+    [
+      settingsResult.error,
+      stateResult.error,
+      seedsResult.error,
+      matchupsResult.error,
+      resultsResult.error,
+      teamsResult.error,
+      standingsResult.error,
+    ].filter(
+      Boolean
+    );
+
+
+  if (
+    errors.length >
+    0
+  ) {
+    throw new Error(
+      `Could not load playoffs: ${errors[0]?.message ?? "Unknown error"}`
+    );
+  }
+
+
+  const settings =
+    settingsResult.data as
+      PlayoffSettingsRow |
+      null;
+
+
+  const state =
+    stateResult.data as
+      SeasonStateRow |
+      null;
+
+
+  const seeds =
+    (
+      seedsResult.data ??
+      []
+    ) as SeedRow[];
+
+
+  const playoffMatchups =
+    (
+      matchupsResult.data ??
+      []
+    ) as PlayoffMatchupRow[];
+
+
+  const seasonResult =
+    resultsResult.data as
+      SeasonResultRow |
+      null;
+
+
+  const teams =
+    (
+      teamsResult.data ??
+      []
+    ) as FantasyTeamRow[];
+
+
+  const standings =
+    (
+      standingsResult.data ??
+      []
+    ) as StandingRow[];
+
+
+  const teamMap =
+    new Map<
+      number,
+      string
+    >();
+
+
+  for (
+    const team
+    of teams
+  ) {
+    teamMap.set(
+      team.id,
+      team.team_name
+    );
+  }
+
+
+  const playoffTeams =
+    settings
+      ?.playoff_teams ??
+    6;
+
+
+  /*
+   * Before the real playoff field is locked, show the current
+   * projected top playoffTeams from the standings.
+   */
+  const projectedSeeds:
+    ProjectedSeed[] =
+      [...standings]
+        .sort(
+          (
+            a,
+            b
+          ) => {
+            const aPct =
+              calculateWinPct(
+                a.wins,
+                a.ties,
+                a.games_played
+              );
+
+
+            const bPct =
+              calculateWinPct(
+                b.wins,
+                b.ties,
+                b.games_played
+              );
+
+
+            if (
+              bPct !==
+              aPct
+            ) {
+              return (
+                bPct -
+                aPct
+              );
+            }
+
+
+            const bPf =
+              numberValue(
+                b.points_for
+              );
+
+
+            const aPf =
+              numberValue(
+                a.points_for
+              );
+
+
+            if (
+              bPf !==
+              aPf
+            ) {
+              return (
+                bPf -
+                aPf
+              );
+            }
+
+
+            const aPa =
+              numberValue(
+                a.points_against
+              );
+
+
+            const bPa =
+              numberValue(
+                b.points_against
+              );
+
+
+            if (
+              aPa !==
+              bPa
+            ) {
+              return (
+                aPa -
+                bPa
+              );
+            }
+
+
+            return (
+              a.fantasy_team_id -
+              b.fantasy_team_id
+            );
+          }
+        )
+        .slice(
+          0,
+          playoffTeams
+        )
+        .map(
+          (
+            row,
+            index
+          ) => ({
+            seed:
+              index +
+              1,
+
+            fantasyTeamId:
+              row.fantasy_team_id,
+
+            teamName:
+              teamMap.get(
+                row.fantasy_team_id
+              ) ??
+              "Unknown Team",
+
+            wins:
+              row.wins,
+
+            losses:
+              row.losses,
+
+            ties:
+              row.ties,
+
+            winPct:
+              calculateWinPct(
+                row.wins,
+                row.ties,
+                row.games_played
+              ),
+
+            pointsFor:
+              numberValue(
+                row.points_for
+              ),
+          })
+        );
+
+
+  const actualSeedMap =
+    new Map<
+      number,
+      SeedRow
+    >();
+
+
+  for (
+    const seed
+    of seeds
+  ) {
+    actualSeedMap.set(
+      seed.seed,
+      seed
+    );
+  }
+
+
+  const getProjectedOrActualTeam = (
+    seedNumber: number
+  ) => {
+    const actual =
+      actualSeedMap.get(
+        seedNumber
+      );
+
+
+    if (
+      actual
+    ) {
+      return {
+        fantasyTeamId:
+          actual.fantasy_team_id,
+
+        seed:
+          actual.seed,
+
+        teamName:
+          teamMap.get(
+            actual.fantasy_team_id
+          ) ??
+          "Unknown Team",
+      };
+    }
+
+
+    const projected =
+      projectedSeeds.find(
+        (
+          row
+        ) =>
+          row.seed ===
+          seedNumber
+      );
+
+
+    return {
+      fantasyTeamId:
+        projected
+          ?.fantasyTeamId ??
+        null,
+
+      seed:
+        seedNumber,
+
+      teamName:
+        projected
+          ?.teamName ??
+        "TBD",
+    };
+  };
+
+
+  const getMatchup =
+    (
+      roundNumber: number,
+      matchupNumber: number
+    ) =>
+      playoffMatchups.find(
+        (
+          matchup
+        ) =>
+          matchup.round_number ===
+            roundNumber &&
+          matchup.matchup_number ===
+            matchupNumber
+      ) ??
+      null;
+
+
+  const makeTeam = (
+    fantasyTeamId:
+      number |
+      null,
+    seed:
+      number |
+      null,
+    points: number,
+    winnerId:
+      number |
+      null
+  ): BracketTeam => ({
+    fantasyTeamId,
+
+    seed,
+
+    teamName:
+      fantasyTeamId
+        ? (
+            teamMap.get(
+              fantasyTeamId
+            ) ??
+            "Unknown Team"
+          )
+        : "TBD",
+
+    points,
+
+    isWinner:
+      fantasyTeamId !==
+        null &&
+      winnerId ===
+        fantasyTeamId,
+  });
+
+
+  const bracketExists =
+    playoffMatchups.length >
+    0;
+
+
+  const playoffsStarted =
+    Boolean(
+      state
+        ?.playoffs_started
+    );
+
+
+  const regularSeasonComplete =
+    Boolean(
+      state
+        ?.regular_season_complete
+    );
+
+
+  const seasonComplete =
+    Boolean(
+      state
+        ?.season_complete
+    );
+
+
+  const championshipMatchup =
+    playoffMatchups.find(
+      (
+        matchup
+      ) =>
+        matchup.round_name
+          .toLowerCase() ===
+        "championship"
+    ) ??
+    null;
+
+
+  const projectedByeCount =
+    getProjectedByeCount(
+      playoffTeams
+    );
+
+
+  const playoffFormatLabel =
+    getPlayoffFormatLabel(
+      playoffTeams
+    );
+
+
+  const projectedFormatSteps =
+    getProjectedFormatSteps(
+      playoffTeams
+    );
+
+
+  const bracketRounds =
+    Array.from(
+      new Set(
+        playoffMatchups.map(
+          (
+            matchup
+          ) =>
+            matchup.round_number
+        )
+      )
+    )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          a -
+          b
+      )
+      .map(
+        (
+          roundNumber
+        ) => {
+          const roundMatchups =
+            playoffMatchups.filter(
+              (
+                matchup
+              ) =>
+                matchup.round_number ===
+                  roundNumber
+            );
+
+
+          return {
+            roundNumber,
+
+            roundName:
+              roundMatchups[0]
+                ?.round_name ??
+              getRoundTitle(
+                roundNumber
+              ),
+
+            week:
+              roundMatchups[0]
+                ?.playoff_week ??
+              (
+                settings
+                  ?.playoff_start_week ??
+                15
+              ),
+
+            matchups:
+              roundMatchups,
+          };
+        }
+      );
+
+
+  const championName =
+    seasonResult
+      ? (
+          teamMap.get(
+            seasonResult
+              .champion_fantasy_team_id
+          ) ??
+          "Champion"
+        )
+      : null;
+
 
   return (
     <main
+      className="g365-playoffs-mobile"
       style={
         styles.page
       }
     >
-      <section
-        className="g365-playoffs-container"
+      <style>{`
+        @media (max-width: 760px) {
+          .g365-playoffs-mobile { padding: 12px 10px 44px !important; overflow-x: hidden !important; }
+          .g365-playoff-header-stats {
+            width: 100% !important;
+            max-width: 100% !important;
+            display: grid !important;
+            grid-auto-flow: column !important;
+            grid-auto-columns: 118px !important;
+            grid-template-columns: none !important;
+            gap: 7px !important;
+            overflow-x: auto !important;
+            padding-bottom: 4px !important;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+          }
+          .g365-playoff-header-stats > * { min-width: 118px !important; min-height: 58px !important; box-sizing: border-box !important; }
+          .g365-playoff-config-bar {
+            width: 100% !important;
+            max-width: 100% !important;
+            display: grid !important;
+            grid-auto-flow: column !important;
+            grid-auto-columns: 160px !important;
+            grid-template-columns: none !important;
+            align-items: stretch !important;
+            overflow-x: auto !important;
+            flex-wrap: nowrap !important;
+            gap: 8px !important;
+            padding: 8px !important;
+            -webkit-overflow-scrolling: touch;
+          }
+          .g365-playoff-config-bar > div { min-width: 0 !important; }
+          .g365-playoff-config-bar > div:nth-child(even) { display: none !important; }
+        }
+      `}</style>
+      <TraditionalPlayoffLiveRefresh
+        enabled={
+          playoffsStarted &&
+          !seasonComplete
+        }
+        intervalMs={
+          15000
+        }
+      />
+      <div
         style={
-          styles.container
+          styles.shell
         }
       >
-
         <header
-          className="g365-playoffs-header"
           style={
             styles.header
           }
         >
           <div>
-            <span
+            <p
               style={
                 styles.eyebrow
               }
             >
-              TRADITIONAL PLAYOFFS
-            </span>
+              TRADITIONAL
+            </p>
 
-            <h1
+            <h2
               style={
                 styles.title
               }
             >
               Playoffs
-            </h1>
+            </h2>
 
             <p
               style={
                 styles.subtitle
               }
             >
-              {league.name}
-              {" · "}
-              {beforePlayoffs
-                ? "Projected playoff field"
-                : playoffState
-                  ? formatPlayoffStatus(
-                      playoffState.status
-                    )
-                  : "Ready to create bracket"}
+              {access.league.name}
+              {" • "}
+              {season}
+              {" • "}
+              {playoffTeams}
+              {"-Team Field"}
             </p>
           </div>
 
+
           <div
-            className="g365-playoffs-header-right"
+            className="g365-playoff-header-stats"
             style={
-              styles.headerRight
+              styles.headerStats
             }
           >
-            <div
-              className="g365-playoffs-header-stats"
-              style={
-                styles.headerStats
+            <HeaderStat
+              label="FORMAT"
+              value={`${playoffTeams} TEAMS`}
+            />
+
+            <HeaderStat
+              label="RESEED"
+              value={
+                settings
+                  ?.reseed_each_round
+                  ? "ON"
+                  : "OFF"
               }
-            >
-              <Stat
-                label="PLAYOFF TEAMS"
-                value={String(
-                  settings.playoff_team_count
-                )}
-              />
+              accent={
+                Boolean(
+                  settings
+                    ?.reseed_each_round
+                )
+              }
+            />
 
-              <Stat
-                label="PLAYOFF START"
-                value={`Week ${settings.playoff_start_week}`}
-              />
+            <HeaderStat
+              label="PLAYOFF START"
+              value={`WK ${settings?.playoff_start_week ?? 15}`}
+            />
 
-              <Stat
-                label="PLAYOFF WEEKS"
-                value={String(
-                  settings.playoff_weeks
-                )}
-              />
-            </div>
+            <HeaderStat
+              label="CHAMPIONSHIP"
+              value={`WK ${settings?.championship_week ?? 17}`}
+            />
 
-            {!beforePlayoffs ? (
-              <div
-                className="g365-playoffs-actions"
-                style={
-                  styles.actionRow
-                }
-              >
-                {!playoffState &&
-                isCommissioner ? (
-                  <button
-                    type="button"
-                    style={
-                      styles.primaryButton
-                    }
-                    disabled={
-                      working ||
-                      hasUnresolvedSeedTies
-                    }
-                    onClick={() =>
-                      void startPlayoffs()
-                    }
-                  >
-                    {working
-                      ? "Creating..."
-                      : "Start Playoffs"}
-                  </button>
-                ) : null}
-
-                {playoffState &&
-                playoffState.status !==
-                  "completed" ? (
-                  <>
-                    <button
-                      type="button"
-                      style={
-                        styles.primaryButton
-                      }
-                      disabled={
-                        working ||
-                        autoRefreshing
-                      }
-                      onClick={() =>
-                        void syncCurrentPlayoffWeek()
-                      }
-                    >
-                      {working
-                        ? "Refreshing..."
-                        : "Refresh Playoffs"}
-                    </button>
-                  </>
-                ) : null}
-              </div>
-            ) : null}
-
-            {!beforePlayoffs &&
-            playoffState &&
-            playoffState.status !==
-              "completed" ? (
-              <span
-                style={
-                  styles.autoRefreshText
-                }
-              >
-                {autoRefreshing
-                  ? "Updating automatically..."
-                  : "Auto-update every 30 sec"}
-              </span>
-            ) : null}
+            <HeaderStat
+              label="STATUS"
+              value={
+                seasonComplete
+                  ? "COMPLETE"
+                  : playoffsStarted
+                    ? "ACTIVE"
+                    : regularSeasonComplete
+                      ? "READY"
+                      : "PROJECTED"
+              }
+              accent
+            />
           </div>
         </header>
 
-        {message ? (
+
+        <section
+          className="g365-playoff-config-bar"
+          style={
+            styles.playoffConfigBar
+          }
+        >
           <div
             style={
-              isError
-                ? styles.error
-                : styles.success
+              styles.configItem
             }
           >
-            {message}
+            <span
+              style={
+                styles.configLabel
+              }
+            >
+              FORMAT
+            </span>
+
+            <strong
+              style={
+                styles.configValue
+              }
+            >
+              {playoffFormatLabel}
+            </strong>
           </div>
+
+
+          <div
+            style={
+              styles.configDivider
+            }
+          />
+
+
+          <div
+            style={
+              styles.configItem
+            }
+          >
+            <span
+              style={
+                styles.configLabel
+              }
+            >
+              RESEED EACH ROUND
+            </span>
+
+            <strong
+              style={
+                settings
+                  ?.reseed_each_round
+                  ? styles.configValueGreen
+                  : styles.configValue
+              }
+            >
+              {settings
+                ?.reseed_each_round
+                ? "ENABLED"
+                : "DISABLED"}
+            </strong>
+          </div>
+
+
+          <div
+            style={
+              styles.configDivider
+            }
+          />
+
+
+          <div
+            style={
+              styles.configItem
+            }
+          >
+            <span
+              style={
+                styles.configLabel
+              }
+            >
+              LIVE BRACKET
+            </span>
+
+            <strong
+              style={
+                playoffsStarted &&
+                !seasonComplete
+                  ? styles.configValueGreen
+                  : styles.configValue
+              }
+            >
+              {playoffsStarted &&
+              !seasonComplete
+                ? "15-SEC REFRESH"
+                : "READY"}
+            </strong>
+          </div>
+        </section>
+
+
+        {seasonResult &&
+        championName ? (
+          <section
+            style={
+              styles.championBanner
+            }
+          >
+            <div
+              style={
+                styles.trophyCircle
+              }
+            >
+              ★
+            </div>
+
+            <div>
+              <span
+                style={
+                  styles.championLabel
+                }
+              >
+                {season} GRIDIRON365 CHAMPION
+              </span>
+
+              <strong
+                style={
+                  styles.championName
+                }
+              >
+                {championName}
+              </strong>
+
+              <span
+                style={
+                  styles.championMeta
+                }
+              >
+                Seed #
+                {seasonResult.champion_seed ??
+                  "—"}
+                {" • "}
+                Championship completed
+              </span>
+            </div>
+          </section>
         ) : null}
 
-        {beforePlayoffs ? (
-          <G365MarchMadnessBracket
-            leagueName={
-              league.name
+
+        {!bracketExists ? (
+          <section
+            style={
+              styles.prePlayoffGrid
             }
-            season={
-              league.season
-            }
-            playoffTeamCount={
-              settings.playoff_team_count
-            }
-            playoffStartWeek={
-              settings.playoff_start_week
-            }
-            seededTeams={
-              projectedField.map(
-                (
-                  team
-                ) => ({
-                  id:
-                    team.teamId,
-                  seed:
-                    team.seed,
-                  name:
-                    team.teamName,
-                  record:
-                    `${team.wins}-${team.losses}-${team.ties}`,
-                  statusText:
-                    `${team.playoffProbability.toFixed(0)}% playoff chance`,
-                })
-              )
-            }
-            matchups={[]}
-            championName={
-              null
-            }
-            statusLabel="PROJECTED BRACKET"
-          />
-        ) : !playoffState ? (
-          <>
-            {playoffSeedTieGroups
-              .length > 0 ? (
-              <section
-                style={
-                  styles.section
-                }
-              >
-                <div
-                  style={
-                    styles.sectionHeader
-                  }
-                >
-                  <div>
-                    <span
-                      style={
-                        styles.eyebrow
-                      }
-                    >
-                      PLAYOFF SEEDING
-                    </span>
-
-                    <h2
-                      style={
-                        styles.sectionTitle
-                      }
-                    >
-                      Resolve Final Seed Ties
-                    </h2>
-                  </div>
-                </div>
-
-                <p
-                  style={
-                    styles.bracketHelp
-                  }
-                >
-                  The regular-season tiebreakers could not
-                  separate these teams. Assign each team a
-                  unique final seed before creating the playoff
-                  bracket.
-                </p>
-
-                {playoffSeedTieGroups.map(
-                  (group) => (
-                    <div
-                      key={
-                        group.originalSeed
-                      }
-                      className="g365-playoffs-seed-group"
-                      style={
-                        styles.seedTieGroup
-                      }
-                    >
-                      <div
-                        className="g365-playoffs-seed-header"
-                        style={
-                          styles.seedTieHeader
-                        }
-                      >
-                        <strong>
-                          Tie beginning at Seed #{group.originalSeed}
-                        </strong>
-
-                        <span>
-                          Seeds {group.firstAllowedSeed}
-                          {"–"}
-                          {group.lastAllowedSeed}
-                          {group.isResolved
-                            ? " · RESOLVED"
-                            : " · ACTION REQUIRED"}
-                        </span>
-                      </div>
-
-                      {group.teams.map(
-                        (team) => {
-                          const saved =
-                            seedTieResolutions.find(
-                              (resolution) =>
-                                resolution.team_id ===
-                                team.team_id
-                            );
-
-                          const allowedSeeds =
-                            Array.from(
-                              {
-                                length:
-                                  group.lastAllowedSeed -
-                                  group.firstAllowedSeed +
-                                  1,
-                              },
-                              (
-                                _,
-                                index
-                              ) =>
-                                group.firstAllowedSeed +
-                                index
-                            );
-
-                          return (
-                            <div
-                              key={
-                                team.team_id
-                              }
-                              className="g365-playoffs-seed-team"
-                              style={
-                                styles.seedTieTeam
-                              }
-                            >
-                              <div>
-                                <strong>
-                                  {team.team_name}
-                                </strong>
-
-                                <div
-                                  style={
-                                    styles.teamRecord
-                                  }
-                                >
-                                  {team.wins}-
-                                  {team.losses}
-                                  {team.ties > 0
-                                    ? `-${team.ties}`
-                                    : ""}
-                                  {" · "}
-                                  {Number(
-                                    team.points_for ??
-                                      0
-                                  ).toFixed(
-                                    2
-                                  )}{" "}
-                                  PF
-                                </div>
-                              </div>
-
-                              <div
-                                className="g365-playoffs-seed-actions"
-                                style={
-                                  styles.seedTieActions
-                                }
-                              >
-                                {allowedSeeds.map(
-                                  (seed) => {
-                                    const usedByAnotherTeam =
-                                      seedTieResolutions.some(
-                                        (resolution) =>
-                                          resolution.resolved_seed ===
-                                            seed &&
-                                          resolution.team_id !==
-                                            team.team_id
-                                      );
-
-                                    const selected =
-                                      saved
-                                        ?.resolved_seed ===
-                                      seed;
-
-                                    return (
-                                      <button
-                                        key={
-                                          seed
-                                        }
-                                        type="button"
-                                        disabled={
-                                          !isCommissioner ||
-                                          resolvingSeedTeamId !==
-                                            null ||
-                                          usedByAnotherTeam
-                                        }
-                                        style={{
-                                          ...styles.seedButton,
-
-                                          ...(selected
-                                            ? styles.seedButtonSelected
-                                            : {}),
-                                        }}
-                                        onClick={() =>
-                                          void resolveSeedTie(
-                                            team.team_id,
-                                            seed
-                                          )
-                                        }
-                                      >
-                                        {selected
-                                          ? `Seed ${seed} ✓`
-                                          : usedByAnotherTeam
-                                            ? `Seed ${seed} Taken`
-                                            : `Seed ${seed}`}
-                                      </button>
-                                    );
-                                  }
-                                )}
-                              </div>
-                            </div>
-                          );
-                        }
-                      )}
-                    </div>
-                  )
-                )}
-              </section>
-            ) : null}
-
-            <section
+          >
+            <div
               style={
-                styles.section
+                styles.projectedFieldCard
               }
             >
               <div
                 style={
-                  styles.empty
-                }
-              >
-                {isCommissioner
-                  ? hasUnresolvedSeedTies
-                    ? "Resolve every playoff-impacting seed tie above. Start Playoffs will unlock when the final seed assignments are complete."
-                    : "The playoff period has begun. Click Start Playoffs to lock the final seeds and create the real bracket."
-                  : hasUnresolvedSeedTies
-                    ? "The final playoff seeds contain an unresolved tie. The commissioner must resolve it before the bracket can be created."
-                    : "The playoff period has begun. The commissioner has not created the real playoff bracket yet."}
-              </div>
-            </section>
-          </>
-        ) : (
-          <>
-            {championTeam ? (
-              <section
-                style={
-                  styles.championCard
-                }
-              >
-                <span
-                  style={
-                    styles.eyebrow
-                  }
-                >
-                  GRIDIRON365 CHAMPION
-                </span>
-
-                <h2
-                  style={
-                    styles.championTitle
-                  }
-                >
-                  🏆{" "}
-                  {championTeam
-                    .team_name ??
-                    `Team ${championTeam.id}`}
-                </h2>
-              </section>
-            ) : null}
-
-            <section
-              style={
-                styles.section
-              }
-            >
-              <div
-                style={
-                  styles.sectionHeader
+                  styles.sectionHeading
                 }
               >
                 <div>
                   <span
                     style={
-                      styles.eyebrow
+                      styles.sectionKicker
                     }
                   >
-                    LIVE BRACKET
+                    CURRENT
                   </span>
 
-                  <h2
+                  <h3
                     style={
                       styles.sectionTitle
                     }
                   >
-                    Playoff Bracket
-                  </h2>
+                    Projected Playoff Field
+                  </h3>
                 </div>
 
                 <span
                   style={
-                    styles.weekBadge
+                    styles.projectedBadge
                   }
                 >
-                  {playoffState.status ===
-                  "completed"
-                    ? "Completed"
-                    : `Round ${
-                        playoffState.current_round ??
-                        1
-                      }`}
+                  {regularSeasonComplete
+                    ? "FIELD READY"
+                    : "PROJECTED"}
                 </span>
               </div>
 
-              {rounds.length ===
-              0 ? (
+
+              <div
+                style={
+                  styles.seedList
+                }
+              >
+                {Array.from(
+                  {
+                    length:
+                      playoffTeams,
+                  },
+                  (
+                    _,
+                    index
+                  ) => {
+                    const seedNumber =
+                      index +
+                      1;
+
+
+                    const team =
+                      getProjectedOrActualTeam(
+                        seedNumber
+                      );
+
+
+                    const projected =
+                      projectedSeeds.find(
+                        (
+                          row
+                        ) =>
+                          row.seed ===
+                            seedNumber
+                      );
+
+
+                    return (
+                      <div
+                        key={
+                          seedNumber
+                        }
+                        style={{
+                          ...styles.seedRow,
+
+                          ...(seedNumber <=
+                          projectedByeCount
+                            ? styles.byeSeedRow
+                            : {}),
+                        }}
+                      >
+                        <div
+                          style={
+                            styles.seedNumber
+                          }
+                        >
+                          {seedNumber}
+                        </div>
+
+                        <div
+                          style={
+                            styles.teamCircle
+                          }
+                        >
+                          {team.teamName
+                            .slice(
+                              0,
+                              1
+                            )
+                            .toUpperCase()}
+                        </div>
+
+                        <div
+                          style={
+                            styles.seedTeamText
+                          }
+                        >
+                          <strong
+                            style={
+                              styles.seedTeamName
+                            }
+                          >
+                            {team.teamName}
+                          </strong>
+
+                          <span
+                            style={
+                              styles.seedMeta
+                            }
+                          >
+                            {projected
+                              ? `${projected.wins}-${projected.losses}${projected.ties ? `-${projected.ties}` : ""} • ${projected.pointsFor.toFixed(2)} PF`
+                              : "Awaiting standings"}
+                          </span>
+                        </div>
+
+                        {seedNumber <=
+                        projectedByeCount ? (
+                          <span
+                            style={
+                              styles.byeBadge
+                            }
+                          >
+                            BYE
+                          </span>
+                        ) : (
+                          <span
+                            style={
+                              styles.wildCardBadge
+                            }
+                          >
+                            {getProjectedOpeningRoundName(
+                              playoffTeams
+                            ).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+            </div>
+
+
+            <div
+              style={
+                styles.formatCard
+              }
+            >
+              <span
+                style={
+                  styles.sectionKicker
+                }
+              >
+                FORMAT
+              </span>
+
+              <h3
+                style={
+                  styles.sectionTitle
+                }
+              >
+                Playoff Path
+              </h3>
+
+              {projectedFormatSteps.map(
+                (
+                  step,
+                  index
+                ) => (
+                  <FormatStep
+                    key={
+                      step.title
+                    }
+                    number={
+                      String(
+                        index +
+                        1
+                      )
+                    }
+                    title={
+                      step.title
+                    }
+                    text={
+                      step.text
+                    }
+                  />
+                )
+              )}
+
+              <div
+                style={
+                  styles.tieNote
+                }
+              >
+                <strong>
+                  Playoff tie:
+                </strong>
+                {" "}
+                Higher seed advances.
+              </div>
+            </div>
+          </section>
+        ) : (
+          <section
+            style={{
+              ...styles.bracketShell,
+
+              gridTemplateColumns:
+                `repeat(${Math.max(
+                  1,
+                  bracketRounds.length
+                )},minmax(260px,1fr))`,
+            }}
+          >
+            {bracketRounds.map(
+              (
+                round
+              ) => (
                 <div
+                  key={
+                    round.roundNumber
+                  }
                   style={
-                    styles.empty
+                    styles.bracketRound
                   }
                 >
-                  No playoff matchup rows exist yet.
-                </div>
-              ) : (
-                <G365MarchMadnessBracket
-                  leagueName={
-                    league.name
-                  }
-                  season={
-                    league.season
-                  }
-                  playoffTeamCount={
-                    settings.playoff_team_count
-                  }
-                  playoffStartWeek={
-                    settings.playoff_start_week
-                  }
-                  seededTeams={[]}
-                  matchups={
-                    playoffMatchups.map(
-                      (
-                        matchup
-                      ) => ({
-                        id:
-                          matchup.id,
-                        round:
-                          matchup.round,
-                        slot:
-                          matchup.slot,
-                        week:
-                          matchup.week,
-                        home:
-                          matchup.homeTeam
-                            ? {
-                                id:
-                                  matchup.homeTeam.id,
-                                seed:
-                                  matchup.homeSeed,
-                                name:
-                                  matchup.homeTeam.team_name ??
-                                  `Team ${matchup.homeTeam.id}`,
-                                record:
-                                  `${matchup.homeTeam.wins}-${matchup.homeTeam.losses}-${matchup.homeTeam.ties}`,
-                                score:
-                                  matchup.homePoints,
-                                projectedScore:
-                                  matchup.homeProjectedPoints,
-                                isWinner:
-                                  matchup.winnerTeamId ===
-                                  matchup.homeTeam.id,
-                              }
-                            : null,
-                        away:
-                          matchup.awayTeam
-                            ? {
-                                id:
-                                  matchup.awayTeam.id,
-                                seed:
-                                  matchup.awaySeed,
-                                name:
-                                  matchup.awayTeam.team_name ??
-                                  `Team ${matchup.awayTeam.id}`,
-                                record:
-                                  `${matchup.awayTeam.wins}-${matchup.awayTeam.losses}-${matchup.awayTeam.ties}`,
-                                score:
-                                  matchup.awayPoints,
-                                projectedScore:
-                                  matchup.awayProjectedPoints,
-                                isWinner:
-                                  matchup.winnerTeamId ===
-                                  matchup.awayTeam.id,
-                              }
-                            : null,
-                        status:
-                          matchup.status,
-                        isFinal:
-                          matchup.status ===
-                            "final" ||
-                          matchup.status ===
-                            "completed",
-                        isTie:
-                          matchup.isTie,
-                        href:
-                          matchup.awayTeam
-                            ? `/league/${league.id}/matchups/${matchup.id}`
-                            : null,
-                      })
+                  <RoundHeading
+                    title={
+                      round.roundName
+                    }
+                    week={
+                      round.week
+                    }
+                  />
+
+
+                  {round.matchups.map(
+                    (
+                      matchup
+                    ) => (
+                      <BracketMatchup
+                        key={
+                          matchup.id
+                        }
+                        matchup={
+                          matchup
+                        }
+                        fallbackHome={{
+                          fantasyTeamId:
+                            null,
+
+                          seed:
+                            null,
+
+                          teamName:
+                            "TBD",
+                        }}
+                        fallbackAway={{
+                          fantasyTeamId:
+                            null,
+
+                          seed:
+                            null,
+
+                          teamName:
+                            "TBD",
+                        }}
+                        makeTeam={
+                          makeTeam
+                        }
+                        championship={
+                          matchup.round_name
+                            .toLowerCase() ===
+                          "championship"
+                        }
+                      />
                     )
-                  }
-                  championName={
-                    championTeam
-                      ?.team_name ??
-                    null
-                  }
-                  statusLabel={
-                    playoffState.status ===
-                    "completed"
-                      ? "COMPLETE"
-                      : `ROUND ${playoffState.current_round ?? 1}`
-                  }
-                />
-              )}
-            </section>
-          </>
+                  )}
+                </div>
+              )
+            )}
+          </section>
         )}
-      </section>
+
+
+        <section
+          style={
+            styles.footerInfo
+          }
+        >
+          <div>
+            <span
+              style={
+                styles.footerLabel
+              }
+            >
+              SEEDING
+            </span>
+
+            <strong
+              style={
+                styles.footerValue
+              }
+            >
+              Win % → PF → lower PA
+            </strong>
+          </div>
+
+          <div>
+            <span
+              style={
+                styles.footerLabel
+              }
+            >
+              BYES
+            </span>
+
+            <strong
+              style={
+                styles.footerValue
+              }
+            >
+              {projectedByeCount >
+              0
+                ? `Top ${projectedByeCount} seed${projectedByeCount === 1 ? "" : "s"}`
+                : "None"}
+            </strong>
+          </div>
+
+          <div>
+            <span
+              style={
+                styles.footerLabel
+              }
+            >
+              RESEED
+            </span>
+
+            <strong
+              style={
+                styles.footerValue
+              }
+            >
+              {settings
+                ?.reseed_each_round
+                ? "Highest vs lowest remaining seed"
+                : "Fixed bracket paths"}
+            </strong>
+          </div>
+
+
+          <div>
+            <span
+              style={
+                styles.footerLabel
+              }
+            >
+              TIEBREAK
+            </span>
+
+            <strong
+              style={
+                styles.footerValue
+              }
+            >
+              Higher seed advances
+            </strong>
+          </div>
+        </section>
+      </div>
     </main>
   );
 }
 
 
-const BRACKET_CARD_HEIGHT = 150;
-const BRACKET_FIRST_GAP = 28;
-const BRACKET_COLUMN_WIDTH = 310;
-const BRACKET_COLUMN_GAP = 78;
-
-type RealRoundGroup = {
-  round: number;
-  matchups: PlayoffMatchupView[];
-};
-
-function ProjectedPlayoffView({
-  teams,
-  projectedBracket,
-  playoffTeamCount,
-  currentWeek,
-  playoffStartWeek,
-  consolationEnabled,
+function HeaderStat({
+  label,
+  value,
+  accent = false,
 }: {
-  teams: ProjectedTeam[];
-  projectedBracket:
-    ProjectedMatchup[];
-  playoffTeamCount: number;
-  currentWeek: number;
-  playoffStartWeek: number;
-  consolationEnabled: boolean;
+  label: string;
+  value: string;
+  accent?: boolean;
 }) {
-  const bracketSize =
-    nextPowerOfTwo(
-      Math.max(
-        playoffTeamCount,
-        2
-      )
-    );
-
-  const firstRoundCount =
-    Math.max(
-      bracketSize / 2,
-      1
-    );
-
-  const roundCount =
-    Math.max(
-      Math.log2(
-        bracketSize
-      ),
-      1
-    );
-
-  const boardHeight =
-    firstRoundCount *
-      BRACKET_CARD_HEIGHT +
-    Math.max(
-      firstRoundCount - 1,
-      0
-    ) *
-      BRACKET_FIRST_GAP;
-
-  const centers =
-    buildBracketCenters(
-      firstRoundCount
-    );
-
   return (
-    <section
+    <div
       style={
-        styles.section
+        styles.headerStat
       }
     >
-      <div
-        className="g365-playoffs-bracket-intro"
+      <span
         style={
-          styles.bracketIntro
+          styles.headerStatLabel
         }
       >
-        <div>
-          <span
-            style={
-              styles.eyebrow
-            }
-          >
-            IF THE SEASON ENDED TODAY
-          </span>
+        {label}
+      </span>
 
-          <h2
-            style={
-              styles.sectionTitle
-            }
-          >
-            Projected Playoff Bracket
-          </h2>
-
-          <p
-            style={
-              styles.bracketHelp
-            }
-          >
-            Round 1 shows the current projected playoff teams and each team&apos;s chance of making the playoffs.
-            Later rounds stay open until the real postseason begins, when percentages disappear and the live bracket takes over.
-          </p>
-        </div>
-
-        <div
-          className="g365-playoffs-countdown"
-          style={
-            styles.playoffCountdown
-          }
-        >
-          <strong>
-            Playoffs Start: Week{" "}
-            {playoffStartWeek}
-          </strong>
-
-          <span>
-            {Math.max(
-              playoffStartWeek -
-                currentWeek,
-              0
-            )}{" "}
-            week
-            {Math.max(
-              playoffStartWeek -
-                currentWeek,
-              0
-            ) === 1
-              ? ""
-              : "s"}{" "}
-            away
-          </span>
-        </div>
-      </div>
-
-      <div
-        className="g365-playoffs-bracket-scroller"
+      <strong
         style={
-          styles.bracketScroller
+          accent
+            ? styles.headerStatAccent
+            : styles.headerStatValue
         }
       >
-        <div
-          style={{
-            ...styles.bracketCanvas,
-            width:
-              roundCount *
-                BRACKET_COLUMN_WIDTH +
-              Math.max(
-                roundCount - 1,
-                0
-              ) *
-                BRACKET_COLUMN_GAP,
-            height:
-              boardHeight +
-              (consolationEnabled
-                ? 190
-                : 0),
-          }}
-        >
-          {Array.from(
-            {
-              length:
-                roundCount,
-            },
-            (
-              _,
-              roundIndex
-            ) => {
-              const round =
-                roundIndex + 1;
-
-              const matchCount =
-                Math.max(
-                  firstRoundCount /
-                    Math.pow(
-                      2,
-                      roundIndex
-                    ),
-                  1
-                );
-
-              const roundCenters =
-                centers[
-                  roundIndex
-                ] ??
-                [];
-
-              const isFinalRound =
-                round ===
-                roundCount;
-
-              return (
-                <div
-                  key={
-                    round
-                  }
-                  style={{
-                    ...styles.bracketColumn,
-                    left:
-                      roundIndex *
-                      (
-                        BRACKET_COLUMN_WIDTH +
-                        BRACKET_COLUMN_GAP
-                      ),
-                    width:
-                      BRACKET_COLUMN_WIDTH,
-                    height:
-                      boardHeight,
-                  }}
-                >
-                  <BracketColumnHeading
-                    title={
-                      projectedRoundTitle(
-                        round,
-                        roundCount,
-                        matchCount
-                      )
-                    }
-                    week={
-                      playoffStartWeek +
-                      round -
-                      1
-                    }
-                  />
-
-                  {Array.from(
-                    {
-                      length:
-                        matchCount,
-                    },
-                    (
-                      __,
-                      slotIndex
-                    ) => {
-                      const center =
-                        roundCenters[
-                          slotIndex
-                        ] ??
-                        BRACKET_CARD_HEIGHT /
-                          2;
-
-                      const top =
-                        center -
-                        BRACKET_CARD_HEIGHT /
-                          2 +
-                        54;
-
-                      if (
-                        round === 1
-                      ) {
-                        const matchup =
-                          projectedBracket[
-                            slotIndex
-                          ];
-
-                        return (
-                          <div
-                            key={
-                              `projected-${round}-${slotIndex}`
-                            }
-                            style={{
-                              ...styles.bracketPositionedCard,
-                              top,
-                            }}
-                          >
-                            <ProjectedMatchupCard
-                              matchup={
-                                matchup ??
-                                null
-                              }
-                            />
-
-                            {!isFinalRound ? (
-                              <BracketConnector
-                                fromCenter={
-                                  center
-                                }
-                                toCenter={
-                                  centers[
-                                    roundIndex +
-                                      1
-                                  ]?.[
-                                    Math.floor(
-                                      slotIndex /
-                                        2
-                                    )
-                                  ] ??
-                                  center
-                                }
-                              />
-                            ) : null}
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div
-                          key={
-                            `projected-${round}-${slotIndex}`
-                          }
-                          style={{
-                            ...styles.bracketPositionedCard,
-                            top,
-                          }}
-                        >
-                          <FutureProjectedCard
-                            final={
-                              isFinalRound
-                            }
-                          />
-
-                          {!isFinalRound ? (
-                            <BracketConnector
-                              fromCenter={
-                                center
-                              }
-                              toCenter={
-                                centers[
-                                  roundIndex +
-                                    1
-                                ]?.[
-                                  Math.floor(
-                                    slotIndex /
-                                      2
-                                  )
-                                ] ??
-                                center
-                              }
-                            />
-                          ) : null}
-                        </div>
-                      );
-                    }
-                  )}
-
-                  {isFinalRound &&
-                  consolationEnabled ? (
-                    <div
-                      style={{
-                        ...styles.bracketPositionedCard,
-                        top:
-                          boardHeight +
-                          90,
-                      }}
-                    >
-                      <article
-                        style={
-                          styles.futureBracketCard
-                        }
-                      >
-                        <span
-                          style={
-                            styles.futureCardLabel
-                          }
-                        >
-                          Consolation Game
-                        </span>
-
-                        <div
-                          style={
-                            styles.futureTeamSlot
-                          }
-                        >
-                          Loser from semifinal
-                        </div>
-
-                        <div
-                          style={
-                            styles.vs
-                          }
-                        >
-                          VS
-                        </div>
-
-                        <div
-                          style={
-                            styles.futureTeamSlot
-                          }
-                        >
-                          Loser from semifinal
-                        </div>
-                      </article>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            }
-          )}
-        </div>
-      </div>
-    </section>
+        {value}
+      </strong>
+    </div>
   );
 }
 
-function MarchMadnessRealBracket({
-  rounds,
-  playoffTeamCount,
-  playoffStartWeek,
-  consolationEnabled,
-  isCommissioner,
-  resolvingTiebreakMatchupId,
-  onResolveTiebreak,
-  onOpenMatchup,
+
+function FormatStep({
+  number,
+  title,
+  text,
 }: {
-  rounds: RealRoundGroup[];
-  playoffTeamCount: number;
-  playoffStartWeek: number;
-  consolationEnabled: boolean;
-  isCommissioner: boolean;
-  resolvingTiebreakMatchupId:
-    number | null;
-  onResolveTiebreak: (
-    matchupId: number,
-    winnerTeamId: number
-  ) => Promise<void>;
-  onOpenMatchup: (
-    matchupId: number
-  ) => void;
+  number: string;
+  title: string;
+  text: string;
 }) {
-  const bracketSize =
-    nextPowerOfTwo(
-      Math.max(
-        playoffTeamCount,
-        2
-      )
-    );
-
-  const firstRoundCount =
-    Math.max(
-      bracketSize / 2,
-      1
-    );
-
-  const roundCount =
-    Math.max(
-      Math.log2(
-        bracketSize
-      ),
-      1
-    );
-
-  const boardHeight =
-    firstRoundCount *
-      BRACKET_CARD_HEIGHT +
-    Math.max(
-      firstRoundCount - 1,
-      0
-    ) *
-      BRACKET_FIRST_GAP;
-
-  const centers =
-    buildBracketCenters(
-      firstRoundCount
-    );
-
-  const finalRoundGroup =
-    rounds.find(
-      (item) =>
-        item.round ===
-        roundCount
-    );
-
-  const championshipMatchup =
-    finalRoundGroup?.matchups.find(
-      (matchup) =>
-        matchup.matchupType ===
-        "championship"
-    ) ??
-    finalRoundGroup?.matchups.find(
-      (matchup) =>
-        matchup.matchupType ===
-          "playoff" &&
-        matchup.slot === 1
-    ) ??
-    null;
-
-  const consolationMatchup =
-    finalRoundGroup?.matchups.find(
-      (matchup) =>
-        matchup.matchupType ===
-        "consolation"
-    ) ??
-    null;
-
   return (
     <div
-      className="g365-playoffs-bracket-scroller"
       style={
-        styles.bracketScroller
+        styles.formatStep
       }
     >
       <div
-        style={{
-          ...styles.bracketCanvas,
-          width:
-            roundCount *
-              BRACKET_COLUMN_WIDTH +
-            Math.max(
-              roundCount - 1,
-              0
-            ) *
-              BRACKET_COLUMN_GAP,
-          height:
-            boardHeight +
-            (consolationEnabled
-              ? 190
-              : 0),
-        }}
+        style={
+          styles.stepNumber
+        }
       >
-        {Array.from(
-          {
-            length:
-              roundCount,
-          },
-          (
-            _,
-            roundIndex
-          ) => {
-            const round =
-              roundIndex + 1;
+        {number}
+      </div>
 
-            const matchCount =
-              Math.max(
-                firstRoundCount /
-                  Math.pow(
-                    2,
-                    roundIndex
-                  ),
-                1
-              );
-
-            const group =
-              rounds.find(
-                (item) =>
-                  item.round ===
-                  round
-              );
-
-            const matchups =
-              (
-                group?.matchups ??
-                []
-              ).filter(
-                (matchup) =>
-                  matchup.matchupType ===
-                  "playoff"
-              );
-
-            const roundCenters =
-              centers[
-                roundIndex
-              ] ??
-              [];
-
-            const isFinalRound =
-              round ===
-              roundCount;
-
-            return (
-              <div
-                key={
-                  round
-                }
-                style={{
-                  ...styles.bracketColumn,
-                  left:
-                    roundIndex *
-                    (
-                      BRACKET_COLUMN_WIDTH +
-                      BRACKET_COLUMN_GAP
-                    ),
-                  width:
-                    BRACKET_COLUMN_WIDTH,
-                  height:
-                    boardHeight,
-                }}
-              >
-                <BracketColumnHeading
-                  title={
-                    liveRoundTitle(
-                      round,
-                      roundCount,
-                      matchCount
-                    )
-                  }
-                  week={
-                    playoffStartWeek +
-                    round -
-                    1
-                  }
-                />
-
-                {Array.from(
-                  {
-                    length:
-                      matchCount,
-                  },
-                  (
-                    __,
-                    slotIndex
-                  ) => {
-                    const center =
-                      roundCenters[
-                        slotIndex
-                      ] ??
-                      BRACKET_CARD_HEIGHT /
-                        2;
-
-                    const top =
-                      center -
-                      BRACKET_CARD_HEIGHT /
-                        2 +
-                      54;
-
-                    const matchup =
-                      isFinalRound
-                        ? championshipMatchup
-                        : matchups[
-                            slotIndex
-                          ] ??
-                          null;
-
-                    return (
-                      <div
-                        key={
-                          `real-${round}-${slotIndex}`
-                        }
-                        style={{
-                          ...styles.bracketPositionedCard,
-                          top,
-                        }}
-                      >
-                        {matchup ? (
-                          <RealMatchupCard
-                            matchup={
-                              matchup
-                            }
-                            isCommissioner={
-                              isCommissioner
-                            }
-                            resolving={
-                              resolvingTiebreakMatchupId ===
-                              matchup.id
-                            }
-                            onResolveTiebreak={(
-                              winnerTeamId
-                            ) =>
-                              onResolveTiebreak(
-                                matchup.id,
-                                winnerTeamId
-                              )
-                            }
-                            onOpen={() =>
-                              onOpenMatchup(
-                                matchup.id
-                              )
-                            }
-                          />
-                        ) : (
-                          <FutureRealMatchupCard
-                            final={
-                              isFinalRound
-                            }
-                          />
-                        )}
-
-                        {!isFinalRound ? (
-                          <BracketConnector
-                            fromCenter={
-                              center
-                            }
-                            toCenter={
-                              centers[
-                                roundIndex +
-                                  1
-                              ]?.[
-                                Math.floor(
-                                  slotIndex /
-                                    2
-                                )
-                              ] ??
-                              center
-                            }
-                          />
-                        ) : null}
-                      </div>
-                    );
-                  }
-                )}
-
-                {isFinalRound &&
-                consolationEnabled ? (
-                  <div
-                    style={{
-                      ...styles.bracketPositionedCard,
-                      top:
-                        boardHeight +
-                        90,
-                    }}
-                  >
-                    {consolationMatchup ? (
-                      <RealMatchupCard
-                        matchup={
-                          consolationMatchup
-                        }
-                        isCommissioner={
-                          isCommissioner
-                        }
-                        resolving={
-                          resolvingTiebreakMatchupId ===
-                          consolationMatchup.id
-                        }
-                        onResolveTiebreak={(
-                          winnerTeamId
-                        ) =>
-                          onResolveTiebreak(
-                            consolationMatchup.id,
-                            winnerTeamId
-                          )
-                        }
-                        onOpen={() =>
-                          onOpenMatchup(
-                            consolationMatchup.id
-                          )
-                        }
-                      />
-                    ) : (
-                      <FutureRealMatchupCard
-                        consolation
-                      />
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            );
+      <div>
+        <strong
+          style={
+            styles.formatStepTitle
           }
-        )}
+        >
+          {title}
+        </strong>
+
+        <p
+          style={
+            styles.formatStepText
+          }
+        >
+          {text}
+        </p>
       </div>
     </div>
   );
 }
 
-function BracketColumnHeading({
+
+function RoundHeading({
   title,
   week,
 }: {
@@ -3348,135 +2013,168 @@ function BracketColumnHeading({
   return (
     <div
       style={
-        styles.bracketColumnHeading
+        styles.roundHeading
       }
     >
-      <strong>
+      <span
+        style={
+          styles.roundWeek
+        }
+      >
+        WEEK {week}
+      </span>
+
+      <strong
+        style={
+          styles.roundTitle
+        }
+      >
         {title}
       </strong>
-
-      <span>
-        Week {week}
-      </span>
     </div>
   );
 }
 
-function BracketConnector({
-  fromCenter,
-  toCenter,
+
+function BracketMatchup({
+  matchup,
+  fallbackHome,
+  fallbackAway,
+  makeTeam,
+  championship = false,
 }: {
-  fromCenter: number;
-  toCenter: number;
+  matchup:
+    PlayoffMatchupRow |
+    null;
+
+  fallbackHome: {
+    fantasyTeamId:
+      number |
+      null;
+    seed:
+      number |
+      null;
+    teamName: string;
+  };
+
+  fallbackAway: {
+    fantasyTeamId:
+      number |
+      null;
+    seed:
+      number |
+      null;
+    teamName: string;
+  };
+
+  makeTeam: (
+    fantasyTeamId:
+      number |
+      null,
+    seed:
+      number |
+      null,
+    points: number,
+    winnerId:
+      number |
+      null
+  ) => BracketTeam;
+
+  championship?:
+    boolean;
 }) {
-  const delta =
-    toCenter -
-    fromCenter;
+  const winnerId =
+    matchup
+      ?.winner_fantasy_team_id ??
+    null;
+
+
+  const home =
+    matchup
+      ? makeTeam(
+          matchup
+            .home_fantasy_team_id,
+          matchup
+            .home_seed,
+          numberValue(
+            matchup
+              .home_points
+          ),
+          winnerId
+        )
+      : {
+          fantasyTeamId:
+            fallbackHome
+              .fantasyTeamId,
+
+          seed:
+            fallbackHome.seed,
+
+          teamName:
+            fallbackHome.teamName,
+
+          points:
+            0,
+
+          isWinner:
+            false,
+        };
+
+
+  const away =
+    matchup
+      ? makeTeam(
+          matchup
+            .away_fantasy_team_id,
+          matchup
+            .away_seed,
+          numberValue(
+            matchup
+              .away_points
+          ),
+          winnerId
+        )
+      : {
+          fantasyTeamId:
+            fallbackAway
+              .fantasyTeamId,
+
+          seed:
+            fallbackAway.seed,
+
+          teamName:
+            fallbackAway.teamName,
+
+          points:
+            0,
+
+          isWinner:
+            false,
+        };
+
+
+  const status =
+    matchup
+      ? statusLabel(
+          matchup
+        )
+      : "TBD";
+
 
   return (
-    <>
-      <span
-        style={{
-          ...styles.connectorHorizontalFirst,
-          top:
-            BRACKET_CARD_HEIGHT /
-            2,
-        }}
-      />
+    <div
+      style={{
+        ...styles.matchupCard,
 
-      <span
-        style={{
-          ...styles.connectorVertical,
-          top:
-            delta >= 0
-              ? BRACKET_CARD_HEIGHT /
-                2
-              : BRACKET_CARD_HEIGHT /
-                  2 +
-                delta,
-          height:
-            Math.max(
-              Math.abs(
-                delta
-              ),
-              2
-            ),
-        }}
-      />
+        ...(championship
+          ? styles.championshipCard
+          : {}),
 
-      <span
-        style={{
-          ...styles.connectorHorizontalSecond,
-          top:
-            BRACKET_CARD_HEIGHT /
-              2 +
-            delta,
-        }}
-      />
-    </>
-  );
-}
-
-function FutureProjectedCard({
-  final,
-}: {
-  final: boolean;
-}) {
-  return (
-    <article
-      style={
-        styles.futureBracketCard
-      }
-    >
-      <span
-        style={
-          styles.futureCardLabel
-        }
-      >
-        {final
-          ? "Projected Championship"
-          : "Projected Matchup"}
-      </span>
-
-      <div
-        style={
-          styles.futureTeamSlot
-        }
-      >
-        Winner from prior round
-      </div>
-
-      <div
-        style={
-          styles.vs
-        }
-      >
-        VS
-      </div>
-
-      <div
-        style={
-          styles.futureTeamSlot
-        }
-      >
-        Winner from prior round
-      </div>
-    </article>
-  );
-}
-
-function FutureRealMatchupCard({
-  final = false,
-  consolation = false,
-}: {
-  final?: boolean;
-  consolation?: boolean;
-}) {
-  return (
-    <article
-      style={
-        styles.futureBracketCard
-      }
+        ...(matchup
+          ?.is_live
+          ? styles.liveMatchupCard
+          : {}),
+      }}
     >
       <div
         style={
@@ -3485,1902 +2183,1158 @@ function FutureRealMatchupCard({
       >
         <span
           style={
-            styles.matchupLabel
+            matchup
+              ?.is_live
+              ? styles.liveStatus
+              : matchup
+                  ?.is_final
+                ? styles.finalStatus
+                : styles.pendingStatus
           }
         >
-          {consolation
-            ? "Consolation Game"
-            : final
-              ? "Championship"
-              : "Future Round"}
+          {status}
         </span>
 
-        <span
-          style={
-            styles.statusBadge
-          }
-        >
-          PENDING
-        </span>
+        {matchup ? (
+          <span
+            style={
+              styles.matchupNumber
+            }
+          >
+            #{matchup.matchup_number}
+          </span>
+        ) : null}
       </div>
+
+
+      <BracketTeamRow
+        team={
+          home
+        }
+      />
 
       <div
         style={
-          styles.futureTeamSlot
+          styles.matchupDivider
         }
-      >
-        {consolation
-          ? "Loser from semifinal"
-          : "Winner from prior round"}
-      </div>
+      />
 
-      <div
-        style={
-          styles.vs
+      <BracketTeamRow
+        team={
+          away
         }
-      >
-        VS
-      </div>
-
-      <div
-        style={
-          styles.futureTeamSlot
-        }
-      >
-        {consolation
-          ? "Loser from semifinal"
-          : "Winner from prior round"}
-      </div>
-    </article>
+      />
+    </div>
   );
 }
 
-function ProjectedMatchupCard({
-  matchup,
-}: {
-  matchup: ProjectedMatchup | null;
-}) {
-  if (!matchup) {
-    return (
-      <FutureProjectedCard
-        final={false}
-      />
-    );
-  }
 
-  if (
-    matchup.byeTeam
-  ) {
-    return (
-      <article
-        style={
-          styles.projectedBracketCard
-        }
-      >
-        <span
-          style={
-            styles.futureCardLabel
-          }
-        >
-          First Round
-        </span>
-
-        <ProjectedTeamLine
-          team={
-            matchup.byeTeam
-          }
-        />
-
-        <div
-          style={
-            styles.byeBadge
-          }
-        >
-          BYE
-        </div>
-      </article>
-    );
-  }
-
-  return (
-    <article
-      style={
-        styles.projectedBracketCard
-      }
-    >
-      <span
-        style={
-          styles.futureCardLabel
-        }
-      >
-        First Round
-      </span>
-
-      <ProjectedTeamLine
-        team={
-          matchup.home
-        }
-      />
-
-      <div
-        style={
-          styles.vs
-        }
-      >
-        VS
-      </div>
-
-      <ProjectedTeamLine
-        team={
-          matchup.away
-        }
-      />
-    </article>
-  );
-}
-
-function ProjectedTeamLine({
+function BracketTeamRow({
   team,
 }: {
-  team: ProjectedTeam | null;
+  team:
+    BracketTeam;
 }) {
-  if (!team) {
-    return (
-      <div
-        style={
-          styles.projectedTeamRow
-        }
-      >
-        <strong>
-          TBD
-        </strong>
-      </div>
-    );
-  }
-
   return (
     <div
-      style={
-        styles.projectedTeamRow
-      }
+      style={{
+        ...styles.bracketTeamRow,
+
+        ...(team.isWinner
+          ? styles.winnerTeamRow
+          : {}),
+      }}
     >
-      <strong
+      <div
         style={
-          styles.projectedTeamName
+          styles.bracketSeed
         }
       >
-        #{team.seed}{" "}
+        {team.seed
+          ? `#${team.seed}`
+          : "—"}
+      </div>
+
+      <div
+        style={
+          styles.bracketTeamCircle
+        }
+      >
+        {team.teamName ===
+        "TBD"
+          ? "?"
+          : team.teamName
+              .slice(
+                0,
+                1
+              )
+              .toUpperCase()}
+      </div>
+
+      <strong
+        style={
+          styles.bracketTeamName
+        }
+      >
         {team.teamName}
       </strong>
 
-      <span
-        style={
-          styles.projectedTeamPercent
-        }
+      <strong
+        style={{
+          ...styles.bracketScore,
+
+          ...(team.isWinner
+            ? styles.winnerScore
+            : {}),
+        }}
       >
-        {clampProbability(
-          team.playoffProbability
-        ).toFixed(
-          1
-        )}
-        %
-      </span>
-    </div>
-  );
-}
-
-function buildBracketCenters(
-  firstRoundCount: number
-): number[][] {
-  const first =
-    Array.from(
-      {
-        length:
-          firstRoundCount,
-      },
-      (
-        _,
-        index
-      ) =>
-        BRACKET_CARD_HEIGHT /
-          2 +
-        index *
-          (
-            BRACKET_CARD_HEIGHT +
-            BRACKET_FIRST_GAP
-          )
-    );
-
-  const rounds:
-    number[][] = [
-      first,
-    ];
-
-  let current =
-    first;
-
-  while (
-    current.length >
-    1
-  ) {
-    const next:
-      number[] = [];
-
-    for (
-      let index = 0;
-      index <
-      current.length;
-      index += 2
-    ) {
-      const firstCenter =
-        current[index];
-
-      const secondCenter =
-        current[
-          index + 1
-        ] ??
-        firstCenter;
-
-      next.push(
-        (
-          firstCenter +
-          secondCenter
-        ) /
+        {team.points.toFixed(
           2
-      );
-    }
-
-    rounds.push(
-      next
-    );
-
-    current =
-      next;
-  }
-
-  return rounds;
-}
-
-function projectedRoundTitle(
-  round: number,
-  totalRounds: number,
-  matchupCount: number
-): string {
-  if (
-    round ===
-    totalRounds
-  ) {
-    return "Projected Championship";
-  }
-
-  if (
-    matchupCount ===
-    2
-  ) {
-    return "Projected Semifinal";
-  }
-
-  if (
-    matchupCount ===
-    4
-  ) {
-    return "Projected Quarterfinals";
-  }
-
-  return round === 1
-    ? "First Round"
-    : `Projected Round ${round}`;
-}
-
-function liveRoundTitle(
-  round: number,
-  totalRounds: number,
-  matchupCount: number
-): string {
-  if (
-    round ===
-    totalRounds
-  ) {
-    return "Championship";
-  }
-
-  if (
-    matchupCount ===
-    2
-  ) {
-    return "Semifinals";
-  }
-
-  if (
-    matchupCount ===
-    4
-  ) {
-    return "Quarterfinals";
-  }
-
-  return round === 1
-    ? "First Round"
-    : `Round ${round}`;
-}
-
-function RealMatchupCard({
-  matchup,
-  isCommissioner,
-  resolving,
-  onResolveTiebreak,
-  onOpen,
-}: {
-  matchup: PlayoffMatchupView;
-  isCommissioner: boolean;
-  resolving: boolean;
-  onResolveTiebreak: (winnerTeamId: number) => Promise<void>;
-  onOpen: () => void;
-}) {
-  const clickable =
-    matchup.homeTeam !==
-      null &&
-    matchup.awayTeam !==
-      null;
-
-  return (
-    <article
-      style={{
-        ...styles.realMatchupCard,
-
-        ...(clickable
-          ? styles.clickableCard
-          : {}),
-      }}
-      role={
-        clickable
-          ? "button"
-          : undefined
-      }
-      tabIndex={
-        clickable
-          ? 0
-          : -1
-      }
-      onClick={() => {
-        if (clickable) {
-          onOpen();
-        }
-      }}
-      onKeyDown={(
-        event
-      ) => {
-        if (
-          clickable &&
-          (
-            event.key ===
-              "Enter" ||
-            event.key ===
-              " "
-          )
-        ) {
-          event.preventDefault();
-          onOpen();
-        }
-      }}
-    >
-      <div
-        style={
-          styles.matchupTop
-        }
-      >
-        <span
-          style={
-            styles.matchupLabel
-          }
-        >
-          Week {matchup.week}
-        </span>
-
-        <span
-          style={
-            styles.statusBadge
-          }
-        >
-          {matchup.status.toUpperCase()}
-        </span>
-      </div>
-
-      <RealTeamLine
-        team={
-          matchup.homeTeam
-        }
-        seed={
-          matchup.homeSeed
-        }
-        points={
-          matchup.homePoints
-        }
-        projected={
-          matchup.homeProjectedPoints
-        }
-        winner={
-          matchup.winnerTeamId !==
-            null &&
-          matchup.homeTeam?.id ===
-            matchup.winnerTeamId
-        }
-      />
-
-      <div
-        style={
-          styles.vs
-        }
-      >
-        VS
-      </div>
-
-      <RealTeamLine
-        team={
-          matchup.awayTeam
-        }
-        seed={
-          matchup.awaySeed
-        }
-        points={
-          matchup.awayPoints
-        }
-        projected={
-          matchup.awayProjectedPoints
-        }
-        winner={
-          matchup.winnerTeamId !==
-            null &&
-          matchup.awayTeam?.id ===
-            matchup.winnerTeamId
-        }
-      />
-
-      {matchup.status === "tiebreak_pending" &&
-      matchup.homeTeam &&
-      matchup.awayTeam ? (
-        <div
-          style={styles.tiebreakBox}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => event.stopPropagation()}
-        >
-          <strong style={styles.tiebreakTitle}>
-            PLAYOFF TIE — WINNER REQUIRED
-          </strong>
-
-          {isCommissioner ? (
-            <>
-              <span style={styles.tiebreakHelp}>
-                Select the team that advances. This decision is final.
-              </span>
-
-              <div style={styles.tiebreakActions}>
-                <button
-                  type="button"
-                  style={styles.tiebreakButton}
-                  disabled={resolving}
-                  onClick={() =>
-                    void onResolveTiebreak(matchup.homeTeam!.id)
-                  }
-                >
-                  {resolving
-                    ? "Resolving..."
-                    : `Advance ${matchup.homeTeam.team_name ?? `Team ${matchup.homeTeam.id}`}`}
-                </button>
-
-                <button
-                  type="button"
-                  style={styles.tiebreakButton}
-                  disabled={resolving}
-                  onClick={() =>
-                    void onResolveTiebreak(matchup.awayTeam!.id)
-                  }
-                >
-                  {resolving
-                    ? "Resolving..."
-                    : `Advance ${matchup.awayTeam.team_name ?? `Team ${matchup.awayTeam.id}`}`}
-                </button>
-              </div>
-            </>
-          ) : (
-            <span style={styles.tiebreakHelp}>
-              Waiting for commissioner tiebreak decision.
-            </span>
-          )}
-        </div>
-      ) : null}
-
-      {clickable ? (
-        <div
-          style={
-            styles.openRow
-          }
-        >
-          Click for Team vs. Team player detail
-        </div>
-      ) : (
-        <div
-          style={
-            styles.pendingRow
-          }
-        >
-          Waiting for prior-round winner
-        </div>
-      )}
-    </article>
-  );
-}
-
-function RealTeamLine({
-  team,
-  seed,
-  points,
-  projected,
-  winner,
-}: {
-  team: TeamRow | null;
-  seed: number | null;
-  points: number;
-  projected: number;
-  winner: boolean;
-}) {
-  if (!team) {
-    return (
-      <div
-        style={
-          styles.realTeamLine
-        }
-      >
-        <strong>
-          TBD
-        </strong>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        ...styles.realTeamLine,
-
-        ...(winner
-          ? styles.winnerLine
-          : {}),
-      }}
-    >
-      <div>
-        <strong>
-          {seed
-            ? `#${seed} `
-            : ""}
-          {team.team_name ??
-            `Team ${team.id}`}
-        </strong>
-
-        <div
-          style={
-            styles.teamRecord
-          }
-        >
-          {team.wins}-
-          {team.losses}
-          {team.ties > 0
-            ? `-${team.ties}`
-            : ""}
-        </div>
-      </div>
-
-      <div
-        style={
-          styles.scoreBlock
-        }
-      >
-        <strong>
-          {points.toFixed(
-            2
-          )}
-        </strong>
-
-        <span>
-          Proj{" "}
-          {projected.toFixed(
-            2
-          )}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div
-      style={
-        styles.stat
-      }
-    >
-      <span
-        style={
-          styles.statLabel
-        }
-      >
-        {label}
-      </span>
-
-      <strong>
-        {value}
+        )}
       </strong>
     </div>
   );
 }
 
-function buildProjectedBracket(
-  projectedTeams: ProjectedTeam[],
-  playoffTeamCount: number
-): ProjectedMatchup[] {
-  const field =
-    projectedTeams
-      .slice(
-        0,
-        playoffTeamCount
-      )
-      .sort(
-        (
-          first,
-          second
-        ) =>
-          first.seed -
-          second.seed
-      );
 
-  if (
-    playoffTeamCount < 2
-  ) {
-    return [];
-  }
-
-  const bracketSize =
-    nextPowerOfTwo(
-      Math.max(
-        playoffTeamCount,
-        2
-      )
-    );
-
-  const seedOrder =
-    buildPlayoffSeedOrder(
-      bracketSize
-    );
-
-  const teamBySeed =
-    new Map(
-      field.map(
-        (team) => [
-          team.seed,
-          team,
-        ]
-      )
-    );
-
-  const matchups:
-    ProjectedMatchup[] = [];
-
-  for (
-    let index = 0;
-    index < seedOrder.length;
-    index += 2
-  ) {
-    const homeSeed =
-      seedOrder[index];
-
-    const awaySeed =
-      seedOrder[
-        index + 1
-      ];
-
-    const homeTeam =
-      homeSeed
-        ? teamBySeed.get(
-            homeSeed
-          ) ??
-          null
-        : null;
-
-    const awayTeam =
-      awaySeed
-        ? teamBySeed.get(
-            awaySeed
-          ) ??
-          null
-        : null;
-
-    const homeSeedIsBye =
-      homeSeed > playoffTeamCount;
-
-    const awaySeedIsBye =
-      awaySeed > playoffTeamCount;
-
-    const byeTeam =
-      !homeSeedIsBye &&
-      awaySeedIsBye
-        ? homeTeam
-        : !awaySeedIsBye &&
-            homeSeedIsBye
-          ? awayTeam
-          : null;
-
-    matchups.push({
-      key:
-        homeSeedIsBye ||
-        awaySeedIsBye
-          ? `bye-seed-${homeSeedIsBye ? awaySeed : homeSeed}`
-          : `game-seed-${homeSeed}-${awaySeed}`,
-
-      round: 1,
-
-      label:
-        "First Round",
-
-      home:
-        byeTeam
-          ? null
-          : homeTeam,
-
-      away:
-        byeTeam
-          ? null
-          : awayTeam,
-
-      byeTeam,
-    });
-  }
-
-  return matchups;
-}
-
-function buildPlayoffSeedOrder(
-  bracketSize: number
-): number[] {
-  if (
-    bracketSize < 2
-  ) {
-    return [];
-  }
-
-  let order = [
-    1,
-    2,
-  ];
-
-  let size = 2;
-
-  while (
-    size < bracketSize
-  ) {
-    size *= 2;
-
-    const nextOrder:
-      number[] = [];
-
-    for (
-      const seed
-      of order
-    ) {
-      nextOrder.push(
-        seed
-      );
-
-      nextOrder.push(
-        size + 1 - seed
-      );
-    }
-
-    order =
-      nextOrder;
-  }
-
-  return order;
-}
-
-function nextPowerOfTwo(
-  value: number
-): number {
-  let result = 1;
-
-  while (
-    result < value
-  ) {
-    result *= 2;
-  }
-
-  return result;
-}
-
-function clampProbability(
-  value: number
-): number {
-  return Math.max(
-    0,
-    Math.min(
-      100,
-      value
-    )
-  );
-}
-
-function formatRoundLabel(
-  round: number,
-  matchupCount: number
-): string {
-  if (
-    matchupCount === 1
-  ) {
-    return "Championship";
-  }
-
-  if (
-    matchupCount === 2
-  ) {
-    return "Semifinals";
-  }
-
-  if (
-    matchupCount === 4
-  ) {
-    return "Quarterfinals";
-  }
-
-  return `Round ${round}`;
-}
-
-function formatPlayoffStatus(
-  status: string
-): string {
-  if (
-    status ===
-    "completed"
-  ) {
-    return "Playoffs Complete";
-  }
-
-  if (
-    status === "live"
-  ) {
-    return "Live Playoffs";
-  }
-
-  if (
-    status ===
-    "scheduled"
-  ) {
-    return "Playoff Bracket";
-  }
-
-  return status;
-}
-
-const styles: Record<
-  string,
-  CSSProperties
-> = {
+const styles = {
   page: {
     minHeight:
-      "100vh",
+      "calc(100vh - 90px)",
+
     padding:
-      "24px",
+      "18px 16px 34px",
+
     background:
-      "transparent",
-    color:
-      "#ffffff",
+      "#0c0d0f",
   },
 
-  container: {
-    width: "min(1600px, 100%)",
-    margin: "0 auto",
-    display: "grid",
-    gap: "16px",
-  },
 
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: "18px",
-    flexWrap: "wrap",
-    padding: "20px",
-    border: "1px solid rgba(120,140,160,0.34)",
-    borderRadius: "10px",
-    background: "linear-gradient(135deg, rgba(18,25,32,0.97), rgba(8,13,19,0.98))",
-    boxShadow: "0 16px 36px rgba(0,0,0,0.38)",
-    backdropFilter: "blur(14px)",
-  },
+  shell: {
+    width:
+      "min(1500px,100%)",
 
-  headerRight: {
+    margin:
+      "0 auto",
+
     display:
       "grid",
+
     gap:
-      "9px",
-    justifyItems:
-      "end",
+      "14px",
   },
 
-  headerStats: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3,minmax(115px,1fr))",
-    gap: "0",
-    overflow: "hidden",
-    border: "1px solid rgba(120,140,160,0.34)",
-    borderRadius: "8px",
-    background: "#0f172a",
-  },
 
-  actionRow: {
+  header: {
     display:
       "flex",
-    gap:
-      "9px",
-    flexWrap:
-      "wrap",
-    justifyContent:
+
+    alignItems:
       "flex-end",
+
+    justifyContent:
+      "space-between",
+
+    gap:
+      "18px",
+
+    flexWrap:
+      "wrap" as const,
   },
 
-  autoRefreshText: {
-    color:
-      "#9fb0a7",
-    fontSize:
-      "9px",
-  },
-
-  primaryButton: {
-    padding:
-      "10px 14px",
-    border:
-      0,
-    borderRadius:
-      "8px",
-    background:
-      "#60a5fa",
-    color:
-      "#04130c",
-    fontWeight:
-      900,
-    cursor:
-      "pointer",
-  },
-
-  secondaryButton: {
-    padding:
-      "10px 14px",
-    border:
-      "1px solid #475569",
-    borderRadius:
-      "8px",
-    background:
-      "#123522",
-    color:
-      "#60a5fa",
-    fontWeight:
-      900,
-    cursor:
-      "pointer",
-  },
 
   eyebrow: {
+    margin:
+      0,
+
     color:
-      "#60a5fa",
+      "#ff7d1d",
+
     fontSize:
-      "10px",
+      "8px",
+
     fontWeight:
-      900,
+      950,
+
     letterSpacing:
-      "0.08em",
+      ".14em",
   },
+
 
   title: {
     margin:
-      "6px 0",
+      "4px 0 0",
+
+    color:
+      "#fff",
+
     fontSize:
-      "34px",
+      "28px",
+
+    lineHeight:
+      1,
   },
+
 
   subtitle: {
     margin:
-      0,
+      "6px 0 0",
+
     color:
-      "#9fb0a7",
+      "#767d86",
+
+    fontSize:
+      "10px",
   },
 
-  stat: {
-    minWidth:
-      "110px",
+
+  headerStats: {
+    display: "grid",
+    gridTemplateColumns: "repeat(5,minmax(112px,1fr))",
+    gap: "8px",
+    alignItems: "stretch",
+  },
+
+
+  headerStat: {
+    minWidth: "112px",
+    minHeight: "58px",
+    boxSizing: "border-box" as const,
     padding:
-      "11px",
-    border:
-      "1px dashed #475569",
-    borderRadius:
-      "9px",
-    background:
-      "#071a12",
+      "8px 11px",
+
     display:
       "grid",
+
+    justifyItems:
+      "center",
+
     gap:
-      "5px",
+      "2px",
+
+    border:
+      "1px solid rgba(255,255,255,.075)",
+
+    borderRadius:
+      "7px",
+
+    background:
+      "#111315",
   },
 
-  statLabel: {
+
+  headerStatLabel: {
     color:
-      "#7f9187",
+      "#747b84",
+
     fontSize:
-      "9px",
+      "6px",
+
     fontWeight:
       900,
   },
 
-  section: {
-    display: "grid",
-    gap: "14px",
-    padding: "16px",
-    border: "1px solid rgba(120,140,160,0.34)",
-    borderRadius: "10px",
-    background: "linear-gradient(145deg,rgba(18,25,32,0.97),rgba(8,13,19,0.98))",
-    boxShadow: "0 14px 32px rgba(0,0,0,0.30)",
-  },
 
-  sectionHeader: {
-    display:
-      "flex",
-    justifyContent:
-      "space-between",
-    alignItems:
-      "center",
-    gap:
+  headerStatValue: {
+    color:
+      "#f1f2f3",
+
+    fontSize:
       "12px",
   },
+
+
+  headerStatAccent: {
+    color:
+      "#ff8626",
+
+    fontSize:
+      "12px",
+  },
+
+
+  playoffConfigBar: {
+    padding: "9px 12px",
+    display: "grid",
+    gridTemplateColumns: "minmax(145px,1fr) auto minmax(145px,1fr) auto minmax(145px,1fr)",
+    alignItems: "stretch",
+    gap: "12px",
+
+    border:
+      "1px solid rgba(255,255,255,.065)",
+
+    borderRadius:
+      "7px",
+
+    background:
+      "linear-gradient(90deg,rgba(255,95,15,.035),#101214)",
+  },
+
+
+  configItem: {
+    minWidth:
+      "145px",
+
+    display:
+      "grid",
+
+    gap:
+      "2px",
+  },
+
+
+  configLabel: {
+    color:
+      "#6f7680",
+
+    fontSize:
+      "6px",
+
+    fontWeight:
+      950,
+
+    letterSpacing:
+      ".06em",
+  },
+
+
+  configValue: {
+    color:
+      "#d5d8dc",
+
+    fontSize:
+      "8px",
+  },
+
+
+  configValueGreen: {
+    color:
+      "#4ddd89",
+
+    fontSize:
+      "8px",
+  },
+
+
+  configDivider: {
+    width:
+      "1px",
+
+    height:
+      "24px",
+
+    background:
+      "rgba(255,255,255,.065)",
+  },
+
+
+  championBanner: {
+    padding:
+      "14px 18px",
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    gap:
+      "14px",
+
+    border:
+      "1px solid rgba(255,145,20,.25)",
+
+    borderRadius:
+      "8px",
+
+    background:
+      "linear-gradient(90deg,rgba(140,20,15,.28),rgba(255,95,10,.09),#111315)",
+  },
+
+
+  trophyCircle: {
+    width:
+      "46px",
+
+    height:
+      "46px",
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "center",
+
+    border:
+      "1px solid rgba(255,150,40,.38)",
+
+    borderRadius:
+      "50%",
+
+    background:
+      "rgba(255,125,25,.07)",
+
+    color:
+      "#ffab3d",
+
+    fontSize:
+      "20px",
+  },
+
+
+  championLabel: {
+    display:
+      "block",
+
+    color:
+      "#ff9b32",
+
+    fontSize:
+      "7px",
+
+    fontWeight:
+      950,
+
+    letterSpacing:
+      ".08em",
+  },
+
+
+  championName: {
+    display:
+      "block",
+
+    marginTop:
+      "2px",
+
+    color:
+      "#fff",
+
+    fontSize:
+      "18px",
+  },
+
+
+  championMeta: {
+    color:
+      "#858c95",
+
+    fontSize:
+      "8px",
+  },
+
+
+  prePlayoffGrid: {
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "minmax(0,1fr) 310px",
+
+    gap:
+      "14px",
+
+    alignItems:
+      "start",
+  },
+
+
+  projectedFieldCard: {
+    overflow:
+      "hidden",
+
+    border:
+      "1px solid rgba(255,255,255,.08)",
+
+    borderRadius:
+      "8px",
+
+    background:
+      "linear-gradient(180deg,#151719,#101113)",
+  },
+
+
+  formatCard: {
+    padding:
+      "16px",
+
+    border:
+      "1px solid rgba(255,255,255,.08)",
+
+    borderRadius:
+      "8px",
+
+    background:
+      "#111315",
+  },
+
+
+  sectionHeading: {
+    padding:
+      "12px 14px",
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "space-between",
+
+    gap:
+      "12px",
+
+    borderBottom:
+      "1px solid rgba(255,255,255,.06)",
+  },
+
+
+  sectionKicker: {
+    color:
+      "#ff7f20",
+
+    fontSize:
+      "6px",
+
+    fontWeight:
+      950,
+  },
+
 
   sectionTitle: {
     margin:
-      "5px 0 0",
-    fontSize:
-      "22px",
-  },
+      "2px 0 0",
 
-  weekBadge: {
-    padding:
-      "7px 10px",
-    borderRadius:
-      "999px",
-    background:
-      "#123522",
     color:
-      "#60a5fa",
+      "#f3f4f5",
+
     fontSize:
-      "10px",
-    fontWeight:
-      900,
+      "13px",
   },
 
-  tableWrap: {
-    overflowX:
-      "auto",
+
+  projectedBadge: {
+    padding:
+      "4px 7px",
+
     border:
-      "1px solid #244a3a",
+      "1px solid rgba(255,130,25,.25)",
+
     borderRadius:
-      "12px",
-    background:
-      "#071a12",
-  },
+      "4px",
 
-  table: {
-    width:
-      "100%",
-    borderCollapse:
-      "collapse",
-    minWidth:
-      "800px",
-  },
-
-  th: {
-    padding:
-      "11px",
-    textAlign:
-      "left",
     color:
-      "#9fb0a7",
-    fontSize:
-      "10px",
-    borderBottom:
-      "1px solid #244a3a",
-  },
+      "#ff8c2b",
 
-  td: {
-    padding:
-      "11px",
-    borderBottom:
-      "1px solid #17382b",
     fontSize:
-      "12px",
-  },
+      "6px",
 
-  tdStrong: {
-    padding:
-      "11px",
-    borderBottom:
-      "1px solid #17382b",
-    fontSize:
-      "12px",
     fontWeight:
-      900,
+      950,
   },
 
-  oddsCell: {
+
+  seedList: {
     display:
       "grid",
-    gridTemplateColumns:
-      "minmax(120px, 1fr) 58px",
-    alignItems:
-      "center",
-    gap:
-      "9px",
   },
 
-  oddsTrack: {
+
+  seedRow: {
+    minHeight:
+      "56px",
+
+    padding:
+      "7px 13px",
+
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "32px 32px minmax(0,1fr) auto",
+
+    alignItems:
+      "center",
+
+    gap:
+      "8px",
+
+    borderBottom:
+      "1px solid rgba(255,255,255,.045)",
+  },
+
+
+  byeSeedRow: {
+    background:
+      "linear-gradient(90deg,rgba(255,110,15,.055),transparent 50%)",
+  },
+
+
+  seedNumber: {
+    color:
+      "#ff8728",
+
+    fontSize:
+      "13px",
+
+    fontWeight:
+      950,
+  },
+
+
+  teamCircle: {
+    width:
+      "30px",
+
     height:
+      "30px",
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "center",
+
+    borderRadius:
+      "50%",
+
+    background:
+      "#272a2e",
+
+    color:
+      "#f1f2f3",
+
+    fontSize:
       "9px",
+
+    fontWeight:
+      950,
+  },
+
+
+  seedTeamText: {
+    minWidth:
+      0,
+
+    display:
+      "grid",
+
+    gap:
+      "2px",
+  },
+
+
+  seedTeamName: {
     overflow:
       "hidden",
-    borderRadius:
-      "999px",
-    background:
-      "#1b2b23",
-  },
 
-  oddsFill: {
-    height:
-      "100%",
-    background:
-      "#60a5fa",
-  },
+    textOverflow:
+      "ellipsis",
 
-  inBadge: {
-    display:
-      "inline-block",
-    padding:
-      "4px 7px",
-    borderRadius:
-      "999px",
-    background:
-      "#123522",
+    whiteSpace:
+      "nowrap" as const,
+
     color:
-      "#60a5fa",
-    fontSize:
-      "9px",
-    fontWeight:
-      900,
-  },
+      "#f3f4f5",
 
-  outBadge: {
-    display:
-      "inline-block",
-    padding:
-      "4px 7px",
-    borderRadius:
-      "999px",
-    background:
-      "#321818",
-    color:
-      "#ffb3b3",
-    fontSize:
-      "9px",
-    fontWeight:
-      900,
-  },
-
-  projectedBracket: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))",
-    gap: "12px",
-  },
-
-  realBracket: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))",
-    gap: "14px",
-    alignItems: "start",
-  },
-
-  roundColumn: {
-    minWidth:
-      "340px",
-    display:
-      "grid",
-    gap:
-      "12px",
-  },
-
-  roundTitle: {
-    margin:
-      0,
-    color:
-      "#60a5fa",
-    fontSize:
-      "15px",
-  },
-
-  roundMatchups: {
-    display:
-      "grid",
-    gap:
-      "14px",
-  },
-
-  realMatchupCard: {
-    display:
-      "grid",
-    gap:
-      "9px",
-    padding:
-      "14px",
-    border:
-      "1px solid #244a3a",
-    borderRadius:
-      "12px",
-    background:
-      "#071a12",
-  },
-
-  clickableCard: {
-    cursor:
-      "pointer",
-  },
-
-  matchupTop: {
-    display:
-      "flex",
-    justifyContent:
-      "space-between",
-    gap:
-      "8px",
-  },
-
-  statusBadge: {
-    padding:
-      "3px 6px",
-    borderRadius:
-      "999px",
-    background:
-      "#123522",
-    color:
-      "#60a5fa",
-    fontSize:
-      "8px",
-    fontWeight:
-      900,
-  },
-
-  realTeamLine: {
-    display:
-      "flex",
-    justifyContent:
-      "space-between",
-    alignItems:
-      "center",
-    gap:
-      "10px",
-    padding:
-      "10px",
-    borderRadius:
-      "8px",
-    background:
-  "#0f172a",
-  },
-
-  winnerLine: {
-  border:
-    "1px solid #4ade80",
-
-  background:
-    "rgba(20,83,45,0.30)",
-},
-
-  teamRecord: {
-    marginTop:
-      "2px",
-    color:
-      "#9fb0a7",
-    fontSize:
-      "9px",
-  },
-
-  scoreBlock: {
-    display:
-      "grid",
-    justifyItems:
-      "end",
-    gap:
-      "2px",
-    fontSize:
-      "11px",
-  },
-
-  tiebreakBox: {
-    display: "grid",
-    gap: "8px",
-    padding: "10px",
-    border: "1px solid #8a6d2f",
-    borderRadius: "8px",
-    background: "#211b0c",
-  },
-
-  tiebreakTitle: {
-    color: "#ffd76a",
-    fontSize: "10px",
-    fontWeight: 900,
-    textAlign: "center",
-  },
-
-  tiebreakHelp: {
-    color: "#d6c99d",
-    fontSize: "9px",
-    textAlign: "center",
-  },
-
-  tiebreakActions: {
-    display: "flex",
-    gap: "8px",
-    flexWrap: "wrap",
-    justifyContent: "center",
-  },
-
-  tiebreakButton: {
-    padding: "8px 10px",
-    border: "1px solid #ffd76a",
-    borderRadius: "7px",
-    background: "#33290f",
-    color: "#ffd76a",
-    fontSize: "9px",
-    fontWeight: 900,
-    cursor: "pointer",
-  },
-
-  openRow: {
-    color:
-      "#60a5fa",
-    fontSize:
-      "9px",
-    fontWeight:
-      900,
-    textAlign:
-      "center",
-  },
-
-  pendingRow: {
-    color:
-      "#7f9187",
-    fontSize:
-      "9px",
-    textAlign:
-      "center",
-  },
-
-  championCard: {
-  padding:
-    "22px",
-
-  border:
-    "1px solid #4ade80",
-
-  borderRadius:
-    "14px",
-
-  background:
-    "rgba(20,83,45,0.30)",
-
-  textAlign:
-    "center",
-  },
-
-  championTitle: {
-    margin:
-      "7px 0 0",
-    fontSize:
-      "30px",
-  },
-
-  matchupCard: {
-    display:
-      "grid",
-    gap:
-      "10px",
-    padding:
-      "14px",
-    border:
-      "1px solid #244a3a",
-    borderRadius:
-      "12px",
-    background:
-      "#071a12",
-  },
-
-  matchupLabel: {
-    color:
-      "#60a5fa",
-    fontSize:
-      "9px",
-    fontWeight:
-      900,
-  },
-
-  teamLine: {
-    display:
-      "flex",
-    justifyContent:
-      "space-between",
-    alignItems:
-      "center",
-    gap:
-      "10px",
-    padding:
-      "10px",
-    borderRadius:
-      "8px",
-    background:
-      "#06170f",
-  },
-
-  teamOdds: {
-    color:
-      "#9fb0a7",
-    fontSize:
-      "9px",
-  },
-
-  vs: {
-    textAlign:
-      "center",
-    color:
-      "#60a5fa",
-    fontWeight:
-      900,
     fontSize:
       "10px",
   },
 
-  byeRow: {
-    display:
-      "flex",
-    justifyContent:
-      "space-between",
-    alignItems:
-      "center",
-    gap:
-      "10px",
-    padding:
-      "10px",
-    borderRadius:
-      "8px",
-    background:
-      "#06170f",
+
+  seedMeta: {
+    color:
+      "#707780",
+
+    fontSize:
+      "6px",
   },
+
 
   byeBadge: {
     padding:
       "4px 7px",
-    borderRadius:
-      "999px",
-    background:
-      "#123522",
-    color:
-      "#60a5fa",
-    fontSize:
-      "9px",
-    fontWeight:
-      900,
-  },
 
-  empty: {
-    padding:
-      "18px",
     border:
-  "1px dashed #475569",
+      "1px solid rgba(80,220,130,.25)",
+
     borderRadius:
-      "10px",
-    background:
-      "#071a12",
-    color:
-      "#9fb0a7",
-    textAlign:
-      "center",
-  },
-
-  success: {
-    padding:
-      "12px",
-    borderRadius:
-      "8px",
-    background:
-      "#123522",
-    color:
-      "#b8ff99",
-  },
-
-  error: {
-    padding:
-      "12px",
-    borderRadius:
-      "8px",
-    background:
-      "#321818",
-    color:
-      "#ffb3b3",
-  },
-
-  errorCard: {
-    width:
-      "min(680px, 100%)",
-    margin:
-      "80px auto 0",
-    padding:
-      "18px",
-    border:
-      "1px solid #5a3636",
-    borderRadius:
-      "12px",
-    background:
-      "#321818",
-  },
-
-  bracketIntro: {
-    display:
-      "flex",
-    justifyContent:
-      "space-between",
-    alignItems:
-      "flex-start",
-    gap:
-      "18px",
-    flexWrap:
-      "wrap",
-  },
-
-  bracketHelp: {
-    margin:
-      "6px 0 0",
-    color:
-      "#aab4af",
-    fontSize:
-      "11px",
-    lineHeight:
-      1.5,
-  },
-
-  playoffCountdown: {
-    display:
-      "grid",
-    gap:
       "4px",
-    minWidth:
-      "245px",
-    padding:
-      "12px 16px",
-    border:
-      "1px solid rgba(120,140,160,0.34)",
-    borderRadius:
-      "9px",
-    background:
-      "rgba(7,18,14,0.88)",
-  },
 
-  bracketScroller: {
-    width:
-      "100%",
-    overflowX:
-      "auto",
-    overflowY:
-      "visible",
-    padding:
-      "10px 0 24px",
-  },
-
-  bracketCanvas: {
-    position:
-      "relative",
-    minWidth:
-      "100%",
-    margin:
-      "0 auto",
-  },
-
-  bracketColumn: {
-    position:
-      "absolute",
-    top:
-      0,
-  },
-
-  bracketColumnHeading: {
-    position:
-      "absolute",
-    top:
-      0,
-    left:
-      0,
-    right:
-      0,
-    display:
-      "grid",
-    justifyItems:
-      "center",
-    gap:
-      "3px",
     color:
-      "#22aaff",
+      "#51db87",
+
     fontSize:
-      "13px",
+      "6px",
+
+    fontWeight:
+      950,
+  },
+
+
+  wildCardBadge: {
+    color:
+      "#757c85",
+
+    fontSize:
+      "6px",
+
     fontWeight:
       900,
   },
 
-  bracketPositionedCard: {
-    position:
-      "absolute",
-    left:
-      0,
-    width:
-      "100%",
-    height:
-      `${BRACKET_CARD_HEIGHT}px`,
-  },
 
-  projectedBracketCard: {
-    position:
-      "relative",
-    boxSizing:
-      "border-box",
-    height:
-      "100%",
+  formatStep: {
+    marginTop:
+      "14px",
+
     display:
       "grid",
+
+    gridTemplateColumns:
+      "28px 1fr",
+
     gap:
-      "8px",
-    padding:
-      "12px",
-    border:
-      "1px solid #137647",
-    borderRadius:
-      "11px",
-    background:
-      "rgba(0,35,22,0.70)",
-    boxShadow:
-      "0 10px 24px rgba(0,0,0,0.22)",
+      "9px",
+
+    alignItems:
+      "start",
   },
 
-  projectedTeamRow: {
-    minHeight:
-      "43px",
+
+  stepNumber: {
+    width:
+      "26px",
+
+    height:
+      "26px",
+
     display:
       "flex",
+
     alignItems:
       "center",
+
+    justifyContent:
+      "center",
+
+    borderRadius:
+      "50%",
+
+    background:
+      "linear-gradient(135deg,#b71d18,#ff6412)",
+
+    color:
+      "#fff",
+
+    fontSize:
+      "8px",
+
+    fontWeight:
+      950,
+  },
+
+
+  formatStepTitle: {
+    color:
+      "#f3f4f5",
+
+    fontSize:
+      "9px",
+  },
+
+
+  formatStepText: {
+    margin:
+      "3px 0 0",
+
+    color:
+      "#737a84",
+
+    fontSize:
+      "7px",
+
+    lineHeight:
+      1.4,
+  },
+
+
+  tieNote: {
+    marginTop:
+      "16px",
+
+    padding:
+      "9px 10px",
+
+    border:
+      "1px solid rgba(255,255,255,.06)",
+
+    borderRadius:
+      "6px",
+
+    color:
+      "#838a94",
+
+    fontSize:
+      "7px",
+
+    lineHeight:
+      1.45,
+  },
+
+
+  bracketShell: {
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "repeat(3,minmax(260px,1fr))",
+
+    gap:
+      "18px",
+
+    alignItems:
+      "stretch",
+  },
+
+
+  bracketRound: {
+    minWidth:
+      0,
+
+    display:
+      "grid",
+
+    alignContent:
+      "start",
+
+    gap:
+      "14px",
+  },
+
+
+  roundHeading: {
+    padding:
+      "8px 10px",
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
     justifyContent:
       "space-between",
-    gap:
-      "12px",
+
+    borderBottom:
+      "1px solid rgba(255,255,255,.07)",
+  },
+
+
+  roundWeek: {
+    color:
+      "#747b84",
+
+    fontSize:
+      "6px",
+
+    fontWeight:
+      900,
+  },
+
+
+  roundTitle: {
+    color:
+      "#f2f3f4",
+
+    fontSize:
+      "11px",
+  },
+
+
+  matchupCard: {
+    overflow:
+      "hidden",
+
+    border:
+      "1px solid rgba(255,255,255,.09)",
+
+    borderRadius:
+      "8px",
+
+    background:
+      "linear-gradient(180deg,#17191b,#111214)",
+  },
+
+
+  liveMatchupCard: {
+    border:
+      "1px solid rgba(68,220,132,.3)",
+
+    boxShadow:
+      "0 0 20px rgba(45,190,110,.05)",
+  },
+
+
+  championshipCard: {
+    border:
+      "1px solid rgba(255,120,25,.22)",
+
+    background:
+      "linear-gradient(180deg,rgba(120,25,20,.18),#121315)",
+  },
+
+
+  matchupTop: {
+    minHeight:
+      "28px",
+
+    padding:
+      "5px 8px",
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "space-between",
+
+    borderBottom:
+      "1px solid rgba(255,255,255,.055)",
+  },
+
+
+  liveStatus: {
+    color:
+      "#49db87",
+
+    fontSize:
+      "6px",
+
+    fontWeight:
+      950,
+  },
+
+
+  finalStatus: {
+    color:
+      "#a4aab2",
+
+    fontSize:
+      "6px",
+
+    fontWeight:
+      950,
+  },
+
+
+  pendingStatus: {
+    color:
+      "#747b84",
+
+    fontSize:
+      "6px",
+
+    fontWeight:
+      900,
+  },
+
+
+  matchupNumber: {
+    color:
+      "#5e656e",
+
+    fontSize:
+      "6px",
+  },
+
+
+  bracketTeamRow: {
+    minHeight:
+      "48px",
+
     padding:
       "7px 9px",
-    borderRadius:
-      "7px",
-    background:
-      "rgba(0,20,13,0.38)",
-  },
 
-  projectedTeamName: {
-    fontSize:
-      "13px",
-  },
-
-  projectedTeamPercent: {
-    color:
-      "#b7c7bf",
-    fontSize:
-      "10px",
-    whiteSpace:
-      "nowrap",
-  },
-
-  futureBracketCard: {
-    position:
-      "relative",
-    boxSizing:
-      "border-box",
-    height:
-      "100%",
     display:
       "grid",
+
+    gridTemplateColumns:
+      "28px 28px minmax(0,1fr) 58px",
+
+    alignItems:
+      "center",
+
     gap:
-      "8px",
-    padding:
-      "12px",
-    border:
-      "1px solid #137647",
-    borderRadius:
-      "11px",
-    background:
-      "rgba(0,35,22,0.62)",
-    boxShadow:
-      "0 10px 24px rgba(0,0,0,0.20)",
+      "7px",
   },
 
-  futureCardLabel: {
+
+  winnerTeamRow: {
+    background:
+      "linear-gradient(90deg,rgba(50,200,115,.08),transparent 65%)",
+  },
+
+
+  bracketSeed: {
     color:
-      "#22aaff",
+      "#ff8627",
+
+    fontSize:
+      "7px",
+
+    fontWeight:
+      950,
+  },
+
+
+  bracketTeamCircle: {
+    width:
+      "27px",
+
+    height:
+      "27px",
+
+    display:
+      "flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "center",
+
+    borderRadius:
+      "50%",
+
+    background:
+      "#25282c",
+
+    color:
+      "#eceef0",
+
+    fontSize:
+      "7px",
+
+    fontWeight:
+      950,
+  },
+
+
+  bracketTeamName: {
+    minWidth:
+      0,
+
+    overflow:
+      "hidden",
+
+    textOverflow:
+      "ellipsis",
+
+    whiteSpace:
+      "nowrap" as const,
+
+    color:
+      "#f0f1f2",
+
     fontSize:
       "9px",
+  },
+
+
+  bracketScore: {
+    justifySelf:
+      "end",
+
+    color:
+      "#e5e7ea",
+
+    fontSize:
+      "10px",
+
+    fontVariantNumeric:
+      "tabular-nums",
+  },
+
+
+  winnerScore: {
+    color:
+      "#4ddd89",
+  },
+
+
+  matchupDivider: {
+    height:
+      "1px",
+
+    margin:
+      "0 8px",
+
+    background:
+      "rgba(255,255,255,.045)",
+  },
+
+
+  championshipSpacer: {
+    height:
+      "74px",
+  },
+
+
+  footerInfo: {
+    padding:
+      "10px 12px",
+
+    display:
+      "grid",
+
+    gridTemplateColumns:
+      "repeat(4,1fr)",
+
+    gap:
+      "10px",
+
+    border:
+      "1px solid rgba(255,255,255,.055)",
+
+    borderRadius:
+      "7px",
+
+    background:
+      "#101214",
+  },
+
+
+  footerLabel: {
+    display:
+      "block",
+
+    color:
+      "#6f7680",
+
+    fontSize:
+      "6px",
+
     fontWeight:
       900,
-    textTransform:
-      "uppercase",
-    letterSpacing:
-      "0.04em",
   },
 
-  futureTeamSlot: {
-    minHeight:
-      "42px",
-    display:
-      "flex",
-    alignItems:
-      "center",
-    justifyContent:
-      "center",
-    padding:
-      "7px",
-    border:
-      "1px dashed #18734b",
-    borderRadius:
-      "7px",
+
+  footerValue: {
     color:
-      "#90a79c",
-    background:
-      "rgba(0,20,13,0.22)",
+      "#c7cbd1",
+
     fontSize:
-      "9px",
-    fontWeight:
-      800,
-  },
-
-  connectorHorizontalFirst: {
-    position:
-      "absolute",
-    left:
-      `calc(100% + 1px)`,
-    width:
-      `${BRACKET_COLUMN_GAP / 2}px`,
-    height:
-      "2px",
-    background:
-      "#48d883",
-    zIndex:
-      5,
-    pointerEvents:
-      "none",
-  },
-
-  connectorVertical: {
-    position:
-      "absolute",
-    left:
-      `calc(100% + ${BRACKET_COLUMN_GAP / 2}px)`,
-    width:
-      "2px",
-    background:
-      "#48d883",
-    zIndex:
-      5,
-    pointerEvents:
-      "none",
-  },
-
-  connectorHorizontalSecond: {
-    position:
-      "absolute",
-    left:
-      `calc(100% + ${BRACKET_COLUMN_GAP / 2}px)`,
-    width:
-      `${BRACKET_COLUMN_GAP / 2}px`,
-    height:
-      "2px",
-    background:
-      "#48d883",
-    zIndex:
-      5,
-    pointerEvents:
-      "none",
-  },
-
-  seedTieGroup: {
-    marginTop:
-      "18px",
-    padding:
-      "18px",
-    border:
-      "1px solid rgba(255,255,255,0.10)",
-    borderRadius:
-      "14px",
-    background:
-      "rgba(255,255,255,0.025)",
-  },
-
-  seedTieHeader: {
-    display:
-      "flex",
-    justifyContent:
-      "space-between",
-    alignItems:
-      "center",
-    gap:
-      "12px",
-    flexWrap:
-      "wrap",
-    marginBottom:
-      "12px",
-  },
-
-  seedTieTeam: {
-    display:
-      "flex",
-    justifyContent:
-      "space-between",
-    alignItems:
-      "center",
-    gap:
-      "16px",
-    padding:
-      "12px 0",
-    borderTop:
-      "1px solid rgba(255,255,255,0.08)",
-    flexWrap:
-      "wrap",
-  },
-
-  seedTieActions: {
-    display:
-      "flex",
-    gap:
       "8px",
-    flexWrap:
-      "wrap",
   },
-
-  seedButton: {
-    border:
-      "1px solid rgba(255,255,255,0.18)",
-    borderRadius:
-      "9px",
-    padding:
-      "8px 11px",
-    background:
-      "rgba(255,255,255,0.05)",
-    color:
-      "#ffffff",
-    fontWeight:
-      800,
-    cursor:
-      "pointer",
-  },
-
-  seedButtonSelected: {
-    border:
-      "1px solid #22c55e",
-    background:
-      "rgba(34,197,94,0.16)",
-  },
-
-};
-
+} as const;
 

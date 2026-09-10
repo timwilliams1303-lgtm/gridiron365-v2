@@ -19,7 +19,7 @@ type Props = {
   teamName: string;
   embedded?: boolean;
   forcedWeek?: number | null;
-  visibleSports?: Array<"cfb" | "nfl">;
+  visibleSports?: Array<"cfb" | "nfl" | "ncaamb">;
 };
 
 
@@ -73,7 +73,7 @@ type WeekRow = {
 type GameRow = {
   id: number;
   pickem_week_id: number;
-  sport: "ncaaf" | "nfl";
+  sport: "ncaaf" | "nfl" | "ncaamb";
   kickoff_at: string;
   away_team_name: string;
   away_team_abbreviation: string | null;
@@ -88,6 +88,8 @@ type GameRow = {
   is_final: boolean;
   is_eligible: boolean;
   exclusion_reason: string | null;
+  effective_eligible?: boolean;
+  effective_reason?: string | null;
   g365_home_spread: number | string | null;
   g365_total: number | string | null;
   total_status:
@@ -133,6 +135,13 @@ type PickRow = {
     | "void";
   points_awarded: number | string | null;
   confidence_value: number | string | null;
+};
+
+
+type EligibilityRow = {
+  game_id: number;
+  eligible: boolean;
+  reason: string | null;
 };
 
 
@@ -230,11 +239,42 @@ function gameDayLabel(value: string) {
 }
 
 function sportLabel(
-  sport: "ncaaf" | "nfl"
+  sport: "ncaaf" | "nfl" | "ncaamb"
 ) {
-  return sport === "ncaaf"
-    ? "COLLEGE"
-    : "NFL";
+  if (sport === "ncaaf") {
+    return "CFB";
+  }
+
+  if (sport === "ncaamb") {
+    return "NCAAMB";
+  }
+
+  return "NFL";
+}
+
+
+function gamePeriodLabel(
+  game: GameRow
+) {
+  if (!game.period) {
+    return "";
+  }
+
+  if (game.sport === "ncaamb") {
+    if (game.period === 1) {
+      return "1H";
+    }
+
+    if (game.period === 2) {
+      return "2H";
+    }
+
+    return game.period === 3
+      ? "OT"
+      : `${game.period - 2}OT`;
+  }
+
+  return `Q${game.period}`;
 }
 
 
@@ -488,7 +528,13 @@ export default function PickemMyPicks({
     }
 
     return games.filter((game) => {
-      const sport = game.sport === "ncaaf" ? "cfb" : "nfl";
+      const sport: "cfb" | "nfl" | "ncaamb" =
+        game.sport === "ncaaf"
+          ? "cfb"
+          : game.sport === "ncaamb"
+            ? "ncaamb"
+            : "nfl";
+
       return visibleSports.includes(sport);
     });
   }, [games, visibleSports]);
@@ -740,6 +786,7 @@ export default function PickemMyPicks({
           gamesResult,
           picksResult,
           statusResult,
+          eligibilityResult,
         ] =
           await Promise.all([
             supabase
@@ -796,6 +843,18 @@ export default function PickemMyPicks({
                   week.week,
               }
             ),
+
+            supabase.rpc(
+              "get_pickem_week_effective_eligibility",
+              {
+                p_league_id:
+                  leagueId,
+                p_season:
+                  season,
+                p_week:
+                  week.week,
+              }
+            ),
           ]);
 
         if (
@@ -825,18 +884,88 @@ export default function PickemMyPicks({
           );
         }
 
-        setGames(
-          (
-            gamesResult.data ??
-            []
-          ) as GameRow[]
-        );
+        if (
+          eligibilityResult.error
+        ) {
+          throw new Error(
+            eligibilityResult
+              .error.message
+          );
+        }
 
-        setPicks(
+        const nextPicks =
           (
             picksResult.data ??
             []
-          ) as PickRow[]
+          ) as PickRow[];
+
+        const pickedGameIds =
+          new Set(
+            nextPicks
+              .filter(
+                (pick) =>
+                  pick.result !==
+                  "void"
+              )
+              .map(
+                (pick) =>
+                  pick.pickem_game_id
+              )
+          );
+
+        const eligibilityByGameId =
+          new Map(
+            (
+              (
+                eligibilityResult.data ??
+                []
+              ) as EligibilityRow[]
+            ).map(
+              (row) => [
+                row.game_id,
+                row,
+              ] as const
+            )
+          );
+
+        const nextGames =
+          (
+            gamesResult.data ??
+            []
+          ) as GameRow[];
+
+        setGames(
+          nextGames
+            .map(
+              (game) => {
+                const effective =
+                  eligibilityByGameId.get(
+                    game.id
+                  );
+
+                return {
+                  ...game,
+                  effective_eligible:
+                    effective?.eligible ??
+                    false,
+                  effective_reason:
+                    effective?.reason ??
+                    "effective_eligibility_unavailable",
+                };
+              }
+            )
+            .filter(
+              (game) =>
+                game.effective_eligible ===
+                  true ||
+                pickedGameIds.has(
+                  game.id
+                )
+            )
+        );
+
+        setPicks(
+          nextPicks
         );
 
         setCardStatus(
@@ -1180,7 +1309,7 @@ export default function PickemMyPicks({
                 "uppercase",
             }}
           >
-            G365 Football Pick&apos;em
+            G365 Pick&apos;em
           </div>
 
           <h1
@@ -1462,7 +1591,7 @@ export default function PickemMyPicks({
         0 ? (
         <EmptyState
           title={`Week ${selectedWeek.week} has no games loaded yet.`}
-          description="The week exists, but the eligible College/NFL game slate and frozen G365 Spreads have not been loaded yet. Game ingestion is the next Pick'em build stage."
+          description="The week exists, but the eligible shared-sport game slate and frozen G365 lines have not been loaded yet."
         />
       ) : (
         <section
@@ -1597,6 +1726,8 @@ export default function PickemMyPicks({
                 );
 
               const hasFrozenSpread =
+                game.effective_eligible ===
+                  true &&
                 game.is_eligible &&
                 game.spread_status ===
                   "frozen" &&
@@ -1604,6 +1735,8 @@ export default function PickemMyPicks({
                   null;
 
               const hasFrozenTotal =
+                game.effective_eligible ===
+                  true &&
                 game.total_status ===
                   "frozen" &&
                 total !==
@@ -1730,7 +1863,7 @@ export default function PickemMyPicks({
                         <Badge>
                           LIVE
                           {game.period
-                            ? ` · Q${game.period}`
+                            ? ` · ${gamePeriodLabel(game)}`
                             : ""}
                           {game.display_clock
                             ? ` · ${game.display_clock}`
@@ -2067,6 +2200,13 @@ export default function PickemMyPicks({
                             </>
                           ) : null}
                         </>
+                      ) : game.effective_eligible === false ? (
+                        game.effective_reason === "game_day_not_enabled"
+                          ? "This game is no longer on an enabled Pick'em game day."
+                          : game.effective_reason === "sport_not_enabled"
+                            ? "This sport is no longer enabled for this Pick'em league."
+                            : game.exclusion_reason ??
+                              "This game is not currently eligible for new Pick'em selections."
                       ) : hasFrozenLine ? (
                         locked
                           ? "This game is locked."
@@ -2537,5 +2677,7 @@ function EmptyState({
     </section>
   );
 }
+
+
 
 

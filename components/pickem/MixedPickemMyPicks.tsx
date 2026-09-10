@@ -11,7 +11,7 @@ import PickemMyPicks from "@/components/pickem/PickemMyPicks";
 import NhlPickemMyPicks from "@/components/nhl-pickem/NhlPickemMyPicks";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
-type PickemSport = "cfb" | "nfl" | "nhl";
+type PickemSport = "cfb" | "nfl" | "ncaamb" | "nhl";
 type SportFilter = "all" | PickemSport;
 
 type Props = {
@@ -19,7 +19,7 @@ type Props = {
   season: number;
   fantasyTeamId: number;
   teamName: string;
-  enabledSports: Array<"cfb" | "nfl" | "nhl">;
+  enabledSports: Array<"cfb" | "nfl" | "ncaamb" | "nhl">;
 };
 
 type UnifiedStatus = {
@@ -132,9 +132,10 @@ export default function MixedPickemMyPicks({
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [statusError, setStatusError] = useState("");
 
-  const includesFootball =
+  const includesSharedSports =
     enabledSports.includes("cfb") ||
-    enabledSports.includes("nfl");
+    enabledSports.includes("nfl") ||
+    enabledSports.includes("ncaamb");
 
   const includesNhl = enabledSports.includes("nhl");
 
@@ -230,6 +231,7 @@ export default function MixedPickemMyPicks({
   const sportLabel = [
     enabledSports.includes("cfb") ? "College Football" : null,
     enabledSports.includes("nfl") ? "NFL" : null,
+    enabledSports.includes("ncaamb") ? "NCAAMB" : null,
     enabledSports.includes("nhl") ? "NHL" : null,
   ]
     .filter(Boolean)
@@ -317,7 +319,7 @@ export default function MixedPickemMyPicks({
             }
           />
           <Stat
-            label="Football"
+            label="Shared Sports"
             value={
               loadingStatus || !status
                 ? "—"
@@ -377,7 +379,7 @@ export default function MixedPickemMyPicks({
           }}
         >
           The required-pick number is one combined G365 card.
-          Football and NHL selections count toward the same total.
+          CFB, NFL, NCAAMB, and NHL selections count toward the same total.
         </div>
 
         <div style={{ padding: "11px 13px", borderRadius: 12, border: "1px solid rgba(255,118,39,0.18)", background: "rgba(255,118,39,0.06)", color: "#c6c6cd", fontSize: 12, lineHeight: 1.55 }}>
@@ -452,6 +454,7 @@ export default function MixedPickemMyPicks({
               ["all", "ALL"],
               ...(enabledSports.includes("cfb") ? [["cfb", "CFB"]] : []),
               ...(enabledSports.includes("nfl") ? [["nfl", "NFL"]] : []),
+              ...(enabledSports.includes("ncaamb") ? [["ncaamb", "NCAAMB"]] : []),
               ...(enabledSports.includes("nhl") ? [["nhl", "NHL"]] : []),
             ] as Array<[SportFilter, string]>
           ).map(([value, label]) => {
@@ -484,7 +487,7 @@ export default function MixedPickemMyPicks({
         </div>
       </section>
 
-      {includesFootball && sportFilter !== "nhl" ? (
+      {includesSharedSports && sportFilter !== "nhl" ? (
         <section
           style={{
             borderRadius: 18,
@@ -504,10 +507,14 @@ export default function MixedPickemMyPicks({
                 ? ["cfb"]
                 : sportFilter === "nfl"
                   ? ["nfl"]
-                  : enabledSports.filter(
-                      (sport): sport is "cfb" | "nfl" =>
-                        sport === "cfb" || sport === "nfl"
-                    )
+                  : sportFilter === "ncaamb"
+                    ? ["ncaamb"]
+                    : enabledSports.filter(
+                        (sport): sport is "cfb" | "nfl" | "ncaamb" =>
+                          sport === "cfb" ||
+                          sport === "nfl" ||
+                          sport === "ncaamb"
+                      )
             }
           />
         </section>

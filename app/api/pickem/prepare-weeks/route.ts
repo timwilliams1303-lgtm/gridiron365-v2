@@ -26,10 +26,19 @@ type LeagueRow = {
 };
 
 
+type PickemSport =
+  | "cfb"
+  | "nfl"
+  | "nhl"
+  | "ncaamb";
+
+
 type SettingsRow = {
   league_id: string;
   football_scope:
     FootballScope;
+  enabled_sports:
+    PickemSport[] | null;
 };
 
 
@@ -55,6 +64,14 @@ type RequestBody = {
 type AnchorResult = {
   sport:
     "ncaaf" | "nfl";
+  kickoff:
+    string;
+};
+
+
+type UnifiedAnchorResult = {
+  sport:
+    "ncaaf" | "nfl" | "ncaamb";
   kickoff:
     string;
 };
@@ -565,6 +582,304 @@ function calculateWeekCount(
 }
 
 
+function enabledSportsForSettings(
+  settings:
+    SettingsRow
+): PickemSport[] {
+  const configured =
+    Array.isArray(
+      settings.enabled_sports
+    )
+      ? settings.enabled_sports.filter(
+          (
+            sport
+          ): sport is PickemSport =>
+            sport === "cfb" ||
+            sport === "nfl" ||
+            sport === "nhl" ||
+            sport === "ncaamb"
+        )
+      : [];
+
+  if (
+    configured.length >
+    0
+  ) {
+    return [
+      ...new Set(
+        configured
+      ),
+    ];
+  }
+
+  if (
+    settings.football_scope ===
+    "college_only"
+  ) {
+    return [
+      "cfb",
+    ];
+  }
+
+  if (
+    settings.football_scope ===
+    "nfl_only"
+  ) {
+    return [
+      "nfl",
+    ];
+  }
+
+  return [
+    "cfb",
+    "nfl",
+  ];
+}
+
+
+function yyyymmdd(
+  value: Date
+) {
+  const year =
+    value.getUTCFullYear();
+
+  const month =
+    String(
+      value.getUTCMonth() +
+      1
+    ).padStart(
+      2,
+      "0"
+    );
+
+  const day =
+    String(
+      value.getUTCDate()
+    ).padStart(
+      2,
+      "0"
+    );
+
+  return `${year}${month}${day}`;
+}
+
+
+function ncaambScoreboardUrl(
+  start: Date,
+  end: Date
+) {
+  return (
+    "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard" +
+    `?dates=${yyyymmdd(
+      start
+    )}-${yyyymmdd(
+      end
+    )}` +
+    "&limit=1000"
+  );
+}
+
+
+async function getNcaambSeasonAnchor(
+  season: number,
+  cache:
+    Map<
+      string,
+      string | null
+    >
+) {
+  const cacheKey =
+    `ncaamb:${season}:season-anchor`;
+
+  if (
+    cache.has(
+      cacheKey
+    )
+  ) {
+    return cache.get(
+      cacheKey
+    ) ?? null;
+  }
+
+  /*
+   * G365 league season 2026 maps to the 2026-27 college
+   * basketball season. Search forward in small date windows
+   * so ESPN response limits cannot hide the earliest games.
+   */
+  const searchStart =
+    new Date(
+      Date.UTC(
+        season,
+        9,
+        15
+      )
+    );
+
+  const searchEnd =
+    new Date(
+      Date.UTC(
+        season,
+        11,
+        1
+      )
+    );
+
+  const windowDays =
+    5;
+
+  for (
+    let cursor =
+      new Date(
+        searchStart
+      );
+    cursor <
+      searchEnd;
+    cursor =
+      new Date(
+        cursor.getTime() +
+        windowDays *
+          24 *
+          60 *
+          60 *
+          1000
+      )
+  ) {
+    const end =
+      new Date(
+        Math.min(
+          cursor.getTime() +
+            windowDays *
+              24 *
+              60 *
+              60 *
+              1000,
+          searchEnd.getTime()
+        )
+      );
+
+    const response =
+      await fetch(
+        ncaambScoreboardUrl(
+          cursor,
+          end
+        ),
+        {
+          cache:
+            "no-store",
+          headers: {
+            Accept:
+              "application/json",
+            "User-Agent":
+              "Mozilla/5.0 Gridiron365/2.0",
+          },
+        }
+      );
+
+    const text =
+      await response.text();
+
+    if (!response.ok) {
+      throw new Error(
+        `ESPN NCAAMB calendar request returned HTTP ${response.status}: ${text.slice(
+          0,
+          180
+        )}`
+      );
+    }
+
+    let payload:
+      EspnScoreboard;
+
+    try {
+      payload =
+        JSON.parse(
+          text
+        ) as EspnScoreboard;
+    } catch {
+      throw new Error(
+        "ESPN NCAAMB calendar request returned invalid JSON."
+      );
+    }
+
+    const times =
+      (
+        payload.events ??
+        []
+      )
+        .map(
+          (event) =>
+            event.competitions?.[0]
+              ?.date ??
+            event.date ??
+            null
+        )
+        .filter(
+          (
+            value
+          ): value is string =>
+            Boolean(
+              value
+            )
+        )
+        .map(
+          (value) =>
+            new Date(
+              value
+            ).getTime()
+        )
+        .filter(
+          Number.isFinite
+        );
+
+    if (
+      times.length >
+      0
+    ) {
+      const anchor =
+        new Date(
+          Math.min(
+            ...times
+          )
+        ).toISOString();
+
+      cache.set(
+        cacheKey,
+        anchor
+      );
+
+      return anchor;
+    }
+  }
+
+  cache.set(
+    cacheKey,
+    null
+  );
+
+  return null;
+}
+
+
+function ncaambCoverageEnd(
+  season: number
+) {
+  /*
+   * Cover the NCAA tournament/championship without relying on
+   * ESPN publishing the full postseason bracket months early.
+   */
+  return new Date(
+    Date.UTC(
+      season + 1,
+      3,
+      15,
+      12,
+      0,
+      0
+    )
+  ).toISOString();
+}
+
+
 async function getLeagueCalendar(
   scope:
     FootballScope,
@@ -786,6 +1101,122 @@ async function getLeagueCalendar(
 }
 
 
+async function getUnifiedLeagueCalendar(
+  settings:
+    SettingsRow,
+  season:
+    number,
+  anchorCache:
+    Map<
+      string,
+      string | null
+    >
+) {
+  const enabled =
+    enabledSportsForSettings(
+      settings
+    );
+
+  const hasNcaamb =
+    enabled.includes(
+      "ncaamb"
+    );
+
+  if (!hasNcaamb) {
+    return getLeagueCalendar(
+      settings.football_scope,
+      season,
+      anchorCache
+    );
+  }
+
+  const hasFootball =
+    enabled.includes(
+      "cfb"
+    ) ||
+    enabled.includes(
+      "nfl"
+    );
+
+  const footballCalendar =
+    hasFootball
+      ? await getLeagueCalendar(
+          settings.football_scope,
+          season,
+          anchorCache
+        )
+      : null;
+
+  const basketballAnchor =
+    await getNcaambSeasonAnchor(
+      season,
+      anchorCache
+    );
+
+  const availableAnchors:
+    UnifiedAnchorResult[] =
+    [];
+
+  if (footballCalendar) {
+    availableAnchors.push(
+      footballCalendar.anchor
+    );
+  }
+
+  if (basketballAnchor) {
+    availableAnchors.push({
+      sport:
+        "ncaamb",
+      kickoff:
+        basketballAnchor,
+    });
+  }
+
+  if (
+    availableAnchors.length ===
+    0
+  ) {
+    return null;
+  }
+
+  const firstAnchor =
+    availableAnchors.reduce(
+      (earliest, current) =>
+        new Date(
+          current.kickoff
+        ).getTime() <
+        new Date(
+          earliest.kickoff
+        ).getTime()
+          ? current
+          : earliest
+    );
+
+  const weekCount =
+    calculateWeekCount(
+      firstAnchor.kickoff,
+      ncaambCoverageEnd(
+        season
+      )
+    );
+
+  if (
+    weekCount < 1 ||
+    weekCount > 40
+  ) {
+    throw new Error(
+      `Unified NCAAMB Pick'em calendar calculated ${weekCount} contest periods; expected 1-40.`
+    );
+  }
+
+  return {
+    anchor:
+      firstAnchor,
+    weekCount,
+  };
+}
+
+
 export async function POST(
   request:
     Request
@@ -960,7 +1391,7 @@ export async function POST(
           "pickem_settings"
         )
         .select(
-          "league_id,football_scope"
+          "league_id,football_scope,enabled_sports"
         )
         .in(
           "league_id",
@@ -980,7 +1411,7 @@ export async function POST(
     const settingsMap =
       new Map<
         string,
-        FootballScope
+        SettingsRow
       >();
 
 
@@ -992,7 +1423,7 @@ export async function POST(
     ) {
       settingsMap.set(
         row.league_id,
-        row.football_scope
+        row
       );
     }
 
@@ -1026,6 +1457,7 @@ export async function POST(
         anchorSport:
           "ncaaf" |
           "nfl" |
+          "ncaamb" |
           null;
         anchorKickoff:
           string |
@@ -1041,20 +1473,20 @@ export async function POST(
       const league
       of leagues
     ) {
-      const scope =
+      const settings =
         settingsMap.get(
           league.id
         );
 
 
-      if (!scope) {
+      if (!settings) {
         continue;
       }
 
 
       const calendar =
-        await getLeagueCalendar(
-          scope,
+        await getUnifiedLeagueCalendar(
+          settings,
           league.season,
           anchorCache
         );
@@ -1067,7 +1499,7 @@ export async function POST(
           season:
             league.season,
           footballScope:
-            scope,
+            settings.football_scope,
           anchorSport:
             null,
           anchorKickoff:
@@ -1134,7 +1566,7 @@ export async function POST(
         season:
           league.season,
         footballScope:
-          scope,
+          settings.football_scope,
         anchorSport:
           calendar.anchor
             .sport,

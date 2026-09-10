@@ -893,20 +893,49 @@ className="g365-wrapper g365-lineup-root" style={styles.wrapper}
       <style jsx global>{`
 @media (max-width: 760px) {
   .g365-lineup-root { gap: 14px !important; min-width: 0 !important; }
-  .g365-lineup-root .g365-instructions { padding: 12px !important; align-items: flex-start !important; }
-  .g365-lineup-root .g365-lineupGrid,
-  .g365-lineup-root .g365-grid,
-  .g365-lineup-root .g365-slotGrid { grid-template-columns: minmax(0,1fr) !important; }
-  .g365-lineup-root .g365-slotRow,
-  .g365-lineup-root .g365-playerRow { min-width: 0 !important; }
-  .g365-lineup-root .g365-playerIdentity { min-width: 0 !important; }
-  .g365-lineup-root .g365-actions { flex-wrap: wrap !important; }
-  .g365-lineup-root button { min-height: 42px !important; }
-}
-@media (max-width: 430px) {
+  .g365-lineup-root .g365-instructions { padding: 10px !important; align-items: flex-start !important; gap: 8px !important; }
+  .g365-lineup-root .g365-instructionsTitle { font-size: 11px !important; }
+  .g365-lineup-root .g365-instructionsText { font-size: 9px !important; line-height: 1.35 !important; }
+  .g365-lineup-root .g365-sectionHeading { font-size: 11px !important; margin-bottom: 7px !important; }
+
+  /* Only the lineup itself scrolls horizontally. The page never does. */
+  .g365-lineup-root .g365-slotList {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .g365-lineup-root .g365-slotRow {
+    min-width: 610px !important;
+    min-height: 62px !important;
+    padding: 7px 9px !important;
+    grid-template-columns: 52px minmax(300px,1fr) 190px !important;
+    gap: 8px !important;
+  }
+  .g365-lineup-root .g365-slotBadge { min-width: 37px !important; padding: 5px 4px !important; font-size: 7px !important; }
+  .g365-lineup-root .g365-slotNumber { font-size: 6px !important; }
+  .g365-lineup-root .g365-playerIdentity { min-width: 0 !important; gap: 8px !important; }
   .g365-lineup-root .g365-headshotWrap,
   .g365-lineup-root .g365-headshot,
   .g365-lineup-root .g365-headshotFallback { width: 40px !important; height: 40px !important; }
+  .g365-lineup-root .g365-playerName { font-size: 10px !important; }
+  .g365-lineup-root .g365-playerMeta,
+  .g365-lineup-root .g365-gameContextText { font-size: 8px !important; }
+  .g365-lineup-root .g365-rowStatus,
+  .g365-lineup-root .g365-playerActions { gap: 6px !important; flex-wrap: nowrap !important; }
+  .g365-lineup-root .g365-projectionAction { min-width: 62px !important; padding: 4px 6px !important; }
+  .g365-lineup-root .g365-projectionAction span { font-size: 7px !important; }
+  .g365-lineup-root .g365-projectionAction strong { font-size: 17px !important; }
+  .g365-lineup-root .g365-dropButton,
+  .g365-lineup-root .g365-moveHereButton { min-height: 29px !important; padding: 0 7px !important; font-size: 7px !important; }
+}
+@media (max-width: 430px) {
+  .g365-lineup-root .g365-slotRow { min-width: 585px !important; grid-template-columns: 48px minmax(285px,1fr) 180px !important; }
+  .g365-lineup-root .g365-headshotWrap,
+  .g365-lineup-root .g365-headshot,
+  .g365-lineup-root .g365-headshotFallback { width: 36px !important; height: 36px !important; }
 }
 `}</style>
       <div
@@ -2305,3 +2334,4 @@ const styles = {
       "pointer",
   },
 };
+

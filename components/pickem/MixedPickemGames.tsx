@@ -11,7 +11,7 @@ import {
   createSupabaseBrowserClient,
 } from "@/lib/supabase/browser";
 
-type PickemSport = "cfb" | "nfl" | "nhl";
+type PickemSport = "cfb" | "nfl" | "ncaamb" | "nhl";
 type SportFilter = "all" | PickemSport;
 type FootballMarketMode = "spread_only" | "total_only" | "spread_total";
 type NhlMarketMode = "puck_line_only" | "total_only" | "puck_line_and_total";
@@ -31,7 +31,7 @@ type WeekRow = {
 type FootballGameRow = {
   id: number;
   pickem_week_id: number;
-  sport: "ncaaf" | "nfl";
+  sport: "ncaaf" | "nfl" | "ncaamb";
   kickoff_at: string;
   away_team_name: string;
   away_team_abbreviation: string | null;
@@ -193,6 +193,7 @@ function formatKickoff(value: string | null): string {
 function sportLabel(sport: PickemSport): string {
   if (sport === "cfb") return "CFB";
   if (sport === "nfl") return "NFL";
+  if (sport === "ncaamb") return "NCAAMB";
   return "NHL";
 }
 
@@ -207,7 +208,17 @@ function footballLiveStatus(game: FootballGameRow): string {
     const parts = ["LIVE"];
 
     if (game.period) {
-      parts.push(`Q${game.period}`);
+      if (game.sport === "ncaamb") {
+        parts.push(
+          game.period === 1
+            ? "1H"
+            : game.period === 2
+              ? "2H"
+              : `OT${game.period > 3 ? game.period - 2 : ""}`
+        );
+      } else {
+        parts.push(`Q${game.period}`);
+      }
     }
 
     if (game.display_clock) {
@@ -261,6 +272,7 @@ function nhlLiveStatus(game: NhlGameRow | null): string {
 }
 
 function footballSituation(game: FootballGameRow): string | null {
+  if (game.sport === "ncaamb") return null;
   if (!game.is_started || game.is_final) return null;
 
   const possession = game.possession_team_abbreviation;
@@ -495,16 +507,17 @@ export default function MixedPickemGames({
   const selectedWeekRow =
     weeks.find((row) => row.week === selectedWeek) ?? null;
 
-  const includesFootball =
+  const includesSharedSports =
     enabledSports.includes("cfb") ||
-    enabledSports.includes("nfl");
+    enabledSports.includes("nfl") ||
+    enabledSports.includes("ncaamb");
 
   const includesNhl =
     enabledSports.includes("nhl");
 
   const loadSettings = useCallback(async () => {
     const [footballSettings, nhlSettings] = await Promise.all([
-      includesFootball
+      includesSharedSports
         ? supabase
             .from("pickem_settings")
             .select("pick_market_mode")
@@ -550,7 +563,7 @@ export default function MixedPickemGames({
     ) {
       setNhlMarketMode(nextNhl);
     }
-  }, [includesFootball, includesNhl, leagueId, supabase]);
+  }, [includesSharedSports, includesNhl, leagueId, supabase]);
 
   const loadWeeks = useCallback(async () => {
     const { data, error } =
@@ -599,7 +612,7 @@ export default function MixedPickemGames({
 
   const loadFootball = useCallback(async () => {
     if (
-      !includesFootball ||
+      !includesSharedSports ||
       !selectedWeekRow
     ) {
       setFootballGames([]);
@@ -644,12 +657,19 @@ export default function MixedPickemGames({
           return false;
         }
 
+        if (
+          row.sport === "ncaamb" &&
+          !enabledSports.includes("ncaamb")
+        ) {
+          return false;
+        }
+
         return true;
       })
     );
   }, [
     enabledSports,
-    includesFootball,
+    includesSharedSports,
     leagueId,
     selectedWeekRow,
     supabase,
@@ -1222,7 +1242,7 @@ export default function MixedPickemGames({
             lineHeight: 1.55,
           }}
         >
-          Follow one combined G365 contest slate. Football keeps its
+          Follow one combined G365 contest slate. CFB, NFL, and NCAAMB keep their
           enabled frozen markets, while NHL keeps its own mature line
           engine. Only commissioner-enabled markets are shown below, and
           excluded games remain visible with their exclusion reason.
@@ -1312,6 +1332,9 @@ export default function MixedPickemGames({
                 : []),
               ...(enabledSports.includes("nfl")
                 ? [["nfl", "NFL"]]
+                : []),
+              ...(enabledSports.includes("ncaamb")
+                ? [["ncaamb", "NCAAMB"]]
                 : []),
               ...(enabledSports.includes("nhl")
                 ? [["nhl", "NHL"]]
@@ -2001,4 +2024,3 @@ export default function MixedPickemGames({
     </main>
   );
 }
-

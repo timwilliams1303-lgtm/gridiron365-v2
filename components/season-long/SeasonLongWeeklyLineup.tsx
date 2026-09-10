@@ -1783,82 +1783,95 @@ export default function SeasonLongWeeklyLineup({
 
       <style>{`
         .g365-season-long-mobile,
-        .g365-season-long-mobile * {
-          box-sizing: border-box;
-        }
+        .g365-season-long-mobile * { box-sizing: border-box; }
 
         @media (max-width: 760px) {
           .g365-season-long-mobile {
             width: 100% !important;
             max-width: 100% !important;
             min-width: 0 !important;
-            padding-left: 12px !important;
-            padding-right: 12px !important;
+            padding: 8px !important;
             overflow-x: hidden !important;
           }
 
-          .g365-season-long-mobile section,
-          .g365-season-long-mobile article,
-          .g365-season-long-mobile header,
-          .g365-season-long-mobile form,
-          .g365-season-long-mobile div {
-            min-width: 0;
-            max-width: 100%;
+          .g365-season-long-mobile .g365-entry-header {
+            gap: 8px !important;
+            margin-bottom: 8px !important;
+            align-items: flex-start !important;
           }
 
-          .g365-season-long-mobile h1 {
-            font-size: clamp(27px, 8vw, 36px) !important;
-            line-height: 1.08 !important;
-            overflow-wrap: anywhere;
+          .g365-season-long-mobile .g365-entry-header h1 {
+            font-size: 24px !important;
+            line-height: 1.05 !important;
           }
 
-          .g365-season-long-mobile h2,
-          .g365-season-long-mobile h3,
-          .g365-season-long-mobile p,
-          .g365-season-long-mobile span,
-          .g365-season-long-mobile strong {
-            overflow-wrap: anywhere;
+          .g365-season-long-mobile .g365-entry-badges {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: wrap !important;
+            gap: 5px !important;
+          }
+
+          .g365-season-long-mobile .g365-entry-summary {
+            width: 100% !important;
+            display: grid !important;
+            grid-auto-flow: column !important;
+            grid-auto-columns: minmax(118px, 1fr) !important;
+            grid-template-columns: none !important;
+            gap: 6px !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+            padding-bottom: 3px !important;
+            margin-bottom: 8px !important;
+          }
+
+          .g365-season-long-mobile .g365-entry-workspace {
+            gap: 8px !important;
+          }
+
+          .g365-season-long-mobile .g365-entry-slot-list {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+          }
+
+          .g365-season-long-mobile .g365-entry-slot-row {
+            min-width: 560px !important;
+            min-height: 50px !important;
+            padding-top: 5px !important;
+            padding-bottom: 5px !important;
+          }
+
+          .g365-season-long-mobile .g365-entry-matchup-action {
+            width: 100% !important;
+            display: flex !important;
+            justify-content: center !important;
+            margin: 0 0 8px !important;
+          }
+
+          .g365-season-long-mobile .g365-entry-matchup-action button {
+            width: 100% !important;
+            min-height: 38px !important;
+            font-size: 10px !important;
           }
 
           .g365-season-long-mobile input,
           .g365-season-long-mobile select,
           .g365-season-long-mobile textarea {
-            width: 100% !important;
             max-width: 100% !important;
             min-width: 0 !important;
             font-size: 16px !important;
           }
 
-          .g365-season-long-mobile button,
-          .g365-season-long-mobile a {
-            max-width: 100%;
-          }
-
-          .g365-season-long-mobile :not(button)[style*="grid-template-columns"] {
-            grid-template-columns: minmax(0, 1fr) !important;
-          }
-
-          .g365-season-long-mobile [style*="white-space: nowrap"],
-          .g365-season-long-mobile [style*="white-space:nowrap"] {
-            white-space: normal !important;
-          }
-
-          .g365-season-long-mobile [style*="overflow-x: auto"],
-          .g365-season-long-mobile [style*="overflowX: auto"] {
-            max-width: 100%;
-            -webkit-overflow-scrolling: touch;
-          }
+          .g365-season-long-mobile button { min-height: 36px; }
         }
 
         @media (max-width: 430px) {
-          .g365-season-long-mobile {
-            padding-left: 10px !important;
-            padding-right: 10px !important;
-          }
-
-          .g365-season-long-mobile button {
-            min-height: 42px;
-          }
+          .g365-season-long-mobile { padding: 6px !important; }
+          .g365-season-long-mobile .g365-entry-slot-row { min-width: 535px !important; }
         }
       `}</style>
 
@@ -1868,6 +1881,7 @@ export default function SeasonLongWeeklyLineup({
         }
       >
         <header
+          className="g365-entry-header"
           style={
             styles.pageHeader
           }
@@ -1900,6 +1914,7 @@ export default function SeasonLongWeeklyLineup({
 
 
           <div
+            className="g365-entry-badges"
             style={
               styles.headerBadges
             }
@@ -1928,8 +1943,19 @@ export default function SeasonLongWeeklyLineup({
           </div>
         </header>
 
+        {matchupHref ? (
+          <div className="g365-entry-matchup-action">
+            <Button
+              onClick={() => router.push(matchupHref)}
+            >
+              VIEW ESPN-STYLE MATCHUP
+            </Button>
+          </div>
+        ) : null}
+
 
         <section
+          className="g365-entry-summary"
           style={
             styles.summaryGrid
           }
@@ -2435,6 +2461,7 @@ export default function SeasonLongWeeklyLineup({
 
 
         <section
+          className="g365-entry-workspace"
           style={
             styles.workspace
           }
@@ -2482,6 +2509,7 @@ export default function SeasonLongWeeklyLineup({
 
 
             <div
+              className="g365-entry-slot-list"
               style={
                 styles.slotList
               }
@@ -2512,6 +2540,7 @@ export default function SeasonLongWeeklyLineup({
                       key={
                         slotKey
                       }
+                      className="g365-entry-slot-row"
                       style={{
                         ...styles.slotRow,
 
@@ -4700,4 +4729,5 @@ const styles = {
   },
 
 };
+
 
