@@ -242,16 +242,12 @@ export async function POST(
       );
 
 
-    if (
-      access.league.leagueType !==
-      "greyhound"
-    ) {
-      return errorResponse(
-        "This is not a Greyhound league.",
-        403
-      );
-    }
-
+    if (String(access.league.leagueType) !== "greyhound") {
+  return NextResponse.json(
+    { error: "This endpoint is only available for Greyhound leagues." },
+    { status: 400 },
+  );
+}
 
     if (
       !access.isCommissioner
