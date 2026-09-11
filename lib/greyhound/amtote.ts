@@ -50,7 +50,6 @@ export type AmtoteRaceCard = {
   races: AmtoteRace[];
 };
 
-
 export type AmtoteToteState = {
   trackId: AmtoteTrackId;
   currentRaceNumber: number | null;
@@ -73,6 +72,49 @@ export type AmtoteTrackState = {
   done: boolean;
 };
 
+export type AmtoteRaceResultRow = {
+  sort: number | null;
+  raceDate: string | null;
+  trackId: string | null;
+  raceNumber: number | null;
+  signal: string | null;
+  sport: string | null;
+  trackName: string | null;
+  poolCode: string | null;
+  template: string | null;
+  baseAmount: number | null;
+  text: string | null;
+  name: string | null;
+  finishPosition: number | null;
+  winPayout: number | null;
+  placePayout: number | null;
+  showPayout: number | null;
+  payout: number | null;
+  replay: number | null;
+};
+
+export type AmtoteDetailedRaceResult = {
+  trackId: AmtoteTrackId;
+  raceDate: string;
+  raceNumber: number;
+  reportReady: boolean;
+  rows: AmtoteRaceResultRow[];
+};
+
+export type AmtoteRaceResultsSummaryRow = {
+  raceNumber: number;
+  topFour: number[];
+  rawText: string;
+};
+
+export type AmtoteRaceResultsSummary = {
+  trackId: AmtoteTrackId;
+  raceDate: string;
+  signal: string | null;
+  currentRaceNumber: number | null;
+  rows: AmtoteRaceResultsSummaryRow[];
+};
+
 function xmlDecode(value: string): string {
   return value
     .replace(/&lt;/g, "<")
@@ -80,6 +122,15 @@ function xmlDecode(value: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&amp;/g, "&");
+}
+
+function xmlEscape(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 function stripCdata(value: string): string {
@@ -118,7 +169,13 @@ function allBlocks(xml: string, tag: string): string[] {
 
 function numberOrNull(value: string | null): number | null {
   if (!value) return null;
-  const parsed = Number(value.trim());
+
+  const cleaned = value
+    .trim()
+    .replace(/[$,]/g, "")
+    .replace(/^of\d+\s+/i, "");
+
+  const parsed = Number(cleaned);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -177,6 +234,16 @@ function sessionFromSignal(
   }
 
   return "afternoon";
+}
+
+function parseTopFour(value: string | null): number[] {
+  if (!value) return [];
+
+  return value
+    .split(/[^0-9]+/)
+    .map((part) => Number(part))
+    .filter((part) => Number.isInteger(part) && part >= 1 && part <= 8)
+    .slice(0, 4);
 }
 
 export function g365TrackCodeForAmtote(
@@ -238,6 +305,20 @@ function resultPayload(xml: string, method: string): string {
     tagValue(xml, "string");
 
   return direct ? xmlDecode(direct) : xml;
+}
+
+function assertAmtoteSuccess(
+  payload: string,
+  method: string,
+  trackId: AmtoteTrackId,
+) {
+  const exm = (tagValue(payload, "exm") ?? "").trim();
+
+  if (exm && exm.toLowerCase() !== "success") {
+    throw new Error(
+      `AmTote ${method} failed for ${trackId}: ${exm}`,
+    );
+  }
 }
 
 function parseRunner(block: string): AmtoteRunner {
@@ -303,15 +384,39 @@ function parseRace(block: string, trackId: AmtoteTrackId): AmtoteRace | null {
   };
 }
 
+function parseDetailedResultRow(block: string): AmtoteRaceResultRow {
+  return {
+    sort: intOrNull(tagValue(block, "srt")),
+    raceDate: normalizeFeedDate(tagValue(block, "dat")),
+    trackId: tagValue(block, "tid")?.trim() ?? null,
+    raceNumber: intOrNull(tagValue(block, "rac")),
+    signal: tagValue(block, "sig"),
+    sport: tagValue(block, "spt"),
+    trackName: tagValue(block, "trk"),
+    poolCode: tagValue(block, "tps"),
+    template: tagValue(block, "tpl"),
+    baseAmount: numberOrNull(tagValue(block, "dol")),
+    text: tagValue(block, "txt"),
+    name: tagValue(block, "nam"),
+    finishPosition: intOrNull(tagValue(block, "fin")),
+    winPayout: numberOrNull(tagValue(block, "win")),
+    placePayout: numberOrNull(tagValue(block, "plc")),
+    showPayout: numberOrNull(tagValue(block, "shw")),
+    payout: numberOrNull(tagValue(block, "pay")),
+    replay: intOrNull(tagValue(block, "rep")),
+  };
+}
+
 export async function getAmtoteRaces(
   trackId: AmtoteTrackId,
 ): Promise<AmtoteRaceCard> {
   const xml = await soapRequest(
     "GetRaces",
-    `<tid>${trackId}</tid>`,
+    `<tid>${xmlEscape(trackId)}</tid>`,
   );
 
   const payload = resultPayload(xml, "GetRaces");
+  assertAmtoteSuccess(payload, "GetRaces", trackId);
 
   let raceBlocks = allBlocks(payload, "raceinfo");
 
@@ -354,14 +459,11 @@ export async function getAmtoteToteState(
 ): Promise<AmtoteToteState> {
   const xml = await soapRequest(
     "GetTote",
-    `<tid>${trackId}</tid><val></val>`,
+    `<tid>${xmlEscape(trackId)}</tid><val></val>`,
   );
-  const payload = resultPayload(xml, "GetTote");
 
-  const exm = (tagValue(payload, "exm") ?? "").trim().toLowerCase();
-  if (exm && exm !== "success") {
-    throw new Error(`AmTote GetTote failed for ${trackId}: ${tagValue(payload, "exm")}`);
-  }
+  const payload = resultPayload(xml, "GetTote");
+  assertAmtoteSuccess(payload, "GetTote", trackId);
 
   return {
     trackId,
@@ -372,26 +474,108 @@ export async function getAmtoteToteState(
   };
 }
 
+export async function getAmtoteRaceResult(
+  trackId: AmtoteTrackId,
+  raceDate: string,
+  raceNumber: number,
+): Promise<AmtoteDetailedRaceResult> {
+  const xml = await soapRequest(
+    "GetRaceResult",
+    [
+      `<tid>${xmlEscape(trackId)}</tid>`,
+      `<dat>${xmlEscape(raceDate)}</dat>`,
+      `<rac>${raceNumber}</rac>`,
+    ].join(""),
+  );
+
+  const payload = resultPayload(xml, "GetRaceResult");
+  assertAmtoteSuccess(payload, "GetRaceResult", trackId);
+
+  const parsedRaceNumber =
+    intOrNull(tagValue(payload, "rac")) ?? raceNumber;
+
+  const rows = allBlocks(payload, "raceresultinfo")
+    .map(parseDetailedResultRow)
+    .sort((a, b) => (a.sort ?? 999) - (b.sort ?? 999));
+
+  const rowDate =
+    rows.find((row) => row.raceDate)?.raceDate ?? raceDate;
+
+  return {
+    trackId,
+    raceDate: rowDate,
+    raceNumber: parsedRaceNumber,
+    reportReady: intOrNull(tagValue(payload, "rep")) === 1,
+    rows,
+  };
+}
+
+export async function getAmtoteRaceResults(
+  trackId: AmtoteTrackId,
+  raceDate: string,
+): Promise<AmtoteRaceResultsSummary> {
+  const xml = await soapRequest(
+    "GetRaceResults",
+    [
+      `<tid>${xmlEscape(trackId)}</tid>`,
+      `<dat>${xmlEscape(raceDate)}</dat>`,
+    ].join(""),
+  );
+
+  const payload = resultPayload(xml, "GetRaceResults");
+  assertAmtoteSuccess(payload, "GetRaceResults", trackId);
+
+  const returnedDate =
+    normalizeFeedDate(tagValue(payload, "dat"));
+
+  if (!returnedDate) {
+    throw new Error(
+      `AmTote GetRaceResults did not return a valid date for ${trackId}.`,
+    );
+  }
+
+  const rows = allBlocks(payload, "raceresultsinfo")
+    .map((block): AmtoteRaceResultsSummaryRow | null => {
+      const raceNumber = intOrNull(tagValue(block, "rac"));
+      const rawText = tagValue(block, "txt") ?? "";
+
+      if (!raceNumber) return null;
+
+      return {
+        raceNumber,
+        topFour: parseTopFour(rawText),
+        rawText,
+      };
+    })
+    .filter(
+      (row): row is AmtoteRaceResultsSummaryRow => Boolean(row),
+    )
+    .sort((a, b) => a.raceNumber - b.raceNumber);
+
+  return {
+    trackId,
+    raceDate: returnedDate,
+    signal: tagValue(payload, "sig"),
+    currentRaceNumber: intOrNull(tagValue(payload, "crc")),
+    rows,
+  };
+}
+
 export async function getAmtoteTrackState(
   trackId: AmtoteTrackId,
 ): Promise<AmtoteTrackState> {
   const xml = await soapRequest("GetTracks", "<sid></sid>");
   const payload = resultPayload(xml, "GetTracks");
 
-  /*
-   * GetTracks is a legacy .NET DataSet response and the row element name
-   * is not stable across serializers. Do not depend on a specific row tag.
-   *
-   * Instead, find the exact <tid> value and isolate the XML span belonging
-   * to that track by cutting at the neighboring <tid> elements. This is
-   * intentionally tolerant of wrappers such as Table, Table1, TrackInfo,
-   * diffgr rows, or other DataSet-generated names.
-   */
-  const tidExpression = /<(?:\w+:)?tid(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?tid>/gi;
+  const tidExpression =
+    /<(?:\w+:)?tid(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?tid>/gi;
   const tidMatches = [...payload.matchAll(tidExpression)];
 
   const targetIndex = tidMatches.findIndex((match) => {
-    const value = xmlDecode(stripCdata(match[1] ?? "")).trim().toUpperCase();
+    const value = xmlDecode(stripCdata(match[1] ?? ""))
+      .trim()
+      .toUpperCase();
+
     return value === trackId;
   });
 
@@ -399,7 +583,9 @@ export async function getAmtoteTrackState(
     throw new Error(
       `AmTote GetTracks did not return track ${trackId}. Track ids seen: ${
         tidMatches
-          .map((match) => xmlDecode(stripCdata(match[1] ?? "")).trim())
+          .map((match) =>
+            xmlDecode(stripCdata(match[1] ?? "")).trim(),
+          )
           .filter(Boolean)
           .join(", ") || "none"
       }.`,
@@ -420,11 +606,6 @@ export async function getAmtoteTrackState(
       ? (tidMatches[targetIndex + 1].index ?? payload.length)
       : payload.length;
 
-  /*
-   * Include a bounded amount of XML before <tid> in case a serializer puts
-   * fields such as track name/date ahead of tid, while never crossing the
-   * previous track's tid.
-   */
   const sliceStart = Math.max(previousTidEnd, currentStart - 1500);
   const matching = payload.slice(sliceStart, nextTidStart);
 
@@ -442,7 +623,6 @@ export async function getAmtoteTrackState(
     done: boolValue(tagValue(matching, "dun")),
   };
 }
-
 
 export async function getAmtoteGetTracksDiagnostic(): Promise<{
   rawSoapXml: string;
@@ -466,8 +646,9 @@ export async function getAmtoteGetToteDiagnostic(
 }> {
   const rawSoapXml = await soapRequest(
     "GetTote",
-    `<tid>${trackId}</tid><val></val>`,
+    `<tid>${xmlEscape(trackId)}</tid><val></val>`,
   );
+
   const decodedPayload = resultPayload(rawSoapXml, "GetTote");
 
   return {
