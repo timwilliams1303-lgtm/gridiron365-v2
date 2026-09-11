@@ -46,6 +46,12 @@ type ImportResult = {
 type GreyhoundRaceCardImporterProps = {
   leagueId: string;
   onImportSuccess?: (result: ImportResult) => void;
+  backupOnly?: boolean;
+  expectedTrackCode?: "GWD" | "GTS";
+  expectedTrackName?: string;
+  expectedRaceDate?: string;
+  expectedSession?: string;
+  importEndpoint?: string;
 };
 
 type ProcessingStage =
@@ -113,6 +119,33 @@ function normalizeWhitespace(value: string): string {
 
 function cleanLine(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+
+function normalizeTrackCode(value: string): "GWD" | "GTS" | null {
+  const normalized = cleanLine(value).toLowerCase();
+
+  if (
+    normalized === "gwd" ||
+    normalized === "wheeling" ||
+    normalized === "wheeling island" ||
+    normalized === "wheeling island greyhound" ||
+    normalized === "wheeling island greyhound racing"
+  ) {
+    return "GWD";
+  }
+
+  if (
+    normalized === "gts" ||
+    normalized === "tri-state" ||
+    normalized === "tri state" ||
+    normalized === "tri-state greyhound" ||
+    normalized === "tri state greyhound"
+  ) {
+    return "GTS";
+  }
+
+  return null;
 }
 
 function normalizeTrackName(value: string): string {
@@ -1566,6 +1599,12 @@ function formatStage(stage: ProcessingStage): string {
 export default function GreyhoundRaceCardImporter({
   leagueId,
   onImportSuccess,
+  backupOnly = false,
+  expectedTrackCode,
+  expectedTrackName,
+  expectedRaceDate,
+  expectedSession,
+  importEndpoint = "/api/greyhound/races/import",
 }: GreyhoundRaceCardImporterProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -1604,6 +1643,35 @@ export default function GreyhoundRaceCardImporter({
     setSuccess("");
   };
 
+
+  const validateBackupRace = (race: ParsedGreyhoundRace): string | null => {
+    if (!backupOnly) return null;
+
+    if (!expectedTrackCode || !expectedRaceDate || !expectedSession) {
+      return "Backup import is missing its locked track/date/session context.";
+    }
+
+    const parsedTrackCode = normalizeTrackCode(race.track);
+
+    if (parsedTrackCode !== expectedTrackCode) {
+      return `This backup is locked to ${expectedTrackName ?? expectedTrackCode}. The parsed race card is for ${race.track || "an unknown track"}.`;
+    }
+
+    if (race.raceDate !== expectedRaceDate) {
+      return `This backup is locked to ${expectedRaceDate}. The parsed race card date is ${race.raceDate ?? "missing"}.`;
+    }
+
+    return null;
+  };
+
+  const backupContext = backupOnly
+    ? {
+        trackCode: expectedTrackCode,
+        raceDate: expectedRaceDate,
+        session: expectedSession,
+      }
+    : undefined;
+
   const parseAndSetText = useCallback((text: string) => {
     setStage("parsing");
     setProgress(95);
@@ -1612,23 +1680,42 @@ export default function GreyhoundRaceCardImporter({
     const races = parseRaceCardText(cleaned);
 
     setRawText(cleaned);
-    setParsedRaces(races);
-    setSelectedRaceIndex(races.length > 0 ? 0 : null);
 
     if (races.length === 0) {
+      setParsedRaces([]);
+      setSelectedRaceIndex(null);
+
       throw new Error(
         "No races could be detected in the race card. Check the extracted text below or try OCR.",
       );
     }
 
+    if (backupOnly) {
+      const invalidRace = races.find((race) => validateBackupRace(race));
+
+      if (invalidRace) {
+        setParsedRaces([]);
+        setSelectedRaceIndex(null);
+        throw new Error(validateBackupRace(invalidRace) ?? "Backup race-card validation failed.");
+      }
+    }
+
+    setParsedRaces(races);
+    setSelectedRaceIndex(races.length > 0 ? 0 : null);
     setProgress(100);
 
     setSuccess(
-      `Parsed ${races.length} race${
-        races.length === 1 ? "" : "s"
-      } successfully.`,
+      backupOnly
+        ? `Validated ${races.length} race${races.length === 1 ? "" : "s"} for ${expectedTrackName ?? expectedTrackCode} on ${expectedRaceDate}.`
+        : `Parsed ${races.length} race${races.length === 1 ? "" : "s"} successfully.`,
     );
-  }, []);
+  }, [
+    backupOnly,
+    expectedTrackCode,
+    expectedTrackName,
+    expectedRaceDate,
+    expectedSession,
+  ]);
 
   const extractPdf = useCallback(
     async (file: File) => {
@@ -1967,17 +2054,28 @@ export default function GreyhoundRaceCardImporter({
       );
 
       setRawText(combinedText);
-      setParsedRaces(mergedRaces);
-      setSelectedRaceIndex(
-        mergedRaces.length > 0 ? 0 : null,
-      );
 
       if (mergedRaces.length === 0) {
+        setParsedRaces([]);
+        setSelectedRaceIndex(null);
+
         throw new Error(
           "PDF text extraction and OCR completed, but no races could be identified. Review the extracted text below.",
         );
       }
 
+      if (backupOnly) {
+        const invalidRace = mergedRaces.find((race) => validateBackupRace(race));
+
+        if (invalidRace) {
+          setParsedRaces([]);
+          setSelectedRaceIndex(null);
+          throw new Error(validateBackupRace(invalidRace) ?? "Backup race-card validation failed.");
+        }
+      }
+
+      setParsedRaces(mergedRaces);
+      setSelectedRaceIndex(0);
       setProgress(100);
 
       setSuccess(
@@ -1994,7 +2092,14 @@ export default function GreyhoundRaceCardImporter({
 
       await loadingTask.destroy();
     },
-    [parseAndSetText],
+    [
+      parseAndSetText,
+      backupOnly,
+      expectedTrackCode,
+      expectedTrackName,
+      expectedRaceDate,
+      expectedSession,
+    ],
   );
 
   const processFile = useCallback(
@@ -2247,12 +2352,18 @@ export default function GreyhoundRaceCardImporter({
       return;
     }
 
+    const backupError = validateBackupRace(selectedRace);
+    if (backupError) {
+      setError(backupError);
+      return;
+    }
+
     try {
       setStage("importing");
       setProgress(20);
 
       const response = await fetch(
-        "/api/greyhound/races/import",
+        importEndpoint,
         {
           method: "POST",
           headers: {
@@ -2260,6 +2371,7 @@ export default function GreyhoundRaceCardImporter({
           },
           body: JSON.stringify({
             leagueId,
+            backup: backupContext,
             race: {
               track: selectedRace.track,
               raceNumber:
@@ -2345,6 +2457,15 @@ export default function GreyhoundRaceCardImporter({
       return;
     }
 
+    const backupMismatch = parsedRaces
+      .map((race) => validateBackupRace(race))
+      .find((message): message is string => Boolean(message));
+
+    if (backupMismatch) {
+      setError(backupMismatch);
+      return;
+    }
+
     const racesWithoutRunners = parsedRaces.filter(
       (race) => race.runners.length === 0,
     );
@@ -2375,7 +2496,7 @@ export default function GreyhoundRaceCardImporter({
         setProgress(Math.round((index / total) * 100));
 
         const response = await fetch(
-          "/api/greyhound/races/import",
+          importEndpoint,
           {
             method: "POST",
             headers: {
@@ -2383,6 +2504,7 @@ export default function GreyhoundRaceCardImporter({
             },
             body: JSON.stringify({
               leagueId,
+              backup: backupContext,
               race: {
                 track: race.track,
                 raceNumber: race.raceNumber,
@@ -2588,17 +2710,28 @@ export default function GreyhoundRaceCardImporter({
           .gh-runner-meta{display:grid;gap:2px}
           .gh-odds{min-width:46px;padding:6px;font-size:10px}
         }
+        @media(max-width:420px){
+          .gh-runner{grid-template-columns:38px minmax(0,1fr)}
+          .gh-runner>.gh-odds{grid-column:2;justify-self:start}
+          .gh-drop{min-height:170px;padding:14px 10px}
+          .gh-detail-head{padding:13px}
+          .gh-body{padding:7px}
+        }
       `}</style>
 
       <section className="gh-shell">
         <header className="gh-head">
           <div>
-            <div className="gh-kicker">G365 Race Program Processing</div>
-            <h2 className="gh-title">Greyhound Race Card Importer</h2>
+            <div className="gh-kicker">
+              {backupOnly ? "Official Feed Backup" : "G365 Race Program Processing"}
+            </div>
+            <h2 className="gh-title">
+              {backupOnly ? "Manual Race Card Backup" : "Greyhound Race Card Importer"}
+            </h2>
             <p className="gh-sub">
-              Upload an official PDF or TXT race program. Gridiron365 reads
-              text-based PDFs directly and automatically uses OCR when scanned
-              pages require it.
+              {backupOnly
+                ? `This backup is locked to ${expectedTrackName ?? expectedTrackCode ?? "this track"} · ${expectedRaceDate ?? "this race date"} · ${expectedSession ?? "this session"}. A different track or date will be rejected before anything is saved.`
+                : "Upload an official PDF or TXT race program. Gridiron365 reads text-based PDFs directly and automatically uses OCR when scanned pages require it."}
             </p>
           </div>
 

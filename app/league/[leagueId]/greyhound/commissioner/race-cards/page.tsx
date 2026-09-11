@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 
 import GreyhoundRaceCardImporter from "@/components/greyhound/GreyhoundRaceCardImporter";
+import GreyhoundAmtoteSync from "@/components/greyhound/GreyhoundAmtoteSync";
 import GreyhoundConfirmCardButton from "@/components/greyhound/GreyhoundConfirmCardButton";
-import GreyhoundRaceTimesEditor from "@/components/greyhound/GreyhoundRaceTimesEditor";
 
 import { requireLeagueMember } from "@/lib/leagues/requireLeagueMember";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -60,6 +60,19 @@ type CardRow = {
   commissioner_confirmed_by: string | null;
   greyhound_tracks: TrackRow | TrackRow[] | null;
   greyhound_races: RaceRow[] | null;
+};
+
+type FeedStatusRow = {
+  id: number;
+  track_id: number;
+  race_date: string;
+  session: string;
+  source: string;
+  status: string;
+  last_attempt_at: string;
+  last_success_at: string | null;
+  error_message: string | null;
+  greyhound_tracks: TrackRow | TrackRow[] | null;
 };
 
 type TrapStyle = {
@@ -376,6 +389,46 @@ export default async function GreyhoundRaceCardsPage({
   const cards =
     (data ?? []) as unknown as CardRow[];
 
+  const { data: feedStatusData, error: feedStatusError } = await supabase
+    .from("greyhound_feed_sync_status")
+    .select(`
+      id,
+      track_id,
+      race_date,
+      session,
+      source,
+      status,
+      last_attempt_at,
+      last_success_at,
+      error_message,
+      greyhound_tracks!inner (
+        id,
+        code,
+        name,
+        timezone
+      )
+    `)
+    .eq("source", "amtote")
+    .order("race_date", { ascending: false })
+    .order("last_attempt_at", { ascending: false })
+    .limit(24);
+
+  const feedStatuses =
+    (feedStatusData ?? []) as unknown as FeedStatusRow[];
+
+  const orphanFailures = feedStatuses.filter((feedStatus) => {
+    if (feedStatus.status !== "failed") return false;
+
+    return !cards.some((card) => {
+      const track = firstRelation(card.greyhound_tracks);
+      return (
+        track?.id === feedStatus.track_id &&
+        card.race_date === feedStatus.race_date &&
+        card.session === feedStatus.session
+      );
+    });
+  });
+
   return (
     <main className="gh-page">
       <style>{`
@@ -500,6 +553,24 @@ export default async function GreyhoundRaceCardsPage({
           background: #101113;
           box-shadow: 0 18px 45px rgba(0,0,0,.24);
         }
+
+        .gh-card > summary { list-style:none; cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; }
+        .gh-card > summary::-webkit-details-marker { display:none; }
+        .gh-card-toggle { display:inline-flex; min-height:42px; align-items:center; justify-content:center; padding:0 14px; border:1px solid rgba(226,91,32,.45); border-radius:10px; background:rgba(91,31,11,.28); color:#ff9b64; font-size:9px; font-weight:950; letter-spacing:.08em; white-space:nowrap; text-transform:uppercase; }
+        .gh-card-toggle::after { content:"Expand"; }
+        .gh-card[open] .gh-card-toggle::after, .gh-orphan-card[open] .gh-card-toggle::after { content:"Minimize"; }
+        .gh-card-body { border-top:1px solid #292a2d; }
+        .gh-card-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border-bottom:1px solid #292a2d; background:#0c0d0f; }
+        .gh-feed-failure { margin:12px; padding:13px; border:1px solid rgba(198,51,43,.55); border-radius:12px; background:rgba(79,15,13,.30); }
+        .gh-feed-failure-title { color:#ffaaa5; font-size:10px; font-weight:950; letter-spacing:.06em; text-transform:uppercase; }
+        .gh-feed-failure-copy { margin-top:5px; color:#c8a29f; font-size:10px; line-height:1.55; }
+        .gh-backup-wrap { padding:0 12px 12px; }
+        .gh-orphan-stack { display:grid; gap:10px; margin:0 0 18px; }
+        .gh-orphan-card { overflow:hidden; border:1px solid rgba(190,44,36,.50); border-radius:14px; background:#101113; }
+        .gh-orphan-card > summary { display:flex; min-height:64px; list-style:none; cursor:pointer; align-items:center; justify-content:space-between; gap:12px; padding:13px 15px; }
+        .gh-orphan-card > summary::-webkit-details-marker { display:none; }
+        .gh-orphan-title { margin-top:8px; color:#fff; font-size:13px; font-weight:950; }
+        .gh-orphan-meta { margin-top:4px; color:#a16f6b; font-size:9px; }
 
         .gh-card-head {
           padding: 18px;
@@ -835,6 +906,10 @@ export default async function GreyhoundRaceCardsPage({
           .gh-stats {
             width: 100%;
           }
+
+          .gh-card-toggle { width:100%; }
+          .gh-card-actions { align-items:stretch; flex-direction:column; }
+          .gh-card-actions > * { width:100%; }
         }
 
         @media (max-width: 700px) {
@@ -936,6 +1011,20 @@ export default async function GreyhoundRaceCardsPage({
             font-size: 8px;
             line-height: 1.4;
           }
+          .gh-stats { grid-template-columns:repeat(3,minmax(0,1fr)); }
+          .gh-stat { padding:8px 5px; }
+          .gh-stat strong { font-size:16px; }
+          .gh-orphan-card > summary { align-items:stretch; flex-direction:column; }
+          .gh-orphan-card .gh-card-toggle { width:100%; }
+        }
+
+        @media (max-width: 420px) {
+          .gh-page { padding-left:8px; padding-right:8px; }
+          .gh-card-head { padding:12px; }
+          .gh-card-title { font-size:19px; }
+          .gh-badges { gap:4px; }
+          .gh-code,.gh-status { min-height:25px; padding:4px 7px; font-size:7px; }
+          .gh-card-meta { font-size:9px; }
         }
       `}</style>
 
@@ -951,22 +1040,70 @@ export default async function GreyhoundRaceCardsPage({
             </h1>
 
             <p className="gh-page-copy">
-              Import race programs, review every race and runner, verify the
-              official card, and prepare each racing slate for Gridiron365
-              Greyhound wagering.
+              Official Wheeling and Tri-State race cards now sync directly from
+              AmTote. Review every race and runner, verify the card, and monitor
+              the racing slate through the Gridiron365 Greyhound lifecycle.
             </p>
           </div>
 
           <div className="gh-page-accent" />
         </section>
 
-        <div className="gh-import-wrap">
-          <GreyhoundRaceCardImporter
-            leagueId={
-              leagueId
-            }
-          />
-        </div>
+        <GreyhoundAmtoteSync leagueId={leagueId} />
+
+        {feedStatusError ? (
+          <div className="gh-error" style={{ marginBottom: 16 }}>
+            Could not load official-feed status: {feedStatusError.message}
+          </div>
+        ) : null}
+
+        {orphanFailures.length > 0 ? (
+          <div className="gh-orphan-stack">
+            {orphanFailures.map((feedStatus) => {
+              const failedTrack = firstRelation(feedStatus.greyhound_tracks);
+              const trackCode = failedTrack?.code === "GTS" ? "GTS" : "GWD";
+
+              return (
+                <details key={feedStatus.id} className="gh-orphan-card">
+                  <summary>
+                    <div>
+                      <div className="gh-badges">
+                        <span className="gh-code">{trackCode}</span>
+                        <span className="gh-status bad">Official Feed Failed</span>
+                      </div>
+                      <div className="gh-orphan-title">
+                        {failedTrack?.name ?? "Greyhound Track"}
+                      </div>
+                      <div className="gh-orphan-meta">
+                        {formatDate(feedStatus.race_date)} · {formatSession(feedStatus.session)} Session
+                      </div>
+                    </div>
+                    <span className="gh-card-toggle" />
+                  </summary>
+
+                  <div className="gh-feed-failure">
+                    <div className="gh-feed-failure-title">Day-Specific Backup Available</div>
+                    <div className="gh-feed-failure-copy">
+                      {feedStatus.error_message ?? "The official AmTote feed failed for this track and racing day."}
+                    </div>
+                  </div>
+
+                  <div className="gh-backup-wrap">
+                    <GreyhoundRaceCardImporter
+                      leagueId={leagueId}
+                      backupOnly
+                      expectedTrackCode={trackCode}
+                      expectedTrackName={failedTrack?.name ?? trackCode}
+                      expectedRaceDate={feedStatus.race_date}
+                      expectedSession={feedStatus.session}
+                      importEndpoint="/api/greyhound/races/import-backup"
+                    />
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        ) : null}
 
         <div className="gh-section-head">
           <div>
@@ -975,11 +1112,11 @@ export default async function GreyhoundRaceCardsPage({
             </div>
 
             <h2 className="gh-section-title">
-              Imported Cards
+              Race Cards
             </h2>
 
             <p className="gh-section-copy">
-              Review saved race cards and open any race to see its complete field.
+              Every card starts minimized. Expand only the track and date you want to review.
             </p>
           </div>
 
@@ -998,8 +1135,8 @@ export default async function GreyhoundRaceCardsPage({
           </div>
         ) : cards.length === 0 ? (
           <div className="gh-empty">
-            No imported race cards yet. Use the importer above to add the first
-            Greyhound race card.
+            No Greyhound race cards have been saved yet. Use Sync Official Entries
+            Now above, or wait for the automatic AmTote sync.
           </div>
         ) : (
           <div className="gh-card-stack">
@@ -1047,14 +1184,18 @@ export default async function GreyhoundRaceCardsPage({
                     0,
                   );
 
+                const feedStatus = feedStatuses.find(
+                  (status) =>
+                    status.track_id === track?.id &&
+                    status.race_date === card.race_date &&
+                    status.session === card.session,
+                );
+                const feedFailed = feedStatus?.status === "failed";
+                const trackCode = track?.code === "GTS" ? "GTS" : "GWD";
+
                 return (
-                  <section
-                    key={
-                      card.id
-                    }
-                    className="gh-card"
-                  >
-                    <header className="gh-card-head">
+                  <details key={card.id} className="gh-card">
+                    <summary className="gh-card-head">
                       <div className="gh-card-head-row">
                         <div>
                           <div className="gh-badges">
@@ -1090,6 +1231,12 @@ export default async function GreyhoundRaceCardsPage({
                                 Confirmed
                               </span>
                             )}
+
+                            {feedStatus ? (
+                              <span className={`gh-status ${feedFailed ? "bad" : feedStatus.status === "success" ? "good" : "warn"}`}>
+                                {feedFailed ? "Official Feed Failed" : feedStatus.status === "success" ? "Official Feed OK" : "Official Feed Skipped"}
+                              </span>
+                            ) : null}
                           </div>
 
                           <h3 className="gh-card-title">
@@ -1112,12 +1259,6 @@ export default async function GreyhoundRaceCardsPage({
                               Session
                             </span>
 
-                            <span>
-                              First Post:{" "}
-                              {formatDateTime(
-                                card.scheduled_first_post,
-                              )}
-                            </span>
                           </div>
                         </div>
 
@@ -1156,50 +1297,59 @@ export default async function GreyhoundRaceCardsPage({
                             </div>
                           </div>
 
-                          <GreyhoundConfirmCardButton
-                            leagueId={
-                              leagueId
-                            }
-                            cardId={
-                              card.id
-                            }
-                            confirmed={
-                              confirmed
-                            }
-                            disabled={
-                              races.length ===
-                                0 ||
-                              card.card_status ===
-                                "locked" ||
-                              card.card_status ===
-                                "in_progress" ||
-                              card.card_status ===
-                                "final" ||
-                              card.card_status ===
-                                "cancelled"
-                            }
-                          />
+                          <span className="gh-card-toggle" />
                         </div>
                       </div>
-                    </header>
+                    </summary>
 
-                    <GreyhoundRaceTimesEditor
-                      leagueId={leagueId}
-                      cardId={card.id}
-                      raceDate={card.race_date}
-                      trackName={track?.name ?? "Greyhound Track"}
-                      timeZone={track?.timezone ?? "America/New_York"}
-                      confirmed={confirmed}
-                      automationEnabled={card.automation_enabled}
-                      cardStatus={card.card_status}
-                      scheduledFirstPost={card.scheduled_first_post}
-                      races={races.map((race) => ({
-                        raceNumber: race.race_number,
-                        grade: race.grade,
-                        distanceYards: race.distance_yards,
-                        scheduledPostTime: race.scheduled_post_time,
-                      }))}
-                    />
+                    <div className="gh-card-body">
+                      <div className="gh-card-actions">
+                        <div>
+                          <div className="gh-section-kicker">Commissioner</div>
+                          <div className="gh-section-copy" style={{ marginTop: 3 }}>
+                            Confirm the official card after reviewing its runners.
+                          </div>
+                        </div>
+
+                        <GreyhoundConfirmCardButton
+                          leagueId={leagueId}
+                          cardId={card.id}
+                          confirmed={confirmed}
+                          disabled={
+                            races.length === 0 ||
+                            card.card_status === "locked" ||
+                            card.card_status === "in_progress" ||
+                            card.card_status === "final" ||
+                            card.card_status === "cancelled"
+                          }
+                        />
+                      </div>
+
+                      {feedFailed ? (
+                        <>
+                          <div className="gh-feed-failure">
+                            <div className="gh-feed-failure-title">
+                              Official Feed Failed · Manual Backup Enabled
+                            </div>
+                            <div className="gh-feed-failure-copy">
+                              {feedStatus?.error_message ?? "The official AmTote feed failed for this exact track and racing day."}{" "}
+                              The importer below is locked to this card&apos;s track, date, and session.
+                            </div>
+                          </div>
+
+                          <div className="gh-backup-wrap">
+                            <GreyhoundRaceCardImporter
+                              leagueId={leagueId}
+                              backupOnly
+                              expectedTrackCode={trackCode}
+                              expectedTrackName={track?.name ?? trackCode}
+                              expectedRaceDate={card.race_date}
+                              expectedSession={card.session}
+                              importEndpoint="/api/greyhound/races/import-backup"
+                            />
+                          </div>
+                        </>
+                      ) : null}
 
                     <div className="gh-races">
                       {races.map(
@@ -1262,12 +1412,6 @@ export default async function GreyhoundRaceCardsPage({
                                             : "Distance unavailable"}
                                         </span>
 
-                                        <span>
-                                          Post:{" "}
-                                          {formatDateTime(
-                                            race.scheduled_post_time,
-                                          )}
-                                        </span>
 
                                         <span>
                                           {race
@@ -1591,7 +1735,8 @@ export default async function GreyhoundRaceCardsPage({
                         },
                       )}
                     </div>
-                  </section>
+                    </div>
+                  </details>
                 );
               },
             )}
