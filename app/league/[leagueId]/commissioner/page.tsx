@@ -11,6 +11,7 @@ import {
 import PickemCommissioner from "@/components/pickem/PickemCommissioner";
 import SeasonLongCommissioner from "@/components/season-long/SeasonLongCommissioner";
 import TraditionalCommissioner from "@/components/traditional/TraditionalCommissioner";
+import GreyhoundCommissioner from "@/components/greyhound/GreyhoundCommissioner";
 
 import NflPlayoffsCommissionerOperations
   from "@/components/nfl-playoffs/NflPlayoffsCommissionerOperations";
@@ -507,6 +508,16 @@ export default async function CommissionerPage({
     case "nfl_playoffs":
       return (
         <NflPlayoffsCommissionerWorkspace
+          leagueId={
+            leagueId
+          }
+        />
+      );
+
+
+    case "greyhound":
+      return (
+        <GreyhoundCommissioner
           leagueId={
             leagueId
           }
@@ -2914,3 +2925,4 @@ const styles:
         1.5,
     },
   };
+

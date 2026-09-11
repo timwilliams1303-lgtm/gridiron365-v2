@@ -2473,533 +2473,449 @@ export default function GreyhoundRaceCardImporter({
   };
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6">
-      <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl">
-        <div className="border-b border-zinc-800 bg-gradient-to-r from-red-950 via-zinc-950 to-orange-950 px-5 py-5 sm:px-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-black tracking-tight text-white">
-                Greyhound Race Card Importer
-              </h1>
+    <div className="gh-importer">
+      <style>{`
+        .gh-importer,.gh-importer *{box-sizing:border-box}
+        .gh-importer{width:100%;color:#f5f5f5}
+        .gh-importer button,.gh-importer input,.gh-importer textarea{font:inherit}
+        .gh-shell{overflow:hidden;border:1px solid #292a2d;border-radius:16px;background:linear-gradient(145deg,rgba(56,16,11,.16),#101113 42%,#0c0d0f);box-shadow:0 18px 45px rgba(0,0,0,.25)}
+        .gh-head{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 20px;border-bottom:1px solid #292a2d;background:linear-gradient(100deg,rgba(117,20,14,.36),rgba(219,76,19,.10) 48%,rgba(14,15,17,.95))}
+        .gh-kicker{color:#f06a27;font-size:9px;font-weight:950;letter-spacing:.14em;text-transform:uppercase}
+        .gh-title{margin:5px 0 0;color:#fff;font-size:24px;line-height:1.15;font-weight:950;letter-spacing:-.025em}
+        .gh-sub{max-width:720px;margin:6px 0 0;color:#92969d;font-size:11px;line-height:1.6;font-weight:600}
+        .gh-meta{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+        .gh-pill{padding:7px 10px;border:1px solid #3b3d41;border-radius:999px;background:rgba(0,0,0,.32);color:#c4c6ca;font-size:9px;font-weight:800;white-space:nowrap}
+        .gh-pill.orange{border-color:rgba(226,91,24,.45);background:rgba(108,38,11,.35);color:#ff9b64}
+        .gh-body{padding:16px}
+        .gh-methods{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(300px,.75fr);gap:12px}
+        .gh-panel{min-width:0;border:1px solid #292a2e;border-radius:14px;background:#111214;overflow:hidden}
+        .gh-panel-head{padding:14px 15px 0}
+        .gh-panel-label{color:#e96629;font-size:8px;font-weight:950;letter-spacing:.12em;text-transform:uppercase}
+        .gh-panel-title{margin:5px 0 0;color:#fff;font-size:16px;font-weight:950}
+        .gh-panel-copy{margin:5px 0 0;color:#7f848b;font-size:10px;line-height:1.55}
+        .gh-drop{display:flex;min-height:220px;margin:14px;padding:22px;align-items:center;justify-content:center;border:1px dashed #5a3c2c;border-radius:13px;background:radial-gradient(circle at center,rgba(153,43,16,.16),rgba(8,9,10,.42) 70%);text-align:center;transition:.16s}
+        .gh-drop:hover{border-color:#ed6a28;background:radial-gradient(circle at center,rgba(178,50,15,.22),rgba(8,9,10,.50) 70%)}
+        .gh-drop-inner{width:min(480px,100%)}
+        .gh-file-icon{display:flex;width:52px;height:52px;margin:0 auto 12px;align-items:center;justify-content:center;border:1px solid #62311e;border-radius:14px;background:linear-gradient(135deg,#48150f,#1b1110);color:#ff7a35;font-size:13px;font-weight:950}
+        .gh-drop-title{margin:0;color:#fff;font-size:18px;font-weight:950}
+        .gh-drop-copy{max-width:430px;margin:7px auto 0;color:#858a91;font-size:10px;line-height:1.6}
+        .gh-btn{display:inline-flex;min-height:43px;align-items:center;justify-content:center;padding:10px 16px;border-radius:9px;cursor:pointer;font-size:10px;font-weight:950;letter-spacing:.025em;transition:.15s}
+        .gh-btn.primary{border:1px solid #e15b20;background:linear-gradient(135deg,#a32617,#ef681c);color:#fff;box-shadow:0 8px 22px rgba(112,24,11,.25)}
+        .gh-btn.secondary{border:1px solid #93401f;background:#21130f;color:#ffad7c}
+        .gh-btn.dark{border:1px solid #37393d;background:#191a1d;color:#c4c7cc}
+        .gh-btn:hover{filter:brightness(1.12);transform:translateY(-1px)}
+        .gh-btn:disabled{cursor:not-allowed;opacity:.4;filter:none;transform:none}
+        .gh-choose{margin-top:15px;min-width:165px}
+        .gh-alt{display:flex;flex-direction:column;gap:12px;padding:14px}
+        .gh-label{display:block;margin-bottom:7px;color:#c5c7ca;font-size:9px;font-weight:900}
+        .gh-url{display:flex;gap:7px}
+        .gh-input,.gh-textarea{width:100%;border:1px solid #34363a;outline:none;background:#0b0c0e;color:#f4f4f4}
+        .gh-input{min-width:0;height:43px;padding:0 12px;border-radius:9px;font-size:11px}
+        .gh-textarea{min-height:160px;padding:12px;resize:vertical;border-radius:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:9px;line-height:1.55}
+        .gh-input:focus,.gh-textarea:focus{border-color:#d85d24}
+        .gh-input::placeholder,.gh-textarea::placeholder{color:#51555b}
+        .gh-text-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+        .gh-count{color:#656a71;font-size:8px}
+        .gh-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+        .gh-status{display:grid;gap:8px;margin-top:12px}
+        .gh-progress,.gh-error,.gh-success{padding:12px 14px;border-radius:11px;font-size:10px;line-height:1.5;font-weight:700}
+        .gh-progress{border:1px solid rgba(217,90,28,.38);background:rgba(84,29,11,.26);color:#ffc09b}
+        .gh-error{border:1px solid rgba(188,38,30,.5);background:rgba(90,12,12,.32);color:#ffb6b2}
+        .gh-success{border:1px solid rgba(36,145,87,.44);background:rgba(13,78,44,.27);color:#9ee7bd}
+        .gh-progress-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:8px}
+        .gh-progress-track{height:7px;overflow:hidden;border-radius:999px;background:#27282b}
+        .gh-progress-bar{height:100%;border-radius:inherit;background:linear-gradient(90deg,#ad2718,#f47525);transition:width .3s ease}
+        .gh-results{display:grid;grid-template-columns:265px minmax(0,1fr);gap:12px;margin-top:14px}
+        .gh-list,.gh-detail{overflow:hidden;border:1px solid #292a2e;border-radius:14px;background:#101113}
+        .gh-list-head{padding:14px;border-bottom:1px solid #292a2e;background:linear-gradient(90deg,rgba(94,20,13,.28),rgba(18,19,21,.96))}
+        .gh-list-title{margin:0;color:#fff;font-size:14px;font-weight:950}
+        .gh-list-copy{margin-top:4px;color:#686d74;font-size:9px}
+        .gh-list-scroll{max-height:680px;overflow-y:auto;padding:7px;scrollbar-width:thin;scrollbar-color:#b7481b #161719}
+        .gh-race{width:100%;margin-bottom:6px;padding:11px;border:1px solid #292b2f;border-radius:10px;background:#151619;color:#fff;cursor:pointer;text-align:left;transition:.15s}
+        .gh-race:hover{border-color:#70402b;background:#191719}
+        .gh-race.selected{border-color:#d95d24;background:linear-gradient(135deg,rgba(108,29,13,.42),rgba(29,20,17,.92));box-shadow:inset 3px 0 0 #ed6a25}
+        .gh-race-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+        .gh-race-num{font-size:12px;font-weight:950}
+        .gh-race-time{color:#ff9c62;font-size:9px;font-weight:900}
+        .gh-race-track{margin-top:3px;overflow:hidden;color:#a3a6ab;font-size:9px;font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+        .gh-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+        .gh-tag{padding:4px 6px;border:1px solid #313338;border-radius:5px;background:#202125;color:#9a9ea4;font-size:8px;font-weight:750}
+        .gh-detail-head{padding:16px;border-bottom:1px solid #292a2e;background:linear-gradient(115deg,rgba(107,20,13,.36),rgba(190,65,16,.10) 45%,#111214)}
+        .gh-detail-main{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+        .gh-detail-track{color:#f17631;font-size:9px;font-weight:950;letter-spacing:.1em;text-transform:uppercase}
+        .gh-detail-title{margin:4px 0 0;color:#fff;font-size:28px;line-height:1;font-weight:950;letter-spacing:-.035em}
+        .gh-detail-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+        .gh-detail-tag{padding:5px 7px;border:1px solid #3a3b3e;border-radius:6px;background:rgba(0,0,0,.28);color:#c1c4c8;font-size:8px;font-weight:750}
+        .gh-save{display:flex;flex-direction:column;gap:7px;flex:0 0 auto}
+        .gh-save button{min-width:190px}
+        .gh-weather{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;padding-top:11px;border-top:1px solid #2a2b2e;color:#888d94;font-size:9px}
+        .gh-weather strong{color:#ddd}
+        .gh-runners{padding:14px}
+        .gh-runners-title{margin:0 0 9px;color:#777c83;font-size:8px;font-weight:950;letter-spacing:.12em;text-transform:uppercase}
+        .gh-runner-list{display:grid;gap:6px}
+        .gh-runner{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;gap:10px;min-width:0;padding:10px;border:1px solid #292b2e;border-radius:10px;background:linear-gradient(90deg,#151619,#111214)}
+        .gh-trap{display:flex;width:42px;height:42px;align-items:center;justify-content:center;border:1px solid #414348;border-radius:9px;background:#08090a;color:#fff;font-size:16px;font-weight:950}
+        .gh-runner-info{min-width:0}
+        .gh-runner-name{overflow:hidden;color:#fff;font-size:12px;line-height:1.25;font-weight:950;text-overflow:ellipsis;white-space:nowrap}
+        .gh-runner-meta{display:flex;flex-wrap:wrap;gap:3px 12px;margin-top:4px;color:#777c83;font-size:8px;line-height:1.5}
+        .gh-runner-meta strong{color:#c7c9cd}
+        .gh-odds{min-width:52px;padding:7px 8px;border:1px solid #754021;border-radius:8px;background:rgba(83,34,13,.35);color:#ff9b5f;font-size:11px;font-weight:950;text-align:center}
+        .gh-no-runners{padding:16px;border:1px solid #735b1c;border-radius:10px;background:rgba(93,70,8,.20);color:#efd88b;font-size:10px;line-height:1.55}
+        @media(max-width:900px){
+          .gh-methods,.gh-results{grid-template-columns:1fr}
+          .gh-list-scroll{display:flex;max-height:none;gap:7px;overflow-x:auto;overflow-y:hidden}
+          .gh-race{flex:0 0 190px;margin-bottom:0}
+        }
+        @media(max-width:650px){
+          .gh-head{align-items:flex-start;flex-direction:column;padding:15px}
+          .gh-meta{justify-content:flex-start}
+          .gh-title{font-size:20px}
+          .gh-body{padding:9px}
+          .gh-drop{min-height:200px;margin:9px;padding:18px 12px}
+          .gh-alt{padding:10px}
+          .gh-url{flex-direction:column}
+          .gh-url button,.gh-actions button,.gh-choose{width:100%}
+          .gh-textarea{min-height:135px}
+          .gh-results{gap:9px;margin-top:9px}
+          .gh-detail-main{flex-direction:column}
+          .gh-save{width:100%}
+          .gh-save button{width:100%;min-width:0}
+          .gh-detail-title{font-size:24px}
+          .gh-runners{padding:9px}
+          .gh-runner{grid-template-columns:42px minmax(0,1fr) auto;gap:8px;padding:9px}
+          .gh-trap{width:38px;height:38px;font-size:14px}
+          .gh-runner-name{font-size:11px;white-space:normal;overflow-wrap:anywhere}
+          .gh-runner-meta{display:grid;gap:2px}
+          .gh-odds{min-width:46px;padding:6px;font-size:10px}
+        }
+      `}</style>
 
-              <p className="mt-1 text-sm text-zinc-400">
-                Upload a PDF or TXT card,
-                paste race-card text, or load a
-                direct URL.
-              </p>
-            </div>
-
-            {(fileName ||
-              pageCount > 0) && (
-              <div className="flex flex-wrap gap-2 text-xs">
-                {fileName && (
-                  <span className="rounded-full border border-zinc-700 bg-black/40 px-3 py-1 text-zinc-300">
-                    {fileName}
-                  </span>
-                )}
-
-                {pageCount > 0 && (
-                  <span className="rounded-full border border-zinc-700 bg-black/40 px-3 py-1 text-zinc-300">
-                    {pageCount} page
-                    {pageCount === 1
-                      ? ""
-                      : "s"}
-                  </span>
-                )}
-
-                {usedOcr && (
-                  <span className="rounded-full border border-orange-800 bg-orange-950/60 px-3 py-1 font-semibold text-orange-300">
-                    OCR used
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-6 p-5 sm:p-6">
-          <div
-            onDragOver={(event) =>
-              event.preventDefault()
-            }
-            onDrop={handleDrop}
-            className="rounded-2xl border-2 border-dashed border-zinc-700 bg-zinc-900/60 p-8 text-center transition hover:border-orange-700 hover:bg-zinc-900"
-          >
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".pdf,.txt,application/pdf,text/plain"
-              className="hidden"
-              onChange={handleFileChange}
-              disabled={busy}
-            />
-
-            <div className="text-4xl">
-              📄
-            </div>
-
-            <h2 className="mt-3 text-lg font-bold text-white">
-              Upload Greyhound Race Card
-            </h2>
-
-            <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-zinc-400">
-              Drag and drop a PDF here.
-              Text-based PDFs are read
-              directly. Scanned pages
-              automatically fall back to OCR.
+      <section className="gh-shell">
+        <header className="gh-head">
+          <div>
+            <div className="gh-kicker">G365 Race Program Processing</div>
+            <h2 className="gh-title">Greyhound Race Card Importer</h2>
+            <p className="gh-sub">
+              Upload an official PDF or TXT race program. Gridiron365 reads
+              text-based PDFs directly and automatically uses OCR when scanned
+              pages require it.
             </p>
-
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() =>
-                inputRef.current?.click()
-              }
-              className="mt-5 rounded-xl bg-gradient-to-r from-red-600 to-orange-500 px-5 py-2.5 text-sm font-bold text-white shadow-lg transition hover:from-red-500 hover:to-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Choose File
-            </button>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="h-px flex-1 bg-zinc-800" />
-
-            <span className="text-xs font-bold uppercase tracking-widest text-zinc-600">
-              or
-            </span>
-
-            <div className="h-px flex-1 bg-zinc-800" />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-bold text-zinc-300">
-              Race Card URL
-            </label>
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input
-                value={url}
-                onChange={(event) =>
-                  setUrl(event.target.value)
-                }
-                disabled={busy}
-                placeholder="https://..."
-                className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-600"
-              />
-
-              <button
-                type="button"
-                onClick={handleLoadUrl}
-                disabled={
-                  busy || !url.trim()
-                }
-                className="rounded-xl border border-orange-700 bg-orange-950/50 px-5 py-3 text-sm font-bold text-orange-200 transition hover:bg-orange-900/60 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Load URL
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-2 flex items-center justify-between gap-4">
-              <label className="text-sm font-bold text-zinc-300">
-                Race Card Text
-              </label>
-
-              {rawText && (
-                <span className="text-xs text-zinc-500">
-                  {rawText.length.toLocaleString()}{" "}
-                  characters
+          {(fileName || pageCount > 0 || usedOcr) && (
+            <div className="gh-meta">
+              {fileName && <span className="gh-pill">{fileName}</span>}
+              {pageCount > 0 && (
+                <span className="gh-pill">
+                  {pageCount} page{pageCount === 1 ? "" : "s"}
                 </span>
               )}
+              {usedOcr && <span className="gh-pill orange">OCR USED</span>}
             </div>
+          )}
+        </header>
 
-            <textarea
-              value={rawText}
-              onChange={(event) =>
-                setRawText(
-                  event.target.value,
-                )
-              }
-              disabled={busy}
-              placeholder="Paste race-card text here, or upload a PDF above..."
-              className="min-h-[220px] w-full resize-y rounded-xl border border-zinc-700 bg-zinc-900 p-4 font-mono text-xs leading-5 text-zinc-200 outline-none transition placeholder:text-zinc-600 focus:border-orange-600"
-            />
+        <div className="gh-body">
+          <div className="gh-methods">
+            <section className="gh-panel">
+              <div className="gh-panel-head">
+                <div className="gh-panel-label">Recommended</div>
+                <h3 className="gh-panel-title">Upload Race Program</h3>
+                <p className="gh-panel-copy">
+                  PDF is the preferred import method for official Wheeling and
+                  supported Greyhound race programs.
+                </p>
+              </div>
 
-            <div className="mt-3 flex flex-wrap gap-3">
-              <button
-                type="button"
-                disabled={
-                  busy ||
-                  !rawText.trim()
-                }
-                onClick={
-                  handleParsePastedText
-                }
-                className="rounded-xl bg-gradient-to-r from-red-600 to-orange-500 px-5 py-2.5 text-sm font-bold text-white transition hover:from-red-500 hover:to-orange-400 disabled:cursor-not-allowed disabled:opacity-40"
+              <div
+                className="gh-drop"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={handleDrop}
               >
-                Parse Race Card
-              </button>
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept=".pdf,.txt,application/pdf,text/plain"
+                  style={{ display: "none" }}
+                  onChange={handleFileChange}
+                  disabled={busy}
+                />
 
-              <button
-                type="button"
-                disabled={busy}
-                onClick={clearImporter}
-                className="rounded-xl border border-zinc-700 bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-zinc-300 transition hover:border-zinc-600 hover:bg-zinc-800 disabled:opacity-40"
-              >
-                Clear
-              </button>
-            </div>
+                <div className="gh-drop-inner">
+                  <div className="gh-file-icon">PDF</div>
+                  <h3 className="gh-drop-title">Drop Race Card Here</h3>
+                  <p className="gh-drop-copy">
+                    Drag and drop the official race-card PDF, or select it from
+                    your computer. Scanned pages automatically fall back to OCR.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => inputRef.current?.click()}
+                    className="gh-btn primary gh-choose"
+                  >
+                    CHOOSE RACE CARD
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section className="gh-panel">
+              <div className="gh-panel-head">
+                <div className="gh-panel-label">Alternate Import</div>
+                <h3 className="gh-panel-title">URL or Race-Card Text</h3>
+                <p className="gh-panel-copy">
+                  Load a direct race-card URL or paste extracted program text manually.
+                </p>
+              </div>
+
+              <div className="gh-alt">
+                <div>
+                  <label className="gh-label">RACE CARD URL</label>
+                  <div className="gh-url">
+                    <input
+                      value={url}
+                      onChange={(event) => setUrl(event.target.value)}
+                      disabled={busy}
+                      placeholder="https://..."
+                      className="gh-input"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleLoadUrl}
+                      disabled={busy || !url.trim()}
+                      className="gh-btn secondary"
+                    >
+                      LOAD URL
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="gh-text-head">
+                    <label className="gh-label">RACE CARD TEXT</label>
+                    {rawText && (
+                      <span className="gh-count">
+                        {rawText.length.toLocaleString()} characters
+                      </span>
+                    )}
+                  </div>
+
+                  <textarea
+                    value={rawText}
+                    onChange={(event) => setRawText(event.target.value)}
+                    disabled={busy}
+                    placeholder="Paste race-card text here..."
+                    className="gh-textarea"
+                  />
+
+                  <div className="gh-actions">
+                    <button
+                      type="button"
+                      disabled={busy || !rawText.trim()}
+                      onClick={handleParsePastedText}
+                      className="gh-btn primary"
+                    >
+                      PARSE RACE CARD
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={clearImporter}
+                      className="gh-btn dark"
+                    >
+                      CLEAR
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
 
-          {busy && (
-            <div className="rounded-xl border border-orange-900/60 bg-orange-950/20 p-4">
-              <div className="mb-2 flex items-center justify-between gap-4">
-                <span className="text-sm font-bold text-orange-200">
-                  {stage === "importing" && importProgressLabel
-                    ? importProgressLabel
-                    : formatStage(stage)}
-                </span>
-
-                <span className="text-xs font-bold text-orange-300">
-                  {Math.round(progress)}%
-                </span>
-              </div>
-
-              <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-red-600 to-orange-400 transition-all duration-300"
-                  style={{
-                    width: `${Math.max(
-                      2,
-                      Math.min(
-                        100,
-                        progress,
-                      ),
-                    )}%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <div className="rounded-xl border border-red-800 bg-red-950/40 p-4 text-sm font-medium text-red-200">
-              {error}
-            </div>
-          )}
-
-          {success && (
-            <div className="rounded-xl border border-emerald-800 bg-emerald-950/30 p-4 text-sm font-medium text-emerald-200">
-              {success}
+          {(busy || error || success) && (
+            <div className="gh-status">
+              {busy && (
+                <div className="gh-progress">
+                  <div className="gh-progress-head">
+                    <span>
+                      {stage === "importing" && importProgressLabel
+                        ? importProgressLabel
+                        : formatStage(stage)}
+                    </span>
+                    <strong>{Math.round(progress)}%</strong>
+                  </div>
+                  <div className="gh-progress-track">
+                    <div
+                      className="gh-progress-bar"
+                      style={{
+                        width: `${Math.max(2, Math.min(100, progress))}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              {error && <div className="gh-error">{error}</div>}
+              {success && <div className="gh-success">{success}</div>}
             </div>
           )}
         </div>
-      </div>
+      </section>
 
       {parsedRaces.length > 0 && (
-        <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-          <aside className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
-            <div className="border-b border-zinc-800 px-4 py-4">
-              <h2 className="font-black text-white">
-                Detected Races
-              </h2>
-
-              <p className="mt-1 text-xs text-zinc-500">
-                {parsedRaces.length} race
-                {parsedRaces.length === 1
-                  ? ""
-                  : "s"}{" "}
-                found
-              </p>
+        <div className="gh-results">
+          <aside className="gh-list">
+            <div className="gh-list-head">
+              <div className="gh-panel-label">Parsed Program</div>
+              <h3 className="gh-list-title">Detected Races</h3>
+              <div className="gh-list-copy">
+                {parsedRaces.length} race{parsedRaces.length === 1 ? "" : "s"} found
+              </div>
             </div>
 
-            <div className="max-h-[700px] overflow-y-auto p-2">
-              {parsedRaces.map(
-                (race, index) => {
-                  const selected =
-                    selectedRaceIndex ===
-                    index;
-
-                  return (
-                    <button
-                      key={`${race.track}-${race.raceNumber}-${index}`}
-                      type="button"
-                      onClick={() =>
-                        setSelectedRaceIndex(
-                          index,
-                        )
-                      }
-                      className={`mb-2 w-full rounded-xl border p-4 text-left transition ${
-                        selected
-                          ? "border-orange-600 bg-orange-950/30"
-                          : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-black text-white">
-                          Race{" "}
-                          {
-                            race.raceNumber
-                          }
-                        </span>
-
-                        {race.raceTime && (
-                          <span className="text-xs font-bold text-orange-300">
-                            {
-                              race.raceTime
-                            }
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="mt-1 truncate text-sm font-semibold text-zinc-300">
-                        {race.track}
-                      </div>
-
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {race.distance && (
-                          <span className="rounded bg-zinc-800 px-2 py-1 text-[11px] text-zinc-400">
-                            {
-                              race.distance
-                            }
-                          </span>
-                        )}
-
-                        {race.grade && (
-                          <span className="rounded bg-zinc-800 px-2 py-1 text-[11px] text-zinc-400">
-                            {race.grade}
-                          </span>
-                        )}
-
-                        <span className="rounded bg-zinc-800 px-2 py-1 text-[11px] text-zinc-400">
-                          {
-                            race.runners
-                              .length
-                          }{" "}
-                          runners
-                        </span>
-                      </div>
-                    </button>
-                  );
-                },
-              )}
+            <div className="gh-list-scroll">
+              {parsedRaces.map((race, index) => {
+                const selected = selectedRaceIndex === index;
+                return (
+                  <button
+                    key={`${race.track}-${race.raceNumber}-${index}`}
+                    type="button"
+                    onClick={() => setSelectedRaceIndex(index)}
+                    className={`gh-race ${selected ? "selected" : ""}`}
+                  >
+                    <div className="gh-race-top">
+                      <span className="gh-race-num">Race {race.raceNumber}</span>
+                      {race.raceTime && (
+                        <span className="gh-race-time">{race.raceTime}</span>
+                      )}
+                    </div>
+                    <div className="gh-race-track">{race.track}</div>
+                    <div className="gh-tags">
+                      {race.distance && <span className="gh-tag">{race.distance}</span>}
+                      {race.grade && <span className="gh-tag">Grade {race.grade}</span>}
+                      <span className="gh-tag">{race.runners.length} runners</span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </aside>
 
           {selectedRace && (
-            <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
-              <div className="border-b border-zinc-800 bg-gradient-to-r from-red-950/60 to-orange-950/30 p-5">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <section className="gh-detail">
+              <header className="gh-detail-head">
+                <div className="gh-detail-main">
                   <div>
-                    <div className="text-sm font-bold uppercase tracking-wider text-orange-400">
-                      {
-                        selectedRace.track
-                      }
-                    </div>
-
-                    <h2 className="mt-1 text-3xl font-black text-white">
-                      Race{" "}
-                      {
-                        selectedRace.raceNumber
-                      }
+                    <div className="gh-detail-track">{selectedRace.track}</div>
+                    <h2 className="gh-detail-title">
+                      Race {selectedRace.raceNumber}
                     </h2>
-
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    <div className="gh-detail-tags">
                       {selectedRace.raceDate && (
-                        <span className="rounded-lg border border-zinc-700 bg-black/30 px-2.5 py-1.5 text-zinc-300">
-                          {
-                            selectedRace.raceDate
-                          }
-                        </span>
+                        <span className="gh-detail-tag">{selectedRace.raceDate}</span>
                       )}
-
                       {selectedRace.raceTime && (
-                        <span className="rounded-lg border border-zinc-700 bg-black/30 px-2.5 py-1.5 text-zinc-300">
-                          {
-                            selectedRace.raceTime
-                          }
-                        </span>
+                        <span className="gh-detail-tag">{selectedRace.raceTime}</span>
                       )}
-
                       {selectedRace.distance && (
-                        <span className="rounded-lg border border-zinc-700 bg-black/30 px-2.5 py-1.5 text-zinc-300">
-                          {
-                            selectedRace.distance
-                          }
-                        </span>
+                        <span className="gh-detail-tag">{selectedRace.distance}</span>
                       )}
-
                       {selectedRace.grade && (
-                        <span className="rounded-lg border border-zinc-700 bg-black/30 px-2.5 py-1.5 text-zinc-300">
-                          {
-                            selectedRace.grade
-                          }
-                        </span>
+                        <span className="gh-detail-tag">Grade {selectedRace.grade}</span>
                       )}
-
                       {selectedRace.prizeMoney && (
-                        <span className="rounded-lg border border-zinc-700 bg-black/30 px-2.5 py-1.5 text-zinc-300">
-                          {
-                            selectedRace.prizeMoney
-                          }
-                        </span>
+                        <span className="gh-detail-tag">{selectedRace.prizeMoney}</span>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+                  <div className="gh-save">
                     <button
                       type="button"
                       onClick={handleImportSelectedRace}
-                      disabled={
-                        busy ||
-                        selectedRace.runners.length === 0
-                      }
-                      className="w-full rounded-xl border border-orange-700/70 bg-zinc-900 px-5 py-3 text-sm font-black text-orange-200 shadow-lg transition hover:border-orange-500 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+                      disabled={busy || selectedRace.runners.length === 0}
+                      className="gh-btn secondary"
                     >
-                      {stage === "importing"
-                        ? "Saving..."
-                        : "Save Selected Race to Database"}
+                      {stage === "importing" ? "SAVING..." : "SAVE SELECTED RACE"}
                     </button>
-
                     <button
                       type="button"
                       onClick={handleImportAllRaces}
                       disabled={
                         busy ||
                         parsedRaces.length === 0 ||
-                        parsedRaces.some(
-                          (race) => race.runners.length === 0,
-                        )
+                        parsedRaces.some((race) => race.runners.length === 0)
                       }
-                      className="w-full rounded-xl bg-gradient-to-r from-red-600 to-orange-500 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:from-red-500 hover:to-orange-400 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+                      className="gh-btn primary"
                     >
                       {stage === "importing"
-                        ? "Saving All Races..."
-                        : `Save All ${parsedRaces.length} Races to Database`}
+                        ? "SAVING ALL RACES..."
+                        : `SAVE ALL ${parsedRaces.length} RACES`}
                     </button>
                   </div>
                 </div>
 
-                {(selectedRace.weather ||
-                  selectedRace.trackCondition) && (
-                  <div className="mt-4 flex flex-wrap gap-4 border-t border-zinc-800/80 pt-4 text-xs text-zinc-400">
+                {(selectedRace.weather || selectedRace.trackCondition) && (
+                  <div className="gh-weather">
                     {selectedRace.weather && (
-                      <div>
-                        Weather:{" "}
-                        <span className="font-semibold text-zinc-200">
-                          {
-                            selectedRace.weather
-                          }
-                        </span>
-                      </div>
+                      <span>
+                        Weather: <strong>{selectedRace.weather}</strong>
+                      </span>
                     )}
-
                     {selectedRace.trackCondition && (
-                      <div>
-                        Track:{" "}
-                        <span className="font-semibold text-zinc-200">
-                          {
-                            selectedRace.trackCondition
-                          }
-                        </span>
-                      </div>
+                      <span>
+                        Track: <strong>{selectedRace.trackCondition}</strong>
+                      </span>
                     )}
                   </div>
                 )}
-              </div>
+              </header>
 
-              <div className="p-5">
-                <h3 className="mb-4 text-sm font-black uppercase tracking-wider text-zinc-400">
-                  Runners
+              <div className="gh-runners">
+                <h3 className="gh-runners-title">
+                  Race Field · {selectedRace.runners.length} Runners
                 </h3>
 
-                {selectedRace.runners
-                  .length === 0 ? (
-                  <div className="rounded-xl border border-yellow-800/60 bg-yellow-950/20 p-5 text-sm text-yellow-200">
-                    No runners were detected
-                    for this race. Check the
-                    extracted text before
-                    saving.
+                {selectedRace.runners.length === 0 ? (
+                  <div className="gh-no-runners">
+                    No runners were detected for this race. Check the extracted
+                    race-card text before saving.
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    {selectedRace.runners.map(
-                      (runner) => (
-                        <div
-                          key={`${selectedRace.raceNumber}-${runner.trapNumber}-${runner.name}`}
-                          className="grid gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 sm:grid-cols-[70px_minmax(0,1fr)_auto]"
-                        >
-                          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-zinc-700 bg-black text-xl font-black text-white">
-                            {runner.trapNumber ??
-                              "—"}
+                  <div className="gh-runner-list">
+                    {selectedRace.runners.map((runner) => (
+                      <div
+                        key={`${selectedRace.raceNumber}-${runner.trapNumber}-${runner.name}`}
+                        className="gh-runner"
+                      >
+                        <div className="gh-trap">{runner.trapNumber ?? "—"}</div>
+                        <div className="gh-runner-info">
+                          <div className="gh-runner-name">{runner.name}</div>
+                          <div className="gh-runner-meta">
+                            {runner.trapColor && (
+                              <span>
+                                Trap: <strong>{runner.trapColor}</strong>
+                              </span>
+                            )}
+                            {runner.trainer && (
+                              <span>
+                                Trainer: <strong>{runner.trainer}</strong>
+                              </span>
+                            )}
+                            {runner.weight && (
+                              <span>
+                                Weight: <strong>{runner.weight}</strong>
+                              </span>
+                            )}
+                            {runner.form && (
+                              <span>
+                                Form: <strong>{runner.form}</strong>
+                              </span>
+                            )}
                           </div>
-
-                          <div className="min-w-0">
-                            <div className="truncate text-base font-black text-white">
-                              {
-                                runner.name
-                              }
-                            </div>
-
-                            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-400">
-                              {runner.trapColor && (
-                                <span>
-                                  Trap:{" "}
-                                  <span className="text-zinc-200">
-                                    {
-                                      runner.trapColor
-                                    }
-                                  </span>
-                                </span>
-                              )}
-
-                              {runner.trainer && (
-                                <span>
-                                  Trainer:{" "}
-                                  <span className="text-zinc-200">
-                                    {
-                                      runner.trainer
-                                    }
-                                  </span>
-                                </span>
-                              )}
-
-                              {runner.weight && (
-                                <span>
-                                  Weight:{" "}
-                                  <span className="text-zinc-200">
-                                    {
-                                      runner.weight
-                                    }
-                                  </span>
-                                </span>
-                              )}
-
-                              {runner.form && (
-                                <span>
-                                  Form:{" "}
-                                  <span className="text-zinc-200">
-                                    {
-                                      runner.form
-                                    }
-                                  </span>
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {runner.odds && (
-                            <div className="self-center rounded-lg border border-orange-900 bg-orange-950/30 px-3 py-2 text-sm font-black text-orange-300">
-                              {
-                                runner.odds
-                              }
-                            </div>
-                          )}
                         </div>
-                      ),
-                    )}
+                        {runner.odds && <div className="gh-odds">{runner.odds}</div>}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -3010,3 +2926,4 @@ export default function GreyhoundRaceCardImporter({
     </div>
   );
 }
+

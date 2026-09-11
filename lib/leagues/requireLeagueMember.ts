@@ -18,7 +18,8 @@ export type LeagueType =
   | "traditional"
   | "season_long"
   | "nfl_playoffs"
-  | "pickem";
+  | "pickem"
+  | "greyhound";
 
 
 export type PlayerSelectionMode =
@@ -26,7 +27,8 @@ export type PlayerSelectionMode =
   | "salary"
   | "no_salary"
   | "pickem"
-  | "standard";
+  | "standard"
+  | "greyhound";
 
 
 export type LeagueMemberRole =
@@ -115,7 +117,9 @@ function isLeagueType(
     value ===
       "nfl_playoffs" ||
     value ===
-      "pickem"
+      "pickem" ||
+    value ===
+      "greyhound"
   );
 }
 
@@ -133,7 +137,9 @@ function isPlayerSelectionMode(
     value ===
       "pickem" ||
     value ===
-      "standard"
+      "standard" ||
+    value ===
+      "greyhound"
   );
 }
 
@@ -859,4 +865,3 @@ export async function requireLeagueMember(
         "co_commissioner",
   };
 }
-

@@ -8,14 +8,16 @@ export type LeagueType =
   | "traditional"
   | "season_long"
   | "nfl_playoffs"
-  | "pickem";
+  | "pickem"
+  | "greyhound";
 
 
 export type PlayerSelectionMode =
   | "draft"
   | "salary"
   | "no_salary"
-  | "pickem";
+  | "pickem"
+  | "greyhound";
 
 
 export type LeagueMemberRole =
@@ -254,6 +256,16 @@ function validateLeagueCombination(
 
 
   if (
+    leagueType === "greyhound" &&
+    playerSelectionMode !== "greyhound"
+  ) {
+    throw new Error(
+      "G365 Greyhound Racing leagues must use Greyhound mode."
+    );
+  }
+
+
+  if (
     leagueType !== "traditional" &&
     playerSelectionMode === "draft"
   ) {
@@ -269,6 +281,16 @@ function validateLeagueCombination(
   ) {
     throw new Error(
       "Pick'em mode can only be used by G365 Pick'em leagues."
+    );
+  }
+
+
+  if (
+    leagueType !== "greyhound" &&
+    playerSelectionMode === "greyhound"
+  ) {
+    throw new Error(
+      "Greyhound mode can only be used by G365 Greyhound Racing leagues."
     );
   }
 }
@@ -532,7 +554,9 @@ export async function createLeague(
     returnedLeagueType !==
       "nfl_playoffs" &&
     returnedLeagueType !==
-      "pickem"
+      "pickem" &&
+    returnedLeagueType !==
+      "greyhound"
   ) {
     throw new Error(
       "League creation returned an invalid league type."
@@ -548,7 +572,9 @@ export async function createLeague(
     returnedSelectionMode !==
       "no_salary" &&
     returnedSelectionMode !==
-      "pickem"
+      "pickem" &&
+    returnedSelectionMode !==
+      "greyhound"
   ) {
     throw new Error(
       "League creation returned an invalid player selection mode."

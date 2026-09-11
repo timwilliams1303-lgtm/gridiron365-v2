@@ -38,7 +38,8 @@ type LeagueFormat = {
     | "season_long_no_salary"
     | "playoffs_salary"
     | "playoffs_no_salary"
-    | "pickem";
+    | "pickem"
+    | "greyhound";
 
   title:
     string;
@@ -156,6 +157,23 @@ const leagueFormats:
 
       playerSelectionMode:
         "pickem",
+    },
+
+    {
+      id:
+        "greyhound",
+
+      title:
+        "G365 Greyhound Racing",
+
+      description:
+        "Create a Greyhound Racing league with race-card importing, race management, scratches, results, wagering, standings, and commissioner controls.",
+
+      leagueType:
+        "greyhound",
+
+      playerSelectionMode:
+        "greyhound",
     },
   ];
 
@@ -389,6 +407,11 @@ export default function CreateLeaguePage() {
     "pickem";
 
 
+  const isGreyhound =
+    selectedFormat.leagueType ===
+    "greyhound";
+
+
   const requiresTeamName =
     isTraditional ||
     isSeasonLong ||
@@ -485,15 +508,16 @@ export default function CreateLeaguePage() {
       }
 
 
-      /*
-       * For now, all newly-created formats
-       * return to My Leagues.
-       *
-       * Once the Season-Long league home
-       * page is built, we can send the
-       * commissioner directly there.
-       */
-      router.replace("/my-leagues");
+      if (
+        result.leagueType ===
+        "greyhound"
+      ) {
+        router.replace(
+          `/league/${result.leagueId}/greyhound/commissioner/race-cards`
+        );
+      } else {
+        router.replace("/my-leagues");
+      }
 
       router.refresh();
 
@@ -913,6 +937,27 @@ export default function CreateLeaguePage() {
                   Football uses frozen G365 spreads and totals. NHL uses frozen
                   G365 puck lines and totals. Required picks, scoring,
                   standings, recap, and trophies are shared across the league.
+                </span>
+              </div>
+            ) : null}
+
+
+            {isGreyhound ? (
+              <div
+                style={
+                  styles.contestInfo
+                }
+              >
+                <strong>
+                  G365 Greyhound Racing
+                </strong>
+
+                <span>
+                  Import official race cards, review runners and trap assignments, manage scratches and results, and operate the Greyhound Racing league from the commissioner area.
+                </span>
+
+                <span>
+                  After creation, you will be taken directly to the Commissioner Race Cards page so the first real PDF import can be tested.
                 </span>
               </div>
             ) : null}

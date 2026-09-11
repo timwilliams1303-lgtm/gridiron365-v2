@@ -50,6 +50,12 @@ export function getLeaguePrimaryAction({
         href: `${base}/pickem/my-picks`,
       };
 
+    case "greyhound":
+      return {
+        label: "My Wagers",
+        href: `${base}/greyhound/wagers`,
+      };
+
     default: {
       const exhaustiveCheck:
         never =
@@ -333,60 +339,123 @@ export function getLeagueNavItems({
     return items;
   }
 
-  const items: LeagueNavItem[] = [
-    {
-      key: "home",
-      label: "Home",
-      mobileLabel: "Home",
-      href: base,
-      exact: true,
-    },
-    {
-      key: "picks",
-      label: "My Picks",
-      mobileLabel: "Picks",
-      href: `${base}/pickem/my-picks`,
-    },
-    {
-      key: "leaguePicks",
-      label: "League Picks",
-      mobileLabel: "League",
-      href: `${base}/pickem/league-picks`,
-    },
-    {
-      key: "games",
-      label: "Games",
-      mobileLabel: "Games",
-      href: `${base}/pickem/games`,
-    },
-    {
-      key: "standings",
-      label: "Standings",
-      mobileLabel: "Standings",
-      href: `${base}/pickem/standings`,
-    },
-    {
-      key: "recap",
-      label: "Recap",
-      mobileLabel: "Recap",
-      href: `${base}/pickem/recap`,
-    },
-    {
-      key: "settings",
-      label: "Settings",
-      mobileLabel: "Settings",
-      href: `${base}/pickem/settings`,
-    },
-  ];
+  if (leagueType === "pickem") {
+    const items: LeagueNavItem[] = [
+      {
+        key: "home",
+        label: "Home",
+        mobileLabel: "Home",
+        href: base,
+        exact: true,
+      },
+      {
+        key: "picks",
+        label: "My Picks",
+        mobileLabel: "Picks",
+        href: `${base}/pickem/my-picks`,
+      },
+      {
+        key: "leaguePicks",
+        label: "League Picks",
+        mobileLabel: "League",
+        href: `${base}/pickem/league-picks`,
+      },
+      {
+        key: "games",
+        label: "Games",
+        mobileLabel: "Games",
+        href: `${base}/pickem/games`,
+      },
+      {
+        key: "standings",
+        label: "Standings",
+        mobileLabel: "Standings",
+        href: `${base}/pickem/standings`,
+      },
+      {
+        key: "recap",
+        label: "Recap",
+        mobileLabel: "Recap",
+        href: `${base}/pickem/recap`,
+      },
+      {
+        key: "settings",
+        label: "Settings",
+        mobileLabel: "Settings",
+        href: `${base}/pickem/settings`,
+      },
+    ];
 
-  if (isCommissioner) {
-    items.push({
-      key: "commissioner",
-      label: "Commissioner",
-      mobileLabel: "Commish",
-      href: `${base}/commissioner`,
-    });
+    if (isCommissioner) {
+      items.push({
+        key: "commissioner",
+        label: "Commissioner",
+        mobileLabel: "Commish",
+        href: `${base}/commissioner`,
+      });
+    }
+
+    return items;
   }
 
-  return items;
+  if (leagueType === "greyhound") {
+    const items: LeagueNavItem[] = [
+      {
+        key: "home",
+        label: "Home",
+        mobileLabel: "Home",
+        href: base,
+        exact: true,
+      },
+      {
+        key: "wagers",
+        label: "My Wagers",
+        mobileLabel: "Wagers",
+        href: `${base}/greyhound/wagers`,
+      },
+      {
+        key: "leagueWagers",
+        label: "League Wagers",
+        mobileLabel: "League",
+        href: `${base}/greyhound/league-wagers`,
+      },
+      {
+        key: "standings",
+        label: "Standings",
+        mobileLabel: "Standings",
+        href: `${base}/greyhound/standings`,
+      },
+      {
+        key: "recap",
+        label: "Recap",
+        mobileLabel: "Recap",
+        href: `${base}/greyhound/recap`,
+      },
+      {
+        key: "trophyCase",
+        label: "Trophy Case",
+        mobileLabel: "Trophies",
+        href: `${base}/greyhound/trophy-case`,
+      },
+      {
+        key: "settings",
+        label: "Settings",
+        mobileLabel: "Settings",
+        href: `${base}/greyhound/settings`,
+      },
+    ];
+
+    if (isCommissioner) {
+      items.push({
+        key: "commissioner",
+        label: "Commissioner",
+        mobileLabel: "Commish",
+        href: `${base}/commissioner`,
+      });
+    }
+
+    return items;
+  }
+
+  return [];
 }

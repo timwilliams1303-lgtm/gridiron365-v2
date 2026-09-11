@@ -2,7 +2,8 @@ export type G365LeagueType =
   | "traditional"
   | "season_long"
   | "nfl_playoffs"
-  | "pickem";
+  | "pickem"
+  | "greyhound";
 
 export type SeasonLongCompetitionFormat =
   | "total_points"
@@ -29,6 +30,8 @@ export type LeagueCapabilityKey =
   | "picks"
   | "leaguePicks"
   | "games"
+  | "wagers"
+  | "leagueWagers"
   | "settings"
   | "commissioner";
 
@@ -65,6 +68,8 @@ const none: LeagueCapabilities = {
   picks: false,
   leaguePicks: false,
   games: false,
+  wagers: false,
+  leagueWagers: false,
   settings: false,
   commissioner: false,
 };
@@ -132,15 +137,33 @@ export function getLeagueCapabilities({
     };
   }
 
-  return {
-    ...none,
-    home: true,
-    picks: true,
-    leaguePicks: true,
-    games: true,
-    standings: true,
-    recap: true,
-    settings: true,
-    commissioner: isCommissioner,
-  };
+  if (leagueType === "pickem") {
+    return {
+      ...none,
+      home: true,
+      picks: true,
+      leaguePicks: true,
+      games: true,
+      standings: true,
+      recap: true,
+      settings: true,
+      commissioner: isCommissioner,
+    };
+  }
+
+  if (leagueType === "greyhound") {
+    return {
+      ...none,
+      home: true,
+      wagers: true,
+      leagueWagers: true,
+      standings: true,
+      recap: true,
+      trophyCase: true,
+      settings: true,
+      commissioner: isCommissioner,
+    };
+  }
+
+  return none;
 }

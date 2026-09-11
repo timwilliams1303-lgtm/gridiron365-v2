@@ -59,6 +59,13 @@ export function getLeagueDisplayLabels({
         "PICK'EM";
       break;
 
+    case "greyhound":
+      leagueTypeLabel =
+        "G365 GREYHOUND";
+      mobileLeagueTypeLabel =
+        "GREY";
+      break;
+
     default: {
       const exhaustiveCheck:
         never =
@@ -76,8 +83,13 @@ export function getLeagueDisplayLabels({
     string | null =
       null;
 
+  /*
+   * Salary / no-salary labels only apply to the league
+   * types that actually use player-selection modes.
+   */
   if (
-    leagueType !== "traditional"
+    leagueType === "season_long" ||
+    leagueType === "nfl_playoffs"
   ) {
     if (
       playerSelectionMode ===
