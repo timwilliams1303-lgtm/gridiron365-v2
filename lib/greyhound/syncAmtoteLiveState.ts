@@ -3,6 +3,7 @@ import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   getAmtoteRaces,
+  getAmtoteTrackState,
   g365TrackCodeForAmtote,
   type AmtoteRace,
   type AmtoteRaceCard,
@@ -15,6 +16,8 @@ type LiveTrackResult = {
   trackCode: G365GreyhoundTrackCode;
   raceDate: string;
   session: string;
+  currentRaceNumber: number | null;
+  currentRaceMtp: number | null;
   cardFound: boolean;
   racesChecked: number;
   raceStatusesUpdated: number;
@@ -31,12 +34,37 @@ export type SyncAmtoteLiveStateResult = {
   tracks: LiveTrackResult[];
 };
 
-function feedRaceStatus(
-  race: AmtoteRace,
-): "scheduled" | "upcoming" | "off" | "official" {
-  if (race.resultsAvailable) return "official";
-  if (race.raceOffFlag) return "off";
-  if (race.minutesToPost !== null) return "upcoming";
+function hasAuthoritativeResult(race: AmtoteRace): boolean {
+  return race.resultsAvailable;
+}
+
+function feedRaceStatus(args: {
+  race: AmtoteRace;
+  currentRaceNumber: number | null;
+}): "scheduled" | "upcoming" | "off" | "official" {
+  if (hasAuthoritativeResult(args.race)) {
+    return "official";
+  }
+
+  if (args.race.raceOffFlag) {
+    return "off";
+  }
+
+  /*
+   * IMPORTANT:
+   * A race-level mtp field is not enough to identify "upcoming".
+   * AmTote may populate mtp throughout the entire card.
+   *
+   * Only the exact current race number from GetTracks/crc is allowed
+   * to become upcoming.
+   */
+  if (
+    args.currentRaceNumber !== null &&
+    args.race.raceNumber === args.currentRaceNumber
+  ) {
+    return "upcoming";
+  }
+
   return "scheduled";
 }
 
@@ -55,7 +83,9 @@ function nextStatus(
     official: 3,
   };
 
-  return (rank[incoming] ?? 0) >= (rank[current] ?? 0) ? incoming : current;
+  return (rank[incoming] ?? 0) >= (rank[current] ?? 0)
+    ? incoming
+    : current;
 }
 
 function scratchedBoxesForRace(race: AmtoteRace): number[] {
@@ -92,10 +122,6 @@ async function applyRaceScratches(args: {
   let applied = 0;
 
   for (const entry of entries ?? []) {
-    /*
-     * Never auto-reactivate and never overwrite another non-active state.
-     * Only an active runner can become scratched from the live feed.
-     */
     if (entry.entry_status !== "active") continue;
 
     const { error } = await supabase.rpc("set_greyhound_entry_status", {
@@ -116,10 +142,48 @@ async function applyRaceScratches(args: {
   return applied;
 }
 
-async function syncOneTrack(trackId: AmtoteTrackId): Promise<LiveTrackResult> {
+async function syncOneTrack(
+  trackId: AmtoteTrackId,
+): Promise<LiveTrackResult> {
   const supabase = createSupabaseAdminClient();
   const trackCode = g365TrackCodeForAmtote(trackId);
-  const feedCard: AmtoteRaceCard = await getAmtoteRaces(trackId);
+
+  /*
+   * GetTracks gives us the authoritative current race (crc).
+   * GetRaces gives us the actual race card, scratches, race-off flag,
+   * and result information.
+   */
+  const [feedCard, trackState] = await Promise.all([
+    getAmtoteRaces(trackId),
+    getAmtoteTrackState(trackId),
+  ]);
+
+  /*
+   * Feed self-consistency safety:
+   * If GetTracks and GetRaces disagree on date, make no DB changes.
+   */
+  if (
+    trackState.raceDate &&
+    trackState.raceDate !== feedCard.raceDate
+  ) {
+    return {
+      trackId,
+      trackCode,
+      raceDate: feedCard.raceDate,
+      session: feedCard.session,
+      currentRaceNumber: trackState.currentRaceNumber,
+      currentRaceMtp: trackState.minutesToPost,
+      cardFound: false,
+      racesChecked: feedCard.races.length,
+      raceStatusesUpdated: 0,
+      scratchesApplied: 0,
+      skipped: true,
+      skipReason:
+        `AmTote feed date mismatch: GetRaces=${feedCard.raceDate}, GetTracks=${trackState.raceDate}. No database changes were made.`,
+      failed: false,
+      errorMessage: null,
+    };
+  }
 
   const { data: track, error: trackError } = await supabase
     .from("greyhound_tracks")
@@ -129,14 +193,16 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<LiveTrackResult> {
     .maybeSingle();
 
   if (trackError) throw trackError;
+
   if (!track) {
-    throw new Error(`Active G365 Greyhound track ${trackCode} was not found.`);
+    throw new Error(
+      `Active G365 Greyhound track ${trackCode} was not found.`,
+    );
   }
 
   /*
-   * CRITICAL DATE SAFETY:
-   * We ONLY select the exact track + feed date + feed session. A Sep 10
-   * AmTote program can never mutate a Sep 11 G365 card.
+   * CRITICAL DATE/SESSION SAFETY:
+   * Only mutate the exact card represented by the live AmTote feed.
    */
   const { data: card, error: cardError } = await supabase
     .from("greyhound_cards")
@@ -156,6 +222,8 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<LiveTrackResult> {
       trackCode,
       raceDate: feedCard.raceDate,
       session: feedCard.session,
+      currentRaceNumber: trackState.currentRaceNumber,
+      currentRaceMtp: trackState.minutesToPost,
       cardFound: false,
       racesChecked: feedCard.races.length,
       raceStatusesUpdated: 0,
@@ -174,6 +242,8 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<LiveTrackResult> {
       trackCode,
       raceDate: feedCard.raceDate,
       session: feedCard.session,
+      currentRaceNumber: trackState.currentRaceNumber,
+      currentRaceMtp: trackState.minutesToPost,
       cardFound: true,
       racesChecked: feedCard.races.length,
       raceStatusesUpdated: 0,
@@ -191,6 +261,8 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<LiveTrackResult> {
       trackCode,
       raceDate: feedCard.raceDate,
       session: feedCard.session,
+      currentRaceNumber: trackState.currentRaceNumber,
+      currentRaceMtp: trackState.minutesToPost,
       cardFound: true,
       racesChecked: feedCard.races.length,
       raceStatusesUpdated: 0,
@@ -212,7 +284,7 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<LiveTrackResult> {
 
   let raceStatusesUpdated = 0;
   let scratchesApplied = 0;
-  let anyOff = false;
+  let anyOffOrOfficial = false;
   let allOfficial = (savedRaces?.length ?? 0) > 0;
 
   for (const savedRace of savedRaces ?? []) {
@@ -225,11 +297,18 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<LiveTrackResult> {
       continue;
     }
 
-    const incoming = feedRaceStatus(feedRace);
-    const resolved = nextStatus(savedRace.race_status, incoming);
+    const incoming = feedRaceStatus({
+      race: feedRace,
+      currentRaceNumber: trackState.currentRaceNumber,
+    });
+
+    const resolved = nextStatus(
+      savedRace.race_status,
+      incoming,
+    );
 
     if (resolved === "off" || resolved === "official") {
-      anyOff = true;
+      anyOffOrOfficial = true;
     }
 
     if (resolved !== "official") {
@@ -260,7 +339,9 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<LiveTrackResult> {
       raceStatusesUpdated += 1;
     }
 
-    if (!["official", "cancelled", "no_contest"].includes(resolved)) {
+    if (
+      !["official", "cancelled", "no_contest"].includes(resolved)
+    ) {
       scratchesApplied += await applyRaceScratches({
         raceId: savedRace.id,
         raceNumber: Number(savedRace.race_number),
@@ -271,14 +352,16 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<LiveTrackResult> {
   }
 
   /*
-   * Card-level lifecycle follows actual feed state. This does not finalize
-   * wagering settlement; it only reflects whether racing has started/ended.
+   * Card-level state follows actual completed/off races, not MTP.
    */
   let nextCardStatus = card.card_status;
 
   if (allOfficial) {
     nextCardStatus = "final";
-  } else if (anyOff && !["in_progress", "final"].includes(card.card_status)) {
+  } else if (
+    anyOffOrOfficial &&
+    !["in_progress", "final"].includes(card.card_status)
+  ) {
     nextCardStatus = "in_progress";
   }
 
@@ -303,6 +386,8 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<LiveTrackResult> {
     trackCode,
     raceDate: feedCard.raceDate,
     session: feedCard.session,
+    currentRaceNumber: trackState.currentRaceNumber,
+    currentRaceMtp: trackState.minutesToPost,
     cardFound: true,
     racesChecked: feedCard.races.length,
     raceStatusesUpdated,
@@ -327,7 +412,10 @@ export async function syncAmtoteGreyhoundLiveState(
         trackId,
         trackCode: g365TrackCodeForAmtote(trackId),
         raceDate: "",
-        session: trackId === "TSE" ? "evening" : "afternoon",
+        session:
+          trackId === "TSE" ? "evening" : "afternoon",
+        currentRaceNumber: null,
+        currentRaceMtp: null,
         cardFound: false,
         racesChecked: 0,
         raceStatusesUpdated: 0,
@@ -336,7 +424,9 @@ export async function syncAmtoteGreyhoundLiveState(
         skipReason: null,
         failed: true,
         errorMessage:
-          error instanceof Error ? error.message : "Unknown live-state sync error.",
+          error instanceof Error
+            ? error.message
+            : "Unknown live-state sync error.",
       });
     }
   }
