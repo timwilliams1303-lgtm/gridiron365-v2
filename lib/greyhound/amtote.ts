@@ -50,6 +50,15 @@ export type AmtoteRaceCard = {
   races: AmtoteRace[];
 };
 
+
+export type AmtoteToteState = {
+  trackId: AmtoteTrackId;
+  currentRaceNumber: number | null;
+  minutesToPost: number | null;
+  poolTotal: string | null;
+  odds: string | null;
+};
+
 export type AmtoteTrackState = {
   trackId: AmtoteTrackId;
   trackCode: string | null;
@@ -337,6 +346,29 @@ export async function getAmtoteRaces(
     signal,
     session: sessionFromSignal(signal),
     races,
+  };
+}
+
+export async function getAmtoteToteState(
+  trackId: AmtoteTrackId,
+): Promise<AmtoteToteState> {
+  const xml = await soapRequest(
+    "GetTote",
+    `<tid>${trackId}</tid><val></val>`,
+  );
+  const payload = resultPayload(xml, "GetTote");
+
+  const exm = (tagValue(payload, "exm") ?? "").trim().toLowerCase();
+  if (exm && exm !== "success") {
+    throw new Error(`AmTote GetTote failed for ${trackId}: ${tagValue(payload, "exm")}`);
+  }
+
+  return {
+    trackId,
+    currentRaceNumber: intOrNull(tagValue(payload, "crc")),
+    minutesToPost: intOrNull(tagValue(payload, "mtp")),
+    poolTotal: tagValue(payload, "ptd"),
+    odds: tagValue(payload, "odd"),
   };
 }
 

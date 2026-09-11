@@ -3,7 +3,7 @@ import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   getAmtoteRaces,
-  getAmtoteTrackState,
+  getAmtoteToteState,
   g365TrackCodeForAmtote,
   type AmtoteRace,
   type AmtoteRaceCard,
@@ -55,7 +55,7 @@ function feedRaceStatus(args: {
    * A race-level mtp field is not enough to identify "upcoming".
    * AmTote may populate mtp throughout the entire card.
    *
-   * Only the exact current race number from GetTracks/crc is allowed
+   * Only the exact current race number from GetTote/crc is allowed
    * to become upcoming.
    */
   if (
@@ -149,37 +149,37 @@ async function syncOneTrack(
   const trackCode = g365TrackCodeForAmtote(trackId);
 
   /*
-   * GetTracks gives us the authoritative current race (crc).
-   * GetRaces gives us the actual race card, scratches, race-off flag,
-   * and result information.
+   * GetRaces is the authoritative source for the loaded card/date, scratches,
+   * race-off flags, and result availability. GetTote anonymously exposes the
+   * current race number (crc) and minutes-to-post (mtp). GetTracks is not used
+   * because the service requires a logged-in SID.
    */
-  const [feedCard, trackState] = await Promise.all([
+  const [feedCard, toteState] = await Promise.all([
     getAmtoteRaces(trackId),
-    getAmtoteTrackState(trackId),
+    getAmtoteToteState(trackId),
   ]);
 
-  /*
-   * Feed self-consistency safety:
-   * If GetTracks and GetRaces disagree on date, make no DB changes.
-   */
+  const currentRaceNumber = toteState.currentRaceNumber;
+  const currentRaceMtp = toteState.minutesToPost;
+
   if (
-    trackState.raceDate &&
-    trackState.raceDate !== feedCard.raceDate
+    currentRaceNumber !== null &&
+    !feedCard.races.some((race) => race.raceNumber === currentRaceNumber)
   ) {
     return {
       trackId,
       trackCode,
       raceDate: feedCard.raceDate,
       session: feedCard.session,
-      currentRaceNumber: trackState.currentRaceNumber,
-      currentRaceMtp: trackState.minutesToPost,
+      currentRaceNumber,
+      currentRaceMtp,
       cardFound: false,
       racesChecked: feedCard.races.length,
       raceStatusesUpdated: 0,
       scratchesApplied: 0,
       skipped: true,
       skipReason:
-        `AmTote feed date mismatch: GetRaces=${feedCard.raceDate}, GetTracks=${trackState.raceDate}. No database changes were made.`,
+        `AmTote GetTote current race ${currentRaceNumber} is not present on the loaded ${trackCode} ${feedCard.raceDate} card. No database changes were made.`,
       failed: false,
       errorMessage: null,
     };
@@ -222,8 +222,8 @@ async function syncOneTrack(
       trackCode,
       raceDate: feedCard.raceDate,
       session: feedCard.session,
-      currentRaceNumber: trackState.currentRaceNumber,
-      currentRaceMtp: trackState.minutesToPost,
+      currentRaceNumber: currentRaceNumber,
+      currentRaceMtp: currentRaceMtp,
       cardFound: false,
       racesChecked: feedCard.races.length,
       raceStatusesUpdated: 0,
@@ -242,8 +242,8 @@ async function syncOneTrack(
       trackCode,
       raceDate: feedCard.raceDate,
       session: feedCard.session,
-      currentRaceNumber: trackState.currentRaceNumber,
-      currentRaceMtp: trackState.minutesToPost,
+      currentRaceNumber: currentRaceNumber,
+      currentRaceMtp: currentRaceMtp,
       cardFound: true,
       racesChecked: feedCard.races.length,
       raceStatusesUpdated: 0,
@@ -261,8 +261,8 @@ async function syncOneTrack(
       trackCode,
       raceDate: feedCard.raceDate,
       session: feedCard.session,
-      currentRaceNumber: trackState.currentRaceNumber,
-      currentRaceMtp: trackState.minutesToPost,
+      currentRaceNumber: currentRaceNumber,
+      currentRaceMtp: currentRaceMtp,
       cardFound: true,
       racesChecked: feedCard.races.length,
       raceStatusesUpdated: 0,
@@ -285,7 +285,6 @@ async function syncOneTrack(
   let raceStatusesUpdated = 0;
   let scratchesApplied = 0;
   let anyOffOrOfficial = false;
-  let allOfficial = (savedRaces?.length ?? 0) > 0;
 
   for (const savedRace of savedRaces ?? []) {
     const feedRace = feedCard.races.find(
@@ -293,13 +292,12 @@ async function syncOneTrack(
     );
 
     if (!feedRace) {
-      allOfficial = false;
       continue;
     }
 
     const incoming = feedRaceStatus({
       race: feedRace,
-      currentRaceNumber: trackState.currentRaceNumber,
+      currentRaceNumber: currentRaceNumber,
     });
 
     const resolved = nextStatus(
@@ -312,7 +310,6 @@ async function syncOneTrack(
     }
 
     if (resolved !== "official") {
-      allOfficial = false;
     }
 
     if (resolved !== savedRace.race_status) {
@@ -356,9 +353,12 @@ async function syncOneTrack(
    */
   let nextCardStatus = card.card_status;
 
-  if (allOfficial) {
-    nextCardStatus = "final";
-  } else if (
+  /*
+   * Live-state sync may advance a card into in_progress, but it intentionally
+   * does NOT mark the card final. Finalization belongs to the result / wager
+   * settlement lifecycle so we do not bypass settlement work.
+   */
+  if (
     anyOffOrOfficial &&
     !["in_progress", "final"].includes(card.card_status)
   ) {
@@ -386,8 +386,8 @@ async function syncOneTrack(
     trackCode,
     raceDate: feedCard.raceDate,
     session: feedCard.session,
-    currentRaceNumber: trackState.currentRaceNumber,
-    currentRaceMtp: trackState.minutesToPost,
+    currentRaceNumber: currentRaceNumber,
+    currentRaceMtp: currentRaceMtp,
     cardFound: true,
     racesChecked: feedCard.races.length,
     raceStatusesUpdated,
