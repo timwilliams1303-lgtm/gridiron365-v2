@@ -347,21 +347,54 @@ export async function getAmtoteTrackState(
   const payload = resultPayload(xml, "GetTracks");
 
   /*
-   * GetTracks is returned by the legacy .NET service as an XML/DataSet
-   * payload. Depending on the serializer, each row can be named
-   * trackinfo, TrackInfo, track, Track, or Table.
+   * GetTracks is a legacy .NET DataSet response and the row element name
+   * is not stable across serializers. Do not depend on a specific row tag.
+   *
+   * Instead, find the exact <tid> value and isolate the XML span belonging
+   * to that track by cutting at the neighboring <tid> elements. This is
+   * intentionally tolerant of wrappers such as Table, Table1, TrackInfo,
+   * diffgr rows, or other DataSet-generated names.
    */
-  const rowTags = ["trackinfo", "TrackInfo", "track", "Track", "Table"];
-  const blocks = rowTags.flatMap((tag) => allBlocks(payload, tag));
+  const tidExpression = /<(?:\w+:)?tid(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?tid>/gi;
+  const tidMatches = [...payload.matchAll(tidExpression)];
 
-  const matching = blocks.find((block) => {
-    const tid = (tagValue(block, "tid") ?? "").trim().toUpperCase();
-    return tid === trackId;
+  const targetIndex = tidMatches.findIndex((match) => {
+    const value = xmlDecode(stripCdata(match[1] ?? "")).trim().toUpperCase();
+    return value === trackId;
   });
 
-  if (!matching) {
-    throw new Error(`AmTote GetTracks did not return track ${trackId}.`);
+  if (targetIndex < 0) {
+    throw new Error(
+      `AmTote GetTracks did not return track ${trackId}. Track ids seen: ${
+        tidMatches
+          .map((match) => xmlDecode(stripCdata(match[1] ?? "")).trim())
+          .filter(Boolean)
+          .join(", ") || "none"
+      }.`,
+    );
   }
+
+  const targetMatch = tidMatches[targetIndex];
+  const currentStart = targetMatch.index ?? 0;
+
+  const previousTidEnd =
+    targetIndex > 0
+      ? (tidMatches[targetIndex - 1].index ?? 0) +
+        tidMatches[targetIndex - 1][0].length
+      : 0;
+
+  const nextTidStart =
+    targetIndex < tidMatches.length - 1
+      ? (tidMatches[targetIndex + 1].index ?? payload.length)
+      : payload.length;
+
+  /*
+   * Include a bounded amount of XML before <tid> in case a serializer puts
+   * fields such as track name/date ahead of tid, while never crossing the
+   * previous track's tid.
+   */
+  const sliceStart = Math.max(previousTidEnd, currentStart - 1500);
+  const matching = payload.slice(sliceStart, nextTidStart);
 
   return {
     trackId,
