@@ -343,7 +343,7 @@ export async function getAmtoteRaces(
 export async function getAmtoteTrackState(
   trackId: AmtoteTrackId,
 ): Promise<AmtoteTrackState> {
-  const xml = await soapRequest("GetTracks", "");
+  const xml = await soapRequest("GetTracks", "<sid></sid>");
   const payload = resultPayload(xml, "GetTracks");
 
   /*
