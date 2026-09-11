@@ -1,4 +1,4 @@
-
+import "server-only";
 
 const AMTOTE_ENDPOINT = "https://uso.rosnet2000.com/wsUSO.asmx";
 const AMTOTE_NAMESPACE = "http://gws.amtote.com/";
@@ -420,6 +420,26 @@ export async function getAmtoteGetTracksDiagnostic(): Promise<{
   const decodedPayload = resultPayload(rawSoapXml, "GetTracks");
 
   return {
+    rawSoapXml,
+    decodedPayload,
+  };
+}
+
+export async function getAmtoteGetToteDiagnostic(
+  trackId: AmtoteTrackId,
+): Promise<{
+  trackId: AmtoteTrackId;
+  rawSoapXml: string;
+  decodedPayload: string;
+}> {
+  const rawSoapXml = await soapRequest(
+    "GetTote",
+    `<tid>${trackId}</tid><val></val>`,
+  );
+  const decodedPayload = resultPayload(rawSoapXml, "GetTote");
+
+  return {
+    trackId,
     rawSoapXml,
     decodedPayload,
   };
