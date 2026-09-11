@@ -1,4 +1,4 @@
-import "server-only";
+
 
 const AMTOTE_ENDPOINT = "https://uso.rosnet2000.com/wsUSO.asmx";
 const AMTOTE_NAMESPACE = "http://gws.amtote.com/";
@@ -408,5 +408,19 @@ export async function getAmtoteTrackState(
     minutesToPost: intOrNull(tagValue(matching, "mtp")),
     status: tagValue(matching, "sts"),
     done: boolValue(tagValue(matching, "dun")),
+  };
+}
+
+
+export async function getAmtoteGetTracksDiagnostic(): Promise<{
+  rawSoapXml: string;
+  decodedPayload: string;
+}> {
+  const rawSoapXml = await soapRequest("GetTracks", "<sid></sid>");
+  const decodedPayload = resultPayload(rawSoapXml, "GetTracks");
+
+  return {
+    rawSoapXml,
+    decodedPayload,
   };
 }
