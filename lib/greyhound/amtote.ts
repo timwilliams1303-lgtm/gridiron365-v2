@@ -346,10 +346,13 @@ export async function getAmtoteTrackState(
   const xml = await soapRequest("GetTracks", "");
   const payload = resultPayload(xml, "GetTracks");
 
-  let blocks = allBlocks(payload, "trackinfo");
-  if (blocks.length === 0) {
-    blocks = allBlocks(payload, "TrackInfo");
-  }
+  /*
+   * GetTracks is returned by the legacy .NET service as an XML/DataSet
+   * payload. Depending on the serializer, each row can be named
+   * trackinfo, TrackInfo, track, Track, or Table.
+   */
+  const rowTags = ["trackinfo", "TrackInfo", "track", "Track", "Table"];
+  const blocks = rowTags.flatMap((tag) => allBlocks(payload, tag));
 
   const matching = blocks.find((block) => {
     const tid = (tagValue(block, "tid") ?? "").trim().toUpperCase();
