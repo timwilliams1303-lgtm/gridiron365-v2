@@ -212,16 +212,6 @@ async function syncOneTrackResults(
   const trackCode = g365TrackCodeForAmtote(trackId);
 
   const feedCard = await getAmtoteRaces(trackId);
-  const summary = await getAmtoteRaceResults(
-    trackId,
-    feedCard.raceDate,
-  );
-
-  if (summary.raceDate !== feedCard.raceDate) {
-    throw new Error(
-      `${trackCode} date safety check failed. GetRaces=${feedCard.raceDate}, GetRaceResults=${summary.raceDate}.`,
-    );
-  }
 
   const { data: track, error: trackError } = await supabase
     .from("greyhound_tracks")
@@ -257,7 +247,7 @@ async function syncOneTrackResults(
       raceDate: feedCard.raceDate,
       session: feedCard.session,
       cardId: null,
-      racesAvailable: summary.rows.length,
+      racesAvailable: 0,
       racesProcessed: 0,
       raceResultRowsUpserted: 0,
       dogResultRowsUpserted: 0,
@@ -272,6 +262,30 @@ async function syncOneTrackResults(
     };
   }
 
+  // Final is terminal for the results worker. Once a card is final,
+  // do not call GetRaceResults/GetRaceResult again and do not re-run
+  // settlement, payout upserts, dog-result upserts, or bankroll refreshes.
+  if (card.card_status === "final") {
+    return {
+      trackId,
+      trackCode,
+      raceDate: feedCard.raceDate,
+      session: feedCard.session,
+      cardId: Number(card.id),
+      racesAvailable: 0,
+      racesProcessed: 0,
+      raceResultRowsUpserted: 0,
+      dogResultRowsUpserted: 0,
+      payoutsUpserted: 0,
+      racesSettled: 0,
+      skippedRaces: 0,
+      skipped: true,
+      skipReason: "Card is final.",
+      failed: false,
+      errorMessage: null,
+    };
+  }
+
   if (card.card_status === "cancelled") {
     return {
       trackId,
@@ -279,7 +293,7 @@ async function syncOneTrackResults(
       raceDate: feedCard.raceDate,
       session: feedCard.session,
       cardId: Number(card.id),
-      racesAvailable: summary.rows.length,
+      racesAvailable: 0,
       racesProcessed: 0,
       raceResultRowsUpserted: 0,
       dogResultRowsUpserted: 0,
@@ -291,6 +305,17 @@ async function syncOneTrackResults(
       failed: false,
       errorMessage: null,
     };
+  }
+
+  const summary = await getAmtoteRaceResults(
+    trackId,
+    feedCard.raceDate,
+  );
+
+  if (summary.raceDate !== feedCard.raceDate) {
+    throw new Error(
+      `${trackCode} date safety check failed. GetRaces=${feedCard.raceDate}, GetRaceResults=${summary.raceDate}.`,
+    );
   }
 
   if (!["imported", "updated"].includes(card.import_status)) {
