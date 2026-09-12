@@ -190,6 +190,51 @@ function boolValue(value: string | null): boolean {
   return normalized === "true" || normalized === "1" || normalized === "yes";
 }
 
+/**
+ * AmTote uses <res> and <rep> as availability flags in GetRaces.
+ *
+ * A value of "0" means the result/replay is NOT available. Treating any
+ * non-empty string as truthy incorrectly turns "0" into an official result.
+ *
+ * Keep this helper slightly defensive in case the feed returns another
+ * documented truthy/falsey representation later.
+ */
+function feedAvailabilityFlag(value: string | null): boolean {
+  if (!value) return false;
+
+  const normalized = value.trim().toLowerCase();
+
+  if (
+    normalized === "" ||
+    normalized === "0" ||
+    normalized === "false" ||
+    normalized === "no" ||
+    normalized === "null" ||
+    normalized === "n/a"
+  ) {
+    return false;
+  }
+
+  if (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "y"
+  ) {
+    return true;
+  }
+
+  const numeric = Number(normalized);
+  if (Number.isFinite(numeric)) {
+    return numeric > 0;
+  }
+
+  // If AmTote ever returns a non-empty non-numeric marker here, preserve
+  // forward compatibility by treating it as available rather than silently
+  // discarding a legitimate signal.
+  return true;
+}
+
 function csvInts(value: string | null): number[] {
   if (!value) return [];
 
@@ -377,8 +422,8 @@ function parseRace(block: string, trackId: AmtoteTrackId): AmtoteRace | null {
     replayText,
     raceOffFlag: boolValue(raceOffRaw),
     resultsAvailable:
-      Boolean(resultText && resultText.trim()) ||
-      Boolean(replayText && replayText.trim()),
+      feedAvailabilityFlag(resultText) ||
+      feedAvailabilityFlag(replayText),
     minutesToPost: intOrNull(tagValue(block, "mtp")),
     runners,
   };

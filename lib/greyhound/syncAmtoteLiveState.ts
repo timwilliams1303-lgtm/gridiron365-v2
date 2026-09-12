@@ -34,24 +34,27 @@ export type SyncAmtoteLiveStateResult = {
   tracks: LiveTrackResult[];
 };
 
-function hasAuthoritativeResult(race: AmtoteRace): boolean {
+function hasResultSignal(race: AmtoteRace): boolean {
   return race.resultsAvailable;
 }
 
 function feedRaceStatus(args: {
   race: AmtoteRace;
   currentRaceNumber: number | null;
-}): "scheduled" | "upcoming" | "off" | "official" {
-  if (hasAuthoritativeResult(args.race)) {
-    return "official";
-  }
-
-  if (args.race.raceOffFlag) {
+}): "scheduled" | "upcoming" | "off" {
+  /*
+   * IMPORTANT:
+   * GetRaces is allowed to tell us that a race has gone off / has a result
+   * signal, but it is NOT allowed to declare the race official.
+   *
+   * Official status belongs to the dedicated result/settlement pipeline after
+   * GetRaceResult confirms that the report is ready and result rows are saved.
+   */
+  if (args.race.raceOffFlag || hasResultSignal(args.race)) {
     return "off";
   }
 
   /*
-   * IMPORTANT:
    * A race-level mtp field is not enough to identify "upcoming".
    * AmTote may populate mtp throughout the entire card.
    *
@@ -70,17 +73,21 @@ function feedRaceStatus(args: {
 
 function nextStatus(
   current: string,
-  incoming: "scheduled" | "upcoming" | "off" | "official",
+  incoming: "scheduled" | "upcoming" | "off",
 ) {
+  /*
+   * Live-state never downgrades terminal statuses and never creates
+   * "official". Once a race is official, only the results lifecycle may
+   * revise it through a dedicated correction path.
+   */
   if (current === "official") return "official";
   if (current === "cancelled" || current === "no_contest") return current;
-  if (current === "off" && incoming !== "official") return "off";
+  if (current === "off") return "off";
 
   const rank: Record<string, number> = {
     scheduled: 0,
     upcoming: 1,
     off: 2,
-    official: 3,
   };
 
   return (rank[incoming] ?? 0) >= (rank[current] ?? 0)
@@ -150,7 +157,9 @@ async function syncOneTrack(
 
   /*
    * GetRaces is the authoritative source for the loaded card/date, scratches,
-   * race-off flags, and result availability. GetTote anonymously exposes the
+   * race-off flags, and result/replay availability signals. Those result
+   * signals are used only to close a race here; "official" is reserved for
+   * the dedicated results/settlement pipeline. GetTote anonymously exposes the
    * current race number (crc) and minutes-to-post (mtp). GetTracks is not used
    * because the service requires a logged-in SID.
    */
@@ -284,7 +293,7 @@ async function syncOneTrack(
 
   let raceStatusesUpdated = 0;
   let scratchesApplied = 0;
-  let anyOffOrOfficial = false;
+  let anyClosedRace = false;
 
   for (const savedRace of savedRaces ?? []) {
     const feedRace = feedCard.races.find(
@@ -306,10 +315,7 @@ async function syncOneTrack(
     );
 
     if (resolved === "off" || resolved === "official") {
-      anyOffOrOfficial = true;
-    }
-
-    if (resolved !== "official") {
+      anyClosedRace = true;
     }
 
     if (resolved !== savedRace.race_status) {
@@ -359,7 +365,7 @@ async function syncOneTrack(
    * settlement lifecycle so we do not bypass settlement work.
    */
   if (
-    anyOffOrOfficial &&
+    anyClosedRace &&
     !["in_progress", "final"].includes(card.card_status)
   ) {
     nextCardStatus = "in_progress";
