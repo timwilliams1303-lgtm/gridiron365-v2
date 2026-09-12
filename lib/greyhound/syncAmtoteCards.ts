@@ -30,6 +30,7 @@ type SyncTrackResult = {
   racesImported: number;
   entriesSeen: number;
   scratchesApplied: number;
+  autoConfirmed: boolean;
   skipped: boolean;
   skipReason: string | null;
   failed: boolean;
@@ -183,6 +184,43 @@ async function applyFeedScratches(args: {
   return scratchesApplied;
 }
 
+
+async function autoConfirmOfficialFeedCard(cardId: number) {
+  const supabase = createSupabaseAdminClient();
+
+  /*
+   * Official AmTote cards do not require a commissioner click.
+   *
+   * The database function performs the authoritative validation:
+   * - supported import status
+   * - at least one race
+   * - entries exist
+   * - every race has entry rows
+   *
+   * p_confirmed_by is intentionally null because this is an automated
+   * confirmation from the official feed, not a commissioner action.
+   *
+   * If scheduled_first_post is still unavailable, the existing database
+   * function confirms the card but leaves timed automation disabled. The
+   * live-state sync will still enforce the whole-card lock from AmTote MTP.
+   */
+  const { data, error } = await supabase.rpc(
+    "confirm_greyhound_card_for_racing",
+    {
+      p_card_id: cardId,
+      p_confirmed_by: null,
+    },
+  );
+
+  if (error) {
+    throw new Error(
+      `Automatic Greyhound card confirmation failed for card ${cardId}: ${error.message}`,
+    );
+  }
+
+  return data;
+}
+
 async function syncOneTrack(trackId: AmtoteTrackId): Promise<SyncTrackResult> {
   const supabase = createSupabaseAdminClient();
   const trackCode = g365TrackCodeForAmtote(trackId);
@@ -233,6 +271,7 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<SyncTrackResult> {
       racesImported: 0,
       entriesSeen: 0,
       scratchesApplied: 0,
+      autoConfirmed: false,
       skipped: false,
       skipReason: null,
       failed: true,
@@ -296,6 +335,7 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<SyncTrackResult> {
       racesImported: 0,
       entriesSeen,
       scratchesApplied,
+      autoConfirmed: false,
       skipped: true,
       skipReason:
         existingCard.card_status === "final" ||
@@ -347,6 +387,13 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<SyncTrackResult> {
     card,
   });
 
+  /*
+   * A clean official AmTote import becomes wager-visible immediately.
+   * Manual confirmation remains only for backup/manual imports or a card
+   * that fails the database validation above.
+   */
+  await autoConfirmOfficialFeedCard(Number(savedCard.id));
+
   await writeFeedStatus({
     trackId: track.id,
     raceDate: card.raceDate,
@@ -363,6 +410,7 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<SyncTrackResult> {
     racesImported,
     entriesSeen,
     scratchesApplied,
+    autoConfirmed: true,
     skipped: false,
     skipReason: null,
     failed: false,
@@ -392,6 +440,7 @@ export async function syncAmtoteGreyhoundCards(
         racesImported: 0,
         entriesSeen: 0,
         scratchesApplied: 0,
+        autoConfirmed: false,
         skipped: false,
         skipReason: null,
         failed: true,

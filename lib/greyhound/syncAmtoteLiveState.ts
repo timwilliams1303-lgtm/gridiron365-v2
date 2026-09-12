@@ -216,7 +216,7 @@ async function syncOneTrack(
   const { data: card, error: cardError } = await supabase
     .from("greyhound_cards")
     .select(
-      "id, race_date, session, card_status, import_status, commissioner_confirmed_at",
+      "id, race_date, session, card_status, import_status, lock_at, commissioner_confirmed_at",
     )
     .eq("track_id", track.id)
     .eq("race_date", feedCard.raceDate)
@@ -355,27 +355,80 @@ async function syncOneTrack(
   }
 
   /*
-   * Card-level state follows actual completed/off races, not MTP.
+   * ==============================================================
+   * WHOLE-CARD WAGER LOCK
+   * ==============================================================
+   *
+   * G365 Greyhound wagering uses a whole-card lock for BOTH tracks:
+   *   - Wheeling (GWD)
+   *   - Tri-State (GTS)
+   *
+   * The entire card locks five minutes before Race 1 goes off.
+   * Once locked, later races on the same card DO NOT reopen.
+   *
+   * Primary lock source:
+   *   1. persisted card.lock_at when timed lifecycle data exists
+   *
+   * Live AmTote fallback:
+   *   2. GetTote current race is Race 1 AND MTP <= 5
+   *
+   * This fallback is required because AmTote can publish the full card
+   * without scheduled post timestamps. It lets the official live feed
+   * enforce the same five-minute whole-card rule even when lock_at was
+   * not calculable during card import.
    */
+  const nowMs = Date.now();
+  const persistedLockReached =
+    Boolean(card.lock_at) &&
+    new Date(String(card.lock_at)).getTime() <= nowMs;
+
+  const liveFiveMinuteLockReached =
+    currentRaceNumber === 1 &&
+    currentRaceMtp !== null &&
+    Number.isFinite(currentRaceMtp) &&
+    currentRaceMtp <= 5;
+
+  const wholeCardShouldLock =
+    Boolean(card.commissioner_confirmed_at) &&
+    (persistedLockReached || liveFiveMinuteLockReached);
+
   let nextCardStatus = card.card_status;
+  let nextLockAt = card.lock_at;
+
+  if (
+    wholeCardShouldLock &&
+    !["locked", "final", "cancelled"].includes(card.card_status)
+  ) {
+    nextCardStatus = "locked";
+    nextLockAt =
+      card.lock_at ??
+      new Date().toISOString();
+  }
 
   /*
-   * Live-state sync may advance a card into in_progress, but it intentionally
-   * does NOT mark the card final. Finalization belongs to the result / wager
-   * settlement lifecycle so we do not bypass settlement work.
+   * If the card was not locked yet and a race is already off, move the card
+   * into in_progress. A card that has already reached the G365 whole-card
+   * lock remains locked; live-state must never reopen it.
+   *
+   * Finalization still belongs to the result / wager settlement lifecycle.
    */
   if (
     anyClosedRace &&
-    !["in_progress", "final"].includes(card.card_status)
+    nextCardStatus !== "locked" &&
+    !["in_progress", "final", "cancelled"].includes(nextCardStatus)
   ) {
     nextCardStatus = "in_progress";
   }
 
-  if (nextCardStatus !== card.card_status) {
+  if (
+    nextCardStatus !== card.card_status ||
+    nextLockAt !== card.lock_at
+  ) {
     const { error: cardUpdateError } = await supabase
       .from("greyhound_cards")
       .update({
         card_status: nextCardStatus,
+        lock_at: nextLockAt,
         updated_at: new Date().toISOString(),
       })
       .eq("id", card.id);
