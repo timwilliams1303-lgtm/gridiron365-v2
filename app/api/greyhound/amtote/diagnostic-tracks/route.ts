@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 
-import { getAmtoteGetTracksDiagnostic } from "@/lib/greyhound/amtote";
+import {
+  getAmtoteGetTracksUSOControlDiagnostic,
+} from "@/lib/greyhound/amtote";
 
 function hasValidSyncSecret(request: Request): boolean {
   const expected = process.env.GRIDIRON_SYNC_SECRET;
   const supplied = request.headers.get("x-gridiron-sync-secret");
 
-  return Boolean(expected && supplied && supplied === expected);
+  return Boolean(
+    expected &&
+      supplied &&
+      supplied === expected,
+  );
 }
 
 export async function GET(request: Request) {
@@ -21,23 +27,29 @@ export async function GET(request: Request) {
   }
 
   try {
-    const diagnostic = await getAmtoteGetTracksDiagnostic();
+    const diagnostic =
+      await getAmtoteGetTracksUSOControlDiagnostic();
 
     return NextResponse.json({
       success: true,
+      method: "GetTracksUSOControl",
       checkedAt: new Date().toISOString(),
       decodedPayload: diagnostic.decodedPayload,
     });
   } catch (error) {
-    console.error("AmTote GetTracks diagnostic failed:", error);
+    console.error(
+      "AmTote GetTracksUSOControl diagnostic failed:",
+      error,
+    );
 
     return NextResponse.json(
       {
         success: false,
+        method: "GetTracksUSOControl",
         error:
           error instanceof Error
             ? error.message
-            : "AmTote GetTracks diagnostic failed.",
+            : "AmTote GetTracksUSOControl diagnostic failed.",
       },
       { status: 500 },
     );

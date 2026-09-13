@@ -669,6 +669,26 @@ export async function getAmtoteTrackState(
   };
 }
 
+export async function getAmtoteGetTracksUSOControlDiagnostic(): Promise<{
+  rawSoapXml: string;
+  decodedPayload: string;
+}> {
+  const rawSoapXml = await soapRequest(
+    "GetTracksUSOControl",
+    "",
+  );
+
+  const decodedPayload = resultPayload(
+    rawSoapXml,
+    "GetTracksUSOControl",
+  );
+
+  return {
+    rawSoapXml,
+    decodedPayload,
+  };
+}
+
 export async function getAmtoteGetTracksDiagnostic(): Promise<{
   rawSoapXml: string;
   decodedPayload: string;
