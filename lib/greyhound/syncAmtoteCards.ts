@@ -3,10 +3,12 @@ import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   getAmtoteRaces,
+  getAmtoteUSOControlTrackStates,
   g365TrackCodeForAmtote,
   type AmtoteRace,
   type AmtoteRaceCard,
   type AmtoteTrackId,
+  type AmtoteTrackState,
   type G365GreyhoundTrackCode,
 } from "@/lib/greyhound/amtote";
 
@@ -35,6 +37,12 @@ type SyncTrackResult = {
   skipReason: string | null;
   failed: boolean;
   errorMessage: string | null;
+  controlRaceDate: string | null;
+  controlNumberOfRaces: number | null;
+  controlCurrentRaceNumber: number | null;
+  controlMinutesToPost: number | null;
+  controlStatus: string | null;
+  controlDone: boolean | null;
 };
 
 export type SyncAmtoteCardsResult = {
@@ -221,7 +229,10 @@ async function autoConfirmOfficialFeedCard(cardId: number) {
   return data;
 }
 
-async function syncOneTrack(trackId: AmtoteTrackId): Promise<SyncTrackResult> {
+async function syncOneTrack(
+  trackId: AmtoteTrackId,
+  controlState: AmtoteTrackState | null,
+): Promise<SyncTrackResult> {
   const supabase = createSupabaseAdminClient();
   const trackCode = g365TrackCodeForAmtote(trackId);
 
@@ -276,6 +287,12 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<SyncTrackResult> {
       skipReason: null,
       failed: true,
       errorMessage: message,
+      controlRaceDate: controlState?.raceDate ?? null,
+      controlNumberOfRaces: controlState?.numberOfRaces ?? null,
+      controlCurrentRaceNumber: controlState?.currentRaceNumber ?? null,
+      controlMinutesToPost: controlState?.minutesToPost ?? null,
+      controlStatus: controlState?.status ?? null,
+      controlDone: controlState?.done ?? null,
     };
   }
 
@@ -344,6 +361,12 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<SyncTrackResult> {
           : "Card is confirmed/automated; race definitions were preserved and only official scratches were checked.",
       failed: false,
       errorMessage: null,
+      controlRaceDate: controlState?.raceDate ?? null,
+      controlNumberOfRaces: controlState?.numberOfRaces ?? null,
+      controlCurrentRaceNumber: controlState?.currentRaceNumber ?? null,
+      controlMinutesToPost: controlState?.minutesToPost ?? null,
+      controlStatus: controlState?.status ?? null,
+      controlDone: controlState?.done ?? null,
     };
   }
 
@@ -415,6 +438,12 @@ async function syncOneTrack(trackId: AmtoteTrackId): Promise<SyncTrackResult> {
     skipReason: null,
     failed: false,
     errorMessage: null,
+    controlRaceDate: controlState?.raceDate ?? null,
+    controlNumberOfRaces: controlState?.numberOfRaces ?? null,
+    controlCurrentRaceNumber: controlState?.currentRaceNumber ?? null,
+    controlMinutesToPost: controlState?.minutesToPost ?? null,
+    controlStatus: controlState?.status ?? null,
+    controlDone: controlState?.done ?? null,
   };
 }
 
@@ -423,9 +452,31 @@ export async function syncAmtoteGreyhoundCards(
 ): Promise<SyncAmtoteCardsResult> {
   const tracks: SyncTrackResult[] = [];
 
+  let controlStates: AmtoteTrackState[] = [];
+
+  try {
+    controlStates =
+      await getAmtoteUSOControlTrackStates(trackIds);
+  } catch (error) {
+    console.error(
+      "AmTote GetTracksUSOControl discovery failed:",
+      error,
+    );
+  }
+
   for (const trackId of trackIds) {
+    const controlState =
+      controlStates.find(
+        (state) => state.trackId === trackId,
+      ) ?? null;
+
     try {
-      tracks.push(await syncOneTrack(trackId));
+      tracks.push(
+        await syncOneTrack(
+          trackId,
+          controlState,
+        ),
+      );
     } catch (error) {
       const trackCode = g365TrackCodeForAmtote(trackId);
       const message =
@@ -445,6 +496,12 @@ export async function syncAmtoteGreyhoundCards(
         skipReason: null,
         failed: true,
         errorMessage: message,
+        controlRaceDate: controlState?.raceDate ?? null,
+        controlNumberOfRaces: controlState?.numberOfRaces ?? null,
+        controlCurrentRaceNumber: controlState?.currentRaceNumber ?? null,
+        controlMinutesToPost: controlState?.minutesToPost ?? null,
+        controlStatus: controlState?.status ?? null,
+        controlDone: controlState?.done ?? null,
       });
     }
   }

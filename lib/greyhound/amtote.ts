@@ -669,6 +669,85 @@ export async function getAmtoteTrackState(
   };
 }
 
+
+export async function getAmtoteUSOControlTrackStates(
+  trackIds: AmtoteTrackId[] = ["WEM", "TSE"],
+): Promise<AmtoteTrackState[]> {
+  const rawSoapXml = await soapRequest(
+    "GetTracksUSOControl",
+    "",
+  );
+
+  const payload = resultPayload(
+    rawSoapXml,
+    "GetTracksUSOControl",
+  );
+
+  const exm = (tagValue(payload, "exm") ?? "").trim();
+
+  if (exm && exm.toLowerCase() !== "success") {
+    throw new Error(
+      `AmTote GetTracksUSOControl failed: ${exm}`,
+    );
+  }
+
+  let trackBlocks = allBlocks(payload, "trackinfo");
+
+  if (trackBlocks.length === 0) {
+    trackBlocks = allBlocks(payload, "TrackInfo");
+  }
+
+  const requested = new Set<string>(
+    trackIds.map((trackId) => trackId.toUpperCase()),
+  );
+
+  return trackBlocks
+    .map((block): AmtoteTrackState | null => {
+      const returnedTrackId = (
+        tagValue(block, "tid") ?? ""
+      )
+        .trim()
+        .toUpperCase();
+
+      if (
+        returnedTrackId !== "WEM" &&
+        returnedTrackId !== "TSE"
+      ) {
+        return null;
+      }
+
+      if (!requested.has(returnedTrackId)) {
+        return null;
+      }
+
+      return {
+        trackId: returnedTrackId as AmtoteTrackId,
+        trackCode: tagValue(block, "tcd"),
+        trackName: tagValue(block, "trk"),
+        raceDate: normalizeFeedDate(
+          tagValue(block, "dat"),
+        ),
+        signal: tagValue(block, "sig"),
+        sport: tagValue(block, "spt"),
+        currentRaceNumber: intOrNull(
+          tagValue(block, "crc"),
+        ),
+        numberOfRaces: intOrNull(
+          tagValue(block, "nrs"),
+        ),
+        minutesToPost: intOrNull(
+          tagValue(block, "mtp"),
+        ),
+        status: tagValue(block, "sts"),
+        done: boolValue(tagValue(block, "dun")),
+      };
+    })
+    .filter(
+      (state): state is AmtoteTrackState =>
+        Boolean(state),
+    );
+}
+
 export async function getAmtoteGetTracksUSOControlDiagnostic(): Promise<{
   rawSoapXml: string;
   decodedPayload: string;
