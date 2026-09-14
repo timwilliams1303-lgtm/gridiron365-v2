@@ -1,5 +1,3 @@
-
-import Image from "next/image";
 import Link from "next/link";
 
 import {
@@ -7,26 +5,15 @@ import {
   redirect,
 } from "next/navigation";
 
-
-import TraditionalLiveRefresh from "@/components/traditional/TraditionalLiveRefresh";
-
 import LeagueNav from "@/components/leagues/LeagueNav";
 
 import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
 
-import {
-  getLeaguePrimaryAction,
-} from "@/lib/leagues/leagueRoutes";
-
 import type {
   G365LeagueType,
 } from "@/lib/leagues/leagueCapabilities";
-
-import {
-  getLeagueDisplayLabels,
-} from "@/lib/leagues/leagueDisplayLabels";
 
 import {
   createSupabaseServerClient,
@@ -47,11 +34,10 @@ type LayoutProps = {
 
 
 function isUuid(
-  value:
-    string
+  value: string,
 ) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value
+    value,
   );
 }
 
@@ -74,11 +60,11 @@ export default async function LeagueLayout({
   if (
     !leagueId ||
     !isUuid(
-      leagueId
+      leagueId,
     )
   ) {
     redirect(
-      "/my-leagues"
+      "/my-leagues",
     );
   }
 
@@ -90,7 +76,7 @@ export default async function LeagueLayout({
    */
   const access =
     await requireLeagueMember(
-      leagueId
+      leagueId,
     );
 
 
@@ -106,19 +92,10 @@ export default async function LeagueLayout({
     access.league;
 
 
-  const fantasyTeam =
-    access.fantasyTeam;
-
-
   const isCommissioner =
     Boolean(
-      access.isCommissioner
+      access.isCommissioner,
     );
-
-
-  const isTraditional =
-    league.leagueType ===
-    "traditional";
 
 
   const isSeasonLong =
@@ -130,12 +107,6 @@ export default async function LeagueLayout({
    * ============================================================
    * SEASON-LONG NAVIGATION SETTINGS
    * ============================================================
-   *
-   * The selected league decides which tabs are visible.
-   * Total Points leagues do not expose H2H-only pages.
-   * Head-to-Head leagues expose Matchups, and Stage 5 will use
-   * playoffsEnabled to expose the playoff/bracket tab only when
-   * that league actually has H2H playoffs enabled.
    */
   let seasonLongCompetitionFormat:
     | "total_points"
@@ -160,7 +131,7 @@ export default async function LeagueLayout({
     } =
       await supabase
         .from(
-          "season_long_settings"
+          "season_long_settings",
         )
         .select(`
           competition_format,
@@ -168,7 +139,7 @@ export default async function LeagueLayout({
         `)
         .eq(
           "league_id",
-          leagueId
+          leagueId,
         )
         .maybeSingle();
 
@@ -177,7 +148,7 @@ export default async function LeagueLayout({
       seasonLongSettingsError
     ) {
       throw new Error(
-        `Could not load Season-Long navigation settings: ${seasonLongSettingsError.message}`
+        `Could not load Season-Long navigation settings: ${seasonLongSettingsError.message}`,
       );
     }
 
@@ -189,10 +160,11 @@ export default async function LeagueLayout({
         ? "head_to_head"
         : "total_points";
 
+
     seasonLongPlayoffsEnabled =
       Boolean(
         seasonLongSettings
-          ?.playoffs_enabled
+          ?.playoffs_enabled,
       );
   }
 
@@ -202,41 +174,36 @@ export default async function LeagueLayout({
       G365LeagueType;
 
 
-  const {
-    leagueTypeLabel,
-    mobileLeagueTypeLabel,
-    selectionModeLabel,
-    mobileSelectionModeLabel,
-  } =
-    getLeagueDisplayLabels({
-      leagueType,
-      playerSelectionMode:
-        league.playerSelectionMode,
-      seasonLongCompetitionFormat,
-    });
-
-
-  const primaryAction =
-    getLeaguePrimaryAction({
-      leagueId,
-      leagueType,
-    });
-
-
-  const primaryActionLabel =
-    primaryAction.label;
-
-
-  const primaryActionHref =
-    primaryAction.href;
-
-
   return (
     <div
       className="g365-league-shell"
     >
       {/* ==================================================
-          TRADITIONAL REALTIME ONLY
+          BACK TO MY LEAGUES
+      =================================================== */}
+
+      <div
+        className="g365-back-to-leagues-bar"
+      >
+        <Link
+          href="/my-leagues"
+          className="g365-back-to-leagues-button"
+        >
+          <span
+            aria-hidden="true"
+          >
+            ←
+          </span>
+
+          <span>
+            Back to My Leagues
+          </span>
+        </Link>
+      </div>
+
+
+      {/* ==================================================
+          LEAGUE NAVIGATION
       =================================================== */}
 
       <LeagueNav
