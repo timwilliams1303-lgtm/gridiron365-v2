@@ -209,10 +209,10 @@ function calculateSimpleWinProbability(
 
 
   if (
-    away.playersRemaining ===
-      0 &&
-    home.playersRemaining ===
-      0
+    away.playersFinal ===
+      away.starters.length &&
+    home.playersFinal ===
+      home.starters.length
   ) {
     if (
       away.points ===
@@ -291,6 +291,44 @@ function displayedPlayersLive(
           ?.isActuallyLive ||
         player.scoreIsLive
       )
+  ).length;
+}
+
+
+function displayedPlayersRemaining(
+  team:
+    MatchupDetailTeam
+) {
+  return team.starters.filter(
+    (
+      player
+    ) => {
+      const playerIsFinal =
+        Boolean(
+          player.scoreIsFinal ||
+          player.gameContext
+            ?.statusCompleted
+        );
+
+      const playerIsLive =
+        Boolean(
+          player.gameContext
+            ?.isActuallyLive ||
+          player.scoreIsLive
+        );
+
+      /*
+       * REMAINING is intentionally different from LIVE.
+       *
+       * If a starter's NFL game is already live, that player
+       * is shown only under LIVE and is not also counted as
+       * REMAINING.
+       */
+      return (
+        !playerIsFinal &&
+        !playerIsLive
+      );
+    }
   ).length;
 }
 
@@ -567,7 +605,9 @@ export default async function TraditionalMatchupDetailPage({
               awayPlayersLive
             }
             playersRemaining={
-              data.away.playersRemaining
+              displayedPlayersRemaining(
+                data.away
+              )
             }
             projectedPoints={
               data.away.expectedFinalPoints
@@ -650,7 +690,9 @@ export default async function TraditionalMatchupDetailPage({
               homePlayersLive
             }
             playersRemaining={
-              data.home.playersRemaining
+              displayedPlayersRemaining(
+                data.home
+              )
             }
             projectedPoints={
               data.home.expectedFinalPoints
@@ -975,7 +1017,9 @@ export default async function TraditionalMatchupDetailPage({
                             styles.scoringDot
                           }
                         >
-                          TD
+                          {scoringPlayType(
+                            play.text
+                          )}
                         </span>
 
 
@@ -991,7 +1035,17 @@ export default async function TraditionalMatchupDetailPage({
                           </strong>
 
                           <span>
-                            {play.text}
+                            <HighlightedScoringPlayText
+                              text={
+                                play.text
+                              }
+                              participants={
+                                scoringParticipantHighlights(
+                                  data,
+                                  play
+                                )
+                              }
+                            />
                           </span>
                         </div>
 
@@ -1082,7 +1136,9 @@ export default async function TraditionalMatchupDetailPage({
                       key={play.espnPlayId}
                       style={styles.scoringRow}
                     >
-                      <span style={styles.scoringDot}>TD</span>
+                      <span style={styles.scoringDot}>{scoringPlayType(
+                            play.text
+                          )}</span>
 
                       <div style={styles.scoringRowText}>
                         <strong>
@@ -1256,22 +1312,26 @@ function ScoreTeam({
         </span>
 
 
-        <span
-          style={
-            styles.metaDivider
-          }
-        >
-          •
-        </span>
+        {playersRemaining >
+        0 ? (
+          <>
+            <span
+              style={
+                styles.metaDivider
+              }
+            >
+              •
+            </span>
 
-
-        <span
-          style={
-            styles.remainingMeta
-          }
-        >
-          {playersRemaining} REMAINING
-        </span>
+            <span
+              style={
+                styles.remainingMeta
+              }
+            >
+              {playersRemaining} REMAINING
+            </span>
+          </>
+        ) : null}
       </div>
 
 
@@ -1484,6 +1544,734 @@ function LiveGame({
         </span>
       ) : null}
     </div>
+  );
+}
+
+
+
+function formatPlayerStatLine(
+  player:
+    MatchupDetailPlayer
+): string | null {
+  const stats =
+    player.stats;
+
+  const parts:
+    string[] = [];
+
+
+  switch (
+    player.position
+      .trim()
+      .toUpperCase()
+  ) {
+    case "QB": {
+      if (
+        stats.passingAttempts >
+          0 ||
+        stats.passingCompletions >
+          0 ||
+        stats.passingYards !==
+          0 ||
+        stats.passingTouchdowns >
+          0 ||
+        stats.passingInterceptions >
+          0
+      ) {
+        parts.push(
+          `${stats.passingCompletions}/${stats.passingAttempts} CMP`,
+          `${stats.passingYards} PASS YDS`
+        );
+
+        if (
+          stats.passingTouchdowns >
+          0
+        ) {
+          parts.push(
+            `${stats.passingTouchdowns} PASS TD`
+          );
+        }
+
+        if (
+          stats.passingInterceptions >
+          0
+        ) {
+          parts.push(
+            `${stats.passingInterceptions} INT`
+          );
+        }
+      }
+
+
+      if (
+        stats.rushingAttempts >
+          0 ||
+        stats.rushingYards !==
+          0 ||
+        stats.rushingTouchdowns >
+          0
+      ) {
+        parts.push(
+          `${stats.rushingAttempts} CAR`,
+          `${stats.rushingYards} RUSH YDS`
+        );
+
+        if (
+          stats.rushingTouchdowns >
+          0
+        ) {
+          parts.push(
+            `${stats.rushingTouchdowns} RUSH TD`
+          );
+        }
+      }
+
+      break;
+    }
+
+
+    case "RB": {
+      if (
+        stats.rushingAttempts >
+          0 ||
+        stats.rushingYards !==
+          0 ||
+        stats.rushingTouchdowns >
+          0
+      ) {
+        parts.push(
+          `${stats.rushingAttempts} CAR`,
+          `${stats.rushingYards} RUSH YDS`
+        );
+
+        if (
+          stats.rushingTouchdowns >
+          0
+        ) {
+          parts.push(
+            `${stats.rushingTouchdowns} RUSH TD`
+          );
+        }
+      }
+
+
+      if (
+        stats.receivingTargets >
+          0 ||
+        stats.receptions >
+          0 ||
+        stats.receivingYards !==
+          0 ||
+        stats.receivingTouchdowns >
+          0
+      ) {
+        parts.push(
+          `${stats.receptions}/${stats.receivingTargets} REC/TGT`,
+          `${stats.receivingYards} REC YDS`
+        );
+
+        if (
+          stats.receivingTouchdowns >
+          0
+        ) {
+          parts.push(
+            `${stats.receivingTouchdowns} REC TD`
+          );
+        }
+      }
+
+      break;
+    }
+
+
+    case "WR":
+    case "TE": {
+      if (
+        stats.receivingTargets >
+          0 ||
+        stats.receptions >
+          0 ||
+        stats.receivingYards !==
+          0 ||
+        stats.receivingTouchdowns >
+          0
+      ) {
+        parts.push(
+          `${stats.receptions}/${stats.receivingTargets} REC/TGT`,
+          `${stats.receivingYards} REC YDS`
+        );
+
+        if (
+          stats.receivingTouchdowns >
+          0
+        ) {
+          parts.push(
+            `${stats.receivingTouchdowns} REC TD`
+          );
+        }
+      }
+
+
+      if (
+        stats.rushingAttempts >
+          0 ||
+        stats.rushingYards !==
+          0 ||
+        stats.rushingTouchdowns >
+          0
+      ) {
+        parts.push(
+          `${stats.rushingAttempts} CAR`,
+          `${stats.rushingYards} RUSH YDS`
+        );
+
+        if (
+          stats.rushingTouchdowns >
+          0
+        ) {
+          parts.push(
+            `${stats.rushingTouchdowns} RUSH TD`
+          );
+        }
+      }
+
+      break;
+    }
+
+
+    case "K":
+    case "PK": {
+      if (
+        stats.fieldGoalsAttempted >
+          0 ||
+        stats.fieldGoalsMade >
+          0
+      ) {
+        parts.push(
+          `${stats.fieldGoalsMade}/${stats.fieldGoalsAttempted} FG`
+        );
+      }
+
+
+      if (
+        stats.extraPointsAttempted >
+          0 ||
+        stats.extraPointsMade >
+          0
+      ) {
+        parts.push(
+          `${stats.extraPointsMade}/${stats.extraPointsAttempted} XP`
+        );
+      }
+
+      break;
+    }
+
+
+    case "DST":
+    case "DEF": {
+      if (
+        stats.dstSacks !==
+        0
+      ) {
+        parts.push(
+          `${stats.dstSacks} SACK`
+        );
+      }
+
+      if (
+        stats.dstInterceptions >
+        0
+      ) {
+        parts.push(
+          `${stats.dstInterceptions} INT`
+        );
+      }
+
+      if (
+        stats.dstFumbleRecoveries >
+        0
+      ) {
+        parts.push(
+          `${stats.dstFumbleRecoveries} FR`
+        );
+      }
+
+      if (
+        stats.dstTouchdowns >
+        0
+      ) {
+        parts.push(
+          `${stats.dstTouchdowns} TD`
+        );
+      }
+
+      if (
+        stats.dstSafeties >
+        0
+      ) {
+        parts.push(
+          `${stats.dstSafeties} SAFETY`
+        );
+      }
+
+      if (
+        stats.dstBlockedKicks >
+        0
+      ) {
+        parts.push(
+          `${stats.dstBlockedKicks} BLK`
+        );
+      }
+
+      parts.push(
+        `${stats.dstPointsAllowed} PA`,
+        `${stats.dstYardsAllowed} YA`
+      );
+
+      break;
+    }
+
+
+    default: {
+      if (
+        stats.rushingAttempts >
+          0 ||
+        stats.rushingYards !==
+          0
+      ) {
+        parts.push(
+          `${stats.rushingAttempts} CAR`,
+          `${stats.rushingYards} RUSH YDS`
+        );
+      }
+
+      if (
+        stats.receivingTargets >
+          0 ||
+        stats.receptions >
+          0 ||
+        stats.receivingYards !==
+          0
+      ) {
+        parts.push(
+          `${stats.receptions}/${stats.receivingTargets} REC/TGT`,
+          `${stats.receivingYards} REC YDS`
+        );
+      }
+    }
+  }
+
+
+  if (
+    stats.fumblesLost >
+    0
+  ) {
+    parts.push(
+      `${stats.fumblesLost} FUM LOST`
+    );
+  }
+
+
+  if (
+    parts.length >
+    0
+  ) {
+    return parts.join(
+      " • "
+    );
+  }
+
+
+  return null;
+}
+
+function scoringPlayType(
+  text:
+    string |
+    null
+) {
+  const value =
+    String(
+      text ?? ""
+    ).toLowerCase();
+
+  if (
+    value.includes(
+      "field goal"
+    )
+  ) {
+    return "FG";
+  }
+
+  if (
+    value.includes(
+      "extra point"
+    )
+  ) {
+    return "XP";
+  }
+
+  if (
+    value.includes(
+      "two-point"
+    ) ||
+    value.includes(
+      "two point"
+    ) ||
+    value.includes(
+      "2-point"
+    ) ||
+    value.includes(
+      "2 point"
+    )
+  ) {
+    return "2PT";
+  }
+
+  if (
+    value.includes(
+      "safety"
+    )
+  ) {
+    return "SAFETY";
+  }
+
+  if (
+    value.includes(
+      "interception"
+    ) &&
+    (
+      value.includes(
+        "touchdown"
+      ) ||
+      value.includes(
+        "return"
+      )
+    )
+  ) {
+    return "INT DEF";
+  }
+
+  if (
+    (
+      value.includes(
+        "fumble"
+      ) ||
+      value.includes(
+        "fumbled"
+      )
+    ) &&
+    value.includes(
+      "touchdown"
+    )
+  ) {
+    return "FUM DEF";
+  }
+
+  if (
+    value.includes(
+      "kickoff"
+    ) &&
+    value.includes(
+      "touchdown"
+    )
+  ) {
+    return "KR TD";
+  }
+
+  if (
+    value.includes(
+      "punt"
+    ) &&
+    value.includes(
+      "touchdown"
+    )
+  ) {
+    return "PR TD";
+  }
+
+  if (
+    value.includes(
+      "blocked"
+    ) &&
+    value.includes(
+      "touchdown"
+    )
+  ) {
+    return "BLK TD";
+  }
+
+  if (
+    value.includes(
+      "pass"
+    ) &&
+    value.includes(
+      "touchdown"
+    )
+  ) {
+    return "PASS TD";
+  }
+
+  if (
+    value.includes(
+      "touchdown"
+    )
+  ) {
+    return "TD";
+  }
+
+  return "SCORE";
+}
+
+
+type ScoringParticipantHighlight = {
+  aliases: string[];
+  isMyTeam: boolean;
+};
+
+
+function playerScoringAliases(
+  fullName:
+    string
+) {
+  const clean =
+    fullName.trim();
+
+  const parts =
+    clean.split(
+      /\s+/
+    );
+
+  const aliases =
+    new Set<string>();
+
+  if (clean) {
+    aliases.add(
+      clean
+    );
+  }
+
+  if (
+    parts.length >=
+      2 &&
+    parts[0]
+  ) {
+    const firstInitial =
+      parts[0][0];
+
+    const lastName =
+      parts[
+        parts.length -
+          1
+      ];
+
+    if (
+      firstInitial &&
+      lastName
+    ) {
+      aliases.add(
+        `${firstInitial}.${lastName}`
+      );
+
+      aliases.add(
+        `${firstInitial}. ${lastName}`
+      );
+    }
+  }
+
+  return Array.from(
+    aliases
+  );
+}
+
+
+function scoringParticipantHighlights(
+  data: {
+    away:
+      MatchupDetailTeam;
+    home:
+      MatchupDetailTeam;
+  },
+  play: {
+    participantEspnPlayerIds:
+      string[];
+  }
+):
+  ScoringParticipantHighlight[] {
+  const players = [
+    ...data.away.starters.map(
+      (
+        player
+      ) => ({
+        player,
+        isMyTeam:
+          data.away.isMyTeam,
+      })
+    ),
+
+    ...data.home.starters.map(
+      (
+        player
+      ) => ({
+        player,
+        isMyTeam:
+          data.home.isMyTeam,
+      })
+    ),
+  ];
+
+  return players
+    .filter(
+      ({
+        player,
+      }) =>
+        Boolean(
+          player.espnPlayerId &&
+          play
+            .participantEspnPlayerIds
+            .includes(
+              player.espnPlayerId
+            )
+        )
+    )
+    .map(
+      ({
+        player,
+        isMyTeam,
+      }) => ({
+        aliases:
+          playerScoringAliases(
+            player.fullName
+          ),
+        isMyTeam,
+      })
+    );
+}
+
+
+function HighlightedScoringPlayText({
+  text,
+  participants,
+}: {
+  text:
+    string |
+    null;
+
+  participants:
+    ScoringParticipantHighlight[];
+}) {
+  const value =
+    text ?? "";
+
+  const aliases =
+    participants.flatMap(
+      (
+        participant
+      ) =>
+        participant.aliases.map(
+          (
+            alias
+          ) => ({
+            alias,
+            isMyTeam:
+              participant.isMyTeam,
+          })
+        )
+    )
+    .filter(
+      (
+        item
+      ) =>
+        item.alias.length >
+        0
+    )
+    .sort(
+      (
+        a,
+        b
+      ) =>
+        b.alias.length -
+        a.alias.length
+    );
+
+  if (
+    aliases.length ===
+    0
+  ) {
+    return (
+      <>
+        {value}
+      </>
+    );
+  }
+
+  const escaped =
+    aliases.map(
+      (
+        item
+      ) =>
+        item.alias.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        )
+    );
+
+  const pattern =
+    new RegExp(
+      `(${escaped.join("|")})`,
+      "gi"
+    );
+
+  return (
+    <>
+      {value.split(
+        pattern
+      ).map(
+        (
+          part,
+          index
+        ) => {
+          const match =
+            aliases.find(
+              (
+                item
+              ) =>
+                item.alias.toLowerCase() ===
+                part.toLowerCase()
+            );
+
+          if (
+            !match
+          ) {
+            return (
+              <span
+                key={
+                  `${part}-${index}`
+                }
+              >
+                {part}
+              </span>
+            );
+          }
+
+          return (
+            <strong
+              key={
+                `${part}-${index}`
+              }
+              style={
+                match.isMyTeam
+                  ? styles.scoringPlayMyPlayerName
+                  : styles.scoringPlayOpponentPlayerName
+              }
+            >
+              {part}
+            </strong>
+          );
+        }
+      )}
+    </>
   );
 }
 
@@ -1823,6 +2611,27 @@ function CompactPlayerRow({
             {player.injuryStatus
               ? ` • ${player.injuryStatus}`
               : ""}
+          </span>
+
+          <span
+            title={
+              formatPlayerStatLine(
+                player
+              ) ??
+              undefined
+            }
+            style={
+              player
+                .gameContext
+                ?.isActuallyLive
+                ? styles.playerStatLineLive
+                : styles.playerStatLine
+            }
+          >
+            {formatPlayerStatLine(
+              player
+            ) ??
+              "NO STATS AVAILABLE"}
           </span>
         </div>
       </div>
@@ -3238,6 +4047,24 @@ const styles = {
   },
 
 
+  scoringPlayMyPlayerName: {
+    color:
+      "#43d982",
+
+    fontWeight:
+      950,
+  },
+
+
+  scoringPlayOpponentPlayerName: {
+    color:
+      "#ff5a50",
+
+    fontWeight:
+      950,
+  },
+
+
   playerName: {
     overflow:
       "hidden",
@@ -3252,6 +4079,54 @@ const styles = {
       "#f1f2f3",
 
     fontSize: "13px",
+  },
+
+
+  playerStatLine: {
+    overflow:
+      "hidden",
+
+    textOverflow:
+      "ellipsis",
+
+    whiteSpace:
+      "nowrap" as const,
+
+    color:
+      "#a6adb7",
+
+    fontSize:
+      "10px",
+
+    fontWeight:
+      750,
+
+    fontVariantNumeric:
+      "tabular-nums",
+  },
+
+
+  playerStatLineLive: {
+    overflow:
+      "hidden",
+
+    textOverflow:
+      "ellipsis",
+
+    whiteSpace:
+      "nowrap" as const,
+
+    color:
+      "#ff9a43",
+
+    fontSize:
+      "10px",
+
+    fontWeight:
+      850,
+
+    fontVariantNumeric:
+      "tabular-nums",
   },
 
 
@@ -3407,3 +4282,4 @@ const styles = {
       "center" as const,
   },
 };
+

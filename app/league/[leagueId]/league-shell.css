@@ -1127,3 +1127,269 @@
     font-size: 10px;
   }
 }
+
+/* ============================================================
+   MOBILE LEAGUE NAVIGATION ACCESSIBILITY FIX
+   Applies across Traditional, Season-Long, NFL Playoffs,
+   Pick'em, Greyhound/universal league navigation, and future
+   league types using the shared league shell.
+   ============================================================ */
+
+@media (max-width: 760px) {
+  .g365-league-shell {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /*
+   * Give the shared league header more room below the
+   * phone's top safe area / browser chrome.
+   */
+  .g365-league-header {
+    position: relative !important;
+    z-index: 30 !important;
+
+    padding-top:
+      max(
+        18px,
+        calc(env(safe-area-inset-top) + 10px)
+      ) !important;
+
+    padding-bottom: 12px !important;
+  }
+
+  /*
+   * Keep every known league navigation below the header
+   * instead of crowding the top edge of the screen.
+   */
+  .g365-league-nav,
+  .g365-season-long-nav,
+  .g365-pickem-nav,
+  .g365-universal-league-nav {
+    position: relative !important;
+    top: auto !important;
+
+    width: 100% !important;
+    max-width: 100% !important;
+
+    margin-top: 10px !important;
+
+    z-index: 25 !important;
+
+    touch-action: manipulation;
+
+    isolation: isolate;
+  }
+
+  /*
+   * Shared / universal horizontal navigation.
+   */
+  .g365-league-nav-inner,
+  .g365-universal-league-nav-inner {
+    width: 100% !important;
+    max-width: 100% !important;
+
+    min-height: 48px !important;
+
+    justify-content: flex-start !important;
+
+    padding:
+      10px
+      max(12px, env(safe-area-inset-right))
+      12px
+      max(12px, env(safe-area-inset-left)) !important;
+
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+
+    -webkit-overflow-scrolling: touch;
+
+    overscroll-behavior-x: contain;
+
+    scroll-snap-type: x proximity;
+
+    scrollbar-width: thin;
+
+    touch-action: pan-x;
+  }
+
+  /*
+   * Shared / universal tab buttons.
+   */
+  .g365-league-nav-link,
+  .g365-universal-league-nav-link {
+    position: relative !important;
+    z-index: 26 !important;
+
+    min-width: 88px !important;
+    min-height: 48px !important;
+
+    display: inline-flex !important;
+
+    align-items: center !important;
+    justify-content: center !important;
+
+    flex: 0 0 auto !important;
+
+    padding: 9px 11px !important;
+
+    border-radius: 9px;
+
+    pointer-events: auto !important;
+
+    touch-action: manipulation !important;
+
+    scroll-snap-align: start;
+
+    cursor: pointer;
+
+    -webkit-tap-highlight-color:
+      rgba(
+        255,
+        95,
+        20,
+        0.22
+      );
+  }
+
+  /*
+   * Season-Long uses its own two-column mobile grid.
+   */
+  .g365-season-long-nav > div {
+    width: 100% !important;
+
+    padding:
+      10px
+      max(12px, env(safe-area-inset-right))
+      12px
+      max(12px, env(safe-area-inset-left)) !important;
+
+    gap: 8px !important;
+
+    overflow: visible !important;
+  }
+
+  .g365-season-long-nav a {
+    position: relative !important;
+    z-index: 26 !important;
+
+    min-width: 0 !important;
+    min-height: 48px !important;
+
+    display: flex !important;
+
+    align-items: center !important;
+    justify-content: center !important;
+
+    padding: 9px 8px !important;
+
+    pointer-events: auto !important;
+
+    touch-action: manipulation !important;
+
+    -webkit-tap-highlight-color:
+      rgba(
+        255,
+        95,
+        20,
+        0.22
+      );
+  }
+
+  /*
+   * Pick'em also has its own mobile grid.
+   */
+  .g365-pickem-nav {
+    padding:
+      10px
+      max(12px, env(safe-area-inset-right))
+      12px
+      max(12px, env(safe-area-inset-left)) !important;
+
+    gap: 8px !important;
+
+    overflow: visible !important;
+  }
+
+  .g365-pickem-nav a {
+    position: relative !important;
+    z-index: 26 !important;
+
+    min-width: 0 !important;
+    min-height: 48px !important;
+
+    display: flex !important;
+
+    align-items: center !important;
+    justify-content: center !important;
+
+    padding: 9px 8px !important;
+
+    pointer-events: auto !important;
+
+    touch-action: manipulation !important;
+
+    -webkit-tap-highlight-color:
+      rgba(
+        255,
+        95,
+        20,
+        0.22
+      );
+  }
+
+  /*
+   * Keep content visually below the navigation and prevent
+   * content layers from sitting over the tabs.
+   */
+  .g365-league-content {
+    position: relative;
+
+    z-index: 1;
+
+    padding-top: 10px !important;
+  }
+}
+
+
+/* ============================================================
+   EXTRA-SMALL PHONES
+   ============================================================ */
+
+@media (max-width: 430px) {
+  .g365-league-header {
+    padding-top:
+      max(
+        20px,
+        calc(env(safe-area-inset-top) + 12px)
+      ) !important;
+
+    padding-right:
+      max(
+        10px,
+        env(safe-area-inset-right)
+      ) !important;
+
+    padding-bottom: 12px !important;
+
+    padding-left:
+      max(
+        10px,
+        env(safe-area-inset-left)
+      ) !important;
+  }
+
+  .g365-league-nav,
+  .g365-season-long-nav,
+  .g365-pickem-nav,
+  .g365-universal-league-nav {
+    margin-top: 12px !important;
+  }
+
+  .g365-league-nav-link,
+  .g365-universal-league-nav-link,
+  .g365-season-long-nav a,
+  .g365-pickem-nav a {
+    min-height: 50px !important;
+  }
+}

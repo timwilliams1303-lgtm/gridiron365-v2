@@ -1,7 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import BackToMyLeaguesButton from "@/components/leagues/BackToMyLeaguesButton";
+
 import styles from "./GreyhoundLeagueHome.module.css";
 
 type CardData = {
@@ -74,10 +82,17 @@ function money(value: unknown) {
   }).format(Number.isFinite(numeric) ? numeric : 0);
 }
 
-function formatDate(value: string | null | undefined) {
-  if (!value) return "Not available yet";
+function formatDate(
+  value: string | null | undefined,
+) {
+  if (!value) {
+    return "Not available yet";
+  }
 
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})$/.exec(
+      value,
+    );
 
   if (match) {
     const year = Number(match[1]);
@@ -95,12 +110,15 @@ function formatDate(value: string | null | undefined) {
       ),
     );
 
-    return new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      timeZone: "America/New_York",
-    }).format(date);
+    return new Intl.DateTimeFormat(
+      "en-US",
+      {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "America/New_York",
+      },
+    ).format(date);
   }
 
   const date = new Date(value);
@@ -109,18 +127,23 @@ function formatDate(value: string | null | undefined) {
     return value;
   }
 
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "America/New_York",
-  }).format(date);
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "America/New_York",
+    },
+  ).format(date);
 }
 
 function formatDateTime(
   value: string | null | undefined,
 ) {
-  if (!value) return "Not posted yet";
+  if (!value) {
+    return "Not posted yet";
+  }
 
   const date = new Date(value);
 
@@ -128,13 +151,16 @@ function formatDateTime(
     return value;
   }
 
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/New_York",
-  }).format(date);
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "America/New_York",
+    },
+  ).format(date);
 }
 
 function trackScopeLabel(value: unknown) {
@@ -171,14 +197,10 @@ function easternTodayIsoDate() {
     new Intl.DateTimeFormat(
       "en-US",
       {
-        timeZone:
-          "America/New_York",
-        year:
-          "numeric",
-        month:
-          "2-digit",
-        day:
-          "2-digit",
+        timeZone: "America/New_York",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
       },
     );
 
@@ -393,7 +415,10 @@ function advancePastCompletedDates(
 
 function normalizeRaceStatus(
   raceStatus: string,
-  cardStatus: string | null | undefined,
+  cardStatus:
+    | string
+    | null
+    | undefined,
 ) {
   const race =
     String(
@@ -473,7 +498,9 @@ export default function GreyhoundLeagueHome({
     useCallback(
       async (
         raceDate: string,
-        trackCode?: string | null,
+        trackCode?:
+          | string
+          | null,
       ) => {
         const params =
           new URLSearchParams();
@@ -499,8 +526,7 @@ export default function GreyhoundLeagueHome({
           await fetch(
             `/api/greyhound/wager-workspace?${params.toString()}`,
             {
-              cache:
-                "no-store",
+              cache: "no-store",
             },
           );
 
@@ -543,7 +569,7 @@ export default function GreyhoundLeagueHome({
           /*
            * First request is date-only.
            *
-           * The updated wager-workspace API intentionally does
+           * The wager-workspace API intentionally does
            * not auto-open a track for a date-only request.
            *
            * We use this request to get:
@@ -642,12 +668,16 @@ export default function GreyhoundLeagueHome({
           ) {
             setData({
               ...overview,
+
               selectedDate:
                 targetDate,
+
               card:
                 null,
+
               bankroll:
                 null,
+
               races:
                 [],
             });
@@ -675,12 +705,16 @@ export default function GreyhoundLeagueHome({
           if (!trackCode) {
             setData({
               ...overview,
+
               selectedDate:
                 targetDate,
+
               card:
                 selectedCard,
+
               bankroll:
                 null,
+
               races:
                 [],
             });
@@ -708,12 +742,16 @@ export default function GreyhoundLeagueHome({
           ) {
             setData({
               ...overview,
+
               selectedDate:
                 targetDate,
+
               card:
                 null,
+
               bankroll:
                 null,
+
               races:
                 [],
             });
@@ -771,7 +809,6 @@ export default function GreyhoundLeagueHome({
    * the one-minute refresh above recalculates the
    * Eastern racing date automatically.
    */
-
   const races =
     data?.races ?? [];
 
@@ -838,6 +875,14 @@ export default function GreyhoundLeagueHome({
     data?.card?.raceDate ??
     displayDate;
 
+  const today =
+    easternTodayIsoDate();
+
+  const racingHeading =
+    displayDate === today
+      ? "Today’s Racing"
+      : "Next Racing Date";
+
   return (
     <main
       className={
@@ -849,62 +894,23 @@ export default function GreyhoundLeagueHome({
           styles.shell
         }
       >
+        {/* ==========================================
+            BACK TO MY LEAGUES
+        =========================================== */}
+
         <div
           style={{
-            display:
-              "flex",
-            alignItems:
-              "center",
-            marginBottom:
-              "12px",
+            display: "flex",
+            alignItems: "center",
+            marginBottom: "12px",
           }}
         >
-          <Link
-            href="/my-leagues"
-            style={{
-              display:
-                "inline-flex",
-              minHeight:
-                "42px",
-              alignItems:
-                "center",
-              justifyContent:
-                "center",
-              gap:
-                "8px",
-              padding:
-                "0 14px",
-              border:
-                "1px solid rgba(255, 103, 29, 0.38)",
-              borderRadius:
-                "10px",
-              background:
-                "linear-gradient(135deg, rgba(128, 24, 17, 0.48), rgba(54, 19, 12, 0.58))",
-              color:
-                "#ff9a62",
-              textDecoration:
-                "none",
-              fontSize:
-                "10px",
-              fontWeight:
-                950,
-              letterSpacing:
-                "0.07em",
-              textTransform:
-                "uppercase",
-            }}
-          >
-            <span
-              aria-hidden="true"
-            >
-              ←
-            </span>
-
-            <span>
-              Back to My Leagues
-            </span>
-          </Link>
+          <BackToMyLeaguesButton />
         </div>
+
+        {/* ==========================================
+            HERO
+        =========================================== */}
 
         <section
           className={
@@ -1090,11 +1096,19 @@ export default function GreyhoundLeagueHome({
           </div>
         ) : null}
 
+        {/* ==========================================
+            MAIN DASHBOARD
+        =========================================== */}
+
         <div
           className={
             styles.mainGrid
           }
         >
+          {/* ========================================
+              RACE CARD OVERVIEW
+          ========================================= */}
+
           <section
             className={
               styles.panel
@@ -1111,7 +1125,7 @@ export default function GreyhoundLeagueHome({
                     styles.eyebrow
                   }
                 >
-                  Today&apos;s Racing
+                  {racingHeading}
                 </div>
 
                 <h2>
@@ -1213,9 +1227,7 @@ export default function GreyhoundLeagueHome({
                     </span>
 
                     <strong>
-                      {
-                        races.length
-                      }
+                      {races.length}
                     </strong>
                   </div>
                 </div>
@@ -1302,15 +1314,13 @@ export default function GreyhoundLeagueHome({
                 >
                   {Array.from(
                     {
-                      length:
-                        8,
+                      length: 8,
                     },
                     (
                       _,
                       index,
                     ) =>
-                      index +
-                      1,
+                      index + 1,
                   ).map(
                     (
                       raceNumber,
@@ -1340,6 +1350,10 @@ export default function GreyhoundLeagueHome({
               </div>
             )}
           </section>
+
+          {/* ========================================
+              QUICK ACCESS
+          ========================================= */}
 
           <aside
             className={
@@ -1441,6 +1455,10 @@ export default function GreyhoundLeagueHome({
             </div>
           </aside>
         </div>
+
+        {/* ==========================================
+            BOTTOM STATUS
+        =========================================== */}
 
         <div
           className={

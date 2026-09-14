@@ -268,10 +268,10 @@ function calculateSimpleWinProbability(
 
 
   if (
-    away.playersRemaining ===
-      0 &&
-    home.playersRemaining ===
-      0
+    away.playersFinal ===
+      away.starters.length &&
+    home.playersFinal ===
+      home.starters.length
   ) {
     if (
       away.points ===
@@ -350,6 +350,44 @@ function displayedPlayersLive(
           ?.isActuallyLive ||
         player.scoreIsLive
       )
+  ).length;
+}
+
+
+function displayedPlayersRemaining(
+  team:
+    MatchupDetailTeam
+) {
+  return team.starters.filter(
+    (
+      player
+    ) => {
+      const playerIsFinal =
+        Boolean(
+          player.scoreIsFinal ||
+          player.gameContext
+            ?.statusCompleted
+        );
+
+      const playerIsLive =
+        Boolean(
+          player.gameContext
+            ?.isActuallyLive ||
+          player.scoreIsLive
+        );
+
+      /*
+       * REMAINING is intentionally different from LIVE.
+       *
+       * If a starter's NFL game is already live, that player
+       * is shown only under LIVE and is not also counted as
+       * REMAINING.
+       */
+      return (
+        !playerIsFinal &&
+        !playerIsLive
+      );
+    }
   ).length;
 }
 
@@ -805,7 +843,9 @@ export default async function SeasonLongMatchupDetailPage({
               awayPlayersLive
             }
             playersRemaining={
-              data.away.playersRemaining
+              displayedPlayersRemaining(
+                data.away
+              )
             }
             projectedPoints={
               data.away.expectedFinalPoints
@@ -888,7 +928,9 @@ export default async function SeasonLongMatchupDetailPage({
               homePlayersLive
             }
             playersRemaining={
-              data.home.playersRemaining
+              displayedPlayersRemaining(
+                data.home
+              )
             }
             projectedPoints={
               data.home.expectedFinalPoints
@@ -1229,7 +1271,9 @@ export default async function SeasonLongMatchupDetailPage({
                             styles.scoringDot
                           }
                         >
-                          TD
+                          {scoringPlayType(
+                            play.text
+                          )}
                         </span>
 
 
@@ -1434,22 +1478,26 @@ function ScoreTeam({
         </span>
 
 
-        <span
-          style={
-            styles.metaDivider
-          }
-        >
-          •
-        </span>
+        {playersRemaining >
+        0 ? (
+          <>
+            <span
+              style={
+                styles.metaDivider
+              }
+            >
+              •
+            </span>
 
-
-        <span
-          style={
-            styles.remainingMeta
-          }
-        >
-          {playersRemaining} REMAINING
-        </span>
+            <span
+              style={
+                styles.remainingMeta
+              }
+            >
+              {playersRemaining} REMAINING
+            </span>
+          </>
+        ) : null}
       </div>
 
 
@@ -1671,6 +1719,145 @@ function LiveGame({
       ) : null}
     </div>
   );
+}
+
+
+function scoringPlayType(
+  text:
+    string |
+    null
+) {
+  const value =
+    String(
+      text ?? ""
+    ).toLowerCase();
+
+  if (
+    value.includes(
+      "field goal"
+    )
+  ) {
+    return "FG";
+  }
+
+  if (
+    value.includes(
+      "extra point"
+    )
+  ) {
+    return "XP";
+  }
+
+  if (
+    value.includes(
+      "two-point"
+    ) ||
+    value.includes(
+      "two point"
+    ) ||
+    value.includes(
+      "2-point"
+    ) ||
+    value.includes(
+      "2 point"
+    )
+  ) {
+    return "2PT";
+  }
+
+  if (
+    value.includes(
+      "safety"
+    )
+  ) {
+    return "SAFETY";
+  }
+
+  if (
+    value.includes(
+      "interception"
+    ) &&
+    (
+      value.includes(
+        "touchdown"
+      ) ||
+      value.includes(
+        "return"
+      )
+    )
+  ) {
+    return "INT DEF";
+  }
+
+  if (
+    (
+      value.includes(
+        "fumble"
+      ) ||
+      value.includes(
+        "fumbled"
+      )
+    ) &&
+    value.includes(
+      "touchdown"
+    )
+  ) {
+    return "FUM DEF";
+  }
+
+  if (
+    value.includes(
+      "kickoff"
+    ) &&
+    value.includes(
+      "touchdown"
+    )
+  ) {
+    return "KR TD";
+  }
+
+  if (
+    value.includes(
+      "punt"
+    ) &&
+    value.includes(
+      "touchdown"
+    )
+  ) {
+    return "PR TD";
+  }
+
+  if (
+    value.includes(
+      "blocked"
+    ) &&
+    value.includes(
+      "touchdown"
+    )
+  ) {
+    return "BLK TD";
+  }
+
+  if (
+    value.includes(
+      "pass"
+    ) &&
+    value.includes(
+      "touchdown"
+    )
+  ) {
+    return "PASS TD";
+  }
+
+  if (
+    value.includes(
+      "touchdown"
+    )
+  ) {
+    return "TD";
+  }
+
+  return "SCORE";
 }
 
 
@@ -4470,6 +4657,7 @@ const styles = {
       "center" as const,
   },
   };
+
 
 
 

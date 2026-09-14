@@ -3099,11 +3099,35 @@ export async function getSeasonLongMatchupDetailData(
     const playersRemaining =
       matchupIsFinal
         ? 0
-        : Math.max(
-            0,
-            starters.length -
-              playersFinal
-          );
+        : starters.filter(
+            (
+              player
+            ) => {
+              const playerIsFinal =
+                player.scoreIsFinal ||
+                player.gameContext
+                  ?.statusCompleted;
+
+              const playerIsLive =
+                Boolean(
+                  player.gameContext
+                    ?.isActuallyLive ||
+                  player.scoreIsLive
+                );
+
+              /*
+               * REMAINING means a starter whose NFL game
+               * has not started yet.
+               *
+               * A player who is LIVE must never also count
+               * as REMAINING.
+               */
+              return (
+                !playerIsFinal &&
+                !playerIsLive
+              );
+            }
+          ).length;
 
 
     const projectedPoints =
