@@ -1,4 +1,3 @@
-
 import Image from "next/image";
 import Link from "next/link";
 
@@ -84,6 +83,14 @@ function formatLeagueType(
   }
 
 
+  if (
+    leagueType ===
+      "greyhound"
+  ) {
+    return "Greyhound Racing";
+  }
+
+
   return "Fantasy League";
 }
 
@@ -159,6 +166,13 @@ function getLeagueTypeSortOrder(
       "no_salary"
   ) {
     return 60;
+  }
+
+  if (
+    leagueType ===
+      "greyhound"
+  ) {
+    return 70;
   }
 
   return 999;
@@ -478,7 +492,9 @@ export default async function MyLeaguesPage() {
                             {league.leagueType ===
                               "season_long" ||
                             league.leagueType ===
-                              "pickem"
+                              "pickem" ||
+                            league.leagueType ===
+                              "greyhound"
                               ? "My Entry"
                               : "My Team"}
                           </span>
@@ -1254,4 +1270,3 @@ const styles = {
       "none",
   },
 };
-
