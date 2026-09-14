@@ -25,8 +25,7 @@ type PickemSport =
 
 type SharedProviderSport =
   | "ncaaf"
-  | "nfl"
-  | "ncaamb";
+  | "nfl";
 
 type PickemWeekRow = {
   id: number;
@@ -874,15 +873,12 @@ function sharedSportsForSettings(
     );
   }
 
-  if (
-    enabled.includes(
-      "ncaamb"
-    )
-  ) {
-    sports.push(
-      "ncaamb"
-    );
-  }
+  /*
+   * NCAAMB intentionally does not run through this legacy
+   * multi-sport sync. The dedicated NCAAMB automation at
+   * /api/pickem/ncaamb/run-sync owns schedule, score, and
+   * line synchronization for NCAA men's basketball.
+   */
 
   return sports;
 }
@@ -1060,150 +1056,6 @@ async function fetchCollegeScoreboard(
         kickoffMs >=
           startMs &&
         kickoffMs <
-          endMs
-      );
-    }
-  );
-}
-
-/*
- * =====================================================
- * NCAA MEN'S BASKETBALL ESPN SCOREBOARD
- * =====================================================
- */
-function basketballScoreboardUrl(
-  slateStartsAt:
-    string,
-  slateEndsAt:
-    string
-) {
-  const start =
-    new Date(
-      slateStartsAt
-    );
-
-  const endExclusive =
-    new Date(
-      slateEndsAt
-    );
-
-  return (
-    "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard" +
-    `?dates=${yyyymmdd(
-      start
-    )}-${yyyymmdd(
-      endExclusive
-    )}` +
-    "&limit=1000"
-  );
-}
-
-async function fetchBasketballScoreboard(
-  slateStartsAt:
-    string,
-  slateEndsAt:
-    string
-) {
-  const response =
-    await fetch(
-      basketballScoreboardUrl(
-        slateStartsAt,
-        slateEndsAt
-      ),
-      {
-        method:
-          "GET",
-
-        cache:
-          "no-store",
-
-        headers: {
-          Accept:
-            "application/json",
-
-          "User-Agent":
-            "Mozilla/5.0 Gridiron365/2.0",
-        },
-      }
-    );
-
-  const text =
-    await response.text();
-
-  if (!response.ok) {
-    throw new Error(
-      `ESPN NCAAMB scoreboard returned HTTP ${response.status}: ${text.slice(
-        0,
-        180
-      )}`
-    );
-  }
-
-  let payload:
-    EspnScoreboard;
-
-  try {
-    payload =
-      JSON.parse(
-        text
-      ) as EspnScoreboard;
-  } catch {
-    throw new Error(
-      "ESPN NCAAMB scoreboard returned invalid JSON."
-    );
-  }
-
-  const startMs =
-    new Date(
-      slateStartsAt
-    ).getTime();
-
-  const endMs =
-    new Date(
-      slateEndsAt
-    ).getTime();
-
-  return (
-    payload.events ??
-    []
-  ).filter(
-    (event) => {
-      const seasonType =
-        event.season?.type;
-
-      /*
-       * Include regular season and postseason.
-       * ESPN commonly uses 2 for regular season and 3 for postseason.
-       */
-      if (
-        seasonType !== undefined &&
-        seasonType !== 2 &&
-        seasonType !== 3
-      ) {
-        return false;
-      }
-
-      const raw =
-        event.competitions?.[0]
-          ?.date ??
-        event.date;
-
-      if (!raw) {
-        return false;
-      }
-
-      const startTimeMs =
-        new Date(
-          raw
-        ).getTime();
-
-      return (
-        Number.isFinite(
-          startTimeMs
-        ) &&
-        startTimeMs >=
-          startMs &&
-        startTimeMs <
           endMs
       );
     }
@@ -2564,12 +2416,6 @@ export async function POST(
         NormalizedGame[]
       >();
 
-    const basketballCache =
-      new Map<
-        string,
-        EspnEvent[]
-      >();
-
     let gamesUpserted =
       0;
 
@@ -2589,9 +2435,6 @@ export async function POST(
       0;
 
     let sharedNflLoads =
-      0;
-
-    let basketballFeedsFetched =
       0;
 
     let nhlPeriodsPrepared =
@@ -2778,59 +2621,6 @@ export async function POST(
 
         /*
          * =================================================
-         * NCAA MEN'S BASKETBALL
-         * =================================================
-         *
-         * Direct ESPN source using the same shared Pick'em
-         * game/pick engine as football.
-         */
-        if (
-          sport ===
-          "ncaamb"
-        ) {
-          const cacheKey =
-            `${sportStartsAt}:${sportEndsAt}`;
-
-          let events =
-            basketballCache.get(
-              cacheKey
-            );
-
-          if (!events) {
-            events =
-              await fetchBasketballScoreboard(
-                sportStartsAt,
-                sportEndsAt
-              );
-
-            basketballCache.set(
-              cacheKey,
-              events
-            );
-
-            basketballFeedsFetched +=
-              1;
-          }
-
-          games =
-            events
-              .map(
-                normalizeCollegeEvent
-              )
-              .filter(
-                (
-                  game
-                ): game is NormalizedGame =>
-                  game !==
-                  null
-              );
-
-          source =
-            "ESPN NCAA men's basketball";
-        }
-
-        /*
-         * =================================================
          * NFL
          * =================================================
          *
@@ -3004,171 +2794,34 @@ export async function POST(
                 .last_play_text,
           };
 
-          let upsertedData:
-            {
-              id: number;
-              is_final: boolean;
-            } | null =
-            null;
+          const {
+            data:
+              upsertedData,
+            error:
+              upsertError,
+          } =
+            await supabase
+              .from(
+                "pickem_games"
+              )
+              .upsert(
+                payload,
+                {
+                  onConflict:
+                    "league_id,provider,provider_event_id",
+                }
+              )
+              .select(
+                "id,is_final"
+              )
+              .single();
 
           if (
-            sport ===
-            "ncaamb"
+            upsertError
           ) {
-            const {
-              data:
-                basketballUpsertData,
-              error:
-                basketballUpsertError,
-            } =
-              await supabase.rpc(
-                "upsert_ncaamb_pickem_game",
-                {
-                  p_league_id:
-                    pickemWeek.league_id,
-                  p_pickem_week_id:
-                    pickemWeek.id,
-                  p_season:
-                    pickemWeek.season,
-                  p_week:
-                    pickemWeek.week,
-                  p_provider_event_id:
-                    normalized.provider_event_id,
-                  p_start_at:
-                    normalized.kickoff_at,
-                  p_away_team_name:
-                    normalized.away_team_name,
-                  p_away_team_abbreviation:
-                    normalized.away_team_abbreviation,
-                  p_home_team_name:
-                    normalized.home_team_name,
-                  p_home_team_abbreviation:
-                    normalized.home_team_abbreviation,
-                  p_status_type:
-                    normalized.status_type,
-                  p_status_name:
-                    normalized.status_name,
-                  p_status_detail:
-                    normalized.status_detail,
-                  p_is_started:
-                    normalized.is_started,
-                  p_is_final:
-                    normalized.is_final,
-                  p_away_score:
-                    normalized.away_score,
-                  p_home_score:
-                    normalized.home_score,
-                }
-              );
-
-            if (
-              basketballUpsertError
-            ) {
-              throw new Error(
-                `Could not upsert NCAAMB game ${normalized.provider_event_id}: ${basketballUpsertError.message}`
-              );
-            }
-
-            const basketballResult =
-              (
-                basketballUpsertData ??
-                {}
-              ) as {
-                gameId?: number;
-              };
-
-            const gameId =
-              Number(
-                basketballResult.gameId
-              );
-
-            if (
-              !Number.isInteger(
-                gameId
-              )
-            ) {
-              throw new Error(
-                `NCAAMB upsert did not return a valid game ID for ESPN event ${normalized.provider_event_id}.`
-              );
-            }
-
-            const {
-              error:
-                basketballScoreError,
-            } =
-              await supabase.rpc(
-                "sync_ncaamb_pickem_score",
-                {
-                  p_pickem_game_id:
-                    gameId,
-                  p_away_score:
-                    normalized.away_score,
-                  p_home_score:
-                    normalized.home_score,
-                  p_status_type:
-                    normalized.status_type,
-                  p_status_name:
-                    normalized.status_name,
-                  p_status_detail:
-                    normalized.status_detail,
-                  p_period:
-                    normalized.period,
-                  p_display_clock:
-                    normalized.display_clock,
-                  p_is_started:
-                    normalized.is_started,
-                  p_is_final:
-                    normalized.is_final,
-                }
-              );
-
-            if (
-              basketballScoreError
-            ) {
-              throw new Error(
-                `Could not sync NCAAMB score for game ${gameId}: ${basketballScoreError.message}`
-              );
-            }
-
-            upsertedData = {
-              id:
-                gameId,
-              is_final:
-                normalized.is_final,
-            };
-          } else {
-            const {
-              data:
-                sharedUpsertData,
-              error:
-                sharedUpsertError,
-            } =
-              await supabase
-                .from(
-                  "pickem_games"
-                )
-                .upsert(
-                  payload,
-                  {
-                    onConflict:
-                      "league_id,provider,provider_event_id",
-                  }
-                )
-                .select(
-                  "id,is_final"
-                )
-                .single();
-
-            if (
-              sharedUpsertError
-            ) {
-              throw new Error(
-                `Could not upsert ${sport.toUpperCase()} game ${normalized.provider_event_id}: ${sharedUpsertError.message}`
-              );
-            }
-
-            upsertedData =
-              sharedUpsertData;
+            throw new Error(
+              `Could not upsert ${sport.toUpperCase()} game ${normalized.provider_event_id}: ${upsertError.message}`
+            );
           }
 
           gamesUpserted +=
@@ -3718,14 +3371,14 @@ export async function POST(
       source:
         "G365 Pick'em multi-sport sync",
 
+      ncaambSource:
+        "Dedicated /api/pickem/ncaamb/run-sync automation",
+
       nflSource:
         "public.nfl_games",
 
       collegeSource:
         "ESPN",
-
-      basketballSource:
-        "ESPN men's college basketball",
 
       nhlSource:
         "public.nhl_games + public.nhl_pickem_*",
@@ -3734,8 +3387,6 @@ export async function POST(
         weeksToProcess.length,
 
       collegeFeedsFetched,
-
-      basketballFeedsFetched,
 
       sharedNflLoads,
 
