@@ -175,7 +175,6 @@
 }
 
 
-
 .g365-header-label-mobile,
 .g365-nav-label-mobile {
   display: none;
@@ -802,7 +801,11 @@
     display: inline;
   }
 
+
   .g365-league-header {
+    position: relative;
+    z-index: 30;
+
     min-height: 0;
 
     grid-template-columns:
@@ -814,11 +817,26 @@
 
     gap: 8px;
 
-    padding:
-      max(6px, env(safe-area-inset-top))
-      max(8px, env(safe-area-inset-right))
-      6px
-      max(8px, env(safe-area-inset-left));
+    padding-top:
+      max(
+        18px,
+        env(safe-area-inset-top)
+      );
+
+    padding-right:
+      max(
+        8px,
+        env(safe-area-inset-right)
+      );
+
+    padding-bottom:
+      8px;
+
+    padding-left:
+      max(
+        8px,
+        env(safe-area-inset-left)
+      );
   }
 
 
@@ -939,18 +957,37 @@
 
 
   .g365-league-nav {
-    min-height: 40px;
+    position: relative;
+    z-index: 25;
+
+    min-height: 46px;
 
     justify-content: flex-start;
+
+    padding-top: 3px;
+
+    padding-right:
+      max(
+        0px,
+        env(safe-area-inset-right)
+      );
+
+    padding-bottom: 3px;
+
+    padding-left:
+      max(
+        0px,
+        env(safe-area-inset-left)
+      );
 
     scroll-snap-type:
       x proximity;
 
-    padding-left:
-      env(safe-area-inset-left);
+    background: #09090a;
 
-    padding-right:
-      env(safe-area-inset-right);
+    touch-action: pan-x;
+
+    isolation: isolate;
   }
 
 
@@ -964,6 +1001,9 @@
 
 
   .g365-league-nav-link {
+    position: relative;
+    z-index: 1;
+
     min-height: 40px;
 
     padding:
@@ -973,6 +1013,18 @@
     scroll-snap-align: start;
 
     font-size: 10px;
+
+    touch-action: manipulation;
+
+    cursor: pointer;
+
+    -webkit-tap-highlight-color:
+      rgba(
+        255,
+        95,
+        20,
+        0.18
+      );
   }
 
 
@@ -1011,11 +1063,23 @@
 
     gap: 6px;
 
+    padding-top:
+      max(
+        16px,
+        env(safe-area-inset-top)
+      );
+
     padding-right:
-      max(6px, env(safe-area-inset-right));
+      max(
+        6px,
+        env(safe-area-inset-right)
+      );
 
     padding-left:
-      max(6px, env(safe-area-inset-left));
+      max(
+        6px,
+        env(safe-area-inset-left)
+      );
   }
 
 

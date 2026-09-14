@@ -23,6 +23,48 @@ const TRAP_COLORS: Record<number, string> = {
   8: "Yellow / Black",
 };
 
+
+const STANDARD_RACE_CADENCE_MINUTES = 14;
+
+function estimatedRaceTime(
+  card: AmtoteRaceCard,
+  race: AmtoteRace,
+): string | null {
+  const feedPostTime = race.postTimeText?.trim();
+
+  // If AmTote starts providing a race post time, always use it.
+  if (feedPostTime) {
+    return feedPostTime;
+  }
+
+  let firstPostMinutes: number | null = null;
+
+  if (card.trackId === "WEM") {
+    // Wheeling scheduled first post.
+    firstPostMinutes = 13 * 60;
+  } else if (card.trackId === "TSE") {
+    // Tri-State / Mardi Gras scheduled first post.
+    firstPostMinutes = 18 * 60;
+  }
+
+  if (
+    firstPostMinutes == null ||
+    !Number.isInteger(race.raceNumber) ||
+    race.raceNumber <= 0
+  ) {
+    return null;
+  }
+
+  const totalMinutes =
+    firstPostMinutes +
+    (race.raceNumber - 1) * STANDARD_RACE_CADENCE_MINUTES;
+
+  const hour = Math.floor(totalMinutes / 60) % 24;
+  const minute = totalMinutes % 60;
+
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`;
+}
+
 type SyncTrackResult = {
   trackId: AmtoteTrackId;
   trackCode: G365GreyhoundTrackCode;
@@ -56,7 +98,7 @@ function racePayload(card: AmtoteRaceCard, race: AmtoteRace) {
     track: card.g365TrackCode,
     raceNumber: race.raceNumber,
     raceDate: race.raceDate,
-    raceTime: null,
+    raceTime: estimatedRaceTime(card, race),
     grade: race.grade,
     distance: race.distanceYards ? `${race.distanceYards} Yards` : null,
     prizeMoney: null,

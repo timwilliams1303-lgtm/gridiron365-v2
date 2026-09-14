@@ -190,6 +190,61 @@ type TraditionalCreationStatus = {
 };
 
 
+type GreyhoundGameFormat =
+  | "team_total_winnings"
+  | "team_head_to_head"
+  | "bankroll"
+  | "survivor"
+  | "tournament";
+
+type GreyhoundTeamSetupMode = "random" | "manual";
+type GreyhoundDurationMode = "single_day" | "date_range" | "weeks" | "rounds";
+
+type GreyhoundRoundDraft = {
+  id: string;
+  name: string;
+  startDate: string;
+  days: string;
+};
+
+const GREYHOUND_GAME_OPTIONS: Array<{
+  id: GreyhoundGameFormat;
+  title: string;
+  description: string;
+}> = [
+  {
+    id: "team_total_winnings",
+    title: "Team Season — Total Winnings",
+    description:
+      "Teams compete across the selected season window. The team with the highest official total winnings at the end is champion.",
+  },
+  {
+    id: "team_head_to_head",
+    title: "Team Season — Head-to-Head",
+    description:
+      "Teams face scheduled opponents during the season. The commissioner can randomize or manually control the team setup.",
+  },
+  {
+    id: "bankroll",
+    title: "Bankroll Challenge",
+    description:
+      "Every entry starts with the same bankroll and tries to finish the selected contest period with the strongest bankroll result.",
+  },
+  {
+    id: "survivor",
+    title: "Survivor",
+    description:
+      "Build custom rounds with exact start dates and day counts. The lowest total winnings is eliminated at the end of each round.",
+  },
+  {
+    id: "tournament",
+    title: "Tournament",
+    description:
+      "Build a one-day or multi-round tournament and choose the exact start date and number of days for every round.",
+  },
+];
+
+
 export default function CreateLeaguePage() {
   const router =
     useRouter();
@@ -238,6 +293,53 @@ export default function CreateLeaguePage() {
       )
     );
 
+
+  const [
+    greyhoundGameFormat,
+    setGreyhoundGameFormat,
+  ] = useState<GreyhoundGameFormat>("bankroll");
+
+  const [
+    greyhoundTeamSetupMode,
+    setGreyhoundTeamSetupMode,
+  ] = useState<GreyhoundTeamSetupMode>("random");
+
+  const [
+    greyhoundDurationMode,
+    setGreyhoundDurationMode,
+  ] = useState<GreyhoundDurationMode>("single_day");
+
+  const [
+    greyhoundStartDate,
+    setGreyhoundStartDate,
+  ] = useState("");
+
+  const [
+    greyhoundEndDate,
+    setGreyhoundEndDate,
+  ] = useState("");
+
+  const [
+    greyhoundWeeks,
+    setGreyhoundWeeks,
+  ] = useState("4");
+
+  const [
+    greyhoundStartingBankroll,
+    setGreyhoundStartingBankroll,
+  ] = useState("100");
+
+  const [
+    greyhoundRounds,
+    setGreyhoundRounds,
+  ] = useState<GreyhoundRoundDraft[]>([
+    {
+      id: "round-1",
+      name: "Round 1",
+      startDate: "",
+      days: "1",
+    },
+  ]);
 
   const [
     working,
@@ -423,6 +525,55 @@ export default function CreateLeaguePage() {
     "salary";
 
 
+  const isGreyhoundTeamGame =
+    greyhoundGameFormat === "team_total_winnings" ||
+    greyhoundGameFormat === "team_head_to_head";
+
+  const isGreyhoundRoundGame =
+    greyhoundGameFormat === "survivor" ||
+    greyhoundGameFormat === "tournament";
+
+  const addGreyhoundRound = () => {
+    setGreyhoundRounds((current) => [
+      ...current,
+      {
+        id: `round-${Date.now()}-${current.length + 1}`,
+        name:
+          greyhoundGameFormat === "tournament"
+            ? `Round ${current.length + 1}`
+            : `Round ${current.length + 1}`,
+        startDate: "",
+        days: "1",
+      },
+    ]);
+  };
+
+  const updateGreyhoundRound = (
+    id: string,
+    field: "name" | "startDate" | "days",
+    value: string
+  ) => {
+    setGreyhoundRounds((current) =>
+      current.map((round) =>
+        round.id === id
+          ? {
+              ...round,
+              [field]: value,
+            }
+          : round
+      )
+    );
+  };
+
+  const removeGreyhoundRound = (id: string) => {
+    setGreyhoundRounds((current) =>
+      current.length <= 1
+        ? current
+        : current.filter((round) => round.id !== id)
+    );
+  };
+
+
   async function handleSubmit(
     event:
       FormEvent<HTMLFormElement>
@@ -458,6 +609,60 @@ export default function CreateLeaguePage() {
           traditionalCreationStatus
             .message
         );
+      }
+
+
+      if (isGreyhound) {
+        const bankroll = Number(greyhoundStartingBankroll);
+
+        if (!Number.isFinite(bankroll) || bankroll <= 0) {
+          throw new Error("Starting bankroll must be greater than $0.");
+        }
+
+        if (isGreyhoundRoundGame) {
+          if (greyhoundRounds.length < 1) {
+            throw new Error("Add at least one Greyhound round.");
+          }
+
+          for (const round of greyhoundRounds) {
+            const days = Number(round.days);
+
+            if (!round.name.trim()) {
+              throw new Error("Every Greyhound round needs a name.");
+            }
+
+            if (!round.startDate) {
+              throw new Error(`Choose a start date for ${round.name.trim()}.`);
+            }
+
+            if (!Number.isInteger(days) || days < 1) {
+              throw new Error(`${round.name.trim()} must run for at least 1 day.`);
+            }
+          }
+        } else {
+          if (!greyhoundStartDate) {
+            throw new Error("Choose the Greyhound competition start date.");
+          }
+
+          if (greyhoundDurationMode === "date_range" && !greyhoundEndDate) {
+            throw new Error("Choose the Greyhound competition end date.");
+          }
+
+          if (
+            greyhoundDurationMode === "date_range" &&
+            greyhoundEndDate < greyhoundStartDate
+          ) {
+            throw new Error("End date cannot be before the start date.");
+          }
+
+          if (greyhoundDurationMode === "weeks") {
+            const weeks = Number(greyhoundWeeks);
+
+            if (!Number.isInteger(weeks) || weeks < 1 || weeks > 52) {
+              throw new Error("Greyhound competition weeks must be between 1 and 52.");
+            }
+          }
+        }
       }
 
 
@@ -512,6 +717,57 @@ export default function CreateLeaguePage() {
         result.leagueType ===
         "greyhound"
       ) {
+        const setupResponse = await fetch(
+          "/api/greyhound/league-setup",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              leagueId: result.leagueId,
+              gameFormat: greyhoundGameFormat,
+              teamSetupMode: isGreyhoundTeamGame
+                ? greyhoundTeamSetupMode
+                : null,
+              durationMode: isGreyhoundRoundGame
+                ? "rounds"
+                : greyhoundDurationMode,
+              startDate: isGreyhoundRoundGame
+                ? greyhoundRounds[0]?.startDate ?? null
+                : greyhoundStartDate || null,
+              endDate:
+                !isGreyhoundRoundGame && greyhoundDurationMode === "date_range"
+                  ? greyhoundEndDate || null
+                  : null,
+              weeks:
+                !isGreyhoundRoundGame && greyhoundDurationMode === "weeks"
+                  ? Number(greyhoundWeeks)
+                  : null,
+              startingBankroll: Number(greyhoundStartingBankroll),
+              rounds: isGreyhoundRoundGame
+                ? greyhoundRounds.map((round, index) => ({
+                    roundNumber: index + 1,
+                    name: round.name.trim(),
+                    startDate: round.startDate,
+                    days: Number(round.days),
+                  }))
+                : [],
+            }),
+          }
+        );
+
+        const setupPayload = await setupResponse
+          .json()
+          .catch(() => null);
+
+        if (!setupResponse.ok || !setupPayload?.success) {
+          throw new Error(
+            setupPayload?.error ??
+              "League was created, but the Greyhound game setup could not be saved."
+          );
+        }
+
         router.replace(
           `/league/${result.leagueId}/greyhound/commissioner/race-cards`
         );
@@ -945,20 +1201,333 @@ export default function CreateLeaguePage() {
             {isGreyhound ? (
               <div
                 style={
-                  styles.contestInfo
+                  styles.greyhoundSetup
                 }
               >
-                <strong>
-                  G365 Greyhound Racing
-                </strong>
+                <div style={styles.greyhoundSectionHead}>
+                  <p style={styles.greyhoundEyebrow}>REQUIRED</p>
+                  <h3 style={styles.greyhoundTitle}>Greyhound Game Type</h3>
+                  <p style={styles.greyhoundHelp}>
+                    Choose how this Greyhound league will determine its champion.
+                  </p>
+                </div>
 
-                <span>
-                  Import official race cards, review runners and trap assignments, manage scratches and results, and operate the Greyhound Racing league from the commissioner area.
-                </span>
+                <div style={styles.greyhoundGameGrid}>
+                  {GREYHOUND_GAME_OPTIONS.map((option) => {
+                    const selected = greyhoundGameFormat === option.id;
 
-                <span>
-                  After creation, you will be taken directly to the Commissioner Race Cards page so the first real PDF import can be tested.
-                </span>
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        disabled={working}
+                        onClick={() => {
+                          setGreyhoundGameFormat(option.id);
+                          setGreyhoundDurationMode(
+                            option.id === "survivor" || option.id === "tournament"
+                              ? "rounds"
+                              : "single_day"
+                          );
+                          setMessage("");
+                          setIsError(false);
+                        }}
+                        style={{
+                          ...styles.greyhoundChoice,
+                          ...(selected ? styles.greyhoundChoiceSelected : {}),
+                        }}
+                      >
+                        <span style={styles.greyhoundChoiceTitle}>
+                          {option.title}
+                        </span>
+                        <span style={styles.greyhoundChoiceText}>
+                          {option.description}
+                        </span>
+                        <span
+                          style={{
+                            ...styles.choicePill,
+                            ...(selected ? styles.choicePillSelected : {}),
+                          }}
+                        >
+                          {selected ? "SELECTED" : "SELECT"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {isGreyhoundTeamGame ? (
+                  <div style={styles.greyhoundSubsection}>
+                    <div>
+                      <p style={styles.greyhoundEyebrow}>TEAM SETUP</p>
+                      <h3 style={styles.greyhoundSubTitle}>Randomize or Manual</h3>
+                      <p style={styles.greyhoundHelp}>
+                        Save how the commissioner wants team setup handled once the league members are ready.
+                      </p>
+                    </div>
+
+                    <div style={styles.segmentGrid}>
+                      {([
+                        ["random", "Randomize Teams", "Automatically randomize the team setup."],
+                        ["manual", "Manual Teams", "Commissioner manually controls the team setup."],
+                      ] as const).map(([value, title, description]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          disabled={working}
+                          onClick={() => setGreyhoundTeamSetupMode(value)}
+                          style={{
+                            ...styles.segmentButton,
+                            ...(greyhoundTeamSetupMode === value
+                              ? styles.segmentButtonSelected
+                              : {}),
+                          }}
+                        >
+                          <strong>{title}</strong>
+                          <span>{description}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div style={styles.greyhoundSubsection}>
+                  <div>
+                    <p style={styles.greyhoundEyebrow}>BANKROLL</p>
+                    <h3 style={styles.greyhoundSubTitle}>Starting Bankroll</h3>
+                    <p style={styles.greyhoundHelp}>
+                      Every entry begins the competition with this same bankroll amount.
+                    </p>
+                  </div>
+
+                  <label style={styles.inputLabel}>
+                    Starting Bankroll ($)
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0.01"
+                      step="0.01"
+                      value={greyhoundStartingBankroll}
+                      onChange={(event) =>
+                        setGreyhoundStartingBankroll(event.target.value)
+                      }
+                      disabled={working}
+                      style={styles.textInput}
+                      required
+                    />
+                  </label>
+                </div>
+
+                {isGreyhoundRoundGame ? (
+                  <div style={styles.greyhoundSubsection}>
+                    <div style={styles.roundHeader}>
+                      <div>
+                        <p style={styles.greyhoundEyebrow}>ROUND BUILDER</p>
+                        <h3 style={styles.greyhoundSubTitle}>
+                          {greyhoundGameFormat === "survivor"
+                            ? "Survivor Rounds"
+                            : "Tournament Rounds"}
+                        </h3>
+                        <p style={styles.greyhoundHelp}>
+                          Enter the exact start date and number of days for every round. Each round can use a different length.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={addGreyhoundRound}
+                        disabled={working}
+                        style={styles.addRoundButton}
+                      >
+                        + Add Round
+                      </button>
+                    </div>
+
+                    <div style={styles.roundList}>
+                      {greyhoundRounds.map((round, index) => {
+                        const parsedDays = Number(round.days);
+                        let endDate = "";
+
+                        if (round.startDate && Number.isInteger(parsedDays) && parsedDays > 0) {
+                          const start = new Date(`${round.startDate}T12:00:00`);
+                          start.setDate(start.getDate() + parsedDays - 1);
+                          endDate = start.toISOString().slice(0, 10);
+                        }
+
+                        return (
+                          <div key={round.id} style={styles.roundCard}>
+                            <div style={styles.roundNumber}>Round {index + 1}</div>
+
+                            <div style={styles.roundFields}>
+                              <label style={styles.inputLabel}>
+                                Round Name
+                                <input
+                                  type="text"
+                                  value={round.name}
+                                  onChange={(event) =>
+                                    updateGreyhoundRound(
+                                      round.id,
+                                      "name",
+                                      event.target.value
+                                    )
+                                  }
+                                  disabled={working}
+                                  style={styles.textInput}
+                                  maxLength={80}
+                                  required
+                                />
+                              </label>
+
+                              <label style={styles.inputLabel}>
+                                Start Date
+                                <input
+                                  type="date"
+                                  value={round.startDate}
+                                  onChange={(event) =>
+                                    updateGreyhoundRound(
+                                      round.id,
+                                      "startDate",
+                                      event.target.value
+                                    )
+                                  }
+                                  disabled={working}
+                                  style={styles.textInput}
+                                  required
+                                />
+                              </label>
+
+                              <label style={styles.inputLabel}>
+                                Number of Days
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="365"
+                                  step="1"
+                                  value={round.days}
+                                  onChange={(event) =>
+                                    updateGreyhoundRound(
+                                      round.id,
+                                      "days",
+                                      event.target.value
+                                    )
+                                  }
+                                  disabled={working}
+                                  style={styles.textInput}
+                                  required
+                                />
+                              </label>
+                            </div>
+
+                            <div style={styles.roundFooter}>
+                              <span style={styles.endDateText}>
+                                {endDate ? `Ends ${endDate}` : "Choose a start date and day count"}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => removeGreyhoundRound(round.id)}
+                                disabled={working || greyhoundRounds.length <= 1}
+                                style={styles.removeRoundButton}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {greyhoundGameFormat === "survivor" ? (
+                      <div style={styles.ruleNote}>
+                        <strong>Survivor elimination:</strong> At the end of every configured round, the entry/team with the lowest official total winnings for that round is eliminated.
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div style={styles.greyhoundSubsection}>
+                    <div>
+                      <p style={styles.greyhoundEyebrow}>COMPETITION DATES</p>
+                      <h3 style={styles.greyhoundSubTitle}>Contest Length</h3>
+                      <p style={styles.greyhoundHelp}>
+                        Use a single day, exact start/end dates, or a start date plus a number of weeks.
+                      </p>
+                    </div>
+
+                    <div style={styles.durationGrid}>
+                      {([
+                        ["single_day", "1 Day"],
+                        ["date_range", "Date Range"],
+                        ["weeks", "Number of Weeks"],
+                      ] as const).map(([value, title]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          disabled={working}
+                          onClick={() => setGreyhoundDurationMode(value)}
+                          style={{
+                            ...styles.durationButton,
+                            ...(greyhoundDurationMode === value
+                              ? styles.durationButtonSelected
+                              : {}),
+                          }}
+                        >
+                          {title}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div style={styles.dateFields}>
+                      <label style={styles.inputLabel}>
+                        Start Date
+                        <input
+                          type="date"
+                          value={greyhoundStartDate}
+                          onChange={(event) =>
+                            setGreyhoundStartDate(event.target.value)
+                          }
+                          disabled={working}
+                          style={styles.textInput}
+                          required
+                        />
+                      </label>
+
+                      {greyhoundDurationMode === "date_range" ? (
+                        <label style={styles.inputLabel}>
+                          End Date
+                          <input
+                            type="date"
+                            value={greyhoundEndDate}
+                            min={greyhoundStartDate || undefined}
+                            onChange={(event) =>
+                              setGreyhoundEndDate(event.target.value)
+                            }
+                            disabled={working}
+                            style={styles.textInput}
+                            required
+                          />
+                        </label>
+                      ) : null}
+
+                      {greyhoundDurationMode === "weeks" ? (
+                        <label style={styles.inputLabel}>
+                          Number of Weeks
+                          <input
+                            type="number"
+                            min="1"
+                            max="52"
+                            step="1"
+                            value={greyhoundWeeks}
+                            onChange={(event) =>
+                              setGreyhoundWeeks(event.target.value)
+                            }
+                            disabled={working}
+                            style={styles.textInput}
+                            required
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : null}
 
@@ -1354,7 +1923,7 @@ const styles = {
 
   formCard: {
     width:
-      "min(700px,100%)",
+      "min(980px,100%)",
 
     padding:
       "28px",
@@ -1480,6 +2049,259 @@ const styles = {
 
     lineHeight:
       1.5,
+  },
+
+  greyhoundSetup: {
+    display: "grid",
+    gap: "18px",
+    padding: "16px",
+    border: "1px solid rgba(255,94,0,.24)",
+    borderRadius: "14px",
+    background: "linear-gradient(180deg,rgba(255,69,0,.055),rgba(8,8,10,.7))",
+  },
+
+  greyhoundSectionHead: {
+    display: "grid",
+    gap: "5px",
+  },
+
+  greyhoundEyebrow: {
+    margin: 0,
+    color: "#ff8c00",
+    fontSize: "9px",
+    fontWeight: 900,
+    letterSpacing: ".12em",
+  },
+
+  greyhoundTitle: {
+    margin: 0,
+    color: "#fff",
+    fontSize: "20px",
+  },
+
+  greyhoundSubTitle: {
+    margin: "3px 0 0",
+    color: "#fff",
+    fontSize: "16px",
+  },
+
+  greyhoundHelp: {
+    margin: "4px 0 0",
+    color: "#949ba7",
+    fontSize: "12px",
+    lineHeight: 1.5,
+  },
+
+  greyhoundGameGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))",
+    gap: "10px",
+  },
+
+  greyhoundChoice: {
+    minHeight: "165px",
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "flex-start",
+    gap: "8px",
+    padding: "14px",
+    border: "1px solid rgba(255,255,255,.09)",
+    borderRadius: "12px",
+    background: "#101114",
+    color: "#fff",
+    textAlign: "left" as const,
+    cursor: "pointer",
+  },
+
+  greyhoundChoiceSelected: {
+    border: "1px solid rgba(255,94,0,.78)",
+    boxShadow: "0 10px 28px rgba(255,69,0,.12)",
+    background: "linear-gradient(145deg,rgba(76,20,8,.42),#101114)",
+  },
+
+  greyhoundChoiceTitle: {
+    fontSize: "14px",
+    fontWeight: 900,
+    color: "#fff",
+  },
+
+  greyhoundChoiceText: {
+    color: "#9aa0aa",
+    fontSize: "11px",
+    lineHeight: 1.5,
+  },
+
+  choicePill: {
+    marginTop: "auto",
+    color: "#747b86",
+    fontSize: "8px",
+    fontWeight: 900,
+    letterSpacing: ".1em",
+  },
+
+  choicePillSelected: {
+    color: "#ff8c00",
+  },
+
+  greyhoundSubsection: {
+    display: "grid",
+    gap: "12px",
+    paddingTop: "16px",
+    borderTop: "1px solid rgba(255,255,255,.08)",
+  },
+
+  segmentGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
+    gap: "10px",
+  },
+
+  segmentButton: {
+    minHeight: "82px",
+    display: "grid",
+    gap: "5px",
+    padding: "12px",
+    border: "1px solid rgba(255,255,255,.09)",
+    borderRadius: "10px",
+    background: "#121316",
+    color: "#fff",
+    textAlign: "left" as const,
+    cursor: "pointer",
+  },
+
+  segmentButtonSelected: {
+    border: "1px solid rgba(255,140,0,.75)",
+    background: "rgba(255,140,0,.08)",
+  },
+
+  durationGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))",
+    gap: "8px",
+  },
+
+  durationButton: {
+    minHeight: "44px",
+    padding: "9px 12px",
+    border: "1px solid rgba(255,255,255,.09)",
+    borderRadius: "9px",
+    background: "#121316",
+    color: "#b4bac4",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  durationButtonSelected: {
+    border: "1px solid rgba(255,94,0,.72)",
+    color: "#fff",
+    background: "linear-gradient(90deg,rgba(255,30,30,.15),rgba(255,140,0,.12))",
+  },
+
+  dateFields: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
+    gap: "10px",
+  },
+
+  inputLabel: {
+    display: "grid",
+    gap: "6px",
+    color: "#c8ccd4",
+    fontSize: "11px",
+    fontWeight: 800,
+  },
+
+  textInput: {
+    width: "100%",
+    minHeight: "44px",
+    padding: "10px 12px",
+    border: "1px solid rgba(255,255,255,.11)",
+    borderRadius: "9px",
+    background: "#0c0d0f",
+    color: "#fff",
+    fontSize: "14px",
+    outline: "none",
+    boxSizing: "border-box" as const,
+    colorScheme: "dark" as const,
+  },
+
+  roundHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "12px",
+    flexWrap: "wrap" as const,
+  },
+
+  addRoundButton: {
+    minHeight: "42px",
+    padding: "9px 13px",
+    border: "1px solid rgba(255,140,0,.45)",
+    borderRadius: "9px",
+    background: "rgba(255,140,0,.08)",
+    color: "#ff9d28",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  roundList: {
+    display: "grid",
+    gap: "10px",
+  },
+
+  roundCard: {
+    display: "grid",
+    gap: "10px",
+    padding: "13px",
+    border: "1px solid rgba(255,255,255,.08)",
+    borderRadius: "11px",
+    background: "rgba(0,0,0,.24)",
+  },
+
+  roundNumber: {
+    color: "#ff8c00",
+    fontSize: "10px",
+    fontWeight: 900,
+    letterSpacing: ".08em",
+    textTransform: "uppercase" as const,
+  },
+
+  roundFields: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
+    gap: "10px",
+  },
+
+  roundFooter: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "10px",
+    flexWrap: "wrap" as const,
+  },
+
+  endDateText: {
+    color: "#8f96a3",
+    fontSize: "11px",
+  },
+
+  removeRoundButton: {
+    border: 0,
+    background: "transparent",
+    color: "#ff7b80",
+    fontSize: "11px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  ruleNote: {
+    padding: "11px 12px",
+    border: "1px solid rgba(255,140,0,.18)",
+    borderRadius: "9px",
+    background: "rgba(255,140,0,.05)",
+    color: "#b8bdc6",
+    fontSize: "11px",
+    lineHeight: 1.5,
   },
 
   formActions: {

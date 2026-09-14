@@ -1,0 +1,436 @@
+.page {
+  min-height: 100vh;
+  padding: 20px 14px 36px;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(255, 69, 0, 0.10), transparent 32%),
+    linear-gradient(180deg, #090a0b 0%, #050505 100%);
+  color: #fff;
+}
+
+.shell {
+  width: min(1500px, 100%);
+  margin: 0 auto;
+}
+
+.hero,
+.panel,
+.bottomCard {
+  border: 1px solid #26292d;
+  background: linear-gradient(145deg, #141618 0%, #0c0d0e 100%);
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.34);
+}
+
+.hero {
+  overflow: hidden;
+  border-radius: 22px;
+}
+
+.heroTop {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 26px;
+  border-bottom: 1px solid #26292d;
+  background:
+    linear-gradient(90deg, rgba(130, 18, 18, 0.38), rgba(10, 10, 10, 0) 65%);
+}
+
+.eyebrow {
+  margin-bottom: 7px;
+  color: #ff8c00;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(30px, 5vw, 46px);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+.subtitle {
+  max-width: 720px;
+  margin: 10px 0 0;
+  color: #9ca3ad;
+  font-size: 14px;
+}
+
+.primaryButton {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 22px;
+  border: 1px solid #ff8c00;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ff1e1e, #ff4500 48%, #ff8c00);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.primaryButton:hover {
+  filter: brightness(1.08);
+}
+
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.statCard {
+  min-width: 0;
+  padding: 20px;
+  border-right: 1px solid #26292d;
+  background: rgba(9, 10, 11, 0.84);
+}
+
+.statCard:last-child {
+  border-right: 0;
+}
+
+.statCard span,
+.infoBox span,
+.bottomCard > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #747c86;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.statCard strong {
+  display: block;
+  color: #ff9a1f;
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.statCard .statText {
+  color: #fff;
+  font-size: 19px;
+  text-transform: capitalize;
+}
+
+.statCard small,
+.bottomCard small {
+  display: block;
+  margin-top: 7px;
+  color: #747c86;
+  font-size: 11px;
+}
+
+.mainGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.panel {
+  overflow: hidden;
+  border-radius: 18px;
+}
+
+.panelHeader {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #26292d;
+}
+
+.panelHeader h2 {
+  margin: 0;
+  font-size: 21px;
+}
+
+.panelBody {
+  padding: 20px;
+}
+
+.statusLive,
+.statusWaiting {
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.statusLive {
+  border: 1px solid #b12820;
+  background: rgba(255, 69, 0, 0.12);
+  color: #ff9a1f;
+}
+
+.statusWaiting {
+  border: 1px solid #3d444b;
+  background: #121416;
+  color: #99a0a9;
+}
+
+.infoGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.infoBox {
+  padding: 15px;
+  border: 1px solid #26292d;
+  border-radius: 12px;
+  background: #090a0b;
+}
+
+.infoBox strong {
+  font-size: 15px;
+}
+
+.raceStrip {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.raceChip {
+  min-width: 86px;
+  padding: 10px 12px;
+  border: 1px solid #292d32;
+  border-radius: 10px;
+  background: #0a0b0c;
+}
+
+.raceChip strong,
+.raceChip span {
+  display: block;
+}
+
+.raceChip strong {
+  font-size: 12px;
+}
+
+.raceChip span {
+  margin-top: 3px;
+  color: #747c86;
+  font-size: 10px;
+  text-transform: capitalize;
+}
+
+.waitingBox {
+  padding: 18px;
+  border: 1px solid #5b261f;
+  border-radius: 14px;
+  background: rgba(255, 69, 0, 0.08);
+}
+
+.waitingBox h3 {
+  margin: 0 0 7px;
+  font-size: 18px;
+}
+
+.waitingBox p {
+  margin: 0;
+  color: #969da6;
+  font-size: 13px;
+}
+
+.placeholderRaces {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(70px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.placeholderRace {
+  padding: 13px 8px;
+  border: 1px solid #26292d;
+  border-radius: 10px;
+  background: #090a0b;
+  text-align: center;
+  opacity: 0.65;
+}
+
+.placeholderRace strong,
+.placeholderRace span {
+  display: block;
+}
+
+.placeholderRace strong {
+  font-size: 12px;
+}
+
+.placeholderRace span {
+  margin-top: 4px;
+  color: #68707a;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.quickLinks {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.quickPrimary,
+.quickLink {
+  display: block;
+  padding: 16px;
+  border-radius: 13px;
+  text-decoration: none;
+}
+
+.quickPrimary {
+  border: 1px solid #7f2419;
+  background: linear-gradient(135deg, rgba(255, 30, 30, 0.18), rgba(255, 140, 0, 0.08) 55%, #0a0b0c);
+}
+
+.quickLink {
+  border: 1px solid #26292d;
+  background: #090a0b;
+}
+
+.quickPrimary strong,
+.quickLink strong,
+.quickPrimary span,
+.quickLink span {
+  display: block;
+}
+
+.quickPrimary strong {
+  color: #ff9a1f;
+}
+
+.quickPrimary strong,
+.quickLink strong {
+  font-size: 13px;
+}
+
+.quickPrimary span,
+.quickLink span {
+  margin-top: 5px;
+  color: #7f8790;
+  font-size: 12px;
+}
+
+.quickPrimary:hover,
+.quickLink:hover {
+  border-color: #ff6a00;
+  background-color: #17110d;
+}
+
+.bottomGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.bottomCard {
+  padding: 18px;
+  border-radius: 15px;
+}
+
+.bottomCard strong {
+  display: block;
+  font-size: 17px;
+}
+
+.green {
+  color: #22c55e;
+}
+
+.emptyState,
+.error {
+  padding: 22px;
+  color: #9ca3ad;
+}
+
+.error {
+  margin-top: 16px;
+  border: 1px solid #543239;
+  border-radius: 12px;
+  background: #160d0f;
+  color: #e4b9c0;
+}
+
+@media (max-width: 1000px) {
+  .mainGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .statGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .statCard:nth-child(2) {
+    border-right: 0;
+  }
+
+  .statCard:nth-child(-n + 2) {
+    border-bottom: 1px solid #26292d;
+  }
+
+  .placeholderRaces {
+    grid-template-columns: repeat(4, minmax(70px, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .page {
+    padding: 12px 8px 28px;
+  }
+
+  .heroTop {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  .primaryButton {
+    width: 100%;
+  }
+
+  .statGrid,
+  .infoGrid,
+  .bottomGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .statCard {
+    border-right: 0;
+    border-bottom: 1px solid #26292d;
+  }
+
+  .statCard:last-child {
+    border-bottom: 0;
+  }
+
+  .panelHeader {
+    padding: 14px 16px;
+  }
+
+  .panelBody {
+    padding: 14px;
+  }
+
+  .placeholderRaces {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

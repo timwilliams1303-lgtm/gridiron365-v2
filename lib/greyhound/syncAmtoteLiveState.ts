@@ -6,7 +6,6 @@ import {
   getAmtoteToteState,
   g365TrackCodeForAmtote,
   type AmtoteRace,
-  type AmtoteRaceCard,
   type AmtoteTrackId,
   type G365GreyhoundTrackCode,
 } from "@/lib/greyhound/amtote";
@@ -18,6 +17,10 @@ type LiveTrackResult = {
   session: string;
   currentRaceNumber: number | null;
   currentRaceMtp: number | null;
+  currentRaceScheduledPostTime: string | null;
+  currentRaceProjectedPostTime: string | null;
+  delayMinutes: number | null;
+  isDelayed: boolean;
   cardFound: boolean;
   racesChecked: number;
   raceStatusesUpdated: number;
@@ -34,6 +37,14 @@ export type SyncAmtoteLiveStateResult = {
   tracks: LiveTrackResult[];
 };
 
+type SavedRaceRow = {
+  id: number;
+  race_number: number;
+  race_status: string;
+  scheduled_post_time: string | null;
+  actual_post_time: string | null;
+};
+
 function hasResultSignal(race: AmtoteRace): boolean {
   return race.resultsAvailable;
 }
@@ -42,25 +53,10 @@ function feedRaceStatus(args: {
   race: AmtoteRace;
   currentRaceNumber: number | null;
 }): "scheduled" | "upcoming" | "off" {
-  /*
-   * IMPORTANT:
-   * GetRaces is allowed to tell us that a race has gone off / has a result
-   * signal, but it is NOT allowed to declare the race official.
-   *
-   * Official status belongs to the dedicated result/settlement pipeline after
-   * GetRaceResult confirms that the report is ready and result rows are saved.
-   */
   if (args.race.raceOffFlag || hasResultSignal(args.race)) {
     return "off";
   }
 
-  /*
-   * A race-level mtp field is not enough to identify "upcoming".
-   * AmTote may populate mtp throughout the entire card.
-   *
-   * Only the exact current race number from GetTote/crc is allowed
-   * to become upcoming.
-   */
   if (
     args.currentRaceNumber !== null &&
     args.race.raceNumber === args.currentRaceNumber
@@ -75,11 +71,6 @@ function nextStatus(
   current: string,
   incoming: "scheduled" | "upcoming" | "off",
 ) {
-  /*
-   * Live-state never downgrades terminal statuses and never creates
-   * "official". Once a race is official, only the results lifecycle may
-   * revise it through a dedicated correction path.
-   */
   if (current === "official") return "official";
   if (current === "cancelled" || current === "no_contest") return current;
   if (current === "off") return "off";
@@ -105,6 +96,67 @@ function scratchedBoxesForRace(race: AmtoteRace): number[] {
         .filter((box) => Number.isInteger(box) && box >= 1 && box <= 8),
     ]),
   ].sort((a, b) => a - b);
+}
+
+function getDelayState(args: {
+  scheduledPostTime: string | null;
+  currentRaceMtp: number | null;
+}) {
+  if (
+    !args.scheduledPostTime ||
+    args.currentRaceMtp === null ||
+    !Number.isFinite(args.currentRaceMtp)
+  ) {
+    return {
+      currentRaceScheduledPostTime: args.scheduledPostTime,
+      currentRaceProjectedPostTime: null,
+      delayMinutes: null,
+      isDelayed: false,
+    };
+  }
+
+  const scheduledMs = new Date(args.scheduledPostTime).getTime();
+
+  if (!Number.isFinite(scheduledMs)) {
+    return {
+      currentRaceScheduledPostTime: args.scheduledPostTime,
+      currentRaceProjectedPostTime: null,
+      delayMinutes: null,
+      isDelayed: false,
+    };
+  }
+
+  const projectedPostMs =
+    Date.now() + Math.max(0, args.currentRaceMtp) * 60_000;
+
+  const rawDelayMinutes = Math.round(
+    (projectedPostMs - scheduledMs) / 60_000,
+  );
+
+  const delayMinutes = Math.max(0, rawDelayMinutes);
+
+  return {
+    currentRaceScheduledPostTime: new Date(scheduledMs).toISOString(),
+    currentRaceProjectedPostTime: new Date(projectedPostMs).toISOString(),
+    delayMinutes,
+    isDelayed: delayMinutes >= 2,
+  };
+}
+
+function getScheduledCardLockAt(
+  scheduledFirstPost: string | null,
+): string | null {
+  if (!scheduledFirstPost) {
+    return null;
+  }
+
+  const firstPostMs = new Date(scheduledFirstPost).getTime();
+
+  if (!Number.isFinite(firstPostMs)) {
+    return null;
+  }
+
+  return new Date(firstPostMs - 5 * 60_000).toISOString();
 }
 
 async function applyRaceScratches(args: {
@@ -155,14 +207,6 @@ async function syncOneTrack(
   const supabase = createSupabaseAdminClient();
   const trackCode = g365TrackCodeForAmtote(trackId);
 
-  /*
-   * GetRaces is the authoritative source for the loaded card/date, scratches,
-   * race-off flags, and result/replay availability signals. Those result
-   * signals are used only to close a race here; "official" is reserved for
-   * the dedicated results/settlement pipeline. GetTote anonymously exposes the
-   * current race number (crc) and minutes-to-post (mtp). GetTracks is not used
-   * because the service requires a logged-in SID.
-   */
   const [feedCard, toteState] = await Promise.all([
     getAmtoteRaces(trackId),
     getAmtoteToteState(trackId),
@@ -170,6 +214,13 @@ async function syncOneTrack(
 
   const currentRaceNumber = toteState.currentRaceNumber;
   const currentRaceMtp = toteState.minutesToPost;
+
+  const noDelay = {
+    currentRaceScheduledPostTime: null,
+    currentRaceProjectedPostTime: null,
+    delayMinutes: null,
+    isDelayed: false,
+  };
 
   if (
     currentRaceNumber !== null &&
@@ -182,6 +233,7 @@ async function syncOneTrack(
       session: feedCard.session,
       currentRaceNumber,
       currentRaceMtp,
+      ...noDelay,
       cardFound: false,
       racesChecked: feedCard.races.length,
       raceStatusesUpdated: 0,
@@ -209,14 +261,10 @@ async function syncOneTrack(
     );
   }
 
-  /*
-   * CRITICAL DATE/SESSION SAFETY:
-   * Only mutate the exact card represented by the live AmTote feed.
-   */
   const { data: card, error: cardError } = await supabase
     .from("greyhound_cards")
     .select(
-      "id, race_date, session, card_status, import_status, lock_at, commissioner_confirmed_at",
+      "id, race_date, session, card_status, import_status, scheduled_first_post, lock_at, commissioner_confirmed_at",
     )
     .eq("track_id", track.id)
     .eq("race_date", feedCard.raceDate)
@@ -231,8 +279,9 @@ async function syncOneTrack(
       trackCode,
       raceDate: feedCard.raceDate,
       session: feedCard.session,
-      currentRaceNumber: currentRaceNumber,
-      currentRaceMtp: currentRaceMtp,
+      currentRaceNumber,
+      currentRaceMtp,
+      ...noDelay,
       cardFound: false,
       racesChecked: feedCard.races.length,
       raceStatusesUpdated: 0,
@@ -245,14 +294,39 @@ async function syncOneTrack(
     };
   }
 
+  const { data: savedRacesData, error: racesError } = await supabase
+    .from("greyhound_races")
+    .select(
+      "id, race_number, race_status, scheduled_post_time, actual_post_time",
+    )
+    .eq("card_id", card.id)
+    .order("race_number", { ascending: true });
+
+  if (racesError) throw racesError;
+
+  const savedRaces = (savedRacesData ?? []) as SavedRaceRow[];
+
+  const currentSavedRace =
+    currentRaceNumber === null
+      ? null
+      : savedRaces.find(
+          (race) => Number(race.race_number) === currentRaceNumber,
+        ) ?? null;
+
+  const liveDelay = getDelayState({
+    scheduledPostTime: currentSavedRace?.scheduled_post_time ?? null,
+    currentRaceMtp,
+  });
+
   if (["final", "cancelled"].includes(card.card_status)) {
     return {
       trackId,
       trackCode,
       raceDate: feedCard.raceDate,
       session: feedCard.session,
-      currentRaceNumber: currentRaceNumber,
-      currentRaceMtp: currentRaceMtp,
+      currentRaceNumber,
+      currentRaceMtp,
+      ...liveDelay,
       cardFound: true,
       racesChecked: feedCard.races.length,
       raceStatusesUpdated: 0,
@@ -270,8 +344,9 @@ async function syncOneTrack(
       trackCode,
       raceDate: feedCard.raceDate,
       session: feedCard.session,
-      currentRaceNumber: currentRaceNumber,
-      currentRaceMtp: currentRaceMtp,
+      currentRaceNumber,
+      currentRaceMtp,
+      ...liveDelay,
       cardFound: true,
       racesChecked: feedCard.races.length,
       raceStatusesUpdated: 0,
@@ -283,36 +358,23 @@ async function syncOneTrack(
     };
   }
 
-  const { data: savedRaces, error: racesError } = await supabase
-    .from("greyhound_races")
-    .select("id, race_number, race_status")
-    .eq("card_id", card.id)
-    .order("race_number", { ascending: true });
-
-  if (racesError) throw racesError;
-
   let raceStatusesUpdated = 0;
   let scratchesApplied = 0;
   let anyClosedRace = false;
 
-  for (const savedRace of savedRaces ?? []) {
+  for (const savedRace of savedRaces) {
     const feedRace = feedCard.races.find(
       (race) => race.raceNumber === Number(savedRace.race_number),
     );
 
-    if (!feedRace) {
-      continue;
-    }
+    if (!feedRace) continue;
 
     const incoming = feedRaceStatus({
       race: feedRace,
-      currentRaceNumber: currentRaceNumber,
+      currentRaceNumber,
     });
 
-    const resolved = nextStatus(
-      savedRace.race_status,
-      incoming,
-    );
+    const resolved = nextStatus(savedRace.race_status, incoming);
 
     if (resolved === "off" || resolved === "official") {
       anyClosedRace = true;
@@ -324,7 +386,7 @@ async function syncOneTrack(
         updated_at: new Date().toISOString(),
       };
 
-      if (resolved === "off") {
+      if (resolved === "off" && !savedRace.actual_post_time) {
         update.actual_post_time = new Date().toISOString();
       }
 
@@ -342,9 +404,7 @@ async function syncOneTrack(
       raceStatusesUpdated += 1;
     }
 
-    if (
-      !["official", "cancelled", "no_contest"].includes(resolved)
-    ) {
+    if (!["official", "cancelled", "no_contest"].includes(resolved)) {
       scratchesApplied += await applyRaceScratches({
         raceId: savedRace.id,
         raceNumber: Number(savedRace.race_number),
@@ -354,34 +414,39 @@ async function syncOneTrack(
     }
   }
 
-  /*
-   * ==============================================================
-   * WHOLE-CARD WAGER LOCK
-   * ==============================================================
-   *
-   * G365 Greyhound wagering uses a whole-card lock for BOTH tracks:
-   *   - Wheeling (GWD)
-   *   - Tri-State (GTS)
-   *
-   * The entire card locks five minutes before Race 1 goes off.
-   * Once locked, later races on the same card DO NOT reopen.
-   *
-   * Primary lock source:
-   *   1. persisted card.lock_at when timed lifecycle data exists
-   *
-   * Live AmTote fallback:
-   *   2. GetTote current race is Race 1 AND MTP <= 5
-   *
-   * This fallback is required because AmTote can publish the full card
-   * without scheduled post timestamps. It lets the official live feed
-   * enforce the same five-minute whole-card rule even when lock_at was
-   * not calculable during card import.
-   */
   const nowMs = Date.now();
-  const persistedLockReached =
-    Boolean(card.lock_at) &&
-    new Date(String(card.lock_at)).getTime() <= nowMs;
 
+  /*
+   * Whole-card wagering lock:
+   *
+   * The fixed G365 lock timestamp is always exactly five minutes before
+   * scheduled_first_post. It must never be replaced with the time this
+   * polling job happened to notice that the card should be locked.
+   *
+   * Prefer the canonical value derived from scheduled_first_post so this
+   * live-state sync also self-heals a missing or incorrect persisted lock_at
+   * on an active card.
+   */
+  const scheduledCardLockAt = getScheduledCardLockAt(
+    card.scheduled_first_post,
+  );
+
+  const effectiveCardLockAt =
+    scheduledCardLockAt ?? card.lock_at ?? null;
+
+  const effectiveCardLockMs = effectiveCardLockAt
+    ? new Date(String(effectiveCardLockAt)).getTime()
+    : Number.NaN;
+
+  const persistedLockReached =
+    Number.isFinite(effectiveCardLockMs) &&
+    effectiveCardLockMs <= nowMs;
+
+  /*
+   * AmTote MTP remains a secondary live trigger. This protects against a
+   * timing-feed edge case where the fixed lock timestamp is unavailable.
+   * Even when this trigger fires, lock_at is never stamped with now().
+   */
   const liveFiveMinuteLockReached =
     currentRaceNumber === 1 &&
     currentRaceMtp !== null &&
@@ -393,16 +458,20 @@ async function syncOneTrack(
     (persistedLockReached || liveFiveMinuteLockReached);
 
   let nextCardStatus = card.card_status;
-  let nextLockAt = card.lock_at;
+
+  /*
+   * Keep lock_at deterministic. If scheduled_first_post exists, its
+   * calculated five-minute cutoff is authoritative. Otherwise preserve the
+   * existing value rather than inventing a polling timestamp.
+   */
+  let nextLockAt =
+    scheduledCardLockAt ?? card.lock_at ?? null;
 
   if (
     wholeCardShouldLock &&
     !["locked", "final", "cancelled"].includes(card.card_status)
   ) {
     nextCardStatus = "locked";
-    nextLockAt =
-      card.lock_at ??
-      new Date().toISOString();
   }
 
   /*
@@ -445,8 +514,9 @@ async function syncOneTrack(
     trackCode,
     raceDate: feedCard.raceDate,
     session: feedCard.session,
-    currentRaceNumber: currentRaceNumber,
-    currentRaceMtp: currentRaceMtp,
+    currentRaceNumber,
+    currentRaceMtp,
+    ...liveDelay,
     cardFound: true,
     racesChecked: feedCard.races.length,
     raceStatusesUpdated,
@@ -471,10 +541,13 @@ export async function syncAmtoteGreyhoundLiveState(
         trackId,
         trackCode: g365TrackCodeForAmtote(trackId),
         raceDate: "",
-        session:
-          trackId === "TSE" ? "evening" : "afternoon",
+        session: trackId === "TSE" ? "evening" : "afternoon",
         currentRaceNumber: null,
         currentRaceMtp: null,
+        currentRaceScheduledPostTime: null,
+        currentRaceProjectedPostTime: null,
+        delayMinutes: null,
+        isDelayed: false,
         cardFound: false,
         racesChecked: 0,
         raceStatusesUpdated: 0,

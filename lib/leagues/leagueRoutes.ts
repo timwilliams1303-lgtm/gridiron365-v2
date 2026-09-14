@@ -12,7 +12,6 @@ export type LeagueNavItem = {
   exact?: boolean;
 };
 
-
 export type LeaguePrimaryAction = {
   label: string;
   href: string;
@@ -27,8 +26,7 @@ export function getLeaguePrimaryAction({
   leagueId,
   leagueType,
 }: GetLeaguePrimaryActionArgs): LeaguePrimaryAction {
-  const base =
-    `/league/${leagueId}`;
+  const base = `/league/${leagueId}`;
 
   switch (leagueType) {
     case "traditional":
@@ -57,10 +55,7 @@ export function getLeaguePrimaryAction({
       };
 
     default: {
-      const exhaustiveCheck:
-        never =
-          leagueType;
-
+      const exhaustiveCheck: never = leagueType;
       return exhaustiveCheck;
     }
   }
@@ -81,8 +76,7 @@ export function getLeagueNavItems({
   playoffsEnabled = false,
   isCommissioner = false,
 }: GetLeagueNavItemsArgs): LeagueNavItem[] {
-  const base =
-    `/league/${leagueId}`;
+  const base = `/league/${leagueId}`;
 
   if (leagueType === "traditional") {
     const items: LeagueNavItem[] = [
@@ -339,65 +333,6 @@ export function getLeagueNavItems({
     return items;
   }
 
-  if (leagueType === "pickem") {
-    const items: LeagueNavItem[] = [
-      {
-        key: "home",
-        label: "Home",
-        mobileLabel: "Home",
-        href: base,
-        exact: true,
-      },
-      {
-        key: "picks",
-        label: "My Picks",
-        mobileLabel: "Picks",
-        href: `${base}/pickem/my-picks`,
-      },
-      {
-        key: "leaguePicks",
-        label: "League Picks",
-        mobileLabel: "League",
-        href: `${base}/pickem/league-picks`,
-      },
-      {
-        key: "games",
-        label: "Games",
-        mobileLabel: "Games",
-        href: `${base}/pickem/games`,
-      },
-      {
-        key: "standings",
-        label: "Standings",
-        mobileLabel: "Standings",
-        href: `${base}/pickem/standings`,
-      },
-      {
-        key: "recap",
-        label: "Recap",
-        mobileLabel: "Recap",
-        href: `${base}/pickem/recap`,
-      },
-      {
-        key: "settings",
-        label: "Settings",
-        mobileLabel: "Settings",
-        href: `${base}/pickem/settings`,
-      },
-    ];
-
-    if (isCommissioner) {
-      items.push({
-        key: "commissioner",
-        label: "Commissioner",
-        mobileLabel: "Commish",
-        href: `${base}/commissioner`,
-      });
-    }
-
-    return items;
-  }
-
   if (leagueType === "greyhound") {
     const items: LeagueNavItem[] = [
       {
@@ -457,5 +392,60 @@ export function getLeagueNavItems({
     return items;
   }
 
-  return [];
+  const items: LeagueNavItem[] = [
+    {
+      key: "home",
+      label: "Home",
+      mobileLabel: "Home",
+      href: base,
+      exact: true,
+    },
+    {
+      key: "picks",
+      label: "My Picks",
+      mobileLabel: "Picks",
+      href: `${base}/pickem/my-picks`,
+    },
+    {
+      key: "leaguePicks",
+      label: "League Picks",
+      mobileLabel: "League",
+      href: `${base}/pickem/league-picks`,
+    },
+    {
+      key: "games",
+      label: "Games",
+      mobileLabel: "Games",
+      href: `${base}/pickem/games`,
+    },
+    {
+      key: "standings",
+      label: "Standings",
+      mobileLabel: "Standings",
+      href: `${base}/pickem/standings`,
+    },
+    {
+      key: "recap",
+      label: "Recap",
+      mobileLabel: "Recap",
+      href: `${base}/pickem/recap`,
+    },
+    {
+      key: "settings",
+      label: "Settings",
+      mobileLabel: "Settings",
+      href: `${base}/pickem/settings`,
+    },
+  ];
+
+  if (isCommissioner) {
+    items.push({
+      key: "commissioner",
+      label: "Commissioner",
+      mobileLabel: "Commish",
+      href: `${base}/commissioner`,
+    });
+  }
+
+  return items;
 }

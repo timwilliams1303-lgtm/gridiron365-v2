@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import GreyhoundRaceCardImporter from "@/components/greyhound/GreyhoundRaceCardImporter";
 import GreyhoundAmtoteSync from "@/components/greyhound/GreyhoundAmtoteSync";
 import GreyhoundConfirmCardButton from "@/components/greyhound/GreyhoundConfirmCardButton";
+import GreyhoundDogProfileModal from "@/components/greyhound/GreyhoundDogProfileModal";
 
 import { requireLeagueMember } from "@/lib/leagues/requireLeagueMember";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -387,47 +388,93 @@ export default async function GreyhoundRaceCardsPage({
       .limit(12);
 
   const cards =
-    (data ?? []) as unknown as CardRow[];
+    (data ??
+      []) as unknown as CardRow[];
 
-  const { data: feedStatusData, error: feedStatusError } = await supabase
-    .from("greyhound_feed_sync_status")
-    .select(`
-      id,
-      track_id,
-      race_date,
-      session,
-      source,
-      status,
-      last_attempt_at,
-      last_success_at,
-      error_message,
-      greyhound_tracks!inner (
-        id,
-        code,
-        name,
-        timezone
+  const {
+    data:
+      feedStatusData,
+    error:
+      feedStatusError,
+  } =
+    await supabase
+      .from(
+        "greyhound_feed_sync_status",
       )
-    `)
-    .eq("source", "amtote")
-    .order("race_date", { ascending: false })
-    .order("last_attempt_at", { ascending: false })
-    .limit(24);
+      .select(`
+        id,
+        track_id,
+        race_date,
+        session,
+        source,
+        status,
+        last_attempt_at,
+        last_success_at,
+        error_message,
+        greyhound_tracks!inner (
+          id,
+          code,
+          name,
+          timezone
+        )
+      `)
+      .eq(
+        "source",
+        "amtote",
+      )
+      .order(
+        "race_date",
+        {
+          ascending:
+            false,
+        },
+      )
+      .order(
+        "last_attempt_at",
+        {
+          ascending:
+            false,
+        },
+      )
+      .limit(24);
 
   const feedStatuses =
-    (feedStatusData ?? []) as unknown as FeedStatusRow[];
+    (feedStatusData ??
+      []) as unknown as FeedStatusRow[];
 
-  const orphanFailures = feedStatuses.filter((feedStatus) => {
-    if (feedStatus.status !== "failed") return false;
+  const orphanFailures =
+    feedStatuses.filter(
+      (
+        feedStatus,
+      ) => {
+        if (
+          feedStatus.status !==
+          "failed"
+        ) {
+          return false;
+        }
 
-    return !cards.some((card) => {
-      const track = firstRelation(card.greyhound_tracks);
-      return (
-        track?.id === feedStatus.track_id &&
-        card.race_date === feedStatus.race_date &&
-        card.session === feedStatus.session
-      );
-    });
-  });
+        return !cards.some(
+          (
+            card,
+          ) => {
+            const track =
+              firstRelation(
+                card.greyhound_tracks,
+              );
+
+            return (
+              track?.id ===
+                feedStatus.track_id &&
+              card.race_date ===
+                feedStatus.race_date &&
+              card.session ===
+                feedStatus.session
+            );
+          },
+        );
+      },
+    );
 
   return (
     <main className="gh-page">
@@ -554,23 +601,124 @@ export default async function GreyhoundRaceCardsPage({
           box-shadow: 0 18px 45px rgba(0,0,0,.24);
         }
 
-        .gh-card > summary { list-style:none; cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; }
-        .gh-card > summary::-webkit-details-marker { display:none; }
-        .gh-card-toggle { display:inline-flex; min-height:42px; align-items:center; justify-content:center; padding:0 14px; border:1px solid rgba(226,91,32,.45); border-radius:10px; background:rgba(91,31,11,.28); color:#ff9b64; font-size:9px; font-weight:950; letter-spacing:.08em; white-space:nowrap; text-transform:uppercase; }
-        .gh-card-toggle::after { content:"Expand"; }
-        .gh-card[open] .gh-card-toggle::after, .gh-orphan-card[open] .gh-card-toggle::after { content:"Minimize"; }
-        .gh-card-body { border-top:1px solid #292a2d; }
-        .gh-card-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border-bottom:1px solid #292a2d; background:#0c0d0f; }
-        .gh-feed-failure { margin:12px; padding:13px; border:1px solid rgba(198,51,43,.55); border-radius:12px; background:rgba(79,15,13,.30); }
-        .gh-feed-failure-title { color:#ffaaa5; font-size:10px; font-weight:950; letter-spacing:.06em; text-transform:uppercase; }
-        .gh-feed-failure-copy { margin-top:5px; color:#c8a29f; font-size:10px; line-height:1.55; }
-        .gh-backup-wrap { padding:0 12px 12px; }
-        .gh-orphan-stack { display:grid; gap:10px; margin:0 0 18px; }
-        .gh-orphan-card { overflow:hidden; border:1px solid rgba(190,44,36,.50); border-radius:14px; background:#101113; }
-        .gh-orphan-card > summary { display:flex; min-height:64px; list-style:none; cursor:pointer; align-items:center; justify-content:space-between; gap:12px; padding:13px 15px; }
-        .gh-orphan-card > summary::-webkit-details-marker { display:none; }
-        .gh-orphan-title { margin-top:8px; color:#fff; font-size:13px; font-weight:950; }
-        .gh-orphan-meta { margin-top:4px; color:#a16f6b; font-size:9px; }
+        .gh-card > summary {
+          list-style: none;
+          cursor: pointer;
+          user-select: none;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        .gh-card > summary::-webkit-details-marker {
+          display: none;
+        }
+
+        .gh-card-toggle {
+          display: inline-flex;
+          min-height: 42px;
+          align-items: center;
+          justify-content: center;
+          padding: 0 14px;
+          border: 1px solid rgba(226,91,32,.45);
+          border-radius: 10px;
+          background: rgba(91,31,11,.28);
+          color: #ff9b64;
+          font-size: 9px;
+          font-weight: 950;
+          letter-spacing: .08em;
+          white-space: nowrap;
+          text-transform: uppercase;
+        }
+
+        .gh-card-toggle::after {
+          content: "Expand";
+        }
+
+        .gh-card[open] .gh-card-toggle::after,
+        .gh-orphan-card[open] .gh-card-toggle::after {
+          content: "Minimize";
+        }
+
+        .gh-card-body {
+          border-top: 1px solid #292a2d;
+        }
+
+        .gh-card-actions {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 12px 14px;
+          border-bottom: 1px solid #292a2d;
+          background: #0c0d0f;
+        }
+
+        .gh-feed-failure {
+          margin: 12px;
+          padding: 13px;
+          border: 1px solid rgba(198,51,43,.55);
+          border-radius: 12px;
+          background: rgba(79,15,13,.30);
+        }
+
+        .gh-feed-failure-title {
+          color: #ffaaa5;
+          font-size: 10px;
+          font-weight: 950;
+          letter-spacing: .06em;
+          text-transform: uppercase;
+        }
+
+        .gh-feed-failure-copy {
+          margin-top: 5px;
+          color: #c8a29f;
+          font-size: 10px;
+          line-height: 1.55;
+        }
+
+        .gh-backup-wrap {
+          padding: 0 12px 12px;
+        }
+
+        .gh-orphan-stack {
+          display: grid;
+          gap: 10px;
+          margin: 0 0 18px;
+        }
+
+        .gh-orphan-card {
+          overflow: hidden;
+          border: 1px solid rgba(190,44,36,.50);
+          border-radius: 14px;
+          background: #101113;
+        }
+
+        .gh-orphan-card > summary {
+          display: flex;
+          min-height: 64px;
+          list-style: none;
+          cursor: pointer;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 13px 15px;
+        }
+
+        .gh-orphan-card > summary::-webkit-details-marker {
+          display: none;
+        }
+
+        .gh-orphan-title {
+          margin-top: 8px;
+          color: #fff;
+          font-size: 13px;
+          font-weight: 950;
+        }
+
+        .gh-orphan-meta {
+          margin-top: 4px;
+          color: #a16f6b;
+          font-size: 9px;
+        }
 
         .gh-card-head {
           padding: 18px;
@@ -853,6 +1001,30 @@ export default async function GreyhoundRaceCardsPage({
           font-weight: 950;
         }
 
+        .gh-dog.gdp-name-button {
+          color: #fff;
+          font-size: 11px;
+          font-weight: 950;
+        }
+
+        .gh-dog.gdp-name-button:hover {
+          color: #ff985f;
+        }
+
+        .gh-mobile-dog-button {
+          display: block;
+          max-width: 100%;
+          overflow-wrap: anywhere;
+          color: #fff;
+          font-size: 11px;
+          line-height: 1.3;
+          font-weight: 950;
+        }
+
+        .gh-mobile-dog-button:hover {
+          color: #ff985f;
+        }
+
         .gh-odds {
           display: inline-flex;
           min-width: 48px;
@@ -907,9 +1079,18 @@ export default async function GreyhoundRaceCardsPage({
             width: 100%;
           }
 
-          .gh-card-toggle { width:100%; }
-          .gh-card-actions { align-items:stretch; flex-direction:column; }
-          .gh-card-actions > * { width:100%; }
+          .gh-card-toggle {
+            width: 100%;
+          }
+
+          .gh-card-actions {
+            align-items: stretch;
+            flex-direction: column;
+          }
+
+          .gh-card-actions > * {
+            width: 100%;
+          }
         }
 
         @media (max-width: 700px) {
@@ -1011,20 +1192,68 @@ export default async function GreyhoundRaceCardsPage({
             font-size: 8px;
             line-height: 1.4;
           }
-          .gh-stats { grid-template-columns:repeat(3,minmax(0,1fr)); }
-          .gh-stat { padding:8px 5px; }
-          .gh-stat strong { font-size:16px; }
-          .gh-orphan-card > summary { align-items:stretch; flex-direction:column; }
-          .gh-orphan-card .gh-card-toggle { width:100%; }
+
+          .gh-mobile-name .gdp-name-button {
+            display: block;
+            width: 100%;
+            color: #fff;
+            font-size: 11px;
+            line-height: 1.3;
+            font-weight: 950;
+            overflow-wrap: anywhere;
+            white-space: normal;
+          }
+
+          .gh-stats {
+            grid-template-columns: repeat(3,minmax(0,1fr));
+          }
+
+          .gh-stat {
+            padding: 8px 5px;
+          }
+
+          .gh-stat strong {
+            font-size: 16px;
+          }
+
+          .gh-orphan-card > summary {
+            align-items: stretch;
+            flex-direction: column;
+          }
+
+          .gh-orphan-card .gh-card-toggle {
+            width: 100%;
+          }
         }
 
         @media (max-width: 420px) {
-          .gh-page { padding-left:8px; padding-right:8px; }
-          .gh-card-head { padding:12px; }
-          .gh-card-title { font-size:19px; }
-          .gh-badges { gap:4px; }
-          .gh-code,.gh-status { min-height:25px; padding:4px 7px; font-size:7px; }
-          .gh-card-meta { font-size:9px; }
+          .gh-page {
+            padding-left: 8px;
+            padding-right: 8px;
+          }
+
+          .gh-card-head {
+            padding: 12px;
+          }
+
+          .gh-card-title {
+            font-size: 19px;
+          }
+
+          .gh-badges {
+            gap: 4px;
+          }
+
+          .gh-code,
+          .gh-status {
+            min-height: 25px;
+            padding: 4px 7px;
+            font-size: 7px;
+          }
+
+          .gh-card-meta {
+            font-size: 9px;
+          }
         }
       `}</style>
 
@@ -1049,59 +1278,127 @@ export default async function GreyhoundRaceCardsPage({
           <div className="gh-page-accent" />
         </section>
 
-        <GreyhoundAmtoteSync leagueId={leagueId} />
+        <GreyhoundAmtoteSync
+          leagueId={
+            leagueId
+          }
+        />
 
         {feedStatusError ? (
-          <div className="gh-error" style={{ marginBottom: 16 }}>
-            Could not load official-feed status: {feedStatusError.message}
+          <div
+            className="gh-error"
+            style={{
+              marginBottom:
+                16,
+            }}
+          >
+            Could not load official-feed status:{" "}
+            {
+              feedStatusError.message
+            }
           </div>
         ) : null}
 
-        {orphanFailures.length > 0 ? (
+        {orphanFailures.length >
+        0 ? (
           <div className="gh-orphan-stack">
-            {orphanFailures.map((feedStatus) => {
-              const failedTrack = firstRelation(feedStatus.greyhound_tracks);
-              const trackCode = failedTrack?.code === "GTS" ? "GTS" : "GWD";
+            {orphanFailures.map(
+              (
+                feedStatus,
+              ) => {
+                const failedTrack =
+                  firstRelation(
+                    feedStatus.greyhound_tracks,
+                  );
 
-              return (
-                <details key={feedStatus.id} className="gh-orphan-card">
-                  <summary>
-                    <div>
-                      <div className="gh-badges">
-                        <span className="gh-code">{trackCode}</span>
-                        <span className="gh-status bad">Official Feed Failed</span>
+                const trackCode =
+                  failedTrack?.code ===
+                  "GTS"
+                    ? "GTS"
+                    : "GWD";
+
+                return (
+                  <details
+                    key={
+                      feedStatus.id
+                    }
+                    className="gh-orphan-card"
+                  >
+                    <summary>
+                      <div>
+                        <div className="gh-badges">
+                          <span className="gh-code">
+                            {
+                              trackCode
+                            }
+                          </span>
+
+                          <span className="gh-status bad">
+                            Official
+                            Feed
+                            Failed
+                          </span>
+                        </div>
+
+                        <div className="gh-orphan-title">
+                          {failedTrack?.name ??
+                            "Greyhound Track"}
+                        </div>
+
+                        <div className="gh-orphan-meta">
+                          {formatDate(
+                            feedStatus.race_date,
+                          )}{" "}
+                          ·{" "}
+                          {formatSession(
+                            feedStatus.session,
+                          )}{" "}
+                          Session
+                        </div>
                       </div>
-                      <div className="gh-orphan-title">
-                        {failedTrack?.name ?? "Greyhound Track"}
+
+                      <span className="gh-card-toggle" />
+                    </summary>
+
+                    <div className="gh-feed-failure">
+                      <div className="gh-feed-failure-title">
+                        Day-Specific
+                        Backup
+                        Available
                       </div>
-                      <div className="gh-orphan-meta">
-                        {formatDate(feedStatus.race_date)} · {formatSession(feedStatus.session)} Session
+
+                      <div className="gh-feed-failure-copy">
+                        {feedStatus.error_message ??
+                          "The official AmTote feed failed for this track and racing day."}
                       </div>
                     </div>
-                    <span className="gh-card-toggle" />
-                  </summary>
 
-                  <div className="gh-feed-failure">
-                    <div className="gh-feed-failure-title">Day-Specific Backup Available</div>
-                    <div className="gh-feed-failure-copy">
-                      {feedStatus.error_message ?? "The official AmTote feed failed for this track and racing day."}
+                    <div className="gh-backup-wrap">
+                      <GreyhoundRaceCardImporter
+                        leagueId={
+                          leagueId
+                        }
+                        backupOnly
+                        expectedTrackCode={
+                          trackCode
+                        }
+                        expectedTrackName={
+                          failedTrack?.name ??
+                          trackCode
+                        }
+                        expectedRaceDate={
+                          feedStatus.race_date
+                        }
+                        expectedSession={
+                          feedStatus.session
+                        }
+                        importEndpoint="/api/greyhound/races/import-backup"
+                      />
                     </div>
-                  </div>
-
-                  <div className="gh-backup-wrap">
-                    <GreyhoundRaceCardImporter
-                      leagueId={leagueId}
-                      backupOnly
-                      expectedTrackCode={trackCode}
-                      expectedTrackName={failedTrack?.name ?? trackCode}
-                      expectedRaceDate={feedStatus.race_date}
-                      expectedSession={feedStatus.session}
-                      importEndpoint="/api/greyhound/races/import-backup"
-                    />
-                  </div>
-                </details>
-              );
-            })}
+                  </details>
+                );
+              },
+            )}
           </div>
         ) : null}
 
@@ -1116,13 +1413,15 @@ export default async function GreyhoundRaceCardsPage({
             </h2>
 
             <p className="gh-section-copy">
-              Every card starts minimized. Expand only the track and date you want to review.
+              Every card starts minimized. Expand only the track and date you
+              want to review.
             </p>
           </div>
 
           <div className="gh-count">
             {cards.length}{" "}
-            {cards.length === 1
+            {cards.length ===
+            1
               ? "CARD"
               : "CARDS"}
           </div>
@@ -1130,13 +1429,18 @@ export default async function GreyhoundRaceCardsPage({
 
         {error ? (
           <div className="gh-error">
-            Could not load Greyhound race cards:{" "}
-            {error.message}
+            Could not load
+            Greyhound race
+            cards:{" "}
+            {
+              error.message
+            }
           </div>
-        ) : cards.length === 0 ? (
+        ) : cards.length ===
+          0 ? (
           <div className="gh-empty">
-            No Greyhound race cards have been saved yet. Use Sync Official Entries
-            Now above, or wait for the automatic AmTote sync.
+            No Greyhound race cards have been saved yet. Use Sync Official
+            Entries Now above, or wait for the automatic AmTote sync.
           </div>
         ) : (
           <div className="gh-card-stack">
@@ -1150,10 +1454,8 @@ export default async function GreyhoundRaceCardsPage({
                   );
 
                 const races = [
-                  ...(
-                    card.greyhound_races ??
-                    []
-                  ),
+                  ...(card.greyhound_races ??
+                    []),
                 ].sort(
                   (
                     first,
@@ -1175,33 +1477,49 @@ export default async function GreyhoundRaceCardsPage({
                       race,
                     ) =>
                       total +
-                      (
-                        race
-                          .greyhound_entries
-                          ?.length ??
-                        0
-                      ),
+                      (race
+                        .greyhound_entries
+                        ?.length ??
+                        0),
                     0,
                   );
 
-                const feedStatus = feedStatuses.find(
-                  (status) =>
-                    status.track_id === track?.id &&
-                    status.race_date === card.race_date &&
-                    status.session === card.session,
-                );
-                const feedFailed = feedStatus?.status === "failed";
-                const trackCode = track?.code === "GTS" ? "GTS" : "GWD";
+                const feedStatus =
+                  feedStatuses.find(
+                    (
+                      status,
+                    ) =>
+                      status.track_id ===
+                        track?.id &&
+                      status.race_date ===
+                        card.race_date &&
+                      status.session ===
+                        card.session,
+                  );
+
+                const feedFailed =
+                  feedStatus?.status ===
+                  "failed";
+
+                const trackCode =
+                  track?.code ===
+                  "GTS"
+                    ? "GTS"
+                    : "GWD";
 
                 return (
-                  <details key={card.id} className="gh-card">
+                  <details
+                    key={
+                      card.id
+                    }
+                    className="gh-card"
+                  >
                     <summary className="gh-card-head">
                       <div className="gh-card-head-row">
                         <div>
                           <div className="gh-badges">
                             <span className="gh-code">
-                              {track
-                                ?.code ??
+                              {track?.code ??
                                 "G365"}
                             </span>
 
@@ -1233,15 +1551,28 @@ export default async function GreyhoundRaceCardsPage({
                             )}
 
                             {feedStatus ? (
-                              <span className={`gh-status ${feedFailed ? "bad" : feedStatus.status === "success" ? "good" : "warn"}`}>
-                                {feedFailed ? "Official Feed Failed" : feedStatus.status === "success" ? "Official Feed OK" : "Official Feed Skipped"}
+                              <span
+                                className={`gh-status ${
+                                  feedFailed
+                                    ? "bad"
+                                    : feedStatus.status ===
+                                        "success"
+                                      ? "good"
+                                      : "warn"
+                                }`}
+                              >
+                                {feedFailed
+                                  ? "Official Feed Failed"
+                                  : feedStatus.status ===
+                                      "success"
+                                    ? "Official Feed OK"
+                                    : "Official Feed Skipped"}
                               </span>
                             ) : null}
                           </div>
 
                           <h3 className="gh-card-title">
-                            {track
-                              ?.name ??
+                            {track?.name ??
                               "Greyhound Track"}
                           </h3>
 
@@ -1258,7 +1589,6 @@ export default async function GreyhoundRaceCardsPage({
                               )}{" "}
                               Session
                             </span>
-
                           </div>
                         </div>
 
@@ -1270,6 +1600,7 @@ export default async function GreyhoundRaceCardsPage({
                                   races.length
                                 }
                               </strong>
+
                               <span>
                                 Races
                               </span>
@@ -1281,6 +1612,7 @@ export default async function GreyhoundRaceCardsPage({
                                   totalEntries
                                 }
                               </strong>
+
                               <span>
                                 Entries
                               </span>
@@ -1291,6 +1623,7 @@ export default async function GreyhoundRaceCardsPage({
                                 {card.total_races ??
                                   races.length}
                               </strong>
+
                               <span>
                                 Expected
                               </span>
@@ -1305,22 +1638,46 @@ export default async function GreyhoundRaceCardsPage({
                     <div className="gh-card-body">
                       <div className="gh-card-actions">
                         <div>
-                          <div className="gh-section-kicker">Commissioner</div>
-                          <div className="gh-section-copy" style={{ marginTop: 3 }}>
-                            Confirm the official card after reviewing its runners.
+                          <div className="gh-section-kicker">
+                            Commissioner
+                          </div>
+
+                          <div
+                            className="gh-section-copy"
+                            style={{
+                              marginTop:
+                                3,
+                            }}
+                          >
+                            Confirm the
+                            official
+                            card after
+                            reviewing
+                            its runners.
                           </div>
                         </div>
 
                         <GreyhoundConfirmCardButton
-                          leagueId={leagueId}
-                          cardId={card.id}
-                          confirmed={confirmed}
+                          leagueId={
+                            leagueId
+                          }
+                          cardId={
+                            card.id
+                          }
+                          confirmed={
+                            confirmed
+                          }
                           disabled={
-                            races.length === 0 ||
-                            card.card_status === "locked" ||
-                            card.card_status === "in_progress" ||
-                            card.card_status === "final" ||
-                            card.card_status === "cancelled"
+                            races.length ===
+                              0 ||
+                            card.card_status ===
+                              "locked" ||
+                            card.card_status ===
+                              "in_progress" ||
+                            card.card_status ===
+                              "final" ||
+                            card.card_status ===
+                              "cancelled"
                           }
                         />
                       </div>
@@ -1329,180 +1686,273 @@ export default async function GreyhoundRaceCardsPage({
                         <>
                           <div className="gh-feed-failure">
                             <div className="gh-feed-failure-title">
-                              Official Feed Failed · Manual Backup Enabled
+                              Official
+                              Feed Failed
+                              · Manual
+                              Backup
+                              Enabled
                             </div>
+
                             <div className="gh-feed-failure-copy">
-                              {feedStatus?.error_message ?? "The official AmTote feed failed for this exact track and racing day."}{" "}
-                              The importer below is locked to this card&apos;s track, date, and session.
+                              {feedStatus?.error_message ??
+                                "The official AmTote feed failed for this exact track and racing day."}{" "}
+                              The importer
+                              below is
+                              locked to
+                              this
+                              card&apos;s
+                              track, date,
+                              and session.
                             </div>
                           </div>
 
                           <div className="gh-backup-wrap">
                             <GreyhoundRaceCardImporter
-                              leagueId={leagueId}
+                              leagueId={
+                                leagueId
+                              }
                               backupOnly
-                              expectedTrackCode={trackCode}
-                              expectedTrackName={track?.name ?? trackCode}
-                              expectedRaceDate={card.race_date}
-                              expectedSession={card.session}
+                              expectedTrackCode={
+                                trackCode
+                              }
+                              expectedTrackName={
+                                track?.name ??
+                                trackCode
+                              }
+                              expectedRaceDate={
+                                card.race_date
+                              }
+                              expectedSession={
+                                card.session
+                              }
                               importEndpoint="/api/greyhound/races/import-backup"
                             />
                           </div>
                         </>
                       ) : null}
 
-                    <div className="gh-races">
-                      {races.map(
-                        (
-                          race,
-                        ) => {
-                          const entryByBox =
-                            new Map<
-                              number,
-                              EntryRow
-                            >();
+                      <div className="gh-races">
+                        {races.map(
+                          (
+                            race,
+                          ) => {
+                            const entryByBox =
+                              new Map<
+                                number,
+                                EntryRow
+                              >();
 
-                          for (
-                            const entry of
-                            race.greyhound_entries ??
-                            []
-                          ) {
-                            entryByBox.set(
-                              entry.box_number,
-                              entry,
-                            );
-                          }
+                            for (
+                              const entry of
+                              race.greyhound_entries ??
+                              []
+                            ) {
+                              entryByBox.set(
+                                entry.box_number,
+                                entry,
+                              );
+                            }
 
-                          return (
-                            <details
-                              key={
-                                race.id
-                              }
-                              className="gh-race"
-                            >
-                              <summary>
-                                <div className="gh-race-summary">
-                                  <div className="gh-race-left">
-                                    <div className="gh-race-number">
-                                      {
-                                        race.race_number
-                                      }
-                                    </div>
-
-                                    <div>
-                                      <div className="gh-race-name">
-                                        Race{" "}
+                            return (
+                              <details
+                                key={
+                                  race.id
+                                }
+                                className="gh-race"
+                              >
+                                <summary>
+                                  <div className="gh-race-summary">
+                                    <div className="gh-race-left">
+                                      <div className="gh-race-number">
                                         {
                                           race.race_number
-                                        }{" "}
-                                        {race.grade && (
-                                          <span className="gh-grade">
-                                            Grade{" "}
-                                            {
-                                              race.grade
-                                            }
+                                        }
+                                      </div>
+
+                                      <div>
+                                        <div className="gh-race-name">
+                                          Race{" "}
+                                          {
+                                            race.race_number
+                                          }{" "}
+                                          {race.grade && (
+                                            <span className="gh-grade">
+                                              Grade{" "}
+                                              {
+                                                race.grade
+                                              }
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <div className="gh-race-info">
+                                          <span>
+                                            {race.distance_yards
+                                              ? `${race.distance_yards} Yards`
+                                              : "Distance unavailable"}
                                           </span>
+
+                                          <span>
+                                            {race
+                                              .greyhound_entries
+                                              ?.length ??
+                                              0}{" "}
+                                            runners
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="gh-race-right">
+                                      <span
+                                        className={`gh-status ${statusTone(
+                                          race.race_status,
+                                        )}`}
+                                      >
+                                        {statusLabel(
+                                          race.race_status,
                                         )}
-                                      </div>
+                                      </span>
 
-                                      <div className="gh-race-info">
-                                        <span>
-                                          {race.distance_yards
-                                            ? `${race.distance_yards} Yards`
-                                            : "Distance unavailable"}
-                                        </span>
-
-
-                                        <span>
-                                          {race
-                                            .greyhound_entries
-                                            ?.length ??
-                                            0}{" "}
-                                          runners
-                                        </span>
+                                      <div className="gh-chevron">
+                                        ▾
                                       </div>
                                     </div>
                                   </div>
+                                </summary>
 
-                                  <div className="gh-race-right">
-                                    <span
-                                      className={`gh-status ${statusTone(
-                                        race.race_status,
-                                      )}`}
-                                    >
-                                      {statusLabel(
-                                        race.race_status,
-                                      )}
-                                    </span>
+                                <div className="gh-table-wrap">
+                                  <table className="gh-table">
+                                    <thead>
+                                      <tr>
+                                        <th>
+                                          Box
+                                        </th>
 
-                                    <div className="gh-chevron">
-                                      ▾
-                                    </div>
-                                  </div>
-                                </div>
-                              </summary>
+                                        <th>
+                                          Greyhound
+                                        </th>
 
-                              <div className="gh-table-wrap">
-                                <table className="gh-table">
-                                  <thead>
-                                    <tr>
-                                      <th>
-                                        Box
-                                      </th>
-                                      <th>
-                                        Greyhound
-                                      </th>
-                                      <th>
-                                        Odds
-                                      </th>
-                                      <th>
-                                        Trainer
-                                      </th>
-                                      <th>
-                                        Kennel
-                                      </th>
-                                      <th>
-                                        Weight
-                                      </th>
-                                      <th>
-                                        Status
-                                      </th>
-                                    </tr>
-                                  </thead>
+                                        <th>
+                                          Odds
+                                        </th>
 
-                                  <tbody>
-                                    {Array.from(
-                                      {
-                                        length:
-                                          8,
-                                      },
-                                      (
-                                        _,
-                                        index,
-                                      ) =>
-                                        index +
-                                        1,
-                                    ).map(
-                                      (
-                                        boxNumber,
-                                      ) => {
-                                        const trap =
-                                          WHEELING_TRAPS[
-                                            boxNumber
-                                          ];
+                                        <th>
+                                          Trainer
+                                        </th>
 
-                                        const entry =
-                                          entryByBox.get(
-                                            boxNumber,
-                                          );
+                                        <th>
+                                          Kennel
+                                        </th>
 
-                                        if (
-                                          !entry
-                                        ) {
+                                        <th>
+                                          Weight
+                                        </th>
+
+                                        <th>
+                                          Status
+                                        </th>
+                                      </tr>
+                                    </thead>
+
+                                    <tbody>
+                                      {Array.from(
+                                        {
+                                          length:
+                                            8,
+                                        },
+                                        (
+                                          _,
+                                          index,
+                                        ) =>
+                                          index +
+                                          1,
+                                      ).map(
+                                        (
+                                          boxNumber,
+                                        ) => {
+                                          const trap =
+                                            WHEELING_TRAPS[
+                                              boxNumber
+                                            ];
+
+                                          const entry =
+                                            entryByBox.get(
+                                              boxNumber,
+                                            );
+
+                                          if (
+                                            !entry
+                                          ) {
+                                            return (
+                                              <tr
+                                                key={
+                                                  boxNumber
+                                                }
+                                              >
+                                                <td>
+                                                  <div className="gh-box">
+                                                    <div
+                                                      className="gh-trap"
+                                                      style={
+                                                        trapStyle(
+                                                          boxNumber,
+                                                        )
+                                                      }
+                                                    >
+                                                      {
+                                                        boxNumber
+                                                      }
+                                                    </div>
+
+                                                    <span>
+                                                      {
+                                                        trap?.label
+                                                      }
+                                                    </span>
+                                                  </div>
+                                                </td>
+
+                                                <td>
+                                                  <span className="gh-dog">
+                                                    Vacant
+                                                  </span>
+                                                </td>
+
+                                                <td>
+                                                  —
+                                                </td>
+
+                                                <td>
+                                                  —
+                                                </td>
+
+                                                <td>
+                                                  —
+                                                </td>
+
+                                                <td>
+                                                  —
+                                                </td>
+
+                                                <td>
+                                                  <span className="gh-status neutral">
+                                                    Vacant
+                                                  </span>
+                                                </td>
+                                              </tr>
+                                            );
+                                          }
+
+                                          const dog =
+                                            firstRelation(
+                                              entry.greyhound_dogs,
+                                            );
+
                                           return (
                                             <tr
                                               key={
-                                                boxNumber
+                                                entry.id
                                               }
                                             >
                                               <td>
@@ -1511,230 +1961,197 @@ export default async function GreyhoundRaceCardsPage({
                                                     className="gh-trap"
                                                     style={
                                                       trapStyle(
-                                                        boxNumber,
+                                                        entry.box_number,
                                                       )
                                                     }
                                                   >
                                                     {
-                                                      boxNumber
+                                                      entry.box_number
                                                     }
                                                   </div>
 
                                                   <span>
                                                     {
-                                                      trap
-                                                        ?.label
+                                                      trap?.label
                                                     }
                                                   </span>
                                                 </div>
                                               </td>
 
                                               <td>
-                                                <span className="gh-dog">
-                                                  Vacant
+                                                {dog ? (
+                                                  <GreyhoundDogProfileModal
+                                                    leagueId={
+                                                      leagueId
+                                                    }
+                                                    dogId={
+                                                      dog.id
+                                                    }
+                                                    dogName={
+                                                      dog.display_name
+                                                    }
+                                                    className="gh-dog"
+                                                  />
+                                                ) : (
+                                                  <span className="gh-dog">
+                                                    Unknown
+                                                    Greyhound
+                                                  </span>
+                                                )}
+                                              </td>
+
+                                              <td>
+                                                <span className="gh-odds">
+                                                  {entry.morning_line_odds ??
+                                                    "—"}
                                                 </span>
                                               </td>
 
                                               <td>
-                                                —
+                                                {entry.trainer ??
+                                                  "—"}
                                               </td>
+
                                               <td>
-                                                —
+                                                {entry.kennel ??
+                                                  "—"}
                                               </td>
+
                                               <td>
-                                                —
+                                                {entry.weight ??
+                                                  "—"}
                                               </td>
+
                                               <td>
-                                                —
-                                              </td>
-                                              <td>
-                                                <span className="gh-status neutral">
-                                                  Vacant
+                                                <span
+                                                  className={`gh-status ${statusTone(
+                                                    entry.entry_status,
+                                                  )}`}
+                                                >
+                                                  {statusLabel(
+                                                    entry.entry_status,
+                                                  )}
                                                 </span>
                                               </td>
                                             </tr>
                                           );
-                                        }
+                                        },
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
 
-                                        const dog =
-                                          firstRelation(
-                                            entry.greyhound_dogs,
-                                          );
-
-                                        return (
-                                          <tr
-                                            key={
-                                              entry.id
-                                            }
-                                          >
-                                            <td>
-                                              <div className="gh-box">
-                                                <div
-                                                  className="gh-trap"
-                                                  style={
-                                                    trapStyle(
-                                                      entry.box_number,
-                                                    )
-                                                  }
-                                                >
-                                                  {
-                                                    entry.box_number
-                                                  }
-                                                </div>
-
-                                                <span>
-                                                  {
-                                                    trap
-                                                      ?.label
-                                                  }
-                                                </span>
-                                              </div>
-                                            </td>
-
-                                            <td>
-                                              <span className="gh-dog">
-                                                {dog?.display_name ??
-                                                  "Unknown Greyhound"}
-                                              </span>
-                                            </td>
-
-                                            <td>
-                                              <span className="gh-odds">
-                                                {entry.morning_line_odds ??
-                                                  "—"}
-                                              </span>
-                                            </td>
-
-                                            <td>
-                                              {entry.trainer ??
-                                                "—"}
-                                            </td>
-
-                                            <td>
-                                              {entry.kennel ??
-                                                "—"}
-                                            </td>
-
-                                            <td>
-                                              {entry.weight ??
-                                                "—"}
-                                            </td>
-
-                                            <td>
-                                              <span
-                                                className={`gh-status ${statusTone(
-                                                  entry.entry_status,
-                                                )}`}
-                                              >
-                                                {statusLabel(
-                                                  entry.entry_status,
-                                                )}
-                                              </span>
-                                            </td>
-                                          </tr>
-                                        );
-                                      },
-                                    )}
-                                  </tbody>
-                                </table>
-                              </div>
-
-                              <div className="gh-mobile-runners">
-                                {Array.from(
-                                  {
-                                    length:
-                                      8,
-                                  },
-                                  (
-                                    _,
-                                    index,
-                                  ) =>
-                                    index +
-                                    1,
-                                ).map(
-                                  (
-                                    boxNumber,
-                                  ) => {
-                                    const trap =
-                                      WHEELING_TRAPS[
-                                        boxNumber
-                                      ];
-
-                                    const entry =
-                                      entryByBox.get(
-                                        boxNumber,
-                                      );
-
-                                    const dog =
-                                      entry
-                                        ? firstRelation(
-                                            entry.greyhound_dogs,
-                                          )
-                                        : null;
-
-                                    return (
-                                      <div
-                                        key={
-                                          entry
-                                            ?.id ??
+                                <div className="gh-mobile-runners">
+                                  {Array.from(
+                                    {
+                                      length:
+                                        8,
+                                    },
+                                    (
+                                      _,
+                                      index,
+                                    ) =>
+                                      index +
+                                      1,
+                                  ).map(
+                                    (
+                                      boxNumber,
+                                    ) => {
+                                      const trap =
+                                        WHEELING_TRAPS[
                                           boxNumber
-                                        }
-                                        className="gh-mobile-runner"
-                                      >
-                                        <div
-                                          className="gh-trap"
-                                          style={
-                                            trapStyle(
-                                              boxNumber,
+                                        ];
+
+                                      const entry =
+                                        entryByBox.get(
+                                          boxNumber,
+                                        );
+
+                                      const dog =
+                                        entry
+                                          ? firstRelation(
+                                              entry.greyhound_dogs,
                                             )
-                                          }
-                                        >
-                                          {
+                                          : null;
+
+                                      return (
+                                        <div
+                                          key={
+                                            entry?.id ??
                                             boxNumber
                                           }
+                                          className="gh-mobile-runner"
+                                        >
+                                          <div
+                                            className="gh-trap"
+                                            style={
+                                              trapStyle(
+                                                boxNumber,
+                                              )
+                                            }
+                                          >
+                                            {
+                                              boxNumber
+                                            }
+                                          </div>
+
+                                          <div className="gh-mobile-name">
+                                            {entry &&
+                                            dog ? (
+                                              <GreyhoundDogProfileModal
+                                                leagueId={
+                                                  leagueId
+                                                }
+                                                dogId={
+                                                  dog.id
+                                                }
+                                                dogName={
+                                                  dog.display_name
+                                                }
+                                                className="gh-mobile-dog-button"
+                                              />
+                                            ) : (
+                                              <strong>
+                                                {entry
+                                                  ? "Unknown Greyhound"
+                                                  : "Vacant"}
+                                              </strong>
+                                            )}
+
+                                            <span>
+                                              {trap?.label ??
+                                                ""}
+
+                                              {entry?.trainer
+                                                ? ` · ${entry.trainer}`
+                                                : ""}
+
+                                              {entry?.weight
+                                                ? ` · ${entry.weight}`
+                                                : ""}
+                                            </span>
+                                          </div>
+
+                                          {entry ? (
+                                            <span className="gh-odds">
+                                              {entry.morning_line_odds ??
+                                                "—"}
+                                            </span>
+                                          ) : (
+                                            <span className="gh-status neutral">
+                                              Vacant
+                                            </span>
+                                          )}
                                         </div>
-
-                                        <div className="gh-mobile-name">
-                                          <strong>
-                                            {entry
-                                              ? dog?.display_name ??
-                                                "Unknown Greyhound"
-                                              : "Vacant"}
-                                          </strong>
-
-                                          <span>
-                                            {trap
-                                              ?.label ??
-                                              ""}
-                                            {entry?.trainer
-                                              ? ` · ${entry.trainer}`
-                                              : ""}
-                                            {entry?.weight
-                                              ? ` · ${entry.weight}`
-                                              : ""}
-                                          </span>
-                                        </div>
-
-                                        {entry ? (
-                                          <span className="gh-odds">
-                                            {entry.morning_line_odds ??
-                                              "—"}
-                                          </span>
-                                        ) : (
-                                          <span className="gh-status neutral">
-                                            Vacant
-                                          </span>
-                                        )}
-                                      </div>
-                                    );
-                                  },
-                                )}
-                              </div>
-                            </details>
-                          );
-                        },
-                      )}
-                    </div>
+                                      );
+                                    },
+                                  )}
+                                </div>
+                              </details>
+                            );
+                          },
+                        )}
+                      </div>
                     </div>
                   </details>
                 );

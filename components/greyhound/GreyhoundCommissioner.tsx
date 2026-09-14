@@ -1,6 +1,4 @@
-import type {
-  CSSProperties,
-} from "react";
+"use client";
 
 import Link from "next/link";
 
@@ -8,1357 +6,701 @@ type Props = {
   leagueId: string;
 };
 
-type ToolCard = {
+type AdminCard = {
   eyebrow: string;
   title: string;
   description: string;
   href: string;
   action: string;
   enabled: boolean;
-  accent: "red" | "orange" | "neutral";
+  status: string;
+  icon: string;
 };
 
 export default function GreyhoundCommissioner({
   leagueId,
 }: Props) {
-  const base =
-    `/league/${leagueId}/greyhound`;
+  const base = `/league/${leagueId}/greyhound`;
 
-  const tools: ToolCard[] = [
+  const cards: AdminCard[] = [
     {
-      eyebrow:
-        "RACE OPERATIONS",
-
-      title:
-        "Race Cards",
-
+      eyebrow: "RACE OPERATIONS",
+      title: "Race Cards",
       description:
-        "Import race programs, review every race and runner, confirm official cards, and prepare the racing slate for wagering.",
-
-      href:
-        `${base}/commissioner/race-cards`,
-
-      action:
-        "OPEN RACE CARDS",
-
-      enabled:
-        true,
-
-      accent:
-        "red",
+        "Sync official race cards, review every race and runner, confirm cards for wagering, and manage card lifecycle status.",
+      href: `${base}/commissioner/race-cards`,
+      action: "Open Race Cards",
+      enabled: true,
+      status: "LIVE",
+      icon: "RC",
     },
-
     {
-      eyebrow:
-        "RACE OPERATIONS",
-
-      title:
-        "Scratches & Changes",
-
+      eyebrow: "RACE OPERATIONS",
+      title: "Scratches & Changes",
       description:
-        "Review scratches, withdrawals, vacant boxes, and late race-card changes before wagering locks.",
-
-      href:
-        "#",
-
-      action:
-        "COMING NEXT",
-
-      enabled:
-        false,
-
-      accent:
-        "orange",
+        "Review scratches, withdrawals, vacant boxes, replacement runners, and automatic alternate activity from the live Greyhound feed.",
+      href: `${base}/commissioner/scratches-changes`,
+      action: "Open Scratches & Changes",
+      enabled: true,
+      status: "LIVE",
+      icon: "SC",
     },
-
     {
-      eyebrow:
-        "RACE OPERATIONS",
-
-      title:
-        "Results & Settlements",
-
+      eyebrow: "RACE OPERATIONS",
+      title: "Results & Settlements",
       description:
-        "Review official results, payouts, wager grading, and settlement status after each race becomes official.",
-
-      href:
-        "#",
-
-      action:
-        "COMING NEXT",
-
-      enabled:
-        false,
-
-      accent:
-        "orange",
+        "Review official race results, mutuel payouts, wager grading, settlement status, corrections, and refund activity.",
+      href: `${base}/commissioner/results-settlements`,
+      action: "Open Results & Settlements",
+      enabled: true,
+      status: "LIVE",
+      icon: "RS",
     },
-
     {
-      eyebrow:
-        "LEAGUE SETUP",
-
-      title:
-        "Greyhound Settings",
-
+      eyebrow: "LEAGUE SETUP",
+      title: "Greyhound Settings",
       description:
-        "Configure eligible races, wagering rules, locking behavior, contest scoring, and commissioner options.",
-
-      href:
-        "#",
-
-      action:
-        "COMING SOON",
-
-      enabled:
-        false,
-
-      accent:
-        "neutral",
+        "Manage game format, competition dates and rounds, starting bankroll, track eligibility, wager types, locks, and scratch timing.",
+      href: `${base}/commissioner/settings`,
+      action: "Open Settings",
+      enabled: true,
+      status: "LIVE",
+      icon: "GS",
     },
-
     {
-      eyebrow:
-        "LEAGUE MANAGEMENT",
-
-      title:
-        "Members & Entries",
-
+      eyebrow: "LEAGUE MANAGEMENT",
+      title: "Teams & Entries",
       description:
-        "Manage invitations, league participation, member access, and Greyhound contest entries.",
-
-      href:
-        "#",
-
-      action:
-        "COMING SOON",
-
-      enabled:
-        false,
-
-      accent:
-        "neutral",
+        "Manage personal Entry Names, create shared teams, randomize or manually assign members, and maintain the Team Names used across the competition.",
+      href: `${base}/commissioner/teams-entries`,
+      action: "Open Teams & Entries",
+      enabled: true,
+      status: "LIVE",
+      icon: "TE",
     },
-
     {
-      eyebrow:
-        "LEAGUE LIFECYCLE",
-
-      title:
-        "Season Control",
-
+      eyebrow: "LEAGUE LIFECYCLE",
+      title: "Season Control",
       description:
-        "Monitor the current Greyhound league lifecycle and manage future racing-season controls.",
-
-      href:
-        "#",
-
-      action:
-        "COMING SOON",
-
-      enabled:
-        false,
-
-      accent:
-        "neutral",
+        "Monitor competition status, round progression, survivor eliminations, tournament advancement, Head-to-Head lifecycle, and official completion controls.",
+      href: `${base}/commissioner/season-control`,
+      action: "Open Season Control",
+      enabled: true,
+      status: "LIVE",
+      icon: "SC",
     },
   ];
 
   return (
-    <main
-      className="g365-greyhound-admin"
-      style={
-        styles.page
-      }
-    >
+    <main className="ghc-page">
       <style>{`
-        .g365-greyhound-admin,
-        .g365-greyhound-admin * {
+        .ghc-page,
+        .ghc-page * {
           box-sizing: border-box;
         }
 
-        .g365-greyhound-admin .summary-grid {
-          display: grid;
-          grid-template-columns: repeat(4,minmax(0,1fr));
-          gap: 10px;
+        .ghc-page {
+          min-height: 100vh;
+          padding: 20px 18px 72px;
+          background:
+            radial-gradient(circle at 14% -4%, rgba(166, 26, 18, 0.22), transparent 30%),
+            radial-gradient(circle at 88% 8%, rgba(241, 101, 28, 0.10), transparent 24%),
+            linear-gradient(180deg, #07080a 0%, #0b0c0f 48%, #07080a 100%);
+          color: #ffffff;
         }
 
-        .g365-greyhound-admin .tool-grid {
+        .ghc-shell {
+          width: min(1500px, 100%);
+          margin: 0 auto;
+        }
+
+        .ghc-hero {
+          position: relative;
+          overflow: hidden;
+          border: 1px solid rgba(255, 103, 29, 0.30);
+          border-radius: 20px;
+          background:
+            linear-gradient(
+              125deg,
+              rgba(118, 16, 13, 0.58) 0%,
+              rgba(69, 18, 13, 0.45) 31%,
+              rgba(255, 102, 25, 0.08) 62%,
+              #101114 100%
+            );
+          box-shadow:
+            0 22px 60px rgba(0, 0, 0, 0.36),
+            inset 0 1px 0 rgba(255, 255, 255, 0.025);
+        }
+
+        .ghc-hero::before {
+          content: "";
+          position: absolute;
+          top: -90px;
+          right: -70px;
+          width: 300px;
+          height: 300px;
+          border-radius: 999px;
+          background: radial-gradient(
+            circle,
+            rgba(244, 93, 22, 0.16),
+            transparent 68%
+          );
+          pointer-events: none;
+        }
+
+        .ghc-hero-inner {
+          position: relative;
+          z-index: 1;
+          padding: 28px 28px 26px;
+        }
+
+        .ghc-kicker {
+          color: #ff6b22;
+          font-size: 10px;
+          font-weight: 950;
+          letter-spacing: 0.17em;
+          text-transform: uppercase;
+        }
+
+        .ghc-title {
+          margin: 8px 0 8px;
+          color: #ffffff;
+          font-size: clamp(31px, 4vw, 48px);
+          line-height: 1;
+          font-weight: 950;
+          letter-spacing: -0.04em;
+        }
+
+        .ghc-copy {
+          max-width: 860px;
+          margin: 0;
+          color: #a7abb2;
+          font-size: 13px;
+          line-height: 1.7;
+          font-weight: 650;
+        }
+
+        .ghc-hero-accent {
+          height: 4px;
+          background: linear-gradient(
+            90deg,
+            #8f1713 0%,
+            #d93418 36%,
+            #f36a20 72%,
+            #ff8a3d 100%
+          );
+        }
+
+        .ghc-overview {
           display: grid;
-          grid-template-columns: repeat(3,minmax(0,1fr));
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+          margin: 14px 0 20px;
+        }
+
+        .ghc-stat {
+          min-height: 112px;
+          padding: 15px 16px;
+          border: 1px solid #2b2d31;
+          border-radius: 15px;
+          background:
+            linear-gradient(145deg, rgba(46, 15, 10, 0.26), transparent 58%),
+            #101114;
+          box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+        }
+
+        .ghc-stat-label {
+          color: #e7682d;
+          font-size: 8px;
+          font-weight: 950;
+          letter-spacing: 0.13em;
+          text-transform: uppercase;
+        }
+
+        .ghc-stat-value {
+          margin-top: 8px;
+          color: #ffffff;
+          font-size: 20px;
+          font-weight: 950;
+          letter-spacing: -0.02em;
+        }
+
+        .ghc-stat-copy {
+          margin-top: 4px;
+          color: #727780;
+          font-size: 9px;
+          line-height: 1.45;
+          font-weight: 650;
+        }
+
+        .ghc-section-head {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 16px;
+          margin: 8px 0 12px;
+        }
+
+        .ghc-section-kicker {
+          color: #e76227;
+          font-size: 8px;
+          font-weight: 950;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+        }
+
+        .ghc-section-title {
+          margin: 5px 0 0;
+          color: #ffffff;
+          font-size: 26px;
+          font-weight: 950;
+          letter-spacing: -0.025em;
+        }
+
+        .ghc-section-copy {
+          margin: 6px 0 0;
+          color: #7d828a;
+          font-size: 10px;
+          line-height: 1.55;
+        }
+
+        .ghc-count {
+          flex: 0 0 auto;
+          padding: 9px 12px;
+          border: 1px solid rgba(232, 97, 36, 0.34);
+          border-radius: 10px;
+          background: rgba(89, 30, 11, 0.27);
+          color: #ffad7c;
+          font-size: 9px;
+          font-weight: 950;
+          letter-spacing: 0.08em;
+        }
+
+        .ghc-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 12px;
         }
 
-        .g365-greyhound-admin .hero {
+        .ghc-card {
+          position: relative;
+          overflow: hidden;
+          min-height: 252px;
           display: flex;
+          flex-direction: column;
+          border: 1px solid #2d2f33;
+          border-radius: 17px;
+          background:
+            linear-gradient(
+              145deg,
+              rgba(89, 20, 12, 0.20),
+              rgba(14, 15, 18, 0) 44%
+            ),
+            #101113;
+          box-shadow: 0 16px 38px rgba(0, 0, 0, 0.25);
+        }
+
+        .ghc-card::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 3px;
+          background: linear-gradient(
+            180deg,
+            #9d1f16,
+            #dc3d1d 52%,
+            #f26b22
+          );
+          opacity: 0.9;
+        }
+
+        .ghc-card.disabled {
+          background: #0f1012;
+          border-color: #26282c;
+        }
+
+        .ghc-card.disabled::before {
+          opacity: 0.22;
+        }
+
+        .ghc-card-top {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 17px 18px 0 20px;
+        }
+
+        .ghc-card-icon {
+          display: inline-flex;
+          width: 42px;
+          height: 42px;
+          flex: 0 0 auto;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(231, 91, 30, 0.40);
+          border-radius: 11px;
+          background:
+            linear-gradient(145deg, rgba(135, 27, 18, 0.68), rgba(74, 22, 12, 0.58));
+          color: #ffb084;
+          font-size: 10px;
+          font-weight: 950;
+          letter-spacing: 0.08em;
+        }
+
+        .ghc-card.disabled .ghc-card-icon {
+          border-color: #34363a;
+          background: #17181b;
+          color: #666b72;
+        }
+
+        .ghc-status {
+          display: inline-flex;
+          min-height: 27px;
+          align-items: center;
+          justify-content: center;
+          padding: 5px 8px;
+          border-radius: 999px;
+          font-size: 7px;
+          font-weight: 950;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          white-space: nowrap;
+        }
+
+        .ghc-status.live {
+          border: 1px solid rgba(50, 166, 93, 0.38);
+          background: rgba(17, 87, 48, 0.28);
+          color: #96e6b7;
+        }
+
+        .ghc-status.pending {
+          border: 1px solid rgba(221, 99, 34, 0.35);
+          background: rgba(92, 36, 12, 0.25);
+          color: #f5a26f;
+        }
+
+        .ghc-card-body {
+          display: flex;
+          flex: 1;
+          flex-direction: column;
+          padding: 15px 18px 18px 20px;
+        }
+
+        .ghc-card-eyebrow {
+          color: #e8652a;
+          font-size: 8px;
+          font-weight: 950;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+        }
+
+        .ghc-card.disabled .ghc-card-eyebrow {
+          color: #6f737a;
+        }
+
+        .ghc-card-title {
+          margin: 7px 0 0;
+          color: #ffffff;
+          font-size: 21px;
+          line-height: 1.12;
+          font-weight: 950;
+          letter-spacing: -0.02em;
+        }
+
+        .ghc-card.disabled .ghc-card-title {
+          color: #a5a8ad;
+        }
+
+        .ghc-card-description {
+          margin: 9px 0 0;
+          color: #90959c;
+          font-size: 11px;
+          line-height: 1.6;
+          font-weight: 600;
+        }
+
+        .ghc-card.disabled .ghc-card-description {
+          color: #676b72;
+        }
+
+        .ghc-card-action {
+          margin-top: auto;
+          padding-top: 18px;
+        }
+
+        .ghc-button {
+          display: inline-flex;
+          width: 100%;
+          min-height: 44px;
           align-items: center;
           justify-content: space-between;
-          gap: 20px;
+          gap: 12px;
+          padding: 0 13px 0 15px;
+          border: 1px solid rgba(255, 119, 42, 0.32);
+          border-radius: 10px;
+          background: linear-gradient(
+            90deg,
+            #991d16 0%,
+            #cb341a 52%,
+            #ee641e 100%
+          );
+          color: #ffffff;
+          text-decoration: none;
+          font-size: 10px;
+          font-weight: 950;
+          letter-spacing: 0.07em;
+          text-transform: uppercase;
+          box-shadow: 0 10px 24px rgba(146, 35, 17, 0.20);
+          transition:
+            transform 0.15s ease,
+            filter 0.15s ease;
         }
 
-        .g365-greyhound-admin .tool-card {
-          min-width: 0;
-        }
-
-        .g365-greyhound-admin .tool-card:hover {
-          transform: translateY(-2px);
-          border-color: rgba(239,101,24,.45) !important;
-        }
-
-        .g365-greyhound-admin .primary-action:hover {
-          filter: brightness(1.1);
+        .ghc-button:hover {
           transform: translateY(-1px);
+          filter: brightness(1.08);
+        }
+
+        .ghc-button-arrow {
+          font-size: 15px;
+          line-height: 1;
+        }
+
+        .ghc-coming {
+          display: inline-flex;
+          width: 100%;
+          min-height: 44px;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid #303237;
+          border-radius: 10px;
+          background: #17181b;
+          color: #686d75;
+          font-size: 9px;
+          font-weight: 950;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
         }
 
         @media (max-width: 1050px) {
-          .g365-greyhound-admin .summary-grid {
-            grid-template-columns: repeat(2,minmax(0,1fr));
+          .ghc-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
 
-          .g365-greyhound-admin .tool-grid {
-            grid-template-columns: repeat(2,minmax(0,1fr));
+          .ghc-overview {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
         }
 
         @media (max-width: 700px) {
-          .g365-greyhound-admin {
-            padding: 12px 10px 70px !important;
+          .ghc-page {
+            padding: 12px 10px 70px;
           }
 
-          .g365-greyhound-admin .hero {
-            flex-direction: column;
+          .ghc-hero-inner {
+            padding: 18px 16px;
+          }
+
+          .ghc-title {
+            font-size: 30px;
+          }
+
+          .ghc-copy {
+            font-size: 11px;
+          }
+
+          .ghc-section-head {
             align-items: flex-start;
+            flex-direction: column;
           }
 
-          .g365-greyhound-admin .summary-grid,
-          .g365-greyhound-admin .tool-grid {
+          .ghc-count {
+            width: 100%;
+            text-align: center;
+          }
+
+          .ghc-grid {
             grid-template-columns: 1fr;
           }
 
-          .g365-greyhound-admin .hero-badge {
-            width: 100%;
+          .ghc-card {
+            min-height: 228px;
+          }
+        }
+
+        @media (max-width: 440px) {
+          .ghc-overview {
+            grid-template-columns: 1fr;
           }
 
-          .g365-greyhound-admin .hero-badge > div {
-            flex: 1 1 0;
+          .ghc-stat {
+            min-height: 92px;
           }
 
-          .g365-greyhound-admin .tool-action {
-            width: 100%;
+          .ghc-card-top {
+            padding-left: 17px;
+          }
+
+          .ghc-card-body {
+            padding-left: 17px;
           }
         }
       `}</style>
 
-      <section
-        style={
-          styles.shell
-        }
-      >
-        {/* ==================================================
-            HERO
-        =================================================== */}
-
-        <header
-          className="hero"
-          style={
-            styles.hero
-          }
-        >
-          <div
-            style={
-              styles.heroCopy
-            }
-          >
-            <div
-              style={
-                styles.eyebrow
-              }
-            >
-              G365 GREYHOUND RACING · COMMISSIONER
+      <div className="ghc-shell">
+        <section className="ghc-hero">
+          <div className="ghc-hero-inner">
+            <div className="ghc-kicker">
+              G365 Greyhound Racing · Commissioner
             </div>
 
-            <h1
-              style={
-                styles.title
-              }
-            >
+            <h1 className="ghc-title">
               League Administration
             </h1>
 
-            <p
-              style={
-                styles.subtitle
-              }
-            >
-              Manage race cards,
-              race-day operations,
-              wagering controls,
-              results, settlements,
-              and league administration
-              from one central workspace.
+            <p className="ghc-copy">
+              Control the complete G365 Greyhound league from one workspace:
+              official race cards, wagering rules, contest configuration,
+              settlements, members, and competition lifecycle.
             </p>
           </div>
 
-          <div
-            className="hero-badge"
-            style={
-              styles.heroBadge
-            }
-          >
-            <div
-              style={
-                styles.heroBadgeItem
-              }
-            >
-              <span
-                style={
-                  styles.heroBadgeLabel
-                }
-              >
-                LEAGUE
-              </span>
-
-              <strong
-                style={
-                  styles.heroBadgeValue
-                }
-              >
-                GREYHOUND
-              </strong>
-            </div>
-
-            <div
-              style={
-                styles.heroBadgeItem
-              }
-            >
-              <span
-                style={
-                  styles.heroBadgeLabel
-                }
-              >
-                ACCESS
-              </span>
-
-              <strong
-                style={
-                  styles.heroBadgeValue
-                }
-              >
-                COMMISSIONER
-              </strong>
-            </div>
-          </div>
-        </header>
-
-        {/* ==================================================
-            SUMMARY
-        =================================================== */}
-
-        <section
-          className="summary-grid"
-          style={
-            styles.summaryGrid
-          }
-        >
-          <SummaryCard
-            label="LEAGUE TYPE"
-            value="Greyhound Racing"
-            detail="G365 racing contest"
-            tone="red"
-          />
-
-          <SummaryCard
-            label="RACE CARDS"
-            value="Active"
-            detail="Import & review available"
-            tone="orange"
-          />
-
-          <SummaryCard
-            label="RACE OPERATIONS"
-            value="Building"
-            detail="Scratches, results & settlement"
-            tone="neutral"
-          />
-
-          <SummaryCard
-            label="COMMISSIONER"
-            value="Full Access"
-            detail="Administrative controls"
-            tone="neutral"
-          />
+          <div className="ghc-hero-accent" />
         </section>
 
-        {/* ==================================================
-            SECTION HEADER
-        =================================================== */}
+        <section className="ghc-overview">
+          <div className="ghc-stat">
+            <div className="ghc-stat-label">
+              League Type
+            </div>
+            <div className="ghc-stat-value">
+              Greyhound
+            </div>
+            <div className="ghc-stat-copy">
+              G365 racing competition
+            </div>
+          </div>
 
-        <section
-          style={
-            styles.sectionHeading
-          }
-        >
+          <div className="ghc-stat">
+            <div className="ghc-stat-label">
+              Race Cards
+            </div>
+            <div className="ghc-stat-value">
+              Active
+            </div>
+            <div className="ghc-stat-copy">
+              Official feed, review and confirmation
+            </div>
+          </div>
+
+          <div className="ghc-stat">
+            <div className="ghc-stat-label">
+              Commissioner Settings
+            </div>
+            <div className="ghc-stat-value">
+              Active
+            </div>
+            <div className="ghc-stat-copy">
+              Formats, dates, bankroll and wagering
+            </div>
+          </div>
+
+          <div className="ghc-stat">
+            <div className="ghc-stat-label">
+              Commissioner
+            </div>
+            <div className="ghc-stat-value">
+              Full Access
+            </div>
+            <div className="ghc-stat-copy">
+              Complete league administration
+            </div>
+          </div>
+        </section>
+
+        <div className="ghc-section-head">
           <div>
-            <div
-              style={
-                styles.sectionEyebrow
-              }
-            >
-              COMMISSIONER TOOLS
+            <div className="ghc-section-kicker">
+              Commissioner Control Center
             </div>
 
-            <h2
-              style={
-                styles.sectionTitle
-              }
-            >
-              Greyhound Operations
+            <h2 className="ghc-section-title">
+              Greyhound League Tools
             </h2>
 
-            <p
-              style={
-                styles.sectionDescription
-              }
-            >
-              Race operations and
-              league controls are
-              separated into focused
-              workspaces so the
-              commissioner can get
-              where they need quickly.
-            </p>
-          </div>
-        </section>
-
-        {/* ==================================================
-            TOOL GRID
-        =================================================== */}
-
-        <section
-          className="tool-grid"
-        >
-          {tools.map(
-            (
-              tool,
-            ) => (
-              <ToolCard
-                key={
-                  tool.title
-                }
-                tool={
-                  tool
-                }
-              />
-            ),
-          )}
-        </section>
-
-        {/* ==================================================
-            BOTTOM OPERATIONS STRIP
-        =================================================== */}
-
-        <section
-          style={
-            styles.operationsStrip
-          }
-        >
-          <div>
-            <div
-              style={
-                styles.sectionEyebrow
-              }
-            >
-              CURRENT WORKFLOW
-            </div>
-
-            <h3
-              style={
-                styles.operationsTitle
-              }
-            >
-              Race Cards are the active
-              commissioner workspace
-            </h3>
-
-            <p
-              style={
-                styles.operationsText
-              }
-            >
-              Import and review the
-              official racing program
-              first. Scratches,
-              wagering locks, results,
-              payouts, and settlement
-              controls will build from
-              the confirmed card.
+            <p className="ghc-section-copy">
+              Open the live tools below or see what is coming next in the
+              Greyhound commissioner build.
             </p>
           </div>
 
-          <Link
-            href={
-              `${base}/commissioner/race-cards`
-            }
-            className="primary-action"
-            style={
-              styles.operationsButton
-            }
-          >
-            MANAGE RACE CARDS
-          </Link>
+          <div className="ghc-count">
+            4 LIVE · 2 BUILDING
+          </div>
+        </div>
+
+        <section className="ghc-grid">
+          {cards.map((card) => {
+            const statusClass =
+              card.status === "LIVE"
+                ? "live"
+                : "pending";
+
+            return (
+              <article
+                key={card.title}
+                className={`ghc-card${card.enabled ? "" : " disabled"}`}
+              >
+                <div className="ghc-card-top">
+                  <div className="ghc-card-icon">
+                    {card.icon}
+                  </div>
+
+                  <span className={`ghc-status ${statusClass}`}>
+                    {card.status}
+                  </span>
+                </div>
+
+                <div className="ghc-card-body">
+                  <div className="ghc-card-eyebrow">
+                    {card.eyebrow}
+                  </div>
+
+                  <h3 className="ghc-card-title">
+                    {card.title}
+                  </h3>
+
+                  <p className="ghc-card-description">
+                    {card.description}
+                  </p>
+
+                  <div className="ghc-card-action">
+                    {card.enabled ? (
+                      <Link
+                        href={card.href}
+                        className="ghc-button"
+                      >
+                        <span>
+                          {card.action}
+                        </span>
+
+                        <span className="ghc-button-arrow">
+                          →
+                        </span>
+                      </Link>
+                    ) : (
+                      <div className="ghc-coming">
+                        {card.action}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
         </section>
-      </section>
+      </div>
     </main>
   );
 }
-
-function SummaryCard({
-  label,
-  value,
-  detail,
-  tone,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  tone:
-    | "red"
-    | "orange"
-    | "neutral";
-}) {
-  const toneStyle =
-    tone === "red"
-      ? styles.summaryRed
-      : tone === "orange"
-        ? styles.summaryOrange
-        : styles.summaryNeutral;
-
-  return (
-    <article
-      style={{
-        ...styles.summaryCard,
-        ...toneStyle,
-      }}
-    >
-      <span
-        style={
-          styles.summaryLabel
-        }
-      >
-        {label}
-      </span>
-
-      <strong
-        style={
-          styles.summaryValue
-        }
-      >
-        {value}
-      </strong>
-
-      <span
-        style={
-          styles.summaryDetail
-        }
-      >
-        {detail}
-      </span>
-    </article>
-  );
-}
-
-function ToolCard({
-  tool,
-}: {
-  tool: ToolCard;
-}) {
-  const accent =
-    tool.accent === "red"
-      ? styles.toolAccentRed
-      : tool.accent === "orange"
-        ? styles.toolAccentOrange
-        : styles.toolAccentNeutral;
-
-  return (
-    <article
-      className="tool-card"
-      style={{
-        ...styles.toolCard,
-        ...accent,
-      }}
-    >
-      <div
-        style={
-          styles.toolTop
-        }
-      >
-        <div
-          style={
-            styles.toolEyebrow
-          }
-        >
-          {tool.eyebrow}
-        </div>
-
-        <div
-          style={
-            styles.toolIcon
-          }
-        >
-          {tool.title ===
-          "Race Cards"
-            ? "RC"
-            : tool.title ===
-                "Scratches & Changes"
-              ? "SC"
-              : tool.title ===
-                  "Results & Settlements"
-                ? "RS"
-                : tool.title ===
-                    "Greyhound Settings"
-                  ? "GS"
-                  : tool.title ===
-                      "Members & Entries"
-                    ? "ME"
-                    : "SE"}
-        </div>
-      </div>
-
-      <h3
-        style={
-          styles.toolTitle
-        }
-      >
-        {tool.title}
-      </h3>
-
-      <p
-        style={
-          styles.toolDescription
-        }
-      >
-        {tool.description}
-      </p>
-
-      <div
-        style={
-          styles.toolFooter
-        }
-      >
-        {tool.enabled ? (
-          <Link
-            href={
-              tool.href
-            }
-            className="tool-action primary-action"
-            style={
-              styles.primaryButton
-            }
-          >
-            {tool.action}
-          </Link>
-        ) : (
-          <div
-            className="tool-action"
-            style={
-              styles.disabledButton
-            }
-          >
-            {tool.action}
-          </div>
-        )}
-      </div>
-    </article>
-  );
-}
-
-const styles:
-  Record<
-    string,
-    CSSProperties
-  > = {
-    page: {
-      minHeight:
-        "100vh",
-
-      padding:
-        "20px 20px 70px",
-
-      background:
-        "radial-gradient(circle at top left,rgba(132,18,13,.18),transparent 30%),linear-gradient(180deg,#07080b,#0c0c0f 45%,#07080a)",
-
-      color:
-        "#f7f7f7",
-    },
-
-    shell: {
-      width:
-        "min(1500px,100%)",
-
-      margin:
-        "0 auto",
-    },
-
-    hero: {
-      padding:
-        24,
-
-      marginBottom:
-        14,
-
-      border:
-        "1px solid rgba(255,91,29,.28)",
-
-      borderRadius:
-        18,
-
-      background:
-        "linear-gradient(135deg,rgba(126,16,13,.38),rgba(255,94,24,.09) 46%,#101113 100%)",
-
-      boxShadow:
-        "0 22px 60px rgba(0,0,0,.30)",
-    },
-
-    heroCopy: {
-      maxWidth:
-        800,
-    },
-
-    eyebrow: {
-      color:
-        "#ff6b22",
-
-      fontSize:
-        10,
-
-      fontWeight:
-        950,
-
-      letterSpacing:
-        ".15em",
-    },
-
-    title: {
-      margin:
-        "7px 0 8px",
-
-      fontSize:
-        "clamp(28px,4vw,42px)",
-
-      lineHeight:
-        1,
-
-      fontWeight:
-        950,
-
-      letterSpacing:
-        "-.035em",
-    },
-
-    subtitle: {
-      maxWidth:
-        760,
-
-      margin:
-        0,
-
-      color:
-        "#a2a7ae",
-
-      fontSize:
-        13,
-
-      lineHeight:
-        1.65,
-
-      fontWeight:
-        600,
-    },
-
-    heroBadge: {
-      display:
-        "flex",
-
-      gap:
-        8,
-
-      flexWrap:
-        "wrap",
-    },
-
-    heroBadgeItem: {
-      minWidth:
-        125,
-
-      padding:
-        "12px 14px",
-
-      border:
-        "1px solid #3a2a23",
-
-      borderRadius:
-        11,
-
-      background:
-        "rgba(12,12,14,.72)",
-    },
-
-    heroBadgeLabel: {
-      display:
-        "block",
-
-      marginBottom:
-        5,
-
-      color:
-        "#7e7772",
-
-      fontSize:
-        7,
-
-      fontWeight:
-        900,
-
-      letterSpacing:
-        ".12em",
-    },
-
-    heroBadgeValue: {
-      color:
-        "#f6f6f6",
-
-      fontSize:
-        11,
-
-      fontWeight:
-        950,
-    },
-
-    summaryGrid: {
-      marginBottom:
-        14,
-    },
-
-    summaryCard: {
-      minHeight:
-        120,
-
-      padding:
-        16,
-
-      borderRadius:
-        14,
-
-      boxShadow:
-        "0 12px 28px rgba(0,0,0,.18)",
-    },
-
-    summaryRed: {
-      border:
-        "1px solid rgba(185,42,24,.34)",
-
-      background:
-        "linear-gradient(145deg,rgba(100,18,15,.30),#111214 65%)",
-    },
-
-    summaryOrange: {
-      border:
-        "1px solid rgba(230,100,25,.34)",
-
-      background:
-        "linear-gradient(145deg,rgba(105,49,15,.28),#111214 65%)",
-    },
-
-    summaryNeutral: {
-      border:
-        "1px solid #292a2d",
-
-      background:
-        "linear-gradient(145deg,#151619,#101113)",
-    },
-
-    summaryLabel: {
-      display:
-        "block",
-
-      color:
-        "#e1662b",
-
-      fontSize:
-        8,
-
-      fontWeight:
-        950,
-
-      letterSpacing:
-        ".11em",
-    },
-
-    summaryValue: {
-      display:
-        "block",
-
-      margin:
-        "9px 0 5px",
-
-      color:
-        "#ffffff",
-
-      fontSize:
-        19,
-
-      lineHeight:
-        1.15,
-
-      fontWeight:
-        950,
-    },
-
-    summaryDetail: {
-      display:
-        "block",
-
-      color:
-        "#757b84",
-
-      fontSize:
-        9,
-
-      lineHeight:
-        1.5,
-
-      fontWeight:
-        600,
-    },
-
-    sectionHeading: {
-      display:
-        "flex",
-
-      justifyContent:
-        "space-between",
-
-      alignItems:
-        "flex-end",
-
-      gap:
-        16,
-
-      marginBottom:
-        12,
-
-      padding:
-        "8px 2px",
-    },
-
-    sectionEyebrow: {
-      color:
-        "#e45f24",
-
-      fontSize:
-        8,
-
-      fontWeight:
-        950,
-
-      letterSpacing:
-        ".12em",
-    },
-
-    sectionTitle: {
-      margin:
-        "5px 0 0",
-
-      color:
-        "#ffffff",
-
-      fontSize:
-        24,
-
-      fontWeight:
-        950,
-
-      letterSpacing:
-        "-.02em",
-    },
-
-    sectionDescription: {
-      maxWidth:
-        750,
-
-      margin:
-        "7px 0 0",
-
-      color:
-        "#777d85",
-
-      fontSize:
-        10,
-
-      lineHeight:
-        1.55,
-
-      fontWeight:
-        600,
-    },
-
-    toolCard: {
-      display:
-        "flex",
-
-      flexDirection:
-        "column",
-
-      minHeight:
-        255,
-
-      padding:
-        0,
-
-      overflow:
-        "hidden",
-
-      borderRadius:
-        15,
-
-      background:
-        "#111214",
-
-      boxShadow:
-        "0 16px 36px rgba(0,0,0,.22)",
-
-      transition:
-        "transform .16s ease,border-color .16s ease",
-    },
-
-    toolAccentRed: {
-      border:
-        "1px solid rgba(171,42,25,.38)",
-
-      background:
-        "linear-gradient(145deg,rgba(94,18,14,.28),#111214 48%,#101113)",
-    },
-
-    toolAccentOrange: {
-      border:
-        "1px solid rgba(179,82,25,.30)",
-
-      background:
-        "linear-gradient(145deg,rgba(90,43,16,.22),#111214 48%,#101113)",
-    },
-
-    toolAccentNeutral: {
-      border:
-        "1px solid #292a2d",
-
-      background:
-        "linear-gradient(145deg,#141518,#101113)",
-    },
-
-    toolTop: {
-      display:
-        "flex",
-
-      justifyContent:
-        "space-between",
-
-      alignItems:
-        "center",
-
-      gap:
-        12,
-
-      padding:
-        "17px 17px 0",
-    },
-
-    toolEyebrow: {
-      color:
-        "#df642b",
-
-      fontSize:
-        8,
-
-      fontWeight:
-        950,
-
-      letterSpacing:
-        ".11em",
-    },
-
-    toolIcon: {
-      display:
-        "flex",
-
-      alignItems:
-        "center",
-
-      justifyContent:
-        "center",
-
-      width:
-        37,
-
-      height:
-        37,
-
-      flex:
-        "0 0 auto",
-
-      border:
-        "1px solid #4a2f22",
-
-      borderRadius:
-        10,
-
-      background:
-        "linear-gradient(135deg,#3c160f,#1a1110)",
-
-      color:
-        "#ff7a31",
-
-      fontSize:
-        9,
-
-      fontWeight:
-        950,
-    },
-
-    toolTitle: {
-      margin:
-        "14px 17px 0",
-
-      color:
-        "#ffffff",
-
-      fontSize:
-        20,
-
-      lineHeight:
-        1.15,
-
-      fontWeight:
-        950,
-    },
-
-    toolDescription: {
-      flex:
-        1,
-
-      margin:
-        "9px 17px 16px",
-
-      color:
-        "#91969e",
-
-      fontSize:
-        11,
-
-      lineHeight:
-        1.6,
-
-      fontWeight:
-        600,
-    },
-
-    toolFooter: {
-      padding:
-        12,
-
-      borderTop:
-        "1px solid #242527",
-
-      background:
-        "rgba(6,6,7,.30)",
-    },
-
-    primaryButton: {
-      display:
-        "flex",
-
-      minHeight:
-        43,
-
-      alignItems:
-        "center",
-
-      justifyContent:
-        "center",
-
-      padding:
-        "10px 14px",
-
-      border:
-        "1px solid #dc5a22",
-
-      borderRadius:
-        9,
-
-      background:
-        "linear-gradient(135deg,#a42516,#ef6519)",
-
-      color:
-        "#ffffff",
-
-      textDecoration:
-        "none",
-
-      fontSize:
-        9,
-
-      fontWeight:
-        950,
-
-      letterSpacing:
-        ".04em",
-
-      transition:
-        "filter .16s ease,transform .16s ease",
-    },
-
-    disabledButton: {
-      display:
-        "flex",
-
-      minHeight:
-        43,
-
-      alignItems:
-        "center",
-
-      justifyContent:
-        "center",
-
-      padding:
-        "10px 14px",
-
-      border:
-        "1px solid #333539",
-
-      borderRadius:
-        9,
-
-      background:
-        "#18191b",
-
-      color:
-        "#666b72",
-
-      fontSize:
-        9,
-
-      fontWeight:
-        950,
-
-      letterSpacing:
-        ".04em",
-    },
-
-    operationsStrip: {
-      display:
-        "flex",
-
-      justifyContent:
-        "space-between",
-
-      alignItems:
-        "center",
-
-      gap:
-        20,
-
-      flexWrap:
-        "wrap",
-
-      marginTop:
-        14,
-
-      padding:
-        18,
-
-      border:
-        "1px solid #342922",
-
-      borderRadius:
-        14,
-
-      background:
-        "linear-gradient(90deg,rgba(82,23,14,.28),rgba(17,17,19,.96))",
-    },
-
-    operationsTitle: {
-      margin:
-        "5px 0",
-
-      color:
-        "#ffffff",
-
-      fontSize:
-        16,
-
-      fontWeight:
-        950,
-    },
-
-    operationsText: {
-      maxWidth:
-        800,
-
-      margin:
-        0,
-
-      color:
-        "#827b77",
-
-      fontSize:
-        10,
-
-      lineHeight:
-        1.55,
-    },
-
-    operationsButton: {
-      display:
-        "flex",
-
-      minHeight:
-        44,
-
-      alignItems:
-        "center",
-
-      justifyContent:
-        "center",
-
-      padding:
-        "11px 16px",
-
-      border:
-        "1px solid #dd5a22",
-
-      borderRadius:
-        9,
-
-      background:
-        "linear-gradient(135deg,#a42516,#ef6519)",
-
-      color:
-        "#ffffff",
-
-      textDecoration:
-        "none",
-
-      fontSize:
-        9,
-
-      fontWeight:
-        950,
-
-      letterSpacing:
-        ".04em",
-
-      transition:
-        "filter .16s ease,transform .16s ease",
-    },
-  };

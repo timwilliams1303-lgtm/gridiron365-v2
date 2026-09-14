@@ -2,6 +2,14 @@ import "server-only";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
+  archiveCompletedGreyhoundCompetitions,
+  type GreyhoundArchiveResult,
+} from "@/lib/greyhound/archiveCompletedCompetitions";
+import { refreshAllGreyhoundH2HMatchups } from "@/lib/greyhound/refreshAllGreyhoundH2HMatchups";
+import { refreshAllGreyhoundTournamentRounds } from "@/lib/greyhound/refreshAllGreyhoundTournamentRounds";
+import { refreshAllGreyhoundRoundSurvivorRounds } from "@/lib/greyhound/refreshAllGreyhoundRoundSurvivorRounds";
+import { processGreyhoundDailySurvivorRace } from "@/lib/greyhound/processGreyhoundDailySurvivorRace";
+import {
   getAmtoteRaceResult,
   getAmtoteRaceResults,
   getAmtoteRaces,
@@ -45,6 +53,84 @@ export type SyncAmtoteGreyhoundResultsResult = {
   success: boolean;
   syncedAt: string;
   tracks: ResultTrackSync[];
+  competitionArchives: GreyhoundArchiveResult[];
+  h2hRefresh: {
+    leaguesChecked: number;
+    leaguesRefreshed: number;
+    leaguesFailed: number;
+    results: Array<{
+      leagueId: string;
+      matchupsChecked: number;
+      matchupsFinalized: number;
+      activeMatchups: number;
+      scheduledMatchups: number;
+      blockedMatchups: number;
+      error?: string;
+    }>;
+  } | null;
+  roundSurvivorRefresh: {
+    leaguesChecked: number;
+    roundsChecked: number;
+    roundsRefreshed: number;
+    roundsFailed: number;
+    results: Array<{
+      success: boolean;
+      leagueId: string;
+      roundId: number;
+      roundNumber: number;
+      status:
+        | "scheduled"
+        | "active"
+        | "final"
+        | "blocked_tie"
+        | "blocked_no_next_round";
+      eliminatedParticipantId: number | null;
+      championParticipantId: number | null;
+      blockedTieParticipantIds: number[];
+      scores: Array<{
+        participantId: number;
+        participantName: string;
+        totalWagered: number;
+        totalReturned: number;
+        net: number;
+        rank: number;
+      }>;
+      error?: string;
+    }>;
+  } | null;
+  tournamentRefresh: {
+    leaguesChecked: number;
+    roundsChecked: number;
+    roundsRefreshed: number;
+    roundsFailed: number;
+    results: Array<{
+      success: boolean;
+      leagueId: string;
+      roundId: number;
+      roundNumber: number;
+      status:
+        | "scheduled"
+        | "active"
+        | "final"
+        | "blocked_cutoff_tie"
+        | "blocked_missing_advance_count"
+        | "blocked_no_next_round";
+      advanceCount: number | null;
+      advancedParticipantIds: number[];
+      eliminatedParticipantIds: number[];
+      championParticipantId: number | null;
+      tiedCutoffParticipantIds: number[];
+      scores: Array<{
+        participantId: number;
+        participantName: string;
+        totalWagered: number;
+        totalReturned: number;
+        net: number;
+        rank: number;
+      }>;
+      error?: string;
+    }>;
+  } | null;
 };
 
 type PayoutRecord = {
@@ -53,6 +139,16 @@ type PayoutRecord = {
   baseAmount: number;
   payout: number;
   sourceKey: string;
+};
+
+type GreyhoundCardRow = {
+  id: number;
+  race_date: string;
+  session: string;
+  card_status: string;
+  import_status: string;
+  automation_enabled: boolean;
+  commissioner_confirmed_at: string | null;
 };
 
 function normalizeCombination(value: string): string {
@@ -211,6 +307,10 @@ async function syncOneTrackResults(
   const supabase = createSupabaseAdminClient();
   const trackCode = g365TrackCodeForAmtote(trackId);
 
+  // GetRaces is still used to identify the feed's current date.
+  // We do NOT assume that the current feed date is the only card that may
+  // still need results. AmTote can advance to the next card while the prior
+  // G365 card still needs final result/payout processing.
   const feedCard = await getAmtoteRaces(trackId);
 
   const { data: track, error: trackError } = await supabase
@@ -228,17 +328,48 @@ async function syncOneTrackResults(
     );
   }
 
-  const { data: card, error: cardError } = await supabase
+  // Prefer the oldest confirmed, automation-enabled, non-terminal card for
+  // this track up through the current AmTote feed date. This allows a prior
+  // card to finish settling even after GetRaces has advanced to the next day.
+  const { data: unfinishedCards, error: unfinishedError } = await supabase
     .from("greyhound_cards")
     .select(
-      "id, race_date, session, card_status, import_status, commissioner_confirmed_at",
+      "id, race_date, session, card_status, import_status, automation_enabled, commissioner_confirmed_at",
     )
     .eq("track_id", track.id)
-    .eq("race_date", feedCard.raceDate)
-    .eq("session", feedCard.session)
-    .maybeSingle();
+    .eq("automation_enabled", true)
+    .not("commissioner_confirmed_at", "is", null)
+    .neq("card_status", "final")
+    .neq("card_status", "cancelled")
+    .lte("race_date", feedCard.raceDate)
+    .order("race_date", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(1);
 
-  if (cardError) throw cardError;
+  if (unfinishedError) throw unfinishedError;
+
+  let card: GreyhoundCardRow | null =
+    unfinishedCards && unfinishedCards.length > 0
+      ? (unfinishedCards[0] as GreyhoundCardRow)
+      : null;
+
+  // If there is no unfinished card, fall back to the exact card represented
+  // by GetRaces. This preserves the terminal "Card is final" fast-stop path.
+  if (!card) {
+    const { data: currentCard, error: currentCardError } = await supabase
+      .from("greyhound_cards")
+      .select(
+        "id, race_date, session, card_status, import_status, automation_enabled, commissioner_confirmed_at",
+      )
+      .eq("track_id", track.id)
+      .eq("race_date", feedCard.raceDate)
+      .eq("session", feedCard.session)
+      .maybeSingle();
+
+    if (currentCardError) throw currentCardError;
+
+    card = currentCard as GreyhoundCardRow | null;
+  }
 
   if (!card) {
     return {
@@ -256,11 +387,14 @@ async function syncOneTrackResults(
       skippedRaces: 0,
       skipped: true,
       skipReason:
-        "No exact G365 card exists for the AmTote track/date/session.",
+        "No unfinished or exact current G365 card exists for the AmTote track/date/session.",
       failed: false,
       errorMessage: null,
     };
   }
+
+  const targetRaceDate = String(card.race_date);
+  const targetSession = String(card.session);
 
   // Final is terminal for the results worker. Once a card is final,
   // do not call GetRaceResults/GetRaceResult again and do not re-run
@@ -269,8 +403,8 @@ async function syncOneTrackResults(
     return {
       trackId,
       trackCode,
-      raceDate: feedCard.raceDate,
-      session: feedCard.session,
+      raceDate: targetRaceDate,
+      session: targetSession,
       cardId: Number(card.id),
       racesAvailable: 0,
       racesProcessed: 0,
@@ -290,8 +424,8 @@ async function syncOneTrackResults(
     return {
       trackId,
       trackCode,
-      raceDate: feedCard.raceDate,
-      session: feedCard.session,
+      raceDate: targetRaceDate,
+      session: targetSession,
       cardId: Number(card.id),
       racesAvailable: 0,
       racesProcessed: 0,
@@ -307,25 +441,14 @@ async function syncOneTrackResults(
     };
   }
 
-  const summary = await getAmtoteRaceResults(
-    trackId,
-    feedCard.raceDate,
-  );
-
-  if (summary.raceDate !== feedCard.raceDate) {
-    throw new Error(
-      `${trackCode} date safety check failed. GetRaces=${feedCard.raceDate}, GetRaceResults=${summary.raceDate}.`,
-    );
-  }
-
   if (!["imported", "updated"].includes(card.import_status)) {
     return {
       trackId,
       trackCode,
-      raceDate: feedCard.raceDate,
-      session: feedCard.session,
+      raceDate: targetRaceDate,
+      session: targetSession,
       cardId: Number(card.id),
-      racesAvailable: summary.rows.length,
+      racesAvailable: 0,
       racesProcessed: 0,
       raceResultRowsUpserted: 0,
       dogResultRowsUpserted: 0,
@@ -337,6 +460,20 @@ async function syncOneTrackResults(
       failed: false,
       errorMessage: null,
     };
+  }
+
+  // Query results for the stored G365 card date, not blindly for the current
+  // GetRaces date. GetRaceResults supports historical dates and this is what
+  // prevents an unfinished card from being stranded after feed rollover.
+  const summary = await getAmtoteRaceResults(
+    trackId,
+    targetRaceDate,
+  );
+
+  if (summary.raceDate !== targetRaceDate) {
+    throw new Error(
+      `${trackCode} date safety check failed. Target=${targetRaceDate}, GetRaceResults=${summary.raceDate}.`,
+    );
   }
 
   const { data: savedRaces, error: racesError } = await supabase
@@ -393,13 +530,13 @@ async function syncOneTrackResults(
 
     const detailed = await getAmtoteRaceResult(
       trackId,
-      feedCard.raceDate,
+      targetRaceDate,
       summaryRace.raceNumber,
     );
 
-    if (detailed.raceDate !== feedCard.raceDate) {
+    if (detailed.raceDate !== targetRaceDate) {
       throw new Error(
-        `${trackCode} Race ${summaryRace.raceNumber} detailed result date mismatch. Expected ${feedCard.raceDate}, got ${detailed.raceDate}.`,
+        `${trackCode} Race ${summaryRace.raceNumber} detailed result date mismatch. Expected ${targetRaceDate}, got ${detailed.raceDate}.`,
       );
     }
 
@@ -431,7 +568,7 @@ async function syncOneTrackResults(
 
     for (const item of topFourRows) {
       const sourceResultKey =
-        `amtote:${trackId}:${feedCard.raceDate}:${summaryRace.raceNumber}:finish:${item.finish}`;
+        `amtote:${trackId}:${targetRaceDate}:${summaryRace.raceNumber}:finish:${item.finish}`;
 
       const { error: resultError } = await supabase.rpc(
         "upsert_greyhound_race_result",
@@ -475,7 +612,7 @@ async function syncOneTrackResults(
 
     const payouts = buildPayoutRecords({
       trackId,
-      raceDate: feedCard.raceDate,
+      raceDate: targetRaceDate,
       raceNumber: summaryRace.raceNumber,
       result: detailed,
     });
@@ -517,6 +654,15 @@ async function syncOneTrackResults(
       );
     }
 
+    try {
+      await processGreyhoundDailySurvivorRace(savedRace.id);
+    } catch (error) {
+      console.error(
+        `[greyhound/results-sync] Daily Survivor Race ${summaryRace.raceNumber} processing failed`,
+        error,
+      );
+    }
+
     racesProcessed += 1;
     racesSettled += 1;
   }
@@ -524,8 +670,8 @@ async function syncOneTrackResults(
   return {
     trackId,
     trackCode,
-    raceDate: feedCard.raceDate,
-    session: feedCard.session,
+    raceDate: targetRaceDate,
+    session: targetSession,
     cardId: Number(card.id),
     racesAvailable: summary.rows.length,
     racesProcessed,
@@ -575,9 +721,66 @@ export async function syncAmtoteGreyhoundResults(
     }
   }
 
+  let competitionArchives: GreyhoundArchiveResult[] = [];
+  let h2hRefresh: SyncAmtoteGreyhoundResultsResult["h2hRefresh"] = null;
+  let roundSurvivorRefresh:
+    SyncAmtoteGreyhoundResultsResult["roundSurvivorRefresh"] = null;
+  let tournamentRefresh:
+    SyncAmtoteGreyhoundResultsResult["tournamentRefresh"] = null;
+
+  try {
+    h2hRefresh = await refreshAllGreyhoundH2HMatchups();
+  } catch (error) {
+    console.error(
+      "[greyhound/results-sync] Head-to-Head refresh failed",
+      error,
+    );
+  }
+
+  try {
+    roundSurvivorRefresh =
+      await refreshAllGreyhoundRoundSurvivorRounds();
+  } catch (error) {
+    console.error(
+      "[greyhound/results-sync] Round Survivor refresh failed",
+      error,
+    );
+  }
+
+  try {
+    tournamentRefresh =
+      await refreshAllGreyhoundTournamentRounds();
+  } catch (error) {
+    console.error(
+      "[greyhound/results-sync] Tournament refresh failed",
+      error,
+    );
+  }
+
+  try {
+    competitionArchives =
+      await archiveCompletedGreyhoundCompetitions();
+  } catch (error) {
+    competitionArchives = [
+      {
+        leagueId: "all",
+        archived: false,
+        competitionNumber: null,
+        reason:
+          error instanceof Error
+            ? error.message
+            : "Unknown Greyhound archive scan error.",
+      },
+    ];
+  }
+
   return {
     success: tracks.every((track) => !track.failed),
     syncedAt: new Date().toISOString(),
     tracks,
+    competitionArchives,
+    h2hRefresh,
+    roundSurvivorRefresh,
+    tournamentRefresh,
   };
 }

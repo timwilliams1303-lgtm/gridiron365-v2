@@ -1,0 +1,1068 @@
+.workspace {
+  overflow: hidden;
+  border: 1px solid #2b2b2b;
+  border-radius: 22px;
+  background: #0a0a0a;
+  color: #ffffff;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.42);
+}
+
+.loadingCard {
+  padding: 28px;
+  border: 1px solid #2b2b2b;
+  border-radius: 18px;
+  background: #0b0b0b;
+  color: #c6c8cc;
+}
+
+.header {
+  border-bottom: 1px solid #2b2b2b;
+  background:
+    radial-gradient(circle at 92% 10%, rgba(255, 140, 0, 0.14), transparent 28%),
+    linear-gradient(110deg, rgba(123, 10, 18, 0.72), #0b0b0b 48%, rgba(92, 37, 5, 0.45));
+}
+
+.headerMain {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px;
+}
+
+.eyebrow,
+.sectionLabel,
+.fieldLabel {
+  color: #ff8c00;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 5px 0 0;
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 8px;
+  color: #9b9fa6;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cardStatus {
+  color: #ff9a1f;
+  text-transform: uppercase;
+}
+
+.bankrollBar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(90px, 1fr));
+  overflow: hidden;
+  border: 1px solid #343434;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.46);
+}
+
+.bankrollCell {
+  padding: 10px 12px;
+  border-right: 1px solid #2e2e2e;
+  text-align: center;
+}
+
+.bankrollCell:last-child {
+  border-right: 0;
+}
+
+.bankrollCell span {
+  display: block;
+  color: #747982;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bankrollCell strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+}
+
+.bankrollAvailable {
+  background: rgba(255, 69, 0, 0.1);
+}
+
+.bankrollAvailable span,
+.bankrollAvailable strong {
+  color: #ff9a1f;
+}
+
+.errorBar,
+.successBar {
+  padding: 11px 20px;
+  border-bottom: 1px solid;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.errorBar {
+  border-color: #6d2424;
+  background: #2a0d0d;
+  color: #ffc3c3;
+}
+
+.successBar {
+  border-color: #166534;
+  background: #071a0e;
+  color: #91efb0;
+}
+
+.waitingBanner {
+  display: flex;
+  gap: 12px 20px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 20px;
+  border-bottom: 1px solid #4f2710;
+  background: rgba(255, 69, 0, 0.06);
+}
+
+.waitingBanner strong {
+  color: #ff9a1f;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.waitingBanner span {
+  color: #898e96;
+  font-size: 12px;
+}
+
+.raceNav {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 11px 14px;
+  border-bottom: 1px solid #292929;
+  background: #0d0d0d;
+}
+
+.raceNavButton {
+  min-width: 104px;
+  padding: 9px 11px;
+  border: 1px solid #333333;
+  border-radius: 10px;
+  background: #171717;
+  color: #ffffff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.raceNavButton strong,
+.raceNavButton span {
+  display: block;
+}
+
+.raceNavButton strong {
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.raceNavButton span {
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.raceNavButtonActive {
+  border-color: #ff7a00;
+  background: linear-gradient(135deg, #c81919, #ff5a00 58%, #ff8c00);
+}
+
+.raceNavButtonActive strong,
+.raceNavButtonActive span {
+  color: #ffffff;
+}
+
+.raceNavPlaceholder {
+  opacity: 0.46;
+  cursor: default;
+}
+
+.openText,
+.positiveValue {
+  color: #22c55e;
+}
+
+.mutedText {
+  color: #777d85;
+}
+
+.mainGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 390px;
+  min-height: 590px;
+}
+
+.raceCardPanel {
+  min-width: 0;
+  border-right: 1px solid #2b2b2b;
+  background: #0a0a0a;
+}
+
+.raceHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 17px 20px;
+  border-bottom: 1px solid #2b2b2b;
+  background: #111111;
+}
+
+.raceTitleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  margin-top: 4px;
+}
+
+.raceTitleRow h2 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.raceTitleRow span {
+  color: #8c9198;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.raceOpenBadge,
+.raceClosedBadge {
+  padding: 8px 10px;
+  border: 1px solid;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.raceOpenBadge {
+  border-color: #166534;
+  background: rgba(22, 101, 52, 0.18);
+  color: #72e49b;
+}
+
+.raceClosedBadge {
+  border-color: #404040;
+  background: #171717;
+  color: #a0a0a0;
+}
+
+.runnersScroller {
+  overflow-x: auto;
+}
+
+.runnersTable {
+  min-width: 700px;
+}
+
+.runnersHead,
+.runnerRow {
+  display: grid;
+  grid-template-columns: 64px minmax(230px, 1fr) 90px 100px 120px;
+  align-items: center;
+}
+
+.runnersHead {
+  padding: 8px 14px;
+  border-bottom: 1px solid #2b2b2b;
+  background: #151515;
+  color: #6e737a;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.runnerRow {
+  min-height: 69px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #1e1e1e;
+  background: #090909;
+  transition: background 0.15s ease;
+}
+
+.runnerRow:hover {
+  background: #111111;
+}
+
+.runnerSelected {
+  background: linear-gradient(90deg, rgba(172, 24, 24, 0.22), rgba(255, 100, 0, 0.08));
+}
+
+.runnerInactive {
+  opacity: 0.48;
+}
+
+.trapButton {
+  width: 43px;
+  height: 43px;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  font-size: 17px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.trapButton:disabled {
+  cursor: not-allowed;
+}
+
+.trapSelected {
+  outline: 2px solid #ff8c00;
+  outline-offset: 2px;
+}
+
+.runnerInfo {
+  min-width: 0;
+  padding-right: 10px;
+}
+
+.runnerInfo strong {
+  font-size: 14px;
+}
+
+.runnerInfo small {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #737981;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runnerOdds {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.runnerMeta {
+  color: #a0a4aa;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.entryStatus {
+  color: #858a91;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.entryActive {
+  color: #22c55e;
+}
+
+.waitingRaceCard {
+  padding: 20px;
+}
+
+.waitingRaceCard h2 {
+  margin: 5px 0 0;
+  font-size: 22px;
+}
+
+.waitingRaceCard p {
+  max-width: 720px;
+  margin: 8px 0 18px;
+  color: #858b93;
+  font-size: 12px;
+}
+
+.placeholderTable {
+  overflow: hidden;
+  border: 1px solid #262626;
+  border-radius: 12px;
+}
+
+.placeholderRunner {
+  display: grid;
+  grid-template-columns: 64px minmax(220px, 1fr) 90px 90px 110px;
+  align-items: center;
+  min-width: 660px;
+  min-height: 62px;
+  padding: 7px 13px;
+  border-bottom: 1px solid #1f1f1f;
+  color: #646970;
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+.placeholderRunner:last-child {
+  border-bottom: 0;
+}
+
+.placeholderTrap {
+  display: flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.betPad {
+  background: linear-gradient(180deg, #121212, #090909);
+}
+
+.betPadHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 17px;
+  border-bottom: 1px solid #2b2b2b;
+  background: linear-gradient(90deg, rgba(136, 12, 18, 0.35), rgba(255, 90, 0, 0.1));
+}
+
+.betPadHeader h2 {
+  margin: 4px 0 0;
+  font-size: 19px;
+}
+
+.betPadRace {
+  padding: 5px 8px;
+  border: 1px solid #4a2a18;
+  border-radius: 8px;
+  background: #0c0c0c;
+  color: #ff9a1f;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.betPadBody {
+  display: grid;
+  gap: 15px;
+  padding: 16px;
+}
+
+.fieldLabel {
+  margin-bottom: 7px;
+  color: #747982;
+  font-size: 9px;
+}
+
+.wagerTypeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.twoColumn {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.denominationGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.choiceButton {
+  min-height: 39px;
+  padding: 8px;
+  border: 1px solid #393939;
+  border-radius: 9px;
+  background: #181818;
+  color: #e8e8e8;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: capitalize;
+  cursor: pointer;
+}
+
+.choiceButton:hover:not(:disabled) {
+  border-color: #a94614;
+}
+
+.choiceButton:disabled {
+  color: #555;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.choiceButtonActive {
+  border-color: #ff8c00;
+  background: linear-gradient(135deg, #bf1717, #ff4c00 58%, #ff8c00);
+  color: #ffffff;
+}
+
+.selectionsBox {
+  padding: 13px;
+  border: 1px solid #2d2d2d;
+  border-radius: 12px;
+  background: #080808;
+}
+
+.selectionsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #767b83;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.selectionsHeader button {
+  padding: 0;
+  background: transparent;
+  color: #ff8c00;
+  font-size: 9px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.noSelections {
+  margin-top: 10px;
+  padding: 13px;
+  border: 1px dashed #343434;
+  border-radius: 9px;
+  color: #737981;
+  font-size: 11px;
+  text-align: center;
+}
+
+.selectionList {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.selectionItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 9px;
+  background: #171717;
+}
+
+.selectionItem > span {
+  display: flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #ff5a00;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.selectionItem strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.costGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #2b2b2b;
+}
+
+.costGrid span {
+  display: block;
+  color: #737981;
+  font-size: 8px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.costGrid strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+}
+
+.costValue {
+  color: #ff9a1f;
+  font-size: 19px !important;
+}
+
+.bankrollSummary {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #2d2d2d;
+  border-radius: 12px;
+  background: #151515;
+}
+
+.bankrollSummary > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bankrollSummary span {
+  color: #8d9299;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.bankrollSummary strong {
+  font-size: 14px;
+}
+
+.negativeValue {
+  color: #ff6b6b;
+}
+
+.placeWagerButton {
+  min-height: 49px;
+  padding: 11px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ff1e1e, #ff4500 50%, #ff8c00);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(139, 18, 18, 0.22);
+}
+
+.placeWagerButton:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.placeWagerButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  filter: grayscale(0.2);
+}
+
+.betNote {
+  margin: 0;
+  color: #656a71;
+  font-size: 9px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+
+/* G365 Greyhound mobile wagering pass */
+@media (max-width: 1000px) {
+  .mainGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .raceCardPanel {
+    border-right: 0;
+    border-bottom: 1px solid #2b2b2b;
+  }
+
+  /* Keep the bet pad in normal document flow on tablets/phones.
+     A large sticky panel can cover runners and selection controls. */
+  .betPad {
+    position: static;
+    bottom: auto;
+    z-index: auto;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .workspace {
+    overflow: hidden;
+    border-radius: 15px;
+  }
+
+  .headerMain {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+    padding: 15px 13px;
+  }
+
+  .title {
+    font-size: 23px;
+    line-height: 1.08;
+  }
+
+  .cardMeta {
+    gap: 5px 10px;
+    font-size: 11px;
+  }
+
+  .bankrollBar {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .bankrollCell {
+    min-width: 0;
+    padding: 9px 4px;
+  }
+
+  .bankrollCell span {
+    font-size: 8px;
+    letter-spacing: 0.04em;
+  }
+
+  .bankrollCell strong {
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .errorBar,
+  .successBar {
+    padding: 10px 13px;
+  }
+
+  .waitingBanner {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+    padding: 11px 13px;
+  }
+
+  .raceNav {
+    gap: 6px;
+    padding: 8px 9px 10px;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .raceNavButton {
+    min-width: 88px;
+    min-height: 54px;
+    padding: 8px 9px;
+    scroll-snap-align: start;
+  }
+
+  .raceNavButton strong {
+    font-size: 10px;
+  }
+
+  .raceNavButton span {
+    font-size: 8px;
+  }
+
+  .raceHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 9px;
+    padding: 12px 13px;
+  }
+
+  .raceTitleRow {
+    gap: 4px 9px;
+  }
+
+  .raceTitleRow h2 {
+    font-size: 20px;
+  }
+
+  .raceOpenBadge,
+  .raceClosedBadge {
+    padding: 6px 8px;
+    font-size: 10px;
+  }
+
+  .runnersScroller {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  /* The TSX supplies the dynamic min-width needed for the active wager's
+     selection columns. These rules make the fixed runner information compact
+     without hiding any finishing-position column. */
+  .runnersHead,
+  .runnerRow {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .runnerRow {
+    min-height: 61px;
+  }
+
+  .trapButton {
+    width: 38px;
+    height: 38px;
+    border-radius: 9px;
+    font-size: 15px;
+  }
+
+  .runnerInfo {
+    padding-right: 5px;
+  }
+
+  .runnerInfo strong {
+    font-size: 12px;
+  }
+
+  .runnerInfo small {
+    max-width: 155px;
+    font-size: 9px;
+  }
+
+  .runnerOdds {
+    font-size: 13px;
+  }
+
+  .runnerMeta {
+    font-size: 11px;
+  }
+
+  .entryStatus {
+    font-size: 9px;
+  }
+
+  .waitingRaceCard {
+    overflow-x: auto;
+    padding: 13px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .betPadHeader {
+    padding: 13px;
+  }
+
+  .betPadHeader h2 {
+    font-size: 18px;
+  }
+
+  .betPadBody {
+    gap: 13px;
+    padding: 13px;
+  }
+
+  .wagerTypeGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .twoColumn {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .denominationGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .choiceButton {
+    min-height: 43px;
+    padding: 8px 5px;
+    font-size: 10px;
+    touch-action: manipulation;
+  }
+
+  .selectionsBox {
+    padding: 11px;
+  }
+
+  .selectionItem {
+    min-height: 40px;
+  }
+
+  .bankrollSummary {
+    padding: 11px;
+  }
+
+  .placeWagerButton {
+    min-height: 52px;
+    font-size: 12px;
+    touch-action: manipulation;
+  }
+}
+
+@media (max-width: 430px) {
+  .headerMain {
+    padding: 13px 11px;
+  }
+
+  .eyebrow,
+  .sectionLabel {
+    font-size: 10px;
+  }
+
+  .title {
+    font-size: 21px;
+  }
+
+  .cardMeta {
+    font-size: 10px;
+  }
+
+  .bankrollCell {
+    padding: 8px 3px;
+  }
+
+  .bankrollCell span {
+    font-size: 7px;
+  }
+
+  .bankrollCell strong {
+    font-size: 11px;
+  }
+
+  .raceNavButton {
+    min-width: 82px;
+  }
+
+  .raceHeader {
+    padding: 11px;
+  }
+
+  .raceTitleRow h2 {
+    font-size: 19px;
+  }
+
+  .betPadHeader {
+    padding: 11px;
+  }
+
+  .betPadBody {
+    padding: 11px;
+  }
+
+  .denominationGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .choiceButton {
+    min-height: 44px;
+  }
+
+  .costGrid {
+    gap: 6px;
+  }
+
+  .costValue {
+    font-size: 17px !important;
+  }
+
+  .bankrollSummary span {
+    font-size: 10px;
+  }
+
+  .bankrollSummary strong {
+    font-size: 13px;
+  }
+}
+
+/* Track switcher */
+.trackSwitcher {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 14px 0 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 106, 30, 0.22);
+  border-radius: 14px;
+  background: linear-gradient(100deg, rgba(133, 18, 17, 0.18), #0d0d0d 55%);
+}
+.trackSwitcherCopy { display: grid; gap: 3px; }
+.trackSwitcherCopy strong { color: #fff; font-size: 13px; }
+.trackSwitcherButtons { display: flex; gap: 8px; }
+.trackButton {
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid #3a3a3a;
+  border-radius: 10px;
+  background: #171717;
+  color: #d7d7d7;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
+}
+.trackButton:hover { border-color: #ff7a1a; }
+.trackButtonActive {
+  border-color: #ff8c00;
+  background: linear-gradient(135deg, #a81417, #ed5b13 62%, #ff8c00);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(155, 25, 16, 0.24);
+}
+@media (max-width: 560px) {
+  .trackSwitcher { align-items: stretch; flex-direction: column; }
+  .trackSwitcherButtons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trackButton { width: 100%; padding: 0 10px; }
+}
+
+
+.racingDatePicker {
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 122, 26, 0.45);
+  border-radius: 10px;
+  background: #111214;
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+  font: inherit;
+  font-weight: 900;
+  color-scheme: dark;
+  cursor: pointer;
+}
+
+.racingDatePicker::-webkit-datetime-edit,
+.racingDatePicker::-webkit-datetime-edit-fields-wrapper,
+.racingDatePicker::-webkit-datetime-edit-text,
+.racingDatePicker::-webkit-datetime-edit-month-field,
+.racingDatePicker::-webkit-datetime-edit-day-field,
+.racingDatePicker::-webkit-datetime-edit-year-field {
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+}
+
+.racingDatePicker::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  cursor: pointer;
+  filter: brightness(0) invert(1);
+}
+
+.racingDatePicker:hover,
+.racingDatePicker:focus {
+  border-color: #ff7a1a;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(255, 122, 26, 0.14);
+}

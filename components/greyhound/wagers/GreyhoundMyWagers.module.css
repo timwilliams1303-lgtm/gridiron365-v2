@@ -1,0 +1,959 @@
+.page {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid rgba(255, 103, 31, 0.26);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 103, 31, 0.16), transparent 38%),
+    linear-gradient(180deg, #171717 0%, #0d0d0d 100%);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.3);
+}
+
+.hero h1 {
+  margin: 3px 0 6px;
+  font-size: clamp(26px, 4vw, 40px);
+  line-height: 1;
+  font-weight: 950;
+  letter-spacing: -0.035em;
+}
+
+.hero p {
+  margin: 0;
+  max-width: 720px;
+  color: #b9b9b9;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.eyebrow {
+  color: #ff7a1a;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.refreshButton {
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 122, 26, 0.5);
+  border-radius: 11px;
+  background: linear-gradient(135deg, #971316, #e15c15);
+  color: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.refreshButton:hover:not(:disabled) {
+  filter: brightness(1.09);
+}
+
+.refreshButton:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.loadingCard,
+.emptyCard,
+.errorBar,
+.successBar,
+.liveNote {
+  border-radius: 14px;
+  padding: 18px;
+}
+
+.loadingCard,
+.emptyCard {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #111;
+  color: #d6d6d6;
+}
+
+.emptyCard {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: center;
+}
+
+.emptyCard strong {
+  color: #fff;
+  font-size: 18px;
+}
+
+.emptyCard span {
+  color: #9f9f9f;
+}
+
+.errorBar {
+  border: 1px solid rgba(239, 68, 68, 0.38);
+  background: rgba(127, 29, 29, 0.22);
+  color: #fecaca;
+}
+
+.successBar {
+  border: 1px solid rgba(85, 217, 141, 0.36);
+  background: rgba(34, 104, 67, 0.2);
+  color: #a7f3c7;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summaryCard {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #151515, #0f0f0f);
+}
+
+.summaryCard span {
+  display: block;
+  margin-bottom: 6px;
+  color: #999;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.summaryCard strong {
+  display: block;
+  overflow: hidden;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+}
+
+.positive {
+  color: #55d98d !important;
+}
+
+.negative {
+  color: #ff6868 !important;
+}
+
+.filterBar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.filterButton {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: #121212;
+  color: #bdbdbd;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.filterButtonActive {
+  border-color: rgba(255, 122, 26, 0.75);
+  background: linear-gradient(135deg, #9d1517, #f16a16);
+  color: #fff;
+}
+
+.cardList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cardGroup {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  background: #0d0d0d;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(90deg, rgba(150, 19, 23, 0.2), transparent 45%),
+    #131313;
+}
+
+.cardTrack {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 6px;
+  color: #999;
+  font-size: 12px;
+}
+
+.cardTotals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(82px, 1fr));
+  gap: 8px;
+  min-width: min(100%, 310px);
+}
+
+.cardTotals > div {
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.cardTotals span,
+.bankrollFooter span,
+.detailGrid span {
+  display: block;
+  color: #888;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cardTotals strong {
+  display: block;
+  margin-top: 3px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.ticketList {
+  display: flex;
+  flex-direction: column;
+}
+
+.ticket + .ticket {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.ticketMain {
+  width: 100%;
+  display: grid;
+  grid-template-columns:
+    minmax(75px, 0.65fr)
+    minmax(115px, 0.9fr)
+    minmax(200px, 1.8fr)
+    minmax(100px, 0.8fr)
+    92px
+    24px;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ticketMain:hover {
+  background: rgba(255, 122, 26, 0.04);
+}
+
+.ticketRace,
+.ticketType,
+.ticketMoney {
+  min-width: 0;
+}
+
+.ticketRace span,
+.ticketType strong,
+.ticketMoney span {
+  display: block;
+  color: #fff;
+  font-weight: 950;
+}
+
+.ticketRace small,
+.ticketType small,
+.ticketMoney small {
+  display: block;
+  margin-top: 3px;
+  color: #888;
+  font-size: 10px;
+}
+
+.ticketSelections {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ticketSelections span {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #d9d9d9;
+  font-size: 10px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.statusPending {
+  border: 1px solid rgba(255, 122, 26, 0.42);
+  background: rgba(255, 122, 26, 0.1);
+  color: #ffae73;
+}
+
+.statusWon {
+  border: 1px solid rgba(85, 217, 141, 0.4);
+  background: rgba(85, 217, 141, 0.09);
+  color: #69e9a0;
+}
+
+.statusLost {
+  border: 1px solid rgba(255, 104, 104, 0.36);
+  background: rgba(255, 104, 104, 0.08);
+  color: #ff8b8b;
+}
+
+.statusRefunded {
+  border: 1px solid rgba(179, 179, 179, 0.25);
+  background: rgba(255, 255, 255, 0.05);
+  color: #c9c9c9;
+}
+
+.chevron {
+  color: #ff7a1a;
+  font-size: 20px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.ticketDetails {
+  padding: 0 16px 16px;
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.detailGrid > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  background: #111;
+}
+
+.detailGrid strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  color: #e8e8e8;
+  font-size: 12px;
+}
+
+.combinationBox,
+.alternateBox,
+.refundBox {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 11px;
+  background: #101010;
+}
+
+.detailLabel {
+  margin-bottom: 8px;
+  color: #ff8a36;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.combinationList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.combinationList > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.combinationList span {
+  flex: 0 0 auto;
+  min-width: 20px;
+  color: #ff7a1a;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.combinationList strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #d8d8d8;
+  font-size: 11px;
+}
+
+.alternateBox {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.alternateBox span,
+.refundBox span {
+  color: #c8c8c8;
+  font-size: 12px;
+}
+
+.refundBox {
+  border-color: rgba(255, 122, 26, 0.2);
+}
+
+.refundBox strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #ff9a52;
+  font-size: 12px;
+}
+
+.cancelWagerBox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  border-radius: 11px;
+  background: rgba(127, 29, 29, 0.12);
+}
+
+.cancelWagerBox > div {
+  min-width: 0;
+}
+
+.cancelWagerBox strong {
+  display: block;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.cancelWagerBox span {
+  display: block;
+  margin-top: 4px;
+  color: #aaa;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.cancelWagerButton {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  border-radius: 10px;
+  background: linear-gradient(135deg, #7f1d1d, #b91c1c);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.cancelWagerButton:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.cancelWagerButton:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.bankrollFooter {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: #0a0a0a;
+}
+
+.bankrollFooter > div {
+  min-width: 0;
+}
+
+.bankrollFooter strong {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+}
+
+.liveNote {
+  border: 1px solid rgba(255, 122, 26, 0.17);
+  background: rgba(255, 122, 26, 0.045);
+  color: #afafaf;
+  font-size: 11px;
+  text-align: center;
+}
+
+@media (max-width: 1100px) {
+  .summaryGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .detailGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .ticketMain {
+    grid-template-columns:
+      minmax(72px, 0.65fr)
+      minmax(105px, 0.85fr)
+      minmax(160px, 1.4fr)
+      minmax(90px, 0.75fr)
+      86px
+      22px;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 820px) {
+  .cancelWagerBox {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cancelWagerButton {
+    width: 100%;
+  }
+
+  .hero {
+    flex-direction: column;
+  }
+
+  .refreshButton {
+    width: 100%;
+  }
+
+  .cardHeader {
+    flex-direction: column;
+  }
+
+  .cardTotals {
+    width: 100%;
+  }
+
+  .ticketMain {
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: start;
+  }
+
+  .ticketRace,
+  .ticketType,
+  .ticketSelections,
+  .ticketMoney {
+    grid-column: 1;
+  }
+
+  .ticketType,
+  .ticketSelections,
+  .ticketMoney {
+    margin-top: -3px;
+  }
+
+  .statusBadge {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .chevron {
+    grid-column: 2;
+    grid-row: 2 / span 3;
+    align-self: center;
+  }
+
+  .detailGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .combinationList {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .page {
+    gap: 14px;
+  }
+
+  .hero {
+    padding: 17px;
+    border-radius: 14px;
+  }
+
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summaryCard {
+    padding: 12px;
+  }
+
+  .summaryCard strong {
+    font-size: 17px;
+  }
+
+  .cardGroup {
+    border-radius: 13px;
+  }
+
+  .cardHeader {
+    padding: 14px;
+  }
+
+  .cardTotals {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    min-width: 0;
+  }
+
+  .cardTotals > div {
+    padding: 7px;
+  }
+
+  .cardTotals strong {
+    font-size: 12px;
+  }
+
+  .ticketMain {
+    padding: 13px 12px;
+  }
+
+  .ticketDetails {
+    padding: 0 12px 13px;
+  }
+
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .bankrollFooter {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 11px 13px;
+  }
+}
+
+
+.embeddedHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 0 2px;
+}
+
+.embeddedHeader h2 {
+  margin: 3px 0 5px;
+  color: #fff;
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 950;
+  letter-spacing: -0.025em;
+}
+
+.embeddedHeader p {
+  margin: 0;
+  color: #9f9f9f;
+  font-size: 13px;
+}
+
+@media (max-width: 560px) {
+  .embeddedHeader {
+    flex-direction: column;
+  }
+
+  .embeddedHeader .refreshButton {
+    width: 100%;
+  }
+}
+
+.trackBetBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 122, 26, 0.25);
+  border-radius: 14px;
+  background: linear-gradient(100deg, rgba(145, 20, 20, 0.18), #101010 60%);
+}
+.trackBetBar > div:first-child { display: grid; gap: 4px; }
+.trackBetBar strong { color: #d8d8d8; font-size: 12px; }
+.trackBetButtons { display: flex; gap: 8px; }
+.trackBetButtons button {
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid rgba(255, 122, 26, 0.5);
+  border-radius: 10px;
+  background: linear-gradient(135deg, #971316, #e15c15);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
+}
+.trackBetButtons button:hover { filter: brightness(1.08); }
+@media (max-width: 560px) {
+  .trackBetBar { align-items: stretch; flex-direction: column; }
+  .trackBetButtons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trackBetButtons button { width: 100%; padding: 0 10px; }
+}
+
+.identityCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 103, 31, 0.25);
+  border-radius: 15px;
+  background:
+    linear-gradient(100deg, rgba(145, 20, 20, 0.16), transparent 55%),
+    #111;
+}
+
+.identityCopy {
+  min-width: 0;
+}
+
+.identityTitleRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.identityTitleRow strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #fff;
+  font-size: clamp(18px, 2.4vw, 24px);
+  font-weight: 950;
+  letter-spacing: -0.02em;
+}
+
+.identityTitleRow small {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 122, 26, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 122, 26, 0.06);
+  color: #ff9b5b;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.identityCopy p {
+  margin: 5px 0 0;
+  color: #969696;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.identityControls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.identityEdit,
+.identitySave,
+.identityCancel {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.identityEdit,
+.identitySave {
+  border: 1px solid rgba(255, 122, 26, 0.5);
+  background: linear-gradient(135deg, #971316, #e15c15);
+  color: #fff;
+}
+
+.identityCancel {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #171717;
+  color: #d0d0d0;
+}
+
+.identityEdit:disabled,
+.identitySave:disabled,
+.identityCancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.identitySaved {
+  color: #69e9a0;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.identityHelp {
+  max-width: 260px;
+  color: #999;
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.identityEditor {
+  flex: 0 1 420px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 9px;
+  align-items: end;
+}
+
+.identityEditor label {
+  grid-column: 1 / -1;
+  color: #a3a3a3;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.identityEditor input {
+  min-width: 0;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 122, 26, 0.38);
+  border-radius: 10px;
+  outline: none;
+  background: #090909;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.identityEditor input:focus {
+  border-color: rgba(255, 122, 26, 0.8);
+  box-shadow: 0 0 0 3px rgba(255, 122, 26, 0.08);
+}
+
+.identityActions {
+  display: flex;
+  gap: 7px;
+}
+
+@media (max-width: 820px) {
+  .identityCard {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .identityControls {
+    align-items: stretch;
+  }
+
+  .identityHelp {
+    max-width: none;
+    text-align: left;
+  }
+
+  .identityEditor {
+    flex: none;
+    grid-template-columns: 1fr;
+  }
+
+  .identityEditor label {
+    grid-column: auto;
+  }
+
+  .identityActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .identityEdit,
+  .identitySave,
+  .identityCancel {
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .identityCard {
+    padding: 14px;
+    border-radius: 13px;
+  }
+
+  .identityActions {
+    grid-template-columns: 1fr;
+  }
+}
