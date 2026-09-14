@@ -1393,3 +1393,82 @@
     min-height: 50px !important;
   }
 }
+
+/* ============================================================
+   FINAL MOBILE SAFE-AREA / CAMERA CLEARANCE FIX
+   Keep league navigation below iPhone camera / Dynamic Island
+   and increase touch target height on phones.
+   ============================================================ */
+
+@media (max-width: 760px) {
+  .g365-league-shell {
+    padding-top:
+      max(
+        18px,
+        calc(env(safe-area-inset-top) + 18px)
+      ) !important;
+  }
+
+  .g365-league-header {
+    padding-top:
+      max(
+        22px,
+        calc(env(safe-area-inset-top) + 18px)
+      ) !important;
+
+    padding-bottom: 14px !important;
+  }
+
+  .g365-league-nav,
+  .g365-season-long-nav,
+  .g365-pickem-nav,
+  .g365-universal-league-nav {
+    margin-top: 14px !important;
+  }
+
+  .g365-league-nav-inner,
+  .g365-universal-league-nav-inner {
+    min-height: 52px !important;
+  }
+
+  .g365-league-nav-link,
+  .g365-universal-league-nav-link,
+  .g365-season-long-nav a,
+  .g365-pickem-nav a {
+    min-height: 52px !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .g365-league-shell {
+    padding-top:
+      max(
+        22px,
+        calc(env(safe-area-inset-top) + 22px)
+      ) !important;
+  }
+
+  .g365-league-header {
+    padding-top:
+      max(
+        26px,
+        calc(env(safe-area-inset-top) + 22px)
+      ) !important;
+
+    padding-bottom: 16px !important;
+  }
+
+  .g365-league-nav,
+  .g365-season-long-nav,
+  .g365-pickem-nav,
+  .g365-universal-league-nav {
+    margin-top: 16px !important;
+  }
+
+  .g365-league-nav-link,
+  .g365-universal-league-nav-link,
+  .g365-season-long-nav a,
+  .g365-pickem-nav a {
+    min-height: 54px !important;
+  }
+}
