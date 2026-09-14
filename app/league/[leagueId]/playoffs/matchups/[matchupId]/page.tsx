@@ -21,6 +21,13 @@ import {
 } from "@/lib/traditional/requireTraditionalLeague";
 
 
+import G365MobileMatchupDetail from "@/components/matchups/G365MobileMatchupDetail";
+
+import {
+  loadKickerDistances,
+} from "@/lib/matchups/loadKickerDistances";
+
+
 type PageProps = {
   params:
     Promise<{
@@ -424,9 +431,148 @@ export default async function TraditionalPlayoffMatchupDetailPage({
     data.liveGames.length;
 
 
+  const {
+    data:
+      playoffMatchupRows,
+  } =
+    await supabase
+      .from(
+        "traditional_playoff_matchups"
+      )
+      .select(
+        "id"
+      )
+      .eq(
+        "league_id",
+        leagueId
+      )
+      .eq(
+        "season",
+        data.season
+      )
+      .eq(
+        "playoff_week",
+        data.week
+      )
+      .order(
+        "id",
+        {
+          ascending:
+            true,
+        }
+      );
+
+
+  const playoffMatchupIds =
+    (
+      playoffMatchupRows ??
+      []
+    )
+      .map(
+        (
+          row
+        ) =>
+          Number(
+            (
+              row as {
+                id:
+                  number;
+              }
+            ).id
+          )
+      )
+      .filter(
+        (
+          id
+        ) =>
+          Number.isInteger(
+            id
+          ) &&
+          id >
+            0
+      );
+
+
+  const currentMatchupIndex =
+    playoffMatchupIds.indexOf(
+      data.matchupId
+    );
+
+
+  const previousMatchupId =
+    currentMatchupIndex >
+    0
+      ? playoffMatchupIds[
+          currentMatchupIndex -
+            1
+        ]
+      : null;
+
+
+  const nextMatchupId =
+    currentMatchupIndex >=
+      0 &&
+    currentMatchupIndex <
+      playoffMatchupIds.length -
+        1
+      ? playoffMatchupIds[
+          currentMatchupIndex +
+            1
+        ]
+      : null;
+
+
+  const kickerDistances =
+    await loadKickerDistances(
+      supabase,
+      [
+        ...data.away
+          .starters,
+        ...data.home
+          .starters,
+      ]
+    );
+
+
   return (
-    <main
-      className="g365-playoff-matchup"
+    <>
+      <G365MobileMatchupDetail
+        data={
+          data
+        }
+        title={`Week ${data.week} Playoff`}
+        previousHref={
+          previousMatchupId
+            ? `/league/${leagueId}/playoffs/matchups/${previousMatchupId}`
+            : null
+        }
+        nextHref={
+          nextMatchupId
+            ? `/league/${leagueId}/playoffs/matchups/${nextMatchupId}`
+            : null
+        }
+        allMatchupsHref={`/league/${leagueId}/playoffs`}
+        allMatchupsLabel="View Playoffs"
+        matchupNumber={
+          currentMatchupIndex >=
+          0
+            ? currentMatchupIndex +
+              1
+            : null
+        }
+        matchupCount={
+          playoffMatchupIds.length >
+          0
+            ? playoffMatchupIds.length
+            : null
+        }
+        kickerDistances={
+          kickerDistances
+        }
+      />
+
+      <main
+        className="g365-playoff-matchup g365-existing-matchup-detail"
       style={
         styles.page
       }
@@ -1134,7 +1280,8 @@ export default async function TraditionalPlayoffMatchupDetailPage({
           />
         </section>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
 

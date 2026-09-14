@@ -26,6 +26,13 @@ import {
 } from "@/lib/leagues/requireLeagueMember";
 
 
+import G365MobileMatchupDetail from "@/components/matchups/G365MobileMatchupDetail";
+
+import {
+  loadKickerDistances,
+} from "@/lib/matchups/loadKickerDistances";
+
+
 type PageProps = {
   params:
     Promise<{
@@ -556,6 +563,169 @@ export default async function SeasonLongMatchupDetailPage({
     data.liveGames.length;
 
 
+  const {
+    data:
+      matchupContext,
+  } =
+    await supabase
+      .from(
+        "season_long_matchups"
+      )
+      .select(`
+        id,
+        matchup_type
+      `)
+      .eq(
+        "id",
+        data.matchupId
+      )
+      .eq(
+        "league_id",
+        leagueId
+      )
+      .maybeSingle();
+
+
+  const matchupType =
+    String(
+      (
+        matchupContext as {
+          matchup_type?:
+            string |
+            null;
+        } |
+        null
+      )
+        ?.matchup_type ??
+      "regular_season"
+    )
+      .trim()
+      .toLowerCase();
+
+
+  const isPlayoffMatchup =
+    matchupType ===
+    "playoff";
+
+
+  const {
+    data:
+      siblingRows,
+  } =
+    await supabase
+      .from(
+        "season_long_matchups"
+      )
+      .select(
+        "id"
+      )
+      .eq(
+        "league_id",
+        leagueId
+      )
+      .eq(
+        "season",
+        data.season
+      )
+      .eq(
+        "week",
+        data.week
+      )
+      .eq(
+        "matchup_type",
+        matchupType
+      )
+      .not(
+        "away_fantasy_team_id",
+        "is",
+        null
+      )
+      .order(
+        "id",
+        {
+          ascending:
+            true,
+        }
+      );
+
+
+  const siblingIds =
+    (
+      siblingRows ??
+      []
+    )
+      .map(
+        (
+          row
+        ) =>
+          Number(
+            (
+              row as {
+                id:
+                  number;
+              }
+            ).id
+          )
+      )
+      .filter(
+        (
+          id
+        ) =>
+          Number.isInteger(
+            id
+          ) &&
+          id >
+            0
+      );
+
+
+  const currentMatchupIndex =
+    siblingIds.indexOf(
+      data.matchupId
+    );
+
+
+  const previousMatchupId =
+    currentMatchupIndex >
+    0
+      ? siblingIds[
+          currentMatchupIndex -
+            1
+        ]
+      : null;
+
+
+  const nextMatchupId =
+    currentMatchupIndex >=
+      0 &&
+    currentMatchupIndex <
+      siblingIds.length -
+        1
+      ? siblingIds[
+          currentMatchupIndex +
+            1
+        ]
+      : null;
+
+
+  const kickerDistances =
+    await loadKickerDistances(
+      supabase,
+      [
+        ...data.away
+          .starters,
+        ...data.home
+          .starters,
+      ]
+    );
+
+
+  const allMatchupsHref =
+    isPlayoffMatchup
+      ? `/league/${leagueId}/season-long/playoffs`
+      : `/league/${leagueId}/season-long/matchups?week=${data.week}`;
+
+
   return (
     <>
       <SeasonLongMatchupRealtime
@@ -754,8 +924,53 @@ export default async function SeasonLongMatchupDetailPage({
         }
       `}</style>
 
+      <G365MobileMatchupDetail
+        data={
+          data
+        }
+        title={
+          isPlayoffMatchup
+            ? `Week ${data.week} Playoff`
+            : `Week ${data.week} Matchup`
+        }
+        previousHref={
+          previousMatchupId
+            ? `/league/${leagueId}/season-long/matchups/${previousMatchupId}`
+            : null
+        }
+        nextHref={
+          nextMatchupId
+            ? `/league/${leagueId}/season-long/matchups/${nextMatchupId}`
+            : null
+        }
+        allMatchupsHref={
+          allMatchupsHref
+        }
+        allMatchupsLabel={
+          isPlayoffMatchup
+            ? "View Playoffs"
+            : "All Matchups"
+        }
+        matchupNumber={
+          currentMatchupIndex >=
+          0
+            ? currentMatchupIndex +
+              1
+            : null
+        }
+        matchupCount={
+          siblingIds.length >
+          0
+            ? siblingIds.length
+            : null
+        }
+        kickerDistances={
+          kickerDistances
+        }
+      />
+
       <main
-        className="g365-season-matchup"
+        className="g365-season-matchup g365-existing-matchup-detail"
         style={
           styles.page
         }

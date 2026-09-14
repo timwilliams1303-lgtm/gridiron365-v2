@@ -21,6 +21,13 @@ import {
 } from "@/lib/traditional/requireTraditionalLeague";
 
 
+import G365MobileMatchupDetail from "@/components/matchups/G365MobileMatchupDetail";
+
+import {
+  loadKickerDistances,
+} from "@/lib/matchups/loadKickerDistances";
+
+
 type PageProps = {
   params:
     Promise<{
@@ -474,15 +481,155 @@ export default async function TraditionalMatchupDetailPage({
     data.liveGames.length;
 
 
+  const {
+    data:
+      weekMatchupRows,
+  } =
+    await supabase
+      .from(
+        "traditional_matchups"
+      )
+      .select(
+        "id"
+      )
+      .eq(
+        "league_id",
+        leagueId
+      )
+      .eq(
+        "season",
+        data.season
+      )
+      .eq(
+        "week",
+        data.week
+      )
+      .order(
+        "id",
+        {
+          ascending:
+            true,
+        }
+      );
+
+
+  const weekMatchupIds =
+    (
+      weekMatchupRows ??
+      []
+    )
+      .map(
+        (
+          row
+        ) =>
+          Number(
+            (
+              row as {
+                id:
+                  number;
+              }
+            ).id
+          )
+      )
+      .filter(
+        (
+          id
+        ) =>
+          Number.isInteger(
+            id
+          ) &&
+          id >
+            0
+      );
+
+
+  const currentMatchupIndex =
+    weekMatchupIds.indexOf(
+      data.matchupId
+    );
+
+
+  const previousMatchupId =
+    currentMatchupIndex >
+    0
+      ? weekMatchupIds[
+          currentMatchupIndex -
+            1
+        ]
+      : null;
+
+
+  const nextMatchupId =
+    currentMatchupIndex >=
+      0 &&
+    currentMatchupIndex <
+      weekMatchupIds.length -
+        1
+      ? weekMatchupIds[
+          currentMatchupIndex +
+            1
+        ]
+      : null;
+
+
+  const kickerDistances =
+    await loadKickerDistances(
+      supabase,
+      [
+        ...data.away
+          .starters,
+        ...data.home
+          .starters,
+      ]
+    );
+
+
   return (
-    <main
+    <>
+      <G365MobileMatchupDetail
+        data={
+          data
+        }
+        title={`Week ${data.week} Matchup`}
+        previousHref={
+          previousMatchupId
+            ? `/league/${leagueId}/matchups/${previousMatchupId}`
+            : null
+        }
+        nextHref={
+          nextMatchupId
+            ? `/league/${leagueId}/matchups/${nextMatchupId}`
+            : null
+        }
+        allMatchupsHref={`/league/${leagueId}/matchups?week=${data.week}`}
+        matchupNumber={
+          currentMatchupIndex >=
+          0
+            ? currentMatchupIndex +
+              1
+            : null
+        }
+        matchupCount={
+          weekMatchupIds.length >
+          0
+            ? weekMatchupIds.length
+            : null
+        }
+        kickerDistances={
+          kickerDistances
+        }
+      />
+
+      <main
+        className="g365-existing-matchup-detail"
       style={
         styles.page
       }
     >
       <style>{`
-        .g365-mobile-game-center,
-        .g365-mobile-bench-section {
+        .g365-mobile-matchup-compare,
+        .g365-mobile-matchup-center,
+        .g365-mobile-bench-compare {
           display: none;
         }
 
@@ -492,204 +639,51 @@ export default async function TraditionalMatchupDetailPage({
             display: none !important;
           }
 
-          .g365-mobile-game-center,
-          .g365-mobile-bench-section {
+          .g365-mobile-matchup-compare,
+          .g365-mobile-bench-compare {
             display: block !important;
             width: 100% !important;
             max-width: 100% !important;
-            min-width: 0 !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-x: contain;
+            padding-bottom: 6px;
           }
 
-          .g365-mobile-h2h-wrap {
-            width: 100% !important;
-            min-width: 0 !important;
-            overflow: hidden !important;
-            border: 1px solid rgba(255,255,255,.08);
-            border-radius: 8px;
-            background: #111315;
-          }
-
-          .g365-mobile-h2h-header {
-            display: grid;
-            grid-template-columns: minmax(0,1fr) 38px minmax(0,1fr);
-            align-items: end;
-            gap: 0;
-            padding: 8px 6px 7px;
-            border-bottom: 1px solid rgba(255,255,255,.08);
-            background: linear-gradient(180deg,#1c1f22,#151719);
-          }
-
-          .g365-mobile-h2h-team {
-            min-width: 0;
-            display: grid;
-            gap: 2px;
-          }
-
-          .g365-mobile-h2h-team.right {
-            text-align: right;
-            justify-items: end;
-          }
-
-          .g365-mobile-h2h-name {
-            width: 100%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            color: #f7f7f8;
-            font-size: 12px;
-            font-weight: 950;
-          }
-
-          .g365-mobile-h2h-total {
-            color: #fff;
-            font-size: 20px;
-            font-weight: 950;
-            font-variant-numeric: tabular-nums;
-            line-height: 1;
-          }
-
-          .g365-mobile-h2h-proj {
-            color: #ff9a43;
-            font-size: 9px;
-            font-weight: 900;
-          }
-
-          .g365-mobile-h2h-vs {
-            align-self: center;
-            justify-self: center;
-            color: #777f89;
-            font-size: 9px;
-            font-weight: 950;
-          }
-
-          .g365-mobile-h2h-row {
-            display: grid;
-            grid-template-columns: minmax(0,1fr) 38px minmax(0,1fr);
-            align-items: stretch;
-            min-width: 0;
-            border-bottom: 1px solid rgba(255,255,255,.045);
-          }
-
-          .g365-mobile-h2h-row:last-child {
-            border-bottom: 0;
-          }
-
-          .g365-mobile-h2h-player {
-            min-width: 0;
-            padding: 7px 6px;
-            display: grid;
-            grid-template-columns: minmax(0,1fr) auto;
-            gap: 4px;
-            align-items: center;
-            background: #181a1c;
-          }
-
-          .g365-mobile-h2h-player.right {
-            direction: rtl;
-            text-align: right;
-          }
-
-          .g365-mobile-h2h-player.right > * {
-            direction: ltr;
-          }
-
-          .g365-mobile-h2h-player-info {
-            min-width: 0;
-            display: grid;
-            gap: 2px;
-          }
-
-          .g365-mobile-h2h-player-name {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            color: #e7e9eb;
-            font-size: 11px;
-            font-weight: 900;
-          }
-
-          .g365-mobile-h2h-player-meta,
-          .g365-mobile-h2h-player-stats {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            color: #969ca4;
-            font-size: 8px;
-            line-height: 1.2;
-          }
-
-          .g365-mobile-h2h-player-stats.live {
-            color: #ff9a43;
-          }
-
-          .g365-mobile-h2h-values {
-            min-width: 34px;
-            display: grid;
-            justify-items: end;
-            gap: 1px;
-            font-variant-numeric: tabular-nums;
-          }
-
-          .g365-mobile-h2h-player.right .g365-mobile-h2h-values {
-            justify-items: start;
-          }
-
-          .g365-mobile-h2h-points {
-            color: #f8f8f9;
-            font-size: 12px;
-            font-weight: 950;
-          }
-
-          .g365-mobile-h2h-player-proj {
-            color: #8f959d;
-            font-size: 8px;
-          }
-
-          .g365-mobile-h2h-slot {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 2px;
-            color: #a6abb2;
-            background: #0d0f11;
-            font-size: 9px;
-            font-weight: 950;
-            text-align: center;
-            border-left: 1px solid rgba(255,255,255,.05);
-            border-right: 1px solid rgba(255,255,255,.05);
+          .g365-mobile-matchup-compare-inner,
+          .g365-mobile-bench-compare-inner {
+            display: grid !important;
+            grid-template-columns: 430px 430px !important;
+            gap: 8px !important;
+            width: max-content !important;
+            min-width: 868px !important;
           }
 
           .g365-mobile-matchup-center {
             display: grid !important;
-            gap: 7px !important;
-            margin-top: 7px !important;
+            gap: 8px !important;
+            margin-top: 8px !important;
           }
 
-          .g365-mobile-bench-section {
-            margin-top: 7px;
-          }
-
-          .g365-mobile-section-label {
-            margin: 0 0 5px;
-            color: #858c96;
-            font-size: 9px;
-            font-weight: 900;
-            letter-spacing: .05em;
+          .g365-mobile-swipe-hint {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 10px !important;
+            margin: 0 0 6px !important;
+            color: #858c96 !important;
+            font-size: 10px !important;
+            font-weight: 850 !important;
+            letter-spacing: .04em !important;
           }
         }
 
         @media (max-width: 430px) {
-          .g365-mobile-h2h-player {
-            padding: 6px 5px;
-          }
-
-          .g365-mobile-h2h-player-name {
-            font-size: 10px;
-          }
-
-          .g365-mobile-h2h-player-meta,
-          .g365-mobile-h2h-player-stats {
-            font-size: 7.5px;
+          .g365-mobile-matchup-compare-inner,
+          .g365-mobile-bench-compare-inner {
+            grid-template-columns: 405px 405px !important;
+            min-width: 818px !important;
           }
         }
       `}</style>
@@ -1240,11 +1234,26 @@ export default async function TraditionalMatchupDetailPage({
 
 
         <section className="g365-mobile-game-center">
-          <MobileHeadToHeadRoster
-            away={data.away}
-            home={data.home}
-            label="STARTERS"
-          />
+          <div className="g365-mobile-swipe-hint">
+            <span>STARTING LINEUPS • SIDE-BY-SIDE</span>
+            <span>SWIPE ↔</span>
+          </div>
+
+          <div className="g365-mobile-matchup-compare">
+            <div className="g365-mobile-matchup-compare-inner">
+              <CompactRoster
+                team={data.away}
+                label="STARTERS"
+                week={data.week}
+              />
+
+              <CompactRoster
+                team={data.home}
+                label="STARTERS"
+                week={data.week}
+              />
+            </div>
+          </div>
 
           <div className="g365-mobile-matchup-center">
             <Panel title={`LIVE NFL GAMES • ${liveNflGamesCount}`}>
@@ -1327,16 +1336,21 @@ export default async function TraditionalMatchupDetailPage({
         </section>
 
         <section className="g365-mobile-bench-section">
-          <div className="g365-mobile-section-label">BENCH</div>
-          <MobileHeadToHeadRoster
-            away={data.away}
-            home={data.home}
-            label="BENCH"
-            bench
-          />
+          <div className="g365-mobile-swipe-hint">
+            <span>BENCH • SIDE-BY-SIDE</span>
+            <span>SWIPE ↔</span>
+          </div>
+
+          <div className="g365-mobile-bench-compare">
+            <div className="g365-mobile-bench-compare-inner">
+              <CompactBench team={data.away} />
+              <CompactBench team={data.home} />
+            </div>
+          </div>
         </section>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
 
@@ -2405,141 +2419,6 @@ function HighlightedScoringPlayText({
         }
       )}
     </>
-  );
-}
-
-
-function MobileHeadToHeadRoster({
-  away,
-  home,
-  label,
-  bench = false,
-}: {
-  away: MatchupDetailTeam;
-  home: MatchupDetailTeam;
-  label: string;
-  bench?: boolean;
-}) {
-  const awayPlayers = bench ? away.bench : away.starters;
-  const homePlayers = bench ? home.bench : home.starters;
-  const rowCount = Math.max(awayPlayers.length, homePlayers.length);
-  const rows = Array.from({ length: rowCount }, (_, index) => ({
-    away: awayPlayers[index] ?? null,
-    home: homePlayers[index] ?? null,
-  }));
-
-  const slotLabel = (
-    awayPlayer: MatchupDetailPlayer | null,
-    homePlayer: MatchupDetailPlayer | null
-  ) => {
-    if (bench) return "BN";
-    return (
-      awayPlayer?.lineupSlot ??
-      homePlayer?.lineupSlot ??
-      "—"
-    );
-  };
-
-  const renderPlayer = (
-    player: MatchupDetailPlayer | null,
-    right = false
-  ) => {
-    if (!player) {
-      return (
-        <div
-          className={`g365-mobile-h2h-player${right ? " right" : ""}`}
-          style={{ opacity: 0.35 }}
-        >
-          <div className="g365-mobile-h2h-player-info">
-            <span className="g365-mobile-h2h-player-name">—</span>
-            <span className="g365-mobile-h2h-player-meta">EMPTY</span>
-          </div>
-        </div>
-      );
-    }
-
-    const isLive = Boolean(
-      player.gameContext?.isActuallyLive || player.scoreIsLive
-    );
-    const statLine = formatPlayerStatLine(player);
-    const opponent = player.nflOpponent
-      ? `${player.opponentPrefix ?? "vs"} ${player.nflOpponent}`
-      : "BYE";
-
-    return (
-      <div className={`g365-mobile-h2h-player${right ? " right" : ""}`}>
-        <div className="g365-mobile-h2h-player-info">
-          <span className="g365-mobile-h2h-player-name">
-            {player.fullName}
-          </span>
-          <span className="g365-mobile-h2h-player-meta">
-            {player.teamAbbreviation ?? "FA"} • {opponent} • {playerStatus(player)}
-          </span>
-          <span
-            className={`g365-mobile-h2h-player-stats${isLive ? " live" : ""}`}
-            title={statLine ?? undefined}
-          >
-            {statLine ?? "NO STATS"}
-          </span>
-        </div>
-
-        <div className="g365-mobile-h2h-values">
-          <strong className="g365-mobile-h2h-points">
-            {points(player.fantasyPoints)}
-          </strong>
-          <span className="g365-mobile-h2h-player-proj">
-            {player.projectedPoints > 0
-              ? points(player.projectedPoints)
-              : "—"}
-          </span>
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="g365-mobile-h2h-wrap">
-      <div className="g365-mobile-h2h-header">
-        <div className="g365-mobile-h2h-team">
-          <span className="g365-mobile-h2h-name">{away.teamName}</span>
-          <strong className="g365-mobile-h2h-total">
-            {points(away.points)}
-          </strong>
-          <span className="g365-mobile-h2h-proj">
-            PROJ {points(away.expectedFinalPoints)}
-          </span>
-        </div>
-
-        <div className="g365-mobile-h2h-vs">{label}</div>
-
-        <div className="g365-mobile-h2h-team right">
-          <span className="g365-mobile-h2h-name">{home.teamName}</span>
-          <strong className="g365-mobile-h2h-total">
-            {points(home.points)}
-          </strong>
-          <span className="g365-mobile-h2h-proj">
-            PROJ {points(home.expectedFinalPoints)}
-          </span>
-        </div>
-      </div>
-
-      {rows.length === 0 ? (
-        <div style={styles.benchEmpty}>No players.</div>
-      ) : (
-        rows.map((row, index) => (
-          <div
-            key={`${label}-${index}-${row.away?.playerId ?? "empty"}-${row.home?.playerId ?? "empty"}`}
-            className="g365-mobile-h2h-row"
-          >
-            {renderPlayer(row.away)}
-            <div className="g365-mobile-h2h-slot">
-              {slotLabel(row.away, row.home)}
-            </div>
-            {renderPlayer(row.home, true)}
-          </div>
-        ))
-      )}
-    </div>
   );
 }
 
@@ -4550,5 +4429,4 @@ const styles = {
       "center" as const,
   },
 };
-
 
