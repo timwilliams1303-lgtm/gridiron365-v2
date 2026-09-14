@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import BackToMyLeaguesButton from "@/components/leagues/BackToMyLeaguesButton";
+
 import {
   createSupabaseServerClient,
 } from "@/lib/supabase/server";
@@ -575,49 +577,68 @@ export default async function NflPlayoffsLeagueHome({
             "linear-gradient(135deg,rgba(111,9,14,.5),rgba(17,17,20,.98) 52%,rgba(136,47,0,.3))",
         }}
       >
-        <p
+        <div
           style={{
-            margin: 0,
-            color: "#ff7627",
-            fontWeight: 1000,
-            fontSize: 11,
-            letterSpacing:
-              ".12em",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 16,
+            flexWrap: "wrap",
           }}
         >
-          G365 NFL PLAYOFFS
-        </p>
+          <div
+            style={{
+              minWidth: 0,
+              flex: "1 1 520px",
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                color: "#ff7627",
+                fontWeight: 1000,
+                fontSize: 11,
+                letterSpacing:
+                  ".12em",
+              }}
+            >
+              G365 NFL PLAYOFFS
+            </p>
 
-        <h2
-          style={{
-            margin:
-              "8px 0",
-            color: "#fff",
-            fontSize:
-              "clamp(30px,5vw,48px)",
-          }}
-        >
-          {access.league.name}
-        </h2>
+            <h2
+              style={{
+                margin:
+                  "8px 0",
+                color: "#fff",
+                fontSize:
+                  "clamp(30px,5vw,48px)",
+              }}
+            >
+              {access.league.name}
+            </h2>
 
-        <p
-          style={{
-            margin: 0,
-            color: "#aeb2bb",
-          }}
-        >
-          {season}
-          {" · "}
-          {isSalary
-            ? "Salary Cap"
-            : "No Salary Cap"}
-          {" · "}
-          {leagueComplete
-            ? "Postseason Complete"
-            : `${roundName(
-                activeRound
-              )} · Active`}
-        </p>
+            <p
+              style={{
+                margin: 0,
+                color: "#aeb2bb",
+              }}
+            >
+              {season}
+              {" · "}
+              {isSalary
+                ? "Salary Cap"
+                : "No Salary Cap"}
+              {" · "}
+              {leagueComplete
+                ? "Postseason Complete"
+                : `${roundName(
+                    activeRound
+                  )} · Active`}
+            </p>
+          </div>
+
+          <BackToMyLeaguesButton />
+        </div>
       </section>
 
 

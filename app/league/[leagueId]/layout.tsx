@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import {
   notFound,
   redirect,
@@ -34,10 +32,11 @@ type LayoutProps = {
 
 
 function isUuid(
-  value: string,
+  value:
+    string
 ) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value,
+    value
   );
 }
 
@@ -60,11 +59,11 @@ export default async function LeagueLayout({
   if (
     !leagueId ||
     !isUuid(
-      leagueId,
+      leagueId
     )
   ) {
     redirect(
-      "/my-leagues",
+      "/my-leagues"
     );
   }
 
@@ -76,7 +75,7 @@ export default async function LeagueLayout({
    */
   const access =
     await requireLeagueMember(
-      leagueId,
+      leagueId
     );
 
 
@@ -94,7 +93,7 @@ export default async function LeagueLayout({
 
   const isCommissioner =
     Boolean(
-      access.isCommissioner,
+      access.isCommissioner
     );
 
 
@@ -131,7 +130,7 @@ export default async function LeagueLayout({
     } =
       await supabase
         .from(
-          "season_long_settings",
+          "season_long_settings"
         )
         .select(`
           competition_format,
@@ -139,7 +138,7 @@ export default async function LeagueLayout({
         `)
         .eq(
           "league_id",
-          leagueId,
+          leagueId
         )
         .maybeSingle();
 
@@ -148,7 +147,7 @@ export default async function LeagueLayout({
       seasonLongSettingsError
     ) {
       throw new Error(
-        `Could not load Season-Long navigation settings: ${seasonLongSettingsError.message}`,
+        `Could not load Season-Long navigation settings: ${seasonLongSettingsError.message}`
       );
     }
 
@@ -160,11 +159,10 @@ export default async function LeagueLayout({
         ? "head_to_head"
         : "total_points";
 
-
     seasonLongPlayoffsEnabled =
       Boolean(
         seasonLongSettings
-          ?.playoffs_enabled,
+          ?.playoffs_enabled
       );
   }
 
@@ -178,34 +176,6 @@ export default async function LeagueLayout({
     <div
       className="g365-league-shell"
     >
-      {/* ==================================================
-          BACK TO MY LEAGUES
-      =================================================== */}
-
-      <div
-        className="g365-back-to-leagues-bar"
-      >
-        <Link
-          href="/my-leagues"
-          className="g365-back-to-leagues-button"
-        >
-          <span
-            aria-hidden="true"
-          >
-            ←
-          </span>
-
-          <span>
-            Back to My Leagues
-          </span>
-        </Link>
-      </div>
-
-
-      {/* ==================================================
-          LEAGUE NAVIGATION
-      =================================================== */}
-
       <LeagueNav
         leagueId={
           leagueId
@@ -229,10 +199,6 @@ export default async function LeagueLayout({
         ariaLabel="League Navigation"
       />
 
-
-      {/* ==================================================
-          CURRENT PAGE
-      =================================================== */}
 
       <div
         className="g365-league-content"

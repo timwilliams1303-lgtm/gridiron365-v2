@@ -1117,7 +1117,8 @@ export async function POST(
       if (
         !leagueAllowsAutomaticParticipantSlot(
           league.league_type
-        )
+        ) &&
+        league.league_type !== "greyhound"
       ) {
         return jsonError(
           "A valid fantasy team is required for this league type.",
@@ -1218,8 +1219,13 @@ export async function POST(
               " "
             );
 
+        const participantSlotLabel =
+          league.league_type === "greyhound"
+            ? "Greyhound Entry"
+            : "Playoff Entry";
+
         const baseTeamName =
-          `${participantName} Playoff Entry`
+          `${participantName} ${participantSlotLabel}`
             .trim()
             .replace(
               /\s+/g,
@@ -1249,7 +1255,7 @@ export async function POST(
                 null,
 
               team_name:
-                baseTeamName || "Playoff Entry",
+                baseTeamName || participantSlotLabel,
 
               active:
                 true,
@@ -1268,7 +1274,9 @@ export async function POST(
         ) {
           return jsonError(
             createTeamError?.message ??
-              "The reserved NFL Playoffs fantasy team could not be created.",
+              league.league_type === "greyhound"
+               ? "The reserved Greyhound entry could not be created."
+               : "The reserved NFL Playoffs fantasy team could not be created.",
             500
           );
         }

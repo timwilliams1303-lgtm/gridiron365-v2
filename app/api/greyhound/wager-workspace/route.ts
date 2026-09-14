@@ -18,6 +18,11 @@ export const dynamic =
 type SettingsRow = {
   league_id: string;
   track_scope: string;
+  duration_mode: string | null;
+  competition_start_date: string | null;
+  competition_end_date: string | null;
+  competition_weeks: number | null;
+  competition_days: number[] | null;
   starting_bankroll: number | string;
   allow_win: boolean;
   allow_place: boolean;
@@ -160,6 +165,33 @@ function numberValue(
 }
 
 
+function normalizeCompetitionDays(
+  value: unknown
+) {
+  if (!Array.isArray(value)) {
+    return [0, 1, 2, 3, 4, 5, 6];
+  }
+
+  const days =
+    Array.from(
+      new Set(
+        value
+          .map((day) => Number(day))
+          .filter(
+            (day) =>
+              Number.isInteger(day) &&
+              day >= 0 &&
+              day <= 6
+          )
+      )
+    ).sort((a, b) => a - b);
+
+  return days.length > 0
+    ? days
+    : [0, 1, 2, 3, 4, 5, 6];
+}
+
+
 export async function GET(
   request: Request
 ) {
@@ -247,6 +279,11 @@ export async function GET(
         .select(`
           league_id,
           track_scope,
+          duration_mode,
+          competition_start_date,
+          competition_end_date,
+          competition_weeks,
+          competition_days,
           starting_bankroll,
           allow_win,
           allow_place,
@@ -282,6 +319,41 @@ export async function GET(
 
     const settings =
       settingsData as SettingsRow;
+
+    const competitionDays =
+      normalizeCompetitionDays(
+        settings.competition_days
+      );
+
+    const settingsPayload = {
+      trackScope:
+        settings.track_scope,
+      durationMode:
+        settings.duration_mode ??
+        "single_day",
+      competitionStartDate:
+        settings.competition_start_date,
+      competitionEndDate:
+        settings.competition_end_date,
+      competitionWeeks:
+        settings.competition_weeks,
+      competitionDays,
+      startingBankroll:
+        numberValue(
+          settings.starting_bankroll,
+          100
+        ),
+      allowedWagers: {
+        win: Boolean(settings.allow_win),
+        place: Boolean(settings.allow_place),
+        show: Boolean(settings.allow_show),
+        exacta: Boolean(settings.allow_exacta),
+        perfecta: Boolean(settings.allow_perfecta),
+        quinella: Boolean(settings.allow_quinella),
+        trifecta: Boolean(settings.allow_trifecta),
+        superfecta: Boolean(settings.allow_superfecta),
+      },
+    };
 
     // Betting-card selection is independent from the legacy league track_scope.
     // Members pick a racing date, then select Wheeling or Tri-State for that date.
@@ -343,25 +415,7 @@ export async function GET(
           name:
             access.league.name,
         },
-        settings: {
-          trackScope:
-            settings.track_scope,
-          startingBankroll:
-            numberValue(
-              settings.starting_bankroll,
-              100
-            ),
-          allowedWagers: {
-            win: Boolean(settings.allow_win),
-            place: Boolean(settings.allow_place),
-            show: Boolean(settings.allow_show),
-            exacta: Boolean(settings.allow_exacta),
-            perfecta: Boolean(settings.allow_perfecta),
-            quinella: Boolean(settings.allow_quinella),
-            trifecta: Boolean(settings.allow_trifecta),
-            superfecta: Boolean(settings.allow_superfecta),
-          },
-        },
+        settings: settingsPayload,
         availableCards: [],
         completedRacingDates: [],
         card: null,
@@ -529,25 +583,7 @@ export async function GET(
           name:
             access.league.name,
         },
-        settings: {
-          trackScope:
-            settings.track_scope,
-          startingBankroll:
-            numberValue(
-              settings.starting_bankroll,
-              100
-            ),
-          allowedWagers: {
-            win: Boolean(settings.allow_win),
-            place: Boolean(settings.allow_place),
-            show: Boolean(settings.allow_show),
-            exacta: Boolean(settings.allow_exacta),
-            perfecta: Boolean(settings.allow_perfecta),
-            quinella: Boolean(settings.allow_quinella),
-            trifecta: Boolean(settings.allow_trifecta),
-            superfecta: Boolean(settings.allow_superfecta),
-          },
-        },
+        settings: settingsPayload,
         availableCards,
         completedRacingDates,
         card: null,
@@ -672,25 +708,7 @@ export async function GET(
             name:
               access.league.name,
           },
-          settings: {
-            trackScope:
-              settings.track_scope,
-            startingBankroll:
-              numberValue(
-                settings.starting_bankroll,
-                100
-              ),
-            allowedWagers: {
-              win: Boolean(settings.allow_win),
-              place: Boolean(settings.allow_place),
-              show: Boolean(settings.allow_show),
-              exacta: Boolean(settings.allow_exacta),
-              perfecta: Boolean(settings.allow_perfecta),
-              quinella: Boolean(settings.allow_quinella),
-              trifecta: Boolean(settings.allow_trifecta),
-              superfecta: Boolean(settings.allow_superfecta),
-            },
-          },
+          settings: settingsPayload,
           availableCards,
           completedRacingDates,
           selectedDate:
@@ -729,25 +747,7 @@ export async function GET(
             name:
               access.league.name,
           },
-          settings: {
-            trackScope:
-              settings.track_scope,
-            startingBankroll:
-              numberValue(
-                settings.starting_bankroll,
-                100
-              ),
-            allowedWagers: {
-              win: Boolean(settings.allow_win),
-              place: Boolean(settings.allow_place),
-              show: Boolean(settings.allow_show),
-              exacta: Boolean(settings.allow_exacta),
-              perfecta: Boolean(settings.allow_perfecta),
-              quinella: Boolean(settings.allow_quinella),
-              trifecta: Boolean(settings.allow_trifecta),
-              superfecta: Boolean(settings.allow_superfecta),
-            },
-          },
+          settings: settingsPayload,
           availableCards,
           completedRacingDates,
           selectedDate:
@@ -1203,49 +1203,7 @@ export async function GET(
           name:
             access.league.name,
         },
-        settings: {
-          trackScope:
-            settings.track_scope,
-          startingBankroll:
-            numberValue(
-              settings.starting_bankroll,
-              100
-            ),
-          allowedWagers: {
-            win:
-              Boolean(
-                settings.allow_win
-              ),
-            place:
-              Boolean(
-                settings.allow_place
-              ),
-            show:
-              Boolean(
-                settings.allow_show
-              ),
-            exacta:
-              Boolean(
-                settings.allow_exacta
-              ),
-            perfecta:
-              Boolean(
-                settings.allow_perfecta
-              ),
-            quinella:
-              Boolean(
-                settings.allow_quinella
-              ),
-            trifecta:
-              Boolean(
-                settings.allow_trifecta
-              ),
-            superfecta:
-              Boolean(
-                settings.allow_superfecta
-              ),
-          },
-        },
+        settings: settingsPayload,
         availableCards,
         completedRacingDates,
         selectedDate:

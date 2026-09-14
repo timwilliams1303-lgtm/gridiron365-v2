@@ -129,6 +129,8 @@ export default async function TraditionalLeagueHome({
   .g365-home-page { padding: 18px 10px 44px !important; overflow-x: hidden !important; }
   .g365-home-shell { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
   .g365-home-header { grid-template-columns: 1fr !important; gap: 14px !important; align-items: stretch !important; }
+  .g365-home-header-right { width: 100% !important; align-items: flex-start !important; }
+  .g365-home-back-link { align-self: flex-start !important; min-height: 40px !important; padding: 0 12px !important; }
   .g365-home-statuses { grid-template-columns: repeat(2,minmax(0,1fr)) !important; width: 100% !important; }
   .g365-home-stats { grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 8px !important; }
   .g365-home-dashboard { grid-template-columns: 1fr !important; gap: 10px !important; }
@@ -159,6 +161,7 @@ export default async function TraditionalLeagueHome({
         ========================================== */}
 
         <header
+          className="g365-home-header"
           style={
             styles.pageHeader
           }
@@ -197,11 +200,28 @@ export default async function TraditionalLeagueHome({
 
 
           <div
+            className="g365-home-header-right"
             style={
-              styles.headerStatusGroup
+              styles.headerRight
             }
           >
+            <Link
+              href="/my-leagues"
+              className="g365-home-back-link"
+              style={
+                styles.backToLeagues
+              }
+            >
+              ← My Leagues
+            </Link>
+
             <div
+              className="g365-home-statuses"
+              style={
+                styles.headerStatusGroup
+              }
+            >
+              <div
               style={
                 styles.statusBox
               }
@@ -247,6 +267,7 @@ export default async function TraditionalLeagueHome({
                 Week{" "}
                 {homeData.activeWeek}
               </strong>
+              </div>
             </div>
           </div>
         </header>
@@ -1177,6 +1198,69 @@ const styles = {
 
     flexWrap:
       "wrap" as const,
+  },
+
+
+  headerRight: {
+    display:
+      "flex",
+
+    flexDirection:
+      "column" as const,
+
+    alignItems:
+      "flex-end",
+
+    gap:
+      "10px",
+  },
+
+
+  backToLeagues: {
+    minHeight:
+      "36px",
+
+    display:
+      "inline-flex",
+
+    alignItems:
+      "center",
+
+    justifyContent:
+      "center",
+
+    padding:
+      "0 12px",
+
+    border:
+      "1px solid rgba(255,122,24,.35)",
+
+    borderRadius:
+      "8px",
+
+    background:
+      "rgba(255,90,20,.07)",
+
+    color:
+      "#ff8a3d",
+
+    fontSize:
+      "10px",
+
+    fontWeight:
+      900,
+
+    letterSpacing:
+      ".05em",
+
+    textDecoration:
+      "none",
+
+    textTransform:
+      "uppercase" as const,
+
+    whiteSpace:
+      "nowrap" as const,
   },
 
 

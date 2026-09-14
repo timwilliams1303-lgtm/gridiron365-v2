@@ -106,6 +106,23 @@ function createUserClient(
   );
 }
 
+async function ensureGreyhoundParticipant(
+  admin: ReturnType<typeof createAdminClient>,
+  leagueId: string,
+) {
+  const { error } = await admin.rpc(
+    "ensure_greyhound_participants",
+    {
+      p_league_id: leagueId,
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+}
+
+
 function invitationIsExpired(
   expiresAt: string
 ) {
@@ -357,7 +374,8 @@ export async function GET(
 
     if (
       fantasyTeam &&
-      fantasyTeam.owner_id
+      fantasyTeam.owner_id &&
+      league.league_type !== "greyhound"
     ) {
       return jsonError(
         "The team reserved by this invitation already has an owner.",
@@ -431,8 +449,10 @@ export async function GET(
    It:
    - verifies the JWT
    - verifies the signed-in email matches the invited email
+   - for Greyhound, resolves/claims the participant team first
    - creates league_members if needed
-   - assigns the exact reserved fantasy team
+   - for other leagues, assigns the reserved fantasy team
+   - bootstraps Greyhound participant data
    - marks the invitation accepted
 ============================================================ */
 
@@ -441,13 +461,8 @@ export async function POST(
   context: RouteContext
 ) {
   try {
-    const {
-      token: rawToken,
-    } =
-      await context.params;
-
-    const token =
-      rawToken?.trim();
+    const { token: rawToken } = await context.params;
+    const token = rawToken?.trim();
 
     if (!token) {
       return jsonError(
@@ -457,16 +472,9 @@ export async function POST(
     }
 
     const authorization =
-      request.headers.get(
-        "authorization"
-      );
+      request.headers.get("authorization");
 
-    if (
-      !authorization
-        ?.startsWith(
-          "Bearer "
-        )
-    ) {
+    if (!authorization?.startsWith("Bearer ")) {
       return jsonError(
         "You must be signed in to accept this invitation.",
         401
@@ -475,9 +483,7 @@ export async function POST(
 
     const accessToken =
       authorization
-        .slice(
-          "Bearer ".length
-        )
+        .slice("Bearer ".length)
         .trim();
 
     if (!accessToken) {
@@ -491,8 +497,7 @@ export async function POST(
       supabaseUrl,
       publishableKey,
       adminKey,
-    } =
-      getEnvironment();
+    } = getEnvironment();
 
     const userClient =
       createUserClient(
@@ -508,22 +513,14 @@ export async function POST(
       );
 
     const {
-      data: {
-        user,
-      },
-      error:
-        userError,
+      data: { user },
+      error: userError,
     } =
-      await userClient
-        .auth
-        .getUser(
-          accessToken
-        );
+      await userClient.auth.getUser(
+        accessToken
+      );
 
-    if (
-      userError ||
-      !user
-    ) {
+    if (userError || !user) {
       return jsonError(
         userError?.message ??
           "Your login session is invalid.",
@@ -532,15 +529,11 @@ export async function POST(
     }
 
     const {
-      data:
-        invitation,
-      error:
-        invitationError,
+      data: invitation,
+      error: invitationError,
     } =
       await admin
-        .from(
-          "league_invitations"
-        )
+        .from("league_invitations")
         .select(
           `
             id,
@@ -553,38 +546,25 @@ export async function POST(
             expires_at
           `
         )
-        .eq(
-          "token",
-          token
-        )
+        .eq("token", token)
         .maybeSingle();
 
-    if (
-      invitationError ||
-      !invitation
-    ) {
+    if (invitationError || !invitation) {
       return jsonError(
-        invitationError
-          ?.message ??
+        invitationError?.message ??
           "Invitation not found.",
         404
       );
     }
 
-    if (
-      invitation.status ===
-      "cancelled"
-    ) {
+    if (invitation.status === "cancelled") {
       return jsonError(
         "This invitation was cancelled.",
         410
       );
     }
 
-    if (
-      invitation.status ===
-      "accepted"
-    ) {
+    if (invitation.status === "accepted") {
       return jsonError(
         "This invitation has already been accepted.",
         409
@@ -592,11 +572,8 @@ export async function POST(
     }
 
     if (
-      invitation.status ===
-        "expired" ||
-      invitationIsExpired(
-        invitation.expires_at
-      )
+      invitation.status === "expired" ||
+      invitationIsExpired(invitation.expires_at)
     ) {
       await expireInvitation(
         admin,
@@ -621,8 +598,7 @@ export async function POST(
 
     if (
       !signedInEmail ||
-      signedInEmail !==
-        invitedEmail
+      signedInEmail !== invitedEmail
     ) {
       return jsonError(
         `This invitation was sent to ${invitation.email}. Sign in or create an account using that email address.`,
@@ -631,28 +607,16 @@ export async function POST(
     }
 
     const {
-      data:
-        league,
-      error:
-        leagueError,
+      data: league,
+      error: leagueError,
     } =
       await admin
-        .from(
-          "leagues"
-        )
-        .select(
-          "id,name,league_type,season"
-        )
-        .eq(
-          "id",
-          invitation.league_id
-        )
+        .from("leagues")
+        .select("id,name,league_type,season")
+        .eq("id", invitation.league_id)
         .maybeSingle();
 
-    if (
-      leagueError ||
-      !league
-    ) {
+    if (leagueError || !league) {
       return jsonError(
         leagueError?.message ??
           "League not found.",
@@ -660,78 +624,8 @@ export async function POST(
       );
     }
 
-    const {
-      data:
-        existingMembership,
-      error:
-        membershipLookupError,
-    } =
-      await admin
-        .from(
-          "league_members"
-        )
-        .select(
-          "id,role"
-        )
-        .eq(
-          "league_id",
-          invitation.league_id
-        )
-        .eq(
-          "user_id",
-          user.id
-        )
-        .maybeSingle();
-
-    if (
-      membershipLookupError
-    ) {
-      return jsonError(
-        membershipLookupError
-          .message,
-        500
-      );
-    }
-
-    let membershipCreated =
-      false;
-
-    if (
-      !existingMembership
-    ) {
-      const {
-        error:
-          membershipInsertError,
-      } =
-        await admin
-          .from(
-            "league_members"
-          )
-          .insert({
-            league_id:
-              invitation
-                .league_id,
-
-            user_id:
-              user.id,
-
-            role:
-              "member",
-          });
-
-      if (
-        membershipInsertError
-      ) {
-        return jsonError(
-          membershipInsertError
-            .message,
-          500
-        );
-      }
-
-      membershipCreated =
-        true;
-    }
+    const isGreyhound =
+      league.league_type === "greyhound";
 
     let teamId:
       number | null =
@@ -744,33 +638,313 @@ export async function POST(
     let teamOwnershipClaimed =
       false;
 
-    if (
-      invitation
-        .fantasy_team_id !==
-      null
-    ) {
+    let originalReservedTeamId:
+      number | null =
+      invitation.fantasy_team_id === null
+        ? null
+        : Number(invitation.fantasy_team_id);
+
+    /*
+     * GREYHOUND ORDERING FIX
+     *
+     * A Greyhound league_members INSERT fires
+     * trigger_initialize_greyhound_member(), which can provision a
+     * fantasy team. Therefore Greyhound must resolve/claim its team
+     * BEFORE creating league_members.
+     *
+     * This prevents:
+     *   1. membership trigger creates team A
+     *   2. invite route later claims reserved team B
+     *   3. UNIQUE (league_id, owner_id) fails
+     */
+    if (isGreyhound) {
       const {
-        data:
-          team,
-        error:
-          teamLookupError,
+        data: existingOwnedTeam,
+        error: existingOwnedTeamError,
       } =
         await admin
-          .from(
-            "fantasy_teams"
-          )
+          .from("fantasy_teams")
+          .select("id,team_name,owner_id,active")
+          .eq("league_id", invitation.league_id)
+          .eq("owner_id", user.id)
+          .maybeSingle();
+
+      if (existingOwnedTeamError) {
+        return jsonError(
+          existingOwnedTeamError.message,
+          500
+        );
+      }
+
+      if (existingOwnedTeam) {
+        if (!existingOwnedTeam.active) {
+          return jsonError(
+            "Your existing Greyhound entry in this league is inactive.",
+            409
+          );
+        }
+
+        teamId =
+          Number(existingOwnedTeam.id);
+
+        teamName =
+          existingOwnedTeam.team_name;
+      } else if (
+        invitation.fantasy_team_id !== null
+      ) {
+        const {
+          data: reservedTeam,
+          error: reservedTeamError,
+        } =
+          await admin
+            .from("fantasy_teams")
+            .select("id,team_name,owner_id,active")
+            .eq(
+              "id",
+              invitation.fantasy_team_id
+            )
+            .eq(
+              "league_id",
+              invitation.league_id
+            )
+            .maybeSingle();
+
+        if (
+          reservedTeamError ||
+          !reservedTeam
+        ) {
+          return jsonError(
+            reservedTeamError?.message ??
+              "The reserved fantasy team could not be found.",
+            404
+          );
+        }
+
+        if (!reservedTeam.active) {
+          return jsonError(
+            "The reserved fantasy team is no longer active.",
+            409
+          );
+        }
+
+        if (
+          reservedTeam.owner_id &&
+          reservedTeam.owner_id !== user.id
+        ) {
+          return jsonError(
+            "The reserved fantasy team already has an owner.",
+            409
+          );
+        }
+
+        if (reservedTeam.owner_id === user.id) {
+          teamId =
+            Number(reservedTeam.id);
+
+          teamName =
+            reservedTeam.team_name;
+        } else {
+          const {
+            data: claimedTeam,
+            error: claimError,
+          } =
+            await admin
+              .from("fantasy_teams")
+              .update({
+                owner_id: user.id,
+                updated_at:
+                  new Date().toISOString(),
+              })
+              .eq(
+                "id",
+                reservedTeam.id
+              )
+              .eq(
+                "league_id",
+                invitation.league_id
+              )
+              .is(
+                "owner_id",
+                null
+              )
+              .select("id,team_name")
+              .maybeSingle();
+
+          if (claimError) {
+            return jsonError(
+              claimError.message,
+              500
+            );
+          }
+
+          if (!claimedTeam) {
+            const {
+              data: recheckTeam,
+              error: recheckError,
+            } =
+              await admin
+                .from("fantasy_teams")
+                .select(
+                  "id,team_name,owner_id,active"
+                )
+                .eq(
+                  "id",
+                  reservedTeam.id
+                )
+                .eq(
+                  "league_id",
+                  invitation.league_id
+                )
+                .maybeSingle();
+
+            if (
+              recheckError ||
+              !recheckTeam
+            ) {
+              return jsonError(
+                recheckError?.message ??
+                  "The reserved Greyhound entry could not be rechecked.",
+                409
+              );
+            }
+
+            if (
+              recheckTeam.owner_id !== user.id
+            ) {
+              return jsonError(
+                "The reserved Greyhound entry was claimed by another owner before this invitation could be accepted.",
+                409
+              );
+            }
+
+            teamId =
+              Number(recheckTeam.id);
+
+            teamName =
+              recheckTeam.team_name;
+          } else {
+            teamId =
+              Number(claimedTeam.id);
+
+            teamName =
+              claimedTeam.team_name;
+
+            teamOwnershipClaimed =
+              true;
+          }
+        }
+      }
+    }
+
+    const {
+      data: existingMembership,
+      error: membershipLookupError,
+    } =
+      await admin
+        .from("league_members")
+        .select("id,role")
+        .eq(
+          "league_id",
+          invitation.league_id
+        )
+        .eq(
+          "user_id",
+          user.id
+        )
+        .maybeSingle();
+
+    if (membershipLookupError) {
+      if (
+        isGreyhound &&
+        teamOwnershipClaimed &&
+        teamId !== null
+      ) {
+        await admin
+          .from("fantasy_teams")
+          .update({
+            owner_id: null,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq("id", teamId)
+          .eq("owner_id", user.id);
+      }
+
+      return jsonError(
+        membershipLookupError.message,
+        500
+      );
+    }
+
+    let membershipCreated =
+      false;
+
+    if (!existingMembership) {
+      const {
+        error: membershipInsertError,
+      } =
+        await admin
+          .from("league_members")
+          .insert({
+            league_id:
+              invitation.league_id,
+            user_id:
+              user.id,
+            role:
+              "member",
+          });
+
+      if (membershipInsertError) {
+        if (
+          isGreyhound &&
+          teamOwnershipClaimed &&
+          teamId !== null
+        ) {
+          await admin
+            .from("fantasy_teams")
+            .update({
+              owner_id: null,
+              updated_at:
+                new Date().toISOString(),
+            })
+            .eq("id", teamId)
+            .eq("owner_id", user.id);
+        }
+
+        return jsonError(
+          membershipInsertError.message,
+          500
+        );
+      }
+
+      membershipCreated =
+        true;
+    }
+
+    /*
+     * Non-Greyhound leagues keep the original claim-after-membership
+     * behavior. The Greyhound branch above has already resolved its team.
+     */
+    if (
+      !isGreyhound &&
+      invitation.fantasy_team_id !== null
+    ) {
+      const {
+        data: team,
+        error: teamLookupError,
+      } =
+        await admin
+          .from("fantasy_teams")
           .select(
             "id,team_name,owner_id,active"
           )
           .eq(
             "id",
-            invitation
-              .fantasy_team_id
+            invitation.fantasy_team_id
           )
           .eq(
             "league_id",
-            invitation
-              .league_id
+            invitation.league_id
           )
           .maybeSingle();
 
@@ -778,18 +952,13 @@ export async function POST(
         teamLookupError ||
         !team
       ) {
-        if (
-          membershipCreated
-        ) {
+        if (membershipCreated) {
           await admin
-            .from(
-              "league_members"
-            )
+            .from("league_members")
             .delete()
             .eq(
               "league_id",
-              invitation
-                .league_id
+              invitation.league_id
             )
             .eq(
               "user_id",
@@ -798,26 +967,20 @@ export async function POST(
         }
 
         return jsonError(
-          teamLookupError
-            ?.message ??
+          teamLookupError?.message ??
             "The reserved fantasy team could not be found.",
           404
         );
       }
 
       if (!team.active) {
-        if (
-          membershipCreated
-        ) {
+        if (membershipCreated) {
           await admin
-            .from(
-              "league_members"
-            )
+            .from("league_members")
             .delete()
             .eq(
               "league_id",
-              invitation
-                .league_id
+              invitation.league_id
             )
             .eq(
               "user_id",
@@ -833,21 +996,15 @@ export async function POST(
 
       if (
         team.owner_id &&
-        team.owner_id !==
-          user.id
+        team.owner_id !== user.id
       ) {
-        if (
-          membershipCreated
-        ) {
+        if (membershipCreated) {
           await admin
-            .from(
-              "league_members"
-            )
+            .from("league_members")
             .delete()
             .eq(
               "league_id",
-              invitation
-                .league_id
+              invitation.league_id
             )
             .eq(
               "user_id",
@@ -861,111 +1018,50 @@ export async function POST(
         );
       }
 
-      const {
-        data:
-          claimedTeam,
-        error:
-          teamUpdateError,
-      } =
-        await admin
-          .from(
-            "fantasy_teams"
-          )
-          .update({
-            owner_id:
-              user.id,
+      if (team.owner_id === user.id) {
+        teamId =
+          Number(team.id);
 
-            updated_at:
-              new Date()
-                .toISOString(),
-          })
-          .eq(
-            "id",
-            team.id
-          )
-          .eq(
-            "league_id",
-            invitation
-              .league_id
-          )
-          .is(
-            "owner_id",
-            null
-          )
-          .select(
-            "id,team_name"
-          )
-          .maybeSingle();
-
-      if (
-        teamUpdateError
-      ) {
-        if (
-          membershipCreated
-        ) {
-          await admin
-            .from(
-              "league_members"
-            )
-            .delete()
-            .eq(
-              "league_id",
-              invitation
-                .league_id
-            )
-            .eq(
-              "user_id",
-              user.id
-            );
-        }
-
-        return jsonError(
-          teamUpdateError
-            .message,
-          500
-        );
-      }
-
-      /*
-       * If owner_id was already this same user,
-       * the null-only update returns no row.
-       */
-      if (!claimedTeam) {
+        teamName =
+          team.team_name;
+      } else {
         const {
-          data:
-            alreadyOwnedTeam,
+          data: claimedTeam,
+          error: teamUpdateError,
         } =
           await admin
-            .from(
-              "fantasy_teams"
-            )
-            .select(
-              "id,team_name,owner_id"
-            )
+            .from("fantasy_teams")
+            .update({
+              owner_id:
+                user.id,
+              updated_at:
+                new Date().toISOString(),
+            })
             .eq(
               "id",
               team.id
             )
+            .eq(
+              "league_id",
+              invitation.league_id
+            )
+            .is(
+              "owner_id",
+              null
+            )
+            .select(
+              "id,team_name"
+            )
             .maybeSingle();
 
-        if (
-          !alreadyOwnedTeam ||
-          alreadyOwnedTeam
-            .owner_id !==
-            user.id
-        ) {
-          if (
-            membershipCreated
-          ) {
+        if (teamUpdateError) {
+          if (membershipCreated) {
             await admin
-              .from(
-                "league_members"
-              )
+              .from("league_members")
               .delete()
               .eq(
                 "league_id",
-                invitation
-                  .league_id
+                invitation.league_id
               )
               .eq(
                 "user_id",
@@ -974,53 +1070,214 @@ export async function POST(
           }
 
           return jsonError(
-            "The team was claimed by another owner before this invitation could be accepted.",
-            409
+            teamUpdateError.message,
+            500
           );
         }
 
-        teamId =
-          alreadyOwnedTeam.id;
+        if (!claimedTeam) {
+          const {
+            data: alreadyOwnedTeam,
+          } =
+            await admin
+              .from("fantasy_teams")
+              .select(
+                "id,team_name,owner_id"
+              )
+              .eq(
+                "id",
+                team.id
+              )
+              .maybeSingle();
 
-        teamName =
-          alreadyOwnedTeam
-            .team_name;
-      } else {
-        teamId =
-          claimedTeam.id;
+          if (
+            !alreadyOwnedTeam ||
+            alreadyOwnedTeam.owner_id !== user.id
+          ) {
+            if (membershipCreated) {
+              await admin
+                .from("league_members")
+                .delete()
+                .eq(
+                  "league_id",
+                  invitation.league_id
+                )
+                .eq(
+                  "user_id",
+                  user.id
+                );
+            }
 
-        teamName =
-          claimedTeam.team_name;
+            return jsonError(
+              "The team was claimed by another owner before this invitation could be accepted.",
+              409
+            );
+          }
 
-        teamOwnershipClaimed =
-          true;
+          teamId =
+            Number(alreadyOwnedTeam.id);
+
+          teamName =
+            alreadyOwnedTeam.team_name;
+        } else {
+          teamId =
+            Number(claimedTeam.id);
+
+          teamName =
+            claimedTeam.team_name;
+
+          teamOwnershipClaimed =
+            true;
+        }
+      }
+    }
+
+    /*
+     * Greyhound membership trigger should now reuse the team already
+     * owned by this user. Re-read it in case there was no reserved team
+     * and the trigger had to create one for a direct/legacy invitation.
+     */
+    if (
+      isGreyhound &&
+      teamId === null
+    ) {
+      const {
+        data: postMembershipTeam,
+        error: postMembershipTeamError,
+      } =
+        await admin
+          .from("fantasy_teams")
+          .select("id,team_name,owner_id,active")
+          .eq(
+            "league_id",
+            invitation.league_id
+          )
+          .eq(
+            "owner_id",
+            user.id
+          )
+          .maybeSingle();
+
+      if (
+        postMembershipTeamError ||
+        !postMembershipTeam
+      ) {
+        if (membershipCreated) {
+          await admin
+            .from("league_members")
+            .delete()
+            .eq(
+              "league_id",
+              invitation.league_id
+            )
+            .eq(
+              "user_id",
+              user.id
+            );
+        }
+
+        return jsonError(
+          postMembershipTeamError?.message ??
+            "The Greyhound participant team could not be created.",
+          500
+        );
+      }
+
+      if (!postMembershipTeam.active) {
+        if (membershipCreated) {
+          await admin
+            .from("league_members")
+            .delete()
+            .eq(
+              "league_id",
+              invitation.league_id
+            )
+            .eq(
+              "user_id",
+              user.id
+            );
+        }
+
+        return jsonError(
+          "Your Greyhound entry is inactive.",
+          409
+        );
+      }
+
+      teamId =
+        Number(postMembershipTeam.id);
+
+      teamName =
+        postMembershipTeam.team_name;
+    }
+
+    if (isGreyhound) {
+      try {
+        await ensureGreyhoundParticipant(
+          admin,
+          invitation.league_id,
+        );
+      } catch (participantError) {
+        if (membershipCreated) {
+          await admin
+            .from("league_members")
+            .delete()
+            .eq(
+              "league_id",
+              invitation.league_id
+            )
+            .eq(
+              "user_id",
+              user.id
+            );
+        }
+
+        if (
+          teamOwnershipClaimed &&
+          teamId !== null
+        ) {
+          await admin
+            .from("fantasy_teams")
+            .update({
+              owner_id: null,
+              updated_at:
+                new Date().toISOString(),
+            })
+            .eq("id", teamId)
+            .eq("owner_id", user.id);
+        }
+
+        return jsonError(
+          participantError instanceof Error
+            ? participantError.message
+            : "The Greyhound participant could not be created.",
+          500,
+        );
       }
     }
 
     const {
-      data:
-        acceptedInvitation,
-      error:
-        acceptUpdateError,
+      data: acceptedInvitation,
+      error: acceptUpdateError,
     } =
       await admin
-        .from(
-          "league_invitations"
-        )
+        .from("league_invitations")
         .update({
           status:
             "accepted",
 
+          ...(isGreyhound && teamId !== null
+            ? { fantasy_team_id: teamId }
+            : {}),
+
           accepted_at:
-            new Date()
-              .toISOString(),
+            new Date().toISOString(),
 
           accepted_by:
             user.id,
 
           updated_at:
-            new Date()
-              .toISOString(),
+            new Date().toISOString(),
         })
         .eq(
           "id",
@@ -1030,31 +1287,20 @@ export async function POST(
           "status",
           "pending"
         )
-        .select(
-          "id"
-        )
+        .select("id")
         .maybeSingle();
 
     if (
       acceptUpdateError ||
       !acceptedInvitation
     ) {
-      /*
-       * Do not remove an existing membership.
-       * If we created it in this request, clean it up.
-       */
-      if (
-        membershipCreated
-      ) {
+      if (membershipCreated) {
         await admin
-          .from(
-            "league_members"
-          )
+          .from("league_members")
           .delete()
           .eq(
             "league_id",
-            invitation
-              .league_id
+            invitation.league_id
           )
           .eq(
             "user_id",
@@ -1067,15 +1313,12 @@ export async function POST(
         teamId !== null
       ) {
         await admin
-          .from(
-            "fantasy_teams"
-          )
+          .from("fantasy_teams")
           .update({
             owner_id:
               null,
             updated_at:
-              new Date()
-                .toISOString(),
+              new Date().toISOString(),
           })
           .eq(
             "id",
@@ -1088,11 +1331,37 @@ export async function POST(
       }
 
       return jsonError(
-        acceptUpdateError
-          ?.message ??
+        acceptUpdateError?.message ??
           "The invitation was no longer pending.",
         409
       );
+    }
+
+    /*
+     * If Greyhound reused a pre-existing team instead of the invite's
+     * old vacant reservation, remove that now-orphaned reservation.
+     */
+    if (
+      isGreyhound &&
+      originalReservedTeamId !== null &&
+      teamId !== null &&
+      originalReservedTeamId !== teamId
+    ) {
+      await admin
+        .from("fantasy_teams")
+        .delete()
+        .eq(
+          "id",
+          originalReservedTeamId
+        )
+        .eq(
+          "league_id",
+          invitation.league_id
+        )
+        .is(
+          "owner_id",
+          null
+        );
     }
 
     return NextResponse.json({
@@ -1122,9 +1391,7 @@ export async function POST(
             }
           : null,
     });
-  } catch (
-    error
-  ) {
+  } catch (error) {
     return jsonError(
       error instanceof Error
         ? error.message
@@ -1133,4 +1400,3 @@ export async function POST(
     );
   }
 }
-

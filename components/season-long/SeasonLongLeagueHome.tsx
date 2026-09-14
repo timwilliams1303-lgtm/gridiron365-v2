@@ -12,6 +12,8 @@ import {
 
 import SeasonLongLiveRefresh from "@/components/season-long/SeasonLongLiveRefresh";
 
+import BackToMyLeaguesButton from "@/components/leagues/BackToMyLeaguesButton";
+
 
 type SeasonLongLeagueHomeProps = {
   leagueId: string;
@@ -653,15 +655,24 @@ export default async function SeasonLongLeagueHome({
           </div>
 
           <div
-            style={
-              styles.headerStatusGroup
-            }
+            style={{
+              display: "grid",
+              justifyItems: "end",
+              gap: "9px",
+            }}
           >
+            <BackToMyLeaguesButton />
+
             <div
               style={
-                styles.statusBox
+                styles.headerStatusGroup
               }
             >
+              <div
+                style={
+                  styles.statusBox
+                }
+              >
               <span
                 style={
                   styles.statusLabel
@@ -702,6 +713,7 @@ export default async function SeasonLongLeagueHome({
                   entry?.status
                 )}
               </strong>
+              </div>
             </div>
           </div>
         </header>

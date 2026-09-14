@@ -7,6 +7,8 @@ import {
   useState,
 } from "react";
 
+import { createBrowserClient } from "@supabase/ssr";
+
 type Participant = {
   participantId: number;
   fantasyTeamId: number;
@@ -69,6 +71,16 @@ function cleanName(value: string) {
 export default function GreyhoundTeamsEntries({
   leagueId,
 }: Props) {
+  const supabase = useMemo(
+    () =>
+      createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      ),
+    [],
+  );
+
   const [data, setData] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState<string | null>(null);
@@ -79,6 +91,11 @@ export default function GreyhoundTeamsEntries({
   const [teamNames, setTeamNames] = useState<Record<number, string>>({});
   const [newTeamName, setNewTeamName] = useState("");
   const [randomTeamCount, setRandomTeamCount] = useState(1);
+
+  const [inviteFirstName, setInviteFirstName] = useState("");
+  const [inviteLastName, setInviteLastName] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteWorking, setInviteWorking] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -235,6 +252,106 @@ export default function GreyhoundTeamsEntries({
       ).length,
     [data?.participants],
   );
+
+  async function sendInvite() {
+    if (inviteWorking) {
+      return;
+    }
+
+    const firstName = cleanName(inviteFirstName);
+    const lastName = cleanName(inviteLastName);
+    const email = inviteEmail.trim().toLowerCase();
+
+    if (!firstName || !lastName || !email) {
+      setError("First name, last name and email are required.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+
+    setInviteWorking(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession();
+
+      if (sessionError) {
+        throw new Error(sessionError.message);
+      }
+
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error(
+          "Your login session is missing. Sign in again and retry.",
+        );
+      }
+
+      const response = await fetch(
+        `/api/league/${encodeURIComponent(leagueId)}/invite`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            firstName,
+            lastName,
+            email,
+            fantasyTeamId: null,
+          }),
+        },
+      );
+
+      const contentType = response.headers.get("content-type") ?? "";
+      let result: {
+        success?: boolean;
+        message?: string;
+        error?: string;
+      } = {};
+
+      if (contentType.includes("application/json")) {
+        result = (await response.json()) as typeof result;
+      } else {
+        const responseText = await response.text();
+        throw new Error(
+          response.ok
+            ? "The invite request returned an invalid response."
+            : `Invite request failed with ${response.status} ${response.statusText}${
+                responseText
+                  ? `: ${responseText.replace(/\s+/g, " ").slice(0, 180)}`
+                  : ""
+              }`,
+        );
+      }
+
+      if (!response.ok || result.success === false) {
+        throw new Error(
+          result.error ?? result.message ?? "The invitation could not be sent.",
+        );
+      }
+
+      setSuccess(result.message ?? `Invitation sent to ${email}.`);
+      setInviteFirstName("");
+      setInviteLastName("");
+      setInviteEmail("");
+      await load();
+    } catch (inviteError) {
+      setError(
+        inviteError instanceof Error
+          ? inviteError.message
+          : "The Greyhound invitation could not be sent.",
+      );
+    } finally {
+      setInviteWorking(false);
+    }
+  }
 
   async function saveEntryName(participant: Participant) {
     const name = cleanName(
@@ -479,6 +596,77 @@ export default function GreyhoundTeamsEntries({
                     : "Start date not set"}
                 </small>
               </article>
+            </section>
+
+            <section className="gte-panel gte-invite-panel">
+              <div className="gte-panel-head">
+                <div>
+                  <span className="gte-panel-kicker">
+                    INVITE MEMBER
+                  </span>
+                  <h2>Send Greyhound League Invite</h2>
+                  <p>
+                    Send a secure Gridiron365 email invitation directly from
+                    Teams &amp; Entries. Once accepted, the member is created as a
+                    Greyhound participant automatically.
+                  </p>
+                </div>
+
+                <div className="gte-status-pill">EMAIL INVITE</div>
+              </div>
+
+              <div className="gte-invite-grid">
+                <label>
+                  <span>FIRST NAME</span>
+                  <input
+                    type="text"
+                    maxLength={50}
+                    value={inviteFirstName}
+                    disabled={inviteWorking || working != null}
+                    placeholder="First name"
+                    onChange={(event) => setInviteFirstName(event.target.value)}
+                  />
+                </label>
+
+                <label>
+                  <span>LAST NAME</span>
+                  <input
+                    type="text"
+                    maxLength={50}
+                    value={inviteLastName}
+                    disabled={inviteWorking || working != null}
+                    placeholder="Last name"
+                    onChange={(event) => setInviteLastName(event.target.value)}
+                  />
+                </label>
+
+                <label>
+                  <span>EMAIL ADDRESS</span>
+                  <input
+                    type="email"
+                    maxLength={320}
+                    value={inviteEmail}
+                    disabled={inviteWorking || working != null}
+                    placeholder="name@example.com"
+                    onChange={(event) => setInviteEmail(event.target.value)}
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  className="gte-primary-button gte-invite-button"
+                  disabled={inviteWorking || working != null}
+                  onClick={() => void sendInvite()}
+                >
+                  {inviteWorking ? "Sending Invite…" : "Send Invite"}
+                </button>
+              </div>
+
+              <div className="gte-invite-note">
+                {data.isTeamGame
+                  ? "After the invite is accepted, assign the new participant to a shared team below. Random leagues can be randomized again before competition starts; Manual leagues can assign the member directly."
+                  : "After the invite is accepted, the member will appear below with an individual Greyhound Entry that can be renamed here."}
+              </div>
             </section>
 
             {data.isTeamGame ? (
@@ -907,7 +1095,8 @@ const pageStyles = `
   .gte-entry-field > span,
   .gte-team-field > span,
   .gte-create-row label > span,
-  .gte-random-actions label > span {
+  .gte-random-actions label > span,
+  .gte-invite-grid label > span {
     color: #e76227;
     font-size: 9px;
     font-weight: 950;
@@ -1171,6 +1360,36 @@ const pageStyles = `
     box-shadow: 0 0 0 3px rgba(226, 90, 36, .10);
   }
 
+  .gte-invite-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+    align-items: end;
+    gap: 10px;
+  }
+
+  .gte-invite-grid label {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .gte-invite-button {
+    min-height: 40px;
+    white-space: nowrap;
+  }
+
+  .gte-invite-note {
+    margin-top: 11px;
+    padding: 10px 12px;
+    border: 1px solid rgba(240, 102, 37, .24);
+    border-radius: 10px;
+    background: rgba(75, 28, 12, .18);
+    color: #aaaeb5;
+    font-size: 9px;
+    line-height: 1.55;
+    font-weight: 700;
+  }
+
   .gte-lock-note {
     margin-bottom: 14px;
     padding: 10px 12px;
@@ -1409,6 +1628,35 @@ const pageStyles = `
   @media (max-width: 430px) {
     .gte-summary-grid {
       grid-template-columns: 1fr;
+    }
+  }
+
+
+  @media (max-width: 860px) {
+    .gte-invite-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .gte-invite-grid label:nth-child(3),
+    .gte-invite-button {
+      grid-column: 1 / -1;
+    }
+
+    .gte-invite-button {
+      width: 100%;
+      min-height: 48px;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .gte-invite-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .gte-invite-grid label,
+    .gte-invite-grid label:nth-child(3),
+    .gte-invite-button {
+      grid-column: 1;
     }
   }
 `;

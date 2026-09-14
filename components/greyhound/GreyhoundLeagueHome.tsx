@@ -36,6 +36,11 @@ type WorkspaceData = {
 
   settings?: {
     trackScope?: string;
+    durationMode?: string;
+    competitionStartDate?: string | null;
+    competitionEndDate?: string | null;
+    competitionWeeks?: number | null;
+    competitionDays?: number[];
     startingBankroll?: number | string;
   };
 
@@ -302,8 +307,49 @@ function addIsoDays(
   );
 }
 
-function isGreyhoundRacingDate(
+function normalizedCompetitionDays(
+  settings:
+    WorkspaceData["settings"],
+) {
+  const raw =
+    settings?.competitionDays;
+
+  if (!Array.isArray(raw)) {
+    return [
+      0, 1, 2, 3, 4, 5, 6,
+    ];
+  }
+
+  const days =
+    Array.from(
+      new Set(
+        raw
+          .map((day) =>
+            Number(day)
+          )
+          .filter(
+            (day) =>
+              Number.isInteger(day) &&
+              day >= 0 &&
+              day <= 6,
+          ),
+      ),
+    ).sort(
+      (a, b) =>
+        a - b,
+    );
+
+  return days.length > 0
+    ? days
+    : [
+        0, 1, 2, 3, 4, 5, 6,
+      ];
+}
+
+function isCompetitionDate(
   value: string,
+  settings:
+    WorkspaceData["settings"],
 ) {
   const date =
     parseIsoDate(value);
@@ -312,33 +358,93 @@ function isGreyhoundRacingDate(
     return false;
   }
 
-  /*
-   * Monday is the normal dark day.
-   * Sunday = 0
-   * Monday = 1
-   */
-  return (
-    date.getUTCDay() !== 1
+  const startDate =
+    settings
+      ?.competitionStartDate ??
+    null;
+
+  const endDate =
+    settings
+      ?.competitionEndDate ??
+    null;
+
+  const durationMode =
+    String(
+      settings
+        ?.durationMode ??
+        "",
+    ).toLowerCase();
+
+  if (
+    durationMode ===
+      "single_day" &&
+    startDate
+  ) {
+    return value ===
+      startDate;
+  }
+
+  if (
+    startDate &&
+    value < startDate
+  ) {
+    return false;
+  }
+
+  if (
+    endDate &&
+    value > endDate
+  ) {
+    return false;
+  }
+
+  return normalizedCompetitionDays(
+    settings,
+  ).includes(
+    date.getUTCDay(),
   );
 }
 
-function nextGreyhoundRacingDate(
+function currentOrNextCompetitionDate(
   value: string,
+  settings:
+    WorkspaceData["settings"],
 ) {
+  const startDate =
+    settings
+      ?.competitionStartDate ??
+    null;
+
+  const durationMode =
+    String(
+      settings
+        ?.durationMode ??
+        "",
+    ).toLowerCase();
+
+  if (
+    durationMode ===
+      "single_day" &&
+    startDate
+  ) {
+    return startDate;
+  }
+
   let candidate =
-    addIsoDays(
-      value,
-      1,
-    );
+    startDate &&
+    value < startDate
+      ? startDate
+      : value;
 
   for (
     let attempts = 0;
-    attempts < 14;
+    attempts < 370;
     attempts += 1
   ) {
     if (
-      isGreyhoundRacingDate(
+      isCompetitionDate(
         candidate,
+        settings,
       )
     ) {
       return candidate;
@@ -354,26 +460,46 @@ function nextGreyhoundRacingDate(
   return candidate;
 }
 
-function currentOrNextGreyhoundRacingDate() {
-  const today =
-    easternTodayIsoDate();
+function nextCompetitionDate(
+  value: string,
+  settings:
+    WorkspaceData["settings"],
+) {
+  let candidate =
+    addIsoDays(
+      value,
+      1,
+    );
 
-  if (
-    isGreyhoundRacingDate(
-      today,
-    )
+  for (
+    let attempts = 0;
+    attempts < 370;
+    attempts += 1
   ) {
-    return today;
+    if (
+      isCompetitionDate(
+        candidate,
+        settings,
+      )
+    ) {
+      return candidate;
+    }
+
+    candidate =
+      addIsoDays(
+        candidate,
+        1,
+      );
   }
 
-  return nextGreyhoundRacingDate(
-    today,
-  );
+  return candidate;
 }
 
 function advancePastCompletedDates(
   initialDate: string,
   completedDates: string[],
+  settings:
+    WorkspaceData["settings"],
 ) {
   const completed =
     new Set(
@@ -381,33 +507,43 @@ function advancePastCompletedDates(
     );
 
   let targetDate =
-    initialDate;
+    currentOrNextCompetitionDate(
+      initialDate,
+      settings,
+    );
 
-  /*
-   * If an entire racing date has finished,
-   * advance to the next valid racing date.
-   *
-   * This also means:
-   * Sunday complete -> Tuesday
-   * because Monday is skipped.
-   */
   for (
     let attempts = 0;
-    attempts < 14;
+    attempts < 370;
     attempts += 1
   ) {
     if (
       !completed.has(
         targetDate,
+      ) &&
+      isCompetitionDate(
+        targetDate,
+        settings,
       )
     ) {
       return targetDate;
     }
 
-    targetDate =
-      nextGreyhoundRacingDate(
+    const nextDate =
+      nextCompetitionDate(
         targetDate,
+        settings,
       );
+
+    if (
+      nextDate ===
+      targetDate
+    ) {
+      return targetDate;
+    }
+
+    targetDate =
+      nextDate;
   }
 
   return targetDate;
@@ -491,7 +627,7 @@ export default function GreyhoundLeagueHome({
     setDisplayDate,
   ] =
     useState<string>(
-      currentOrNextGreyhoundRacingDate(),
+      easternTodayIsoDate(),
     );
 
   const fetchWorkspace =
@@ -564,7 +700,7 @@ export default function GreyhoundLeagueHome({
            * This is important if the browser stays open overnight.
            */
           const currentDate =
-            currentOrNextGreyhoundRacingDate();
+            easternTodayIsoDate();
 
           /*
            * First request is date-only.
@@ -587,6 +723,7 @@ export default function GreyhoundLeagueHome({
               currentDate,
               overview.completedRacingDates ??
                 [],
+              overview.settings,
             );
 
           /*
@@ -607,6 +744,7 @@ export default function GreyhoundLeagueHome({
                 targetDate,
                 overview.completedRacingDates ??
                   [],
+                overview.settings,
               );
 
             /*
@@ -895,20 +1033,6 @@ export default function GreyhoundLeagueHome({
         }
       >
         {/* ==========================================
-            BACK TO MY LEAGUES
-        =========================================== */}
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            marginBottom: "12px",
-          }}
-        >
-          <BackToMyLeaguesButton />
-        </div>
-
-        {/* ==========================================
             HERO
         =========================================== */}
 
@@ -955,14 +1079,26 @@ export default function GreyhoundLeagueHome({
               </p>
             </div>
 
-            <Link
-              href={`/league/${leagueId}/greyhound/wagers`}
-              className={
-                styles.primaryButton
-              }
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: "8px",
+                flexWrap: "wrap",
+              }}
             >
-              Open My Wagers
-            </Link>
+              <BackToMyLeaguesButton />
+
+              <Link
+                href={`/league/${leagueId}/greyhound/wagers`}
+                className={
+                  styles.primaryButton
+                }
+              >
+                Open My Wagers
+              </Link>
+            </div>
           </div>
 
           <div

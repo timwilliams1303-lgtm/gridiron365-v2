@@ -69,6 +69,12 @@ function LoginContent() {
     useState("");
 
   const [
+    showPassword,
+    setShowPassword,
+  ] =
+    useState(false);
+
+  const [
     working,
     setWorking,
   ] =
@@ -425,6 +431,52 @@ function LoginContent() {
             </p>
           </header>
 
+          <style>{`
+            .g365-login-password-field {
+              position: relative;
+            }
+
+            .g365-login-password-field input {
+              padding-right: 52px !important;
+            }
+
+            .g365-login-password-toggle {
+              position: absolute;
+              right: 12px;
+              bottom: 6px;
+              width: 36px;
+              height: 36px;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              padding: 0;
+              border: 0;
+              border-radius: 10px;
+              background: transparent;
+              color: #9ca3af;
+              cursor: pointer;
+              z-index: 2;
+              transition:
+                color 0.15s ease,
+                background 0.15s ease;
+            }
+
+            .g365-login-password-toggle:hover {
+              color: #ff8c00;
+              background: rgba(255, 140, 0, 0.08);
+            }
+
+            .g365-login-password-toggle:focus-visible {
+              outline: 2px solid #ff8c00;
+              outline-offset: 2px;
+            }
+
+            .g365-login-password-toggle:disabled {
+              cursor: not-allowed;
+              opacity: 0.5;
+            }
+          `}</style>
+
           <form
             onSubmit={
               handleSubmit
@@ -456,27 +508,96 @@ function LoginContent() {
             />
 
             <div>
-              <FormField
-                label="Password"
-                type="password"
-                value={
-                  password
-                }
-                onChange={(
-                  event
-                ) =>
-                  setPassword(
+              <div
+                className="g365-login-password-field"
+              >
+                <FormField
+                  label="Password"
+                  type={
+                    showPassword
+                      ? "text"
+                      : "password"
+                  }
+                  value={
+                    password
+                  }
+                  onChange={(
                     event
-                      .target
-                      .value
-                  )
-                }
-                autoComplete="current-password"
-                disabled={
-                  working
-                }
-                required
-              />
+                  ) =>
+                    setPassword(
+                      event
+                        .target
+                        .value
+                    )
+                  }
+                  autoComplete="current-password"
+                  disabled={
+                    working
+                  }
+                  required
+                />
+
+                <button
+                  type="button"
+                  className="g365-login-password-toggle"
+                  onClick={() =>
+                    setShowPassword(
+                      (current) =>
+                        !current
+                    )
+                  }
+                  aria-label={
+                    showPassword
+                      ? "Hide password"
+                      : "Show password"
+                  }
+                  aria-pressed={
+                    showPassword
+                  }
+                  title={
+                    showPassword
+                      ? "Hide password"
+                      : "Show password"
+                  }
+                  disabled={
+                    working
+                  }
+                >
+                  {showPassword ? (
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M3 3l18 18" />
+                      <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                      <path d="M9.9 4.2A10.7 10.7 0 0 1 12 4c5.5 0 9.5 4.5 10 8a11.8 11.8 0 0 1-2 4.3" />
+                      <path d="M6.6 6.6C4.6 8 3.3 10 2 12c1.4 3.5 5 8 10 8 1.4 0 2.7-.3 3.9-.8" />
+                    </svg>
+                  ) : (
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
 
               <div
                 style={

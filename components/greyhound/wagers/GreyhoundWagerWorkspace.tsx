@@ -87,6 +87,11 @@ type WorkspaceData = {
   };
   settings?: {
     trackScope: string;
+    durationMode?: string;
+    competitionStartDate?: string | null;
+    competitionEndDate?: string | null;
+    competitionWeeks?: number | null;
+    competitionDays?: number[];
     startingBankroll: number;
     allowedWagers: Partial<Record<string, boolean>>;
   };
@@ -359,7 +364,7 @@ function easternTodayIsoDate() {
 }
 
 
-function isGreyhoundRacingDate(
+function parseCompetitionDate(
   value: string
 ) {
   const parsed =
@@ -367,73 +372,229 @@ function isGreyhoundRacingDate(
       `${value}T12:00:00Z`
     );
 
+  return Number.isNaN(
+    parsed.getTime()
+  )
+    ? null
+    : parsed;
+}
+
+
+function normalizedCompetitionDays(
+  settings:
+    WorkspaceData["settings"]
+) {
+  const raw =
+    settings?.competitionDays;
+
+  if (!Array.isArray(raw)) {
+    return [
+      0, 1, 2, 3, 4, 5, 6,
+    ];
+  }
+
+  const days =
+    Array.from(
+      new Set(
+        raw
+          .map((day) =>
+            Number(day)
+          )
+          .filter(
+            (day) =>
+              Number.isInteger(day) &&
+              day >= 0 &&
+              day <= 6
+          )
+      )
+    ).sort(
+      (a, b) =>
+        a - b
+    );
+
+  return days.length > 0
+    ? days
+    : [
+        0, 1, 2, 3, 4, 5, 6,
+      ];
+}
+
+
+function addCompetitionDays(
+  value: string,
+  days: number
+) {
+  const parsed =
+    parseCompetitionDate(
+      value
+    );
+
+  if (!parsed) {
+    return value;
+  }
+
+  parsed.setUTCDate(
+    parsed.getUTCDate() +
+      days
+  );
+
+  return parsed
+    .toISOString()
+    .slice(0, 10);
+}
+
+
+function isCompetitionDate(
+  value: string,
+  settings:
+    WorkspaceData["settings"]
+) {
+  const parsed =
+    parseCompetitionDate(
+      value
+    );
+
+  if (!parsed) {
+    return false;
+  }
+
+  const startDate =
+    settings
+      ?.competitionStartDate ??
+    null;
+
+  const endDate =
+    settings
+      ?.competitionEndDate ??
+    null;
+
+  const durationMode =
+    String(
+      settings
+        ?.durationMode ??
+        ""
+    ).toLowerCase();
+
   if (
-    Number.isNaN(
-      parsed.getTime()
-    )
+    durationMode ===
+      "single_day" &&
+    startDate
+  ) {
+    return value ===
+      startDate;
+  }
+
+  if (
+    startDate &&
+    value < startDate
   ) {
     return false;
   }
 
-  // G365 Greyhound follows the supported Tue-Sun racing calendar.
-  // Monday is the dark day, so Sunday rolls directly to Tuesday.
-  return parsed.getUTCDay() !== 1;
+  if (
+    endDate &&
+    value > endDate
+  ) {
+    return false;
+  }
+
+  return normalizedCompetitionDays(
+    settings
+  ).includes(
+    parsed.getUTCDay()
+  );
 }
 
 
-function nextGreyhoundRacingDate(
-  value: string
+function currentOrNextCompetitionDate(
+  value: string,
+  settings:
+    WorkspaceData["settings"]
 ) {
-  const parsed =
-    new Date(
-      `${value}T12:00:00Z`
-    );
+  const startDate =
+    settings
+      ?.competitionStartDate ??
+    null;
+
+  const durationMode =
+    String(
+      settings
+        ?.durationMode ??
+        ""
+    ).toLowerCase();
 
   if (
-    Number.isNaN(
-      parsed.getTime()
-    )
+    durationMode ===
+      "single_day" &&
+    startDate
   ) {
-    return value;
+    return startDate;
   }
+
+  let candidate =
+    startDate &&
+    value < startDate
+      ? startDate
+      : value;
 
   for (
     let offset = 0;
-    offset < 8;
+    offset < 370;
     offset += 1
   ) {
-    parsed.setUTCDate(
-      parsed.getUTCDate() + 1
-    );
-
-    const candidate =
-      parsed
-        .toISOString()
-        .slice(0, 10);
-
     if (
-      isGreyhoundRacingDate(
-        candidate
+      isCompetitionDate(
+        candidate,
+        settings
       )
     ) {
       return candidate;
     }
+
+    candidate =
+      addCompetitionDays(
+        candidate,
+        1
+      );
   }
 
-  return value;
+  return candidate;
 }
 
 
-function currentOrNextGreyhoundRacingDate(
-  value: string
+function nextCompetitionDate(
+  value: string,
+  settings:
+    WorkspaceData["settings"]
 ) {
-  return isGreyhoundRacingDate(
-    value
-  )
-    ? value
-    : nextGreyhoundRacingDate(
-        value
+  let candidate =
+    addCompetitionDays(
+      value,
+      1
+    );
+
+  for (
+    let offset = 0;
+    offset < 370;
+    offset += 1
+  ) {
+    if (
+      isCompetitionDate(
+        candidate,
+        settings
+      )
+    ) {
+      return candidate;
+    }
+
+    candidate =
+      addCompetitionDays(
+        candidate,
+        1
       );
+  }
+
+  return candidate;
 }
 
 
@@ -956,38 +1117,46 @@ export default function GreyhoundWagerWorkspace({
           const easternToday =
             easternTodayIsoDate();
 
-          const currentRacingDate =
-            currentOrNextGreyhoundRacingDate(
-              easternToday
+          const currentCompetitionDate =
+            currentOrNextCompetitionDate(
+              easternToday,
+              payload.settings
             );
 
           let targetDate =
             selectedDate ||
-            payload.selectedDate ||
-            payload.card?.raceDate ||
-            currentRacingDate;
+            currentCompetitionDate;
 
-          // Never leave the workspace parked on a fully completed racing day.
-          // Keep moving through the Greyhound Tue-Sun calendar until the date
-          // is current/future and is not already complete.
+          /*
+           * Never leave My Wagers parked on a completed or
+           * commissioner-excluded competition day.
+           *
+           * The league's saved Competition Days are authoritative.
+           * This means a league using Tue/Thu/Sat, for example,
+           * advances directly to the next Tue/Thu/Sat instead of
+           * following a hard-coded Greyhound calendar.
+           */
           let advanceGuard = 0;
 
           while (
             targetDate &&
             (
-              targetDate < currentRacingDate ||
+              targetDate <
+                currentCompetitionDate ||
               completedDates.has(
                 targetDate
               ) ||
-              !isGreyhoundRacingDate(
-                targetDate
+              !isCompetitionDate(
+                targetDate,
+                payload.settings
               )
             ) &&
-            advanceGuard < 14
+            advanceGuard < 370
           ) {
             const nextDate =
-              nextGreyhoundRacingDate(
-                targetDate
+              nextCompetitionDate(
+                targetDate,
+                payload.settings
               );
 
             if (
@@ -1951,7 +2120,11 @@ export default function GreyhoundWagerWorkspace({
               ) : (
                 <div className={styles.cardMeta}>
                   <span>
-                    Waiting for today&apos;s active card
+                    {selectedDate
+                      ? `Waiting for ${dateOnlyLabel(
+                          selectedDate
+                        )} card`
+                      : "Waiting for the next league competition card"}
                   </span>
                 </div>
               )}
@@ -2093,7 +2266,9 @@ export default function GreyhoundWagerWorkspace({
                     fontWeight: 800,
                   }}
                 >
-                  No confirmed Wheeling or Tri-State card is available for this date.
+                  {`Waiting for confirmed Wheeling or Tri-State cards for ${dateOnlyLabel(
+                    selectedDate
+                  )}.`}
                 </div>
               ) : (
                 <div

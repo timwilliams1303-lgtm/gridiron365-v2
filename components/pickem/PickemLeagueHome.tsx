@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import BackToMyLeaguesButton from "@/components/leagues/BackToMyLeaguesButton";
+
 import {
   createSupabaseServerClient,
 } from "@/lib/supabase/server";
@@ -768,37 +770,56 @@ export default async function PickemLeagueHome({
       >
         <div
           style={{
-            color: "#ff7627",
-            fontSize: 12,
-            fontWeight: 1000,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 16,
+            flexWrap: "wrap",
           }}
         >
-          G365 Pick&apos;em
+          <div
+            style={{
+              minWidth: 0,
+              flex: "1 1 520px",
+            }}
+          >
+            <div
+              style={{
+                color: "#ff7627",
+                fontSize: 12,
+                fontWeight: 1000,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              }}
+            >
+              G365 Pick&apos;em
+            </div>
+
+            <h2
+              style={{
+                margin: "7px 0 8px",
+                color: "white",
+                fontSize: "clamp(28px, 5vw, 46px)",
+                lineHeight: 1,
+              }}
+            >
+              {heroTitle}
+            </h2>
+
+            <p
+              style={{
+                margin: 0,
+                maxWidth: 760,
+                color: "#b9b9bf",
+                lineHeight: 1.65,
+              }}
+            >
+              {heroDescription}
+            </p>
+          </div>
+
+          <BackToMyLeaguesButton />
         </div>
-
-        <h2
-          style={{
-            margin: "7px 0 8px",
-            color: "white",
-            fontSize: "clamp(28px, 5vw, 46px)",
-            lineHeight: 1,
-          }}
-        >
-          {heroTitle}
-        </h2>
-
-        <p
-          style={{
-            margin: 0,
-            maxWidth: 760,
-            color: "#b9b9bf",
-            lineHeight: 1.65,
-          }}
-        >
-          {heroDescription}
-        </p>
       </section>
 
       <section
@@ -957,3 +978,4 @@ export default async function PickemLeagueHome({
     </main>
   );
 }
+
