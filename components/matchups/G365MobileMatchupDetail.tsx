@@ -786,19 +786,44 @@ function playerAliases(
 function HighlightedPlayText({
   text,
   data,
+  participantEspnPlayerIds,
 }: {
   text:
     string |
     null;
   data:
     G365MobileMatchupData;
+  participantEspnPlayerIds:
+    string[];
 }) {
   const value =
     text ??
     "";
 
-  const players = [
+  const participantIds =
+    new Set(
+      participantEspnPlayerIds.map(
+        (
+          id
+        ) =>
+          String(
+            id
+          )
+      )
+    );
+
+  const allPlayers = [
     ...data.away.starters.map(
+      (
+        player
+      ) => ({
+        player,
+        myTeam:
+          data.away.isMyTeam,
+      })
+    ),
+
+    ...data.away.bench.map(
       (
         player
       ) => ({
@@ -817,7 +842,58 @@ function HighlightedPlayText({
           data.home.isMyTeam,
       })
     ),
+
+    ...data.home.bench.map(
+      (
+        player
+      ) => ({
+        player,
+        myTeam:
+          data.home.isMyTeam,
+      })
+    ),
   ];
+
+  /*
+   * ESPN scoring plays provide participant player IDs. Those are the
+   * strongest signal for deciding which fantasy side a scorer belongs to.
+   * If ESPN omits the participant list, fall back to every rostered player.
+   */
+  const participantPlayers =
+    allPlayers.filter(
+      ({
+        player,
+      }) =>
+        Boolean(
+          player.espnPlayerId &&
+          participantIds.has(
+            String(
+              player.espnPlayerId
+            )
+          )
+        )
+    );
+
+  const players =
+    participantPlayers.length >
+    0
+      ? [
+          ...participantPlayers,
+          ...allPlayers.filter(
+            ({
+              player,
+            }) =>
+              !participantPlayers.some(
+                ({
+                  player:
+                    participant,
+                }) =>
+                  participant.playerId ===
+                  player.playerId
+              )
+          ),
+        ]
+      : allPlayers;
 
   const aliases =
     players
@@ -834,6 +910,15 @@ function HighlightedPlayText({
             ) => ({
               alias,
               myTeam,
+              participant:
+                Boolean(
+                  player.espnPlayerId &&
+                  participantIds.has(
+                    String(
+                      player.espnPlayerId
+                    )
+                  )
+                ),
             })
           )
       )
@@ -848,9 +933,21 @@ function HighlightedPlayText({
         (
           a,
           b
-        ) =>
-          b.alias.length -
-          a.alias.length
+        ) => {
+          if (
+            a.participant !==
+            b.participant
+          ) {
+            return a.participant
+              ? -1
+              : 1;
+          }
+
+          return (
+            b.alias.length -
+            a.alias.length
+          );
+        }
       );
 
   if (
@@ -1090,6 +1187,54 @@ function PlayerSide({
 }
 
 
+function liveStarterCount(
+  team:
+    G365MobileMatchupTeam
+) {
+  return team.starters.filter(
+    (
+      player
+    ) =>
+      Boolean(
+        player.gameContext
+          ?.isActuallyLive ||
+        player.scoreIsLive
+      )
+  ).length;
+}
+
+
+function remainingStarterCount(
+  team:
+    G365MobileMatchupTeam
+) {
+  return team.starters.filter(
+    (
+      player
+    ) => {
+      const isLive =
+        Boolean(
+          player.gameContext
+            ?.isActuallyLive ||
+          player.scoreIsLive
+        );
+
+      const isFinal =
+        Boolean(
+          player.scoreIsFinal ||
+          player.gameContext
+            ?.statusCompleted
+        );
+
+      return (
+        !isLive &&
+        !isFinal
+      );
+    }
+  ).length;
+}
+
+
 function RosterComparison({
   away,
   home,
@@ -1118,6 +1263,30 @@ function RosterComparison({
     bench
       ? home.bench
       : home.starters;
+
+  const awayLive =
+    liveStarterCount(
+      away
+    );
+
+
+  const homeLive =
+    liveStarterCount(
+      home
+    );
+
+
+  const awayRemaining =
+    remainingStarterCount(
+      away
+    );
+
+
+  const homeRemaining =
+    remainingStarterCount(
+      home
+    );
+
 
   const rowCount =
     Math.max(
@@ -1167,6 +1336,14 @@ function RosterComparison({
             )}
           </strong>
 
+          {!bench ? (
+            <em
+              className="g365-mm-team-status"
+            >
+              {awayLive} LIVE • {awayRemaining} LEFT
+            </em>
+          ) : null}
+
           <span>
             {points(
               away.points
@@ -1197,6 +1374,14 @@ function RosterComparison({
               home.teamName
             )}
           </strong>
+
+          {!bench ? (
+            <em
+              className="g365-mm-team-status"
+            >
+              {homeLive} LIVE • {homeRemaining} LEFT
+            </em>
+          ) : null}
 
           <span>
             {points(
@@ -1623,6 +1808,16 @@ export default function G365MobileMatchupDetail({
             font-size: 11px;
           }
 
+          .g365-mm-team-status {
+            color: #8e949d;
+            font-size: 7.5px;
+            font-style: normal;
+            font-weight: 900;
+            letter-spacing: .025em;
+            line-height: 1.1;
+            white-space: nowrap;
+          }
+
           .g365-mm-roster-head span {
             color: #fff;
             font-size: 20px;
@@ -1861,10 +2056,12 @@ export default function G365MobileMatchupDetail({
 
           .g365-mm-play-my {
             color: #43d982;
+            font-weight: 950;
           }
 
           .g365-mm-play-opp {
             color: #ff5a50;
+            font-weight: 950;
           }
 
           .g365-mm-all-bottom {
@@ -2247,6 +2444,9 @@ export default function G365MobileMatchupDetail({
                         }
                         data={
                           data
+                        }
+                        participantEspnPlayerIds={
+                          play.participantEspnPlayerIds
                         }
                       />
                     </span>

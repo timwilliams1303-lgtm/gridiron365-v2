@@ -48,6 +48,9 @@ export type TraditionalPlayerBrowserRow = {
   seasonFantasyPoints:
     number;
 
+  weekFantasyPoints:
+    number;
+
   weeklyProjectedPoints:
     number | null;
 
@@ -164,6 +167,7 @@ type DefaultRankingRow = {
 
 type FantasyScoreRow = {
   nfl_player_id: number;
+  week: number;
   fantasy_points:
     number |
     string |
@@ -778,6 +782,13 @@ export async function getTraditionalPlayersData(
     >();
 
 
+  const weekFantasyPointsByPlayer =
+    new Map<
+      number,
+      number
+    >();
+
+
   const scorePageSize =
     1000;
 
@@ -803,6 +814,7 @@ export async function getTraditionalPlayersData(
         .select(
           `
             nfl_player_id,
+            week,
             fantasy_points
           `
         )
@@ -869,6 +881,31 @@ export async function getTraditionalPlayersData(
             : 0
         )
       );
+
+
+      if (
+        Number(
+          score.week
+        ) ===
+        activeWeek
+      ) {
+        weekFantasyPointsByPlayer.set(
+          score.nfl_player_id,
+          (
+            weekFantasyPointsByPlayer.get(
+              score.nfl_player_id
+            ) ??
+            0
+          ) +
+          (
+            Number.isFinite(
+              points
+            )
+              ? points
+              : 0
+          )
+        );
+      }
     }
 
 
@@ -1115,6 +1152,12 @@ export async function getTraditionalPlayersData(
 
             seasonFantasyPoints:
               seasonFantasyPointsByPlayer.get(
+                player.id
+              ) ??
+              0,
+
+            weekFantasyPoints:
+              weekFantasyPointsByPlayer.get(
                 player.id
               ) ??
               0,

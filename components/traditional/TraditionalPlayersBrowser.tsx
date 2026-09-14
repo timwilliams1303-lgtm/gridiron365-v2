@@ -451,7 +451,7 @@ export default function TraditionalPlayersBrowser({
     setOwnership,
   ] =
     useState<OwnershipFilter>(
-      "all"
+      "available"
     );
 
 
@@ -722,7 +722,7 @@ export default function TraditionalPlayersBrowser({
             if (
               injuryOnly &&
               !getInjuryDisplay(
-                player.injuryStatus,
+                player.injuryStatus ?? player.nflStatus,
                 player.injuryDetail
               )
             ) {
@@ -1125,10 +1125,6 @@ export default function TraditionalPlayersBrowser({
             style={{
               ...styles.modalCard,
               width: "min(920px,100%)",
-              height: "min(820px,calc(100dvh - 40px))",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
             }}
           >
             <div style={styles.modalHeader}>
@@ -1175,17 +1171,7 @@ export default function TraditionalPlayersBrowser({
               </button>
             </div>
 
-            <div
-              className="g365-player-profile-scroll"
-              style={{
-                ...styles.modalBody,
-                minHeight: 0,
-                flex: "1 1 auto",
-                overflowY: "scroll",
-                scrollbarGutter: "stable",
-                overscrollBehavior: "contain",
-              }}
-            >
+            <div style={styles.modalBody}>
               {playerDetailLoading ? (
                 <div style={styles.profileLoading}>
                   Loading weekly and season stats…
@@ -1265,25 +1251,8 @@ export default function TraditionalPlayersBrowser({
                       </div>
                     </div>
 
-                    <div
-                      className="g365-weekly-stats-scroll"
-                      style={{
-                        ...styles.weeklyStatsWrap,
-                        maxHeight: "430px",
-                        overflowY: "scroll",
-                        scrollbarGutter: "stable",
-                        overscrollBehavior: "contain",
-                      }}
-                    >
-                      <div
-                        style={{
-                          ...styles.weeklyStatsHeader,
-                          position: "sticky",
-                          top: 0,
-                          zIndex: 2,
-                          background: "#101113",
-                        }}
-                      >
+                    <div style={styles.weeklyStatsWrap}>
+                      <div style={styles.weeklyStatsHeader}>
                         <span>WK</span>
                         <span>GAME</span>
                         <span>STATS</span>
@@ -1800,7 +1769,7 @@ export default function TraditionalPlayersBrowser({
           </span>
 
           <span>
-            FANTASY
+            ACTUAL FPTS
           </span>
 
           <span>
@@ -1908,7 +1877,7 @@ const PlayerRow = memo(function PlayerRow({
 
   const injury =
     getInjuryDisplay(
-      player.injuryStatus,
+      player.injuryStatus ?? player.nflStatus,
       player.injuryDetail
     );
 
@@ -2001,7 +1970,7 @@ const PlayerRow = memo(function PlayerRow({
 
           {injury ? (
             <InjuryReportButton
-              status={player.injuryStatus}
+              status={player.injuryStatus ?? player.nflStatus}
               injuryDetail={player.injuryDetail}
               playerName={player.fullName}
             />
@@ -2057,6 +2026,27 @@ const PlayerRow = memo(function PlayerRow({
           styles.fantasyStatus
         }
       >
+        <strong
+          style={
+            styles.actualFantasyPoints
+          }
+        >
+          {player.weekFantasyPoints.toFixed(
+            1
+          )}
+        </strong>
+
+        <small
+          style={
+            styles.seasonFantasyPoints
+          }
+        >
+          SEASON{" "}
+          {player.seasonFantasyPoints.toFixed(
+            1
+          )}
+        </small>
+
         {player.isMyPlayer ? (
           <span
             style={
@@ -2066,52 +2056,29 @@ const PlayerRow = memo(function PlayerRow({
             MY TEAM
           </span>
         ) : player.isRostered ? (
-          <>
-            <span
-              style={
-                styles.rosteredBadge
-              }
-            >
-              ROSTERED
-            </span>
-
-            <small
-              style={
-                styles.ownerName
-              }
-            >
-              {player
-                .fantasyTeamName}
-            </small>
-          </>
-        ) : player.isOnWaivers ? (
-          <>
-            <span
-              style={
-                styles.waiverBadge
-              }
-            >
-              WAIVERS
-            </span>
-
-            {waiverTime ? (
-              <small
-                style={
-                  styles.waiverTime
-                }
-              >
-                Until {waiverTime}
-              </small>
-            ) : null}
-          </>
-        ) : (
-          <span
+          <small
             style={
-              styles.freeAgentBadge
+              styles.ownerName
+            }
+          >
+            {player.fantasyTeamName}
+          </small>
+        ) : player.isOnWaivers ? (
+          <small
+            style={
+              styles.waiverTime
+            }
+          >
+            WAIVERS
+          </small>
+        ) : (
+          <small
+            style={
+              styles.freeAgentText
             }
           >
             FREE AGENT
-          </span>
+          </small>
         )}
       </div>
 
@@ -2127,6 +2094,9 @@ const PlayerRow = memo(function PlayerRow({
           PROJ {player.weeklyProjectedPoints !== null
             ? player.weeklyProjectedPoints.toFixed(1)
             : "—"}
+        </strong>
+        <strong style={styles.actualInline}>
+          FPTS {player.weekFantasyPoints.toFixed(1)}
         </strong>
         {player.isActive ? (
           <span style={styles.activeBadge}>ACTIVE</span>
@@ -3159,6 +3129,30 @@ const styles = {
   },
 
 
+  actualFantasyPoints: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: 950,
+    fontVariantNumeric: "tabular-nums",
+  },
+
+  seasonFantasyPoints: {
+    color: "#9aa0a8",
+    fontSize: 9,
+    fontWeight: 800,
+  },
+
+  freeAgentText: {
+    color: "#43d982",
+    fontSize: 9,
+    fontWeight: 900,
+  },
+
+  actualInline: {
+    color: "#ffffff",
+    fontWeight: 900,
+  },
+
   fantasyStatus: {
     minWidth:
       0,
@@ -3510,5 +3504,3 @@ const styles = {
   },
 };
 import InjuryReportButton from "@/components/ui/InjuryReportButton";
-
-

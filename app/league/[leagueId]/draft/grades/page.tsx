@@ -1202,10 +1202,28 @@ export default function DraftGradesPage() {
 
   return (
     <main
+      className="g365-draft-grades-mobile"
       style={
         styles.page
       }
     >
+      <style>{`
+        @media (max-width: 760px) {
+          .g365-draft-grades-mobile { overflow-x: hidden !important; }
+          .g365-draft-grades-table-wrap {
+            width: 100% !important;
+            max-width: calc(100vw - 20px) !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-x pan-y;
+            scrollbar-width: thin;
+          }
+          .g365-draft-grades-table-wrap table { min-width: 1050px !important; width: 1050px !important; }
+          .g365-draft-grades-table-wrap th,
+          .g365-draft-grades-table-wrap td { white-space: nowrap !important; }
+        }
+      `}</style>
       <section
         style={
           styles.container

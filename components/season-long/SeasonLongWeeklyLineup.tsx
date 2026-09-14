@@ -1783,95 +1783,394 @@ export default function SeasonLongWeeklyLineup({
 
       <style>{`
         .g365-season-long-mobile,
-        .g365-season-long-mobile * { box-sizing: border-box; }
+        .g365-season-long-mobile * {
+          box-sizing: border-box;
+        }
 
         @media (max-width: 760px) {
           .g365-season-long-mobile {
             width: 100% !important;
             max-width: 100% !important;
             min-width: 0 !important;
-            padding: 8px !important;
+            padding: 8px 8px 24px !important;
             overflow-x: hidden !important;
           }
 
-          .g365-season-long-mobile .g365-entry-header {
-            gap: 8px !important;
-            margin-bottom: 8px !important;
-            align-items: flex-start !important;
+          .g365-season-long-mobile > section {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            margin: 0 auto !important;
+            gap: 10px !important;
           }
 
-          .g365-season-long-mobile .g365-entry-header h1 {
-            font-size: 24px !important;
+          .g365-entry-header {
+            width: 100% !important;
+            max-width: 100% !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            align-items: start !important;
+            gap: 8px !important;
+          }
+
+          .g365-entry-header h1 {
+            margin-top: 3px !important;
+            font-size: 25px !important;
             line-height: 1.05 !important;
           }
 
-          .g365-season-long-mobile .g365-entry-badges {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: wrap !important;
-            gap: 5px !important;
+          .g365-entry-header p {
+            max-width: 100% !important;
+            overflow-wrap: anywhere !important;
           }
 
-          .g365-season-long-mobile .g365-entry-summary {
+          .g365-entry-badges {
+            width: 100% !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            flex-wrap: wrap !important;
+            gap: 6px !important;
+          }
+
+          .g365-entry-badges span {
+            max-width: 100% !important;
+            white-space: normal !important;
+          }
+
+          .g365-entry-summary {
+            width: 100% !important;
+            max-width: 100% !important;
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 7px !important;
+            overflow: visible !important;
+          }
+
+          .g365-entry-summary > * {
+            min-width: 0 !important;
+            width: 100% !important;
+            padding: 11px !important;
+          }
+
+          .g365-entry-summary strong {
+            font-size: 18px !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          .g365-entry-workspace {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 10px !important;
+            align-items: stretch !important;
+          }
+
+          .g365-entry-lineup-card,
+          .g365-entry-pool-card {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+          }
+
+          .g365-entry-lineup-card > *,
+          .g365-entry-pool-card > * {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            padding: 12px !important;
+          }
+
+          .g365-entry-pool-card > * {
+            position: static !important;
+            top: auto !important;
+          }
+
+          .g365-entry-card-header {
             width: 100% !important;
             display: grid !important;
-            grid-auto-flow: column !important;
-            grid-auto-columns: minmax(118px, 1fr) !important;
-            grid-template-columns: none !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            align-items: start !important;
             gap: 6px !important;
-            overflow-x: auto !important;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: thin;
-            padding-bottom: 3px !important;
-            margin-bottom: 8px !important;
+            margin-bottom: 10px !important;
           }
 
-          .g365-season-long-mobile .g365-entry-workspace {
+          .g365-entry-card-header > * {
+            min-width: 0 !important;
+            max-width: 100% !important;
+          }
+
+          .g365-entry-slot-list {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            display: grid !important;
+            gap: 7px !important;
+            overflow: visible !important;
+          }
+
+          .g365-entry-slot-row {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
+            display: grid !important;
+            grid-template-columns: 42px minmax(0, 1fr) auto !important;
+            grid-template-areas:
+              "slot player action"
+              "slot meta action" !important;
+            align-items: center !important;
+            gap: 4px 7px !important;
+            padding: 8px !important;
+          }
+
+          .g365-entry-slot-row > :nth-child(1) {
+            grid-area: slot !important;
+            min-width: 0 !important;
+          }
+
+          .g365-entry-slot-row > :nth-child(2) {
+            grid-area: player !important;
+            min-width: 0 !important;
+          }
+
+          .g365-entry-slot-row > :nth-child(3) {
+            grid-area: meta !important;
+            min-width: 0 !important;
+          }
+
+          .g365-entry-slot-row > :nth-child(4) {
+            grid-area: action !important;
+            min-width: 0 !important;
+          }
+
+          .g365-entry-player-identity {
+            min-width: 0 !important;
+            max-width: 100% !important;
+          }
+
+          .g365-entry-player-identity button {
+            max-width: 100% !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+          }
+
+          .g365-entry-player-identity span {
+            display: block !important;
+            max-width: 100% !important;
+            font-size: 9px !important;
+            line-height: 1.3 !important;
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          .g365-entry-player-meta {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            gap: 7px !important;
+            text-align: left !important;
+            font-size: 9px !important;
+            white-space: normal !important;
+          }
+
+          .g365-entry-slot-action {
+            width: auto !important;
+            min-width: 0 !important;
+            justify-content: flex-end !important;
+          }
+
+          .g365-entry-slot-action button,
+          .g365-entry-slot-action span {
+            min-height: 34px !important;
+            max-width: 92px !important;
+            padding-left: 7px !important;
+            padding-right: 7px !important;
+            white-space: normal !important;
+            text-align: center !important;
+            line-height: 1.15 !important;
+          }
+
+          .g365-entry-submit-area {
+            width: 100% !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            align-items: stretch !important;
+            gap: 8px !important;
+            margin-top: 10px !important;
+          }
+
+          .g365-entry-submit-area button {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-height: 44px !important;
+          }
+
+          .g365-entry-pool-controls {
+            width: 100% !important;
+            max-width: 100% !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
             gap: 8px !important;
           }
 
-          .g365-season-long-mobile .g365-entry-slot-list {
+          .g365-entry-pool-controls input,
+          .g365-entry-pool-controls select {
             width: 100% !important;
-            max-width: 100% !important;
-            overflow-x: auto !important;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: thin;
-          }
-
-          .g365-season-long-mobile .g365-entry-slot-row {
-            min-width: 560px !important;
-            min-height: 50px !important;
-            padding-top: 5px !important;
-            padding-bottom: 5px !important;
-          }
-
-          .g365-season-long-mobile .g365-entry-matchup-action {
-            width: 100% !important;
-            display: flex !important;
-            justify-content: center !important;
-            margin: 0 0 8px !important;
-          }
-
-          .g365-season-long-mobile .g365-entry-matchup-action button {
-            width: 100% !important;
-            min-height: 38px !important;
-            font-size: 10px !important;
-          }
-
-          .g365-season-long-mobile input,
-          .g365-season-long-mobile select,
-          .g365-season-long-mobile textarea {
             max-width: 100% !important;
             min-width: 0 !important;
             font-size: 16px !important;
           }
 
-          .g365-season-long-mobile button { min-height: 36px; }
+          .g365-entry-filter-row {
+            width: 100% !important;
+            max-width: 100% !important;
+            display: flex !important;
+            gap: 5px !important;
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+            overscroll-behavior-x: contain !important;
+            -webkit-overflow-scrolling: touch !important;
+            scrollbar-width: thin !important;
+            padding-bottom: 3px !important;
+          }
+
+          .g365-entry-filter-row button {
+            flex: 0 0 auto !important;
+            min-height: 36px !important;
+          }
+
+          .g365-entry-pool-header {
+            width: 100% !important;
+            display: grid !important;
+            grid-template-columns:
+              minmax(0, 1fr)
+              ${isSalary ? "72px" : ""}
+              46px
+              58px !important;
+            gap: 5px !important;
+            padding-left: 6px !important;
+            padding-right: 6px !important;
+            font-size: 8px !important;
+          }
+
+          .g365-entry-pool-row {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            display: grid !important;
+            grid-template-columns:
+              minmax(0, 1fr)
+              ${isSalary ? "72px" : ""}
+              46px
+              58px !important;
+            gap: 5px !important;
+            align-items: center !important;
+            padding: 8px 6px !important;
+          }
+
+          .g365-entry-pool-row > * {
+            min-width: 0 !important;
+          }
+
+          .g365-entry-pool-identity {
+            min-width: 0 !important;
+          }
+
+          .g365-entry-pool-identity button {
+            max-width: 100% !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+          }
+
+          .g365-entry-pool-identity span {
+            font-size: 8px !important;
+            line-height: 1.25 !important;
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          .g365-entry-pool-row > button {
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 34px !important;
+            padding: 5px 3px !important;
+            font-size: 8px !important;
+            line-height: 1.1 !important;
+            white-space: normal !important;
+          }
+
+          .g365-season-long-mobile [role="dialog"] {
+            width: calc(100vw - 16px) !important;
+            max-width: calc(100vw - 16px) !important;
+            max-height: calc(100dvh - 28px) !important;
+            overflow: auto !important;
+          }
+
+          .g365-season-long-mobile [role="dialog"] table {
+            min-width: 640px !important;
+          }
+
+          .g365-season-long-mobile [role="dialog"] [style*="overflow"] {
+            max-width: 100% !important;
+            -webkit-overflow-scrolling: touch !important;
+          }
+
+          .g365-season-long-mobile button,
+          .g365-season-long-mobile a {
+            touch-action: manipulation !important;
+          }
         }
 
         @media (max-width: 430px) {
-          .g365-season-long-mobile { padding: 6px !important; }
-          .g365-season-long-mobile .g365-entry-slot-row { min-width: 535px !important; }
+          .g365-season-long-mobile {
+            padding-left: 6px !important;
+            padding-right: 6px !important;
+          }
+
+          .g365-entry-summary {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .g365-entry-slot-row {
+            grid-template-columns: 38px minmax(0, 1fr) 74px !important;
+            padding: 7px 6px !important;
+          }
+
+          .g365-entry-slot-action button,
+          .g365-entry-slot-action span {
+            max-width: 74px !important;
+            font-size: 8px !important;
+          }
+
+          .g365-entry-pool-header,
+          .g365-entry-pool-row {
+            grid-template-columns:
+              minmax(0, 1fr)
+              ${isSalary ? "64px" : ""}
+              42px
+              52px !important;
+            gap: 4px !important;
+          }
+        }
+
+        @media (max-width: 360px) {
+          .g365-entry-summary {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .g365-entry-pool-header,
+          .g365-entry-pool-row {
+            grid-template-columns:
+              minmax(0, 1fr)
+              ${isSalary ? "58px" : ""}
+              40px
+              48px !important;
+          }
         }
       `}</style>
 
@@ -1942,16 +2241,6 @@ export default function SeasonLongWeeklyLineup({
             </span>
           </div>
         </header>
-
-        {matchupHref ? (
-          <div className="g365-entry-matchup-action">
-            <Button
-              onClick={() => router.push(matchupHref)}
-            >
-              VIEW ESPN-STYLE MATCHUP
-            </Button>
-          </div>
-        ) : null}
 
 
         <section
@@ -2470,12 +2759,14 @@ export default function SeasonLongWeeklyLineup({
               WEEKLY LINEUP
           =============================================== */}
 
-          <Card
-            style={
-              styles.lineupCard
-            }
-          >
+          <div className="g365-entry-lineup-card">
+            <Card
+              style={
+                styles.lineupCard
+              }
+            >
             <div
+              className="g365-entry-card-header"
               style={
                 styles.cardHeader
               }
@@ -2537,10 +2828,10 @@ export default function SeasonLongWeeklyLineup({
 
                   return (
                     <div
+                      className="g365-entry-slot-row"
                       key={
                         slotKey
                       }
-                      className="g365-entry-slot-row"
                       style={{
                         ...styles.slotRow,
 
@@ -2561,6 +2852,7 @@ export default function SeasonLongWeeklyLineup({
                       {player ? (
                         <>
                           <div
+                            className="g365-entry-player-identity"
                             style={
                               styles.playerIdentity
                             }
@@ -2652,6 +2944,7 @@ export default function SeasonLongWeeklyLineup({
 
 
                           <div
+                            className="g365-entry-player-meta"
                             style={
                               styles.playerMeta
                             }
@@ -2674,6 +2967,7 @@ export default function SeasonLongWeeklyLineup({
 
 
                           <div
+                            className="g365-entry-slot-action"
                             style={
                               styles.slotAction
                             }
@@ -2757,6 +3051,7 @@ export default function SeasonLongWeeklyLineup({
 
 
             <div
+              className="g365-entry-submit-area"
               style={
                 styles.submitArea
               }
@@ -2801,18 +3096,21 @@ export default function SeasonLongWeeklyLineup({
               </Button>
             </div>
           </Card>
+          </div>
 
 
           {/* ==============================================
               PLAYER POOL
           =============================================== */}
 
-          <Card
-            style={
-              styles.poolCard
-            }
-          >
+          <div className="g365-entry-pool-card">
+            <Card
+              style={
+                styles.poolCard
+              }
+            >
             <div
+              className="g365-entry-card-header"
               style={
                 styles.cardHeader
               }
@@ -2856,6 +3154,7 @@ export default function SeasonLongWeeklyLineup({
 
 
             <div
+              className="g365-entry-pool-controls"
               style={
                 styles.poolControls
               }
@@ -2909,6 +3208,7 @@ export default function SeasonLongWeeklyLineup({
 
 
               <div
+                className="g365-entry-filter-row"
                 style={
                   styles.filterRow
                 }
@@ -2944,6 +3244,7 @@ export default function SeasonLongWeeklyLineup({
 
 
             <div
+              className="g365-entry-pool-header"
               style={
                 styles.poolHeader
               }
@@ -3009,6 +3310,7 @@ export default function SeasonLongWeeklyLineup({
 
                     return (
                       <div
+                        className="g365-entry-pool-row"
                         key={
                           player.id
                         }
@@ -3017,6 +3319,7 @@ export default function SeasonLongWeeklyLineup({
                         }
                       >
                         <div
+                          className="g365-entry-pool-identity"
                           style={
                             styles.poolIdentity
                           }
@@ -3170,6 +3473,7 @@ export default function SeasonLongWeeklyLineup({
               )}
             </div>
           </Card>
+          </div>
         </section>
       </section>
     </main>
@@ -4729,5 +5033,4 @@ const styles = {
   },
 
 };
-
 

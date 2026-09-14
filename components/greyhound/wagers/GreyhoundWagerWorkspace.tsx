@@ -598,6 +598,242 @@ function nextCompetitionDate(
 }
 
 
+
+type SupportedGreyhoundTrack =
+  | "GWD"
+  | "GTS";
+
+
+function regularTrackRaceDay(
+  value: string,
+  trackCode:
+    SupportedGreyhoundTrack
+) {
+  const parsed =
+    parseCompetitionDate(
+      value
+    );
+
+  if (!parsed) {
+    return false;
+  }
+
+  const day =
+    parsed.getUTCDay();
+
+  if (
+    trackCode ===
+    "GWD"
+  ) {
+    // Wheeling normally races Wednesday through Sunday.
+    return [
+      0,
+      3,
+      4,
+      5,
+      6,
+    ].includes(
+      day
+    );
+  }
+
+  // Tri-State normally races Tuesday through Saturday evenings.
+  return [
+    2,
+    3,
+    4,
+    5,
+    6,
+  ].includes(
+    day
+  );
+}
+
+
+function publishedTrackCardExists(
+  cards:
+    AvailableCard[],
+  value:
+    string,
+  trackCode:
+    SupportedGreyhoundTrack
+) {
+  return cards.some(
+    (
+      card
+    ) =>
+      card.raceDate ===
+        value &&
+      card.track?.code ===
+        trackCode &&
+      String(
+        card.cardStatus ??
+          ""
+      ).toLowerCase() !==
+        "cancelled"
+  );
+}
+
+
+function isTrackRaceDate(
+  value: string,
+  trackCode:
+    SupportedGreyhoundTrack,
+  settings:
+    WorkspaceData["settings"],
+  cards:
+    AvailableCard[]
+) {
+  if (
+    !isCompetitionDate(
+      value,
+      settings
+    )
+  ) {
+    return false;
+  }
+
+  /*
+   * A real published card is authoritative and allows holiday /
+   * special-date racing even when the normal weekly calendar is dark.
+   */
+  return (
+    regularTrackRaceDay(
+      value,
+      trackCode
+    ) ||
+    publishedTrackCardExists(
+      cards,
+      value,
+      trackCode
+    )
+  );
+}
+
+
+function expectedTracksForDate(
+  value: string,
+  settings:
+    WorkspaceData["settings"],
+  cards:
+    AvailableCard[]
+) {
+  return (
+    [
+      "GWD",
+      "GTS",
+    ] as const
+  ).filter(
+    (
+      trackCode
+    ) =>
+      isTrackRaceDate(
+        value,
+        trackCode,
+        settings,
+        cards
+      )
+  );
+}
+
+
+function currentOrNextTrackRacingDate(
+  value: string,
+  settings:
+    WorkspaceData["settings"],
+  cards:
+    AvailableCard[]
+) {
+  const startDate =
+    settings
+      ?.competitionStartDate ??
+    null;
+
+  let candidate =
+    startDate &&
+    value < startDate
+      ? startDate
+      : value;
+
+  for (
+    let offset = 0;
+    offset < 370;
+    offset += 1
+  ) {
+    if (
+      expectedTracksForDate(
+        candidate,
+        settings,
+        cards
+      ).length > 0
+    ) {
+      return candidate;
+    }
+
+    candidate =
+      addCompetitionDays(
+        candidate,
+        1
+      );
+  }
+
+  return candidate;
+}
+
+
+function nextTrackRacingDate(
+  value: string,
+  settings:
+    WorkspaceData["settings"],
+  cards:
+    AvailableCard[]
+) {
+  return currentOrNextTrackRacingDate(
+    addCompetitionDays(
+      value,
+      1
+    ),
+    settings,
+    cards
+  );
+}
+
+
+function expectedTrackLabel(
+  value: string,
+  settings:
+    WorkspaceData["settings"],
+  cards:
+    AvailableCard[]
+) {
+  const tracks =
+    expectedTracksForDate(
+      value,
+      settings,
+      cards
+    );
+
+  if (
+    tracks.length ===
+    1
+  ) {
+    return tracks[0] ===
+      "GWD"
+      ? "Wheeling"
+      : "Tri-State";
+  }
+
+  if (
+    tracks.length >
+    1
+  ) {
+    return "Wheeling / Tri-State";
+  }
+
+  return "Greyhound";
+}
+
+
 function displayRaceStatus(
   raceStatus: string,
   cardStatus:
@@ -1118,9 +1354,11 @@ export default function GreyhoundWagerWorkspace({
             easternTodayIsoDate();
 
           const currentCompetitionDate =
-            currentOrNextCompetitionDate(
+            currentOrNextTrackRacingDate(
               easternToday,
-              payload.settings
+              payload.settings,
+              payload.availableCards ??
+                []
             );
 
           let targetDate =
@@ -1154,9 +1392,11 @@ export default function GreyhoundWagerWorkspace({
             advanceGuard < 370
           ) {
             const nextDate =
-              nextCompetitionDate(
+              nextTrackRacingDate(
                 targetDate,
-                payload.settings
+                payload.settings,
+                payload.availableCards ??
+                  []
               );
 
             if (
@@ -1179,8 +1419,19 @@ export default function GreyhoundWagerWorkspace({
               targetDate
             );
 
+            const expectedTracks =
+              expectedTracksForDate(
+                targetDate,
+                payload.settings,
+                payload.availableCards ??
+                  []
+              );
+
             setSelectedTrackCode(
-              null
+              expectedTracks.length ===
+                1
+                ? expectedTracks[0]
+                : null
             );
 
             setSelectedRaceId(
@@ -2121,10 +2372,14 @@ export default function GreyhoundWagerWorkspace({
                 <div className={styles.cardMeta}>
                   <span>
                     {selectedDate
-                      ? `Waiting for ${dateOnlyLabel(
+                      ? `Waiting for ${expectedTrackLabel(
+                          selectedDate,
+                          data?.settings,
+                          availableCards
+                        )} on ${dateOnlyLabel(
                           selectedDate
-                        )} card`
-                      : "Waiting for the next league competition card"}
+                        )}`
+                      : "Waiting for the next scheduled Greyhound card"}
                   </span>
                 </div>
               )}
@@ -2266,7 +2521,11 @@ export default function GreyhoundWagerWorkspace({
                     fontWeight: 800,
                   }}
                 >
-                  {`Waiting for confirmed Wheeling or Tri-State cards for ${dateOnlyLabel(
+                  {`Waiting for the confirmed ${expectedTrackLabel(
+                    selectedDate,
+                    data?.settings,
+                    availableCards
+                  )} card for ${dateOnlyLabel(
                     selectedDate
                   )}.`}
                 </div>
