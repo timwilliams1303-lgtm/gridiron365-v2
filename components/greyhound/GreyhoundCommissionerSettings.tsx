@@ -12,6 +12,7 @@ type GameFormat =
 
 type TeamSetupMode = "random" | "manual";
 type SurvivorMode = "round" | "daily";
+type WageringStyle = "whole_card" | "live_bankroll";
 type DurationMode = "single_day" | "date_range" | "weeks" | "rounds";
 type CompetitionDay = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 type TrackScope = "wheeling" | "tri_state" | "all";
@@ -36,6 +37,11 @@ export type GreyhoundCommissionerSettingsData = {
   competitionDays: CompetitionDay[];
   startingBankroll: number;
   trackScope: TrackScope;
+  wageringStyle: WageringStyle;
+  liveRaceLockMinutesBeforePost: number;
+  liveMandatoryRaceAction: boolean;
+  liveMinimumWagerPercent: number;
+  liveAutoWagerEnabled: boolean;
   cardLockMinutesBeforeFirstPost: number;
   scratchCheckMinutesBeforeFirstPost: number;
   entryPullTimezone: string;
@@ -316,6 +322,33 @@ export default function GreyhoundCommissionerSettings({
     try {
       if (!Number.isFinite(settings.startingBankroll) || settings.startingBankroll <= 0) {
         throw new Error("Starting bankroll must be greater than $0.");
+      }
+
+      if (
+        settings.wageringStyle === "live_bankroll" &&
+        (
+          !Number.isInteger(settings.liveRaceLockMinutesBeforePost) ||
+          settings.liveRaceLockMinutesBeforePost < 0 ||
+          settings.liveRaceLockMinutesBeforePost > 60
+        )
+      ) {
+        throw new Error(
+          "Live race lock must be between 0 and 60 minutes before post.",
+        );
+      }
+
+      if (
+        settings.wageringStyle === "live_bankroll" &&
+        settings.liveMandatoryRaceAction &&
+        (
+          !Number.isFinite(settings.liveMinimumWagerPercent) ||
+          settings.liveMinimumWagerPercent <= 0 ||
+          settings.liveMinimumWagerPercent > 100
+        )
+      ) {
+        throw new Error(
+          "Live minimum bankroll action must be greater than 0% and no more than 100%.",
+        );
       }
 
       if (
@@ -1385,33 +1418,188 @@ export default function GreyhoundCommissionerSettings({
             </div>
           </section>
 
-          <section className="ghs-section">
-            <div className="ghs-eyebrow">LOCKING</div>
-            <h2>Race Card Lock</h2>
+          <section className="ghs-section ghs-section-wide">
+            <div className="ghs-eyebrow">WAGERING LIFECYCLE</div>
+            <h2>Wagering Style</h2>
             <p className="ghs-help">
-              Set how many minutes before first post the card closes for wagering.
+              Whole Card keeps the existing card-wide lock. Live Bankroll Challenge
+              opens one race at a time and makes official returns available for the
+              next race.
             </p>
 
-            <div className="ghs-fields">
-              <label className="ghs-field">
-                Lock Minutes Before First Post
-                <input
-                  className="ghs-input"
-                  type="number"
-                  min={0}
-                  max={1440}
-                  step={1}
-                  value={settings.cardLockMinutesBeforeFirstPost}
-                  disabled={saving}
-                  onChange={(event) =>
-                    update(
-                      "cardLockMinutesBeforeFirstPost",
-                      Number(event.target.value),
-                    )
-                  }
-                />
-              </label>
+            <div className="ghs-segment-grid">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => update("wageringStyle", "whole_card")}
+                className={`ghs-segment${
+                  settings.wageringStyle === "whole_card" ? " active" : ""
+                }`}
+              >
+                Whole Card
+              </button>
+
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => update("wageringStyle", "live_bankroll")}
+                className={`ghs-segment${
+                  settings.wageringStyle === "live_bankroll" ? " active" : ""
+                }`}
+              >
+                Live Bankroll Challenge
+              </button>
             </div>
+
+            {settings.wageringStyle === "whole_card" ? (
+              <>
+                <div className="ghs-rule">
+                  <strong>Whole Card:</strong> the entire racing card locks before
+                  Race 1. Winnings are graded through the existing Whole Card
+                  lifecycle and are not reused for later races on that card.
+                </div>
+
+                <div className="ghs-fields">
+                  <label className="ghs-field">
+                    Lock Minutes Before First Post
+                    <input
+                      className="ghs-input"
+                      type="number"
+                      min={0}
+                      max={1440}
+                      step={1}
+                      value={settings.cardLockMinutesBeforeFirstPost}
+                      disabled={saving}
+                      onChange={(event) =>
+                        update(
+                          "cardLockMinutesBeforeFirstPost",
+                          Number(event.target.value),
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="ghs-rule">
+                  <strong>Live Bankroll Challenge:</strong> only the current race is
+                  open. Each race locks independently, and official returns from the
+                  settled race become available for the next race. A $0 available
+                  bankroll is BUSTED for that card.
+                </div>
+
+                <div className="ghs-fields">
+                  <label className="ghs-field">
+                    Race Lock Minutes Before Post
+                    <input
+                      className="ghs-input"
+                      type="number"
+                      min={0}
+                      max={60}
+                      step={1}
+                      value={settings.liveRaceLockMinutesBeforePost}
+                      disabled={saving}
+                      onChange={(event) =>
+                        update(
+                          "liveRaceLockMinutesBeforePost",
+                          Number(event.target.value),
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+
+                <div className="ghs-eyebrow" style={{ marginTop: 16 }}>
+                  MANDATORY RACE ACTION
+                </div>
+
+                <div className="ghs-segment-grid">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => update("liveMandatoryRaceAction", false)}
+                    className={`ghs-segment${
+                      !settings.liveMandatoryRaceAction ? " active" : ""
+                    }`}
+                  >
+                    Optional
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => update("liveMandatoryRaceAction", true)}
+                    className={`ghs-segment${
+                      settings.liveMandatoryRaceAction ? " active" : ""
+                    }`}
+                  >
+                    Required
+                  </button>
+                </div>
+
+                {!settings.liveMandatoryRaceAction ? (
+                  <div className="ghs-rule">
+                    <strong>Optional:</strong> members may skip a race. No minimum
+                    wager and no automatic wager is required.
+                  </div>
+                ) : (
+                  <>
+                    <div className="ghs-fields">
+                      <label className="ghs-field">
+                        Minimum Bankroll Action (%)
+                        <input
+                          className="ghs-input"
+                          type="number"
+                          inputMode="decimal"
+                          min={0.01}
+                          max={100}
+                          step={0.01}
+                          value={settings.liveMinimumWagerPercent}
+                          disabled={saving}
+                          onChange={(event) =>
+                            update(
+                              "liveMinimumWagerPercent",
+                              Number(event.target.value),
+                            )
+                          }
+                        />
+                      </label>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() =>
+                        update(
+                          "liveAutoWagerEnabled",
+                          !settings.liveAutoWagerEnabled,
+                        )
+                      }
+                      className={`ghs-toggle${
+                        settings.liveAutoWagerEnabled ? " active" : ""
+                      }`}
+                      style={{ marginTop: 12, width: "100%" }}
+                    >
+                      <strong>Auto-Wager Shortfall</strong>
+                      <span>
+                        {settings.liveAutoWagerEnabled ? "Enabled" : "Disabled"} ·
+                        At race lock, any remaining required amount is placed as a
+                        Win wager on the member&apos;s selected Auto-Wager dog. If
+                        none was selected, G365 uses the lowest-numbered active box.
+                      </span>
+                    </button>
+
+                    <div className="ghs-rule">
+                      <strong>Fixed requirement:</strong> the minimum is calculated
+                      from the bankroll available when that race opens. For example,
+                      a $742.00 opening bankroll at 10% requires $74.20 of action,
+                      even after the member begins placing wagers.
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </section>
 
           <section className="ghs-section">

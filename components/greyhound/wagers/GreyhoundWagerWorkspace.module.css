@@ -678,8 +678,6 @@
   text-align: center;
 }
 
-
-/* G365 Greyhound mobile wagering pass */
 @media (max-width: 1000px) {
   .mainGrid {
     grid-template-columns: 1fr;
@@ -690,302 +688,222 @@
     border-bottom: 1px solid #2b2b2b;
   }
 
-  /* Keep the bet pad in normal document flow on tablets/phones.
-     A large sticky panel can cover runners and selection controls. */
   .betPad {
-    position: static;
-    bottom: auto;
-    z-index: auto;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
+    position: sticky;
+    bottom: 8px;
+    z-index: 20;
+    border: 1px solid #3a2a23;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -14px 32px rgba(0, 0, 0, 0.46);
   }
 }
 
 @media (max-width: 720px) {
   .workspace {
-    overflow: hidden;
     border-radius: 15px;
   }
 
   .headerMain {
     align-items: stretch;
     flex-direction: column;
-    gap: 14px;
-    padding: 15px 13px;
+    padding: 16px;
   }
 
   .title {
-    font-size: 23px;
-    line-height: 1.08;
-  }
-
-  .cardMeta {
-    gap: 5px 10px;
-    font-size: 11px;
+    font-size: 24px;
   }
 
   .bankrollBar {
-    width: 100%;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .bankrollCell {
-    min-width: 0;
-    padding: 9px 4px;
-  }
-
-  .bankrollCell span {
-    font-size: 8px;
-    letter-spacing: 0.04em;
+    padding: 9px 6px;
   }
 
   .bankrollCell strong {
-    overflow: hidden;
     font-size: 12px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .errorBar,
-  .successBar {
-    padding: 10px 13px;
   }
 
   .waitingBanner {
     align-items: flex-start;
     flex-direction: column;
-    gap: 5px;
-    padding: 11px 13px;
+    padding: 12px 14px;
   }
 
   .raceNav {
-    gap: 6px;
-    padding: 8px 9px 10px;
-    scroll-snap-type: x proximity;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-  }
-
-  .raceNavButton {
-    min-width: 88px;
-    min-height: 54px;
-    padding: 8px 9px;
-    scroll-snap-align: start;
-  }
-
-  .raceNavButton strong {
-    font-size: 10px;
-  }
-
-  .raceNavButton span {
-    font-size: 8px;
+    padding: 9px 10px;
   }
 
   .raceHeader {
     align-items: flex-start;
     flex-direction: column;
-    gap: 9px;
-    padding: 12px 13px;
-  }
-
-  .raceTitleRow {
-    gap: 4px 9px;
+    padding: 14px;
   }
 
   .raceTitleRow h2 {
     font-size: 20px;
   }
 
-  .raceOpenBadge,
-  .raceClosedBadge {
-    padding: 6px 8px;
-    font-size: 10px;
-  }
-
-  .runnersScroller {
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-  }
-
-  /* The TSX supplies the dynamic min-width needed for the active wager's
-     selection columns. These rules make the fixed runner information compact
-     without hiding any finishing-position column. */
-  .runnersHead,
-  .runnerRow {
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-
-  .runnerRow {
-    min-height: 61px;
-  }
-
-  .trapButton {
-    width: 38px;
-    height: 38px;
-    border-radius: 9px;
-    font-size: 15px;
-  }
-
-  .runnerInfo {
-    padding-right: 5px;
-  }
-
-  .runnerInfo strong {
-    font-size: 12px;
-  }
-
-  .runnerInfo small {
-    max-width: 155px;
-    font-size: 9px;
-  }
-
-  .runnerOdds {
-    font-size: 13px;
-  }
-
-  .runnerMeta {
-    font-size: 11px;
-  }
-
-  .entryStatus {
-    font-size: 9px;
-  }
-
   .waitingRaceCard {
     overflow-x: auto;
-    padding: 13px;
-    -webkit-overflow-scrolling: touch;
+    padding: 14px;
   }
 
   .betPadHeader {
     padding: 13px;
   }
 
-  .betPadHeader h2 {
-    font-size: 18px;
-  }
-
   .betPadBody {
-    gap: 13px;
     padding: 13px;
-  }
-
-  .wagerTypeGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .twoColumn {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .denominationGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .choiceButton {
-    min-height: 43px;
-    padding: 8px 5px;
-    font-size: 10px;
-    touch-action: manipulation;
-  }
-
-  .selectionsBox {
-    padding: 11px;
-  }
-
-  .selectionItem {
-    min-height: 40px;
-  }
-
-  .bankrollSummary {
-    padding: 11px;
-  }
-
-  .placeWagerButton {
-    min-height: 52px;
-    font-size: 12px;
-    touch-action: manipulation;
   }
 }
 
-@media (max-width: 430px) {
-  .headerMain {
-    padding: 13px 11px;
-  }
 
-  .eyebrow,
-  .sectionLabel {
-    font-size: 10px;
-  }
+/* G365 themed available-card buttons */
+.trackSwitcherButtons {
+  display: flex;
+  gap: 10px;
+}
 
-  .title {
-    font-size: 21px;
-  }
+.trackButton {
+  display: inline-flex;
+  min-height: 52px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px 7px 8px;
+  border: 1px solid rgba(255, 105, 30, 0.34);
+  border-radius: 12px;
+  background:
+    linear-gradient(110deg, rgba(114, 17, 18, 0.34), rgba(24, 24, 24, 0.96) 62%),
+    #141414;
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+  text-align: left;
+  cursor: pointer;
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
 
-  .cardMeta {
-    font-size: 10px;
-  }
+.trackButton:hover {
+  border-color: rgba(255, 132, 34, 0.78);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(106, 24, 12, .22);
+}
 
-  .bankrollCell {
-    padding: 8px 3px;
-  }
+.trackButtonCode {
+  display: inline-flex;
+  min-width: 42px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 138, 42, .66);
+  border-radius: 9px;
+  background: linear-gradient(135deg, #981417, #df4916 62%, #ff8618);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: .08em;
+  box-shadow: 0 6px 14px rgba(118, 26, 13, .24);
+}
 
-  .bankrollCell span {
-    font-size: 7px;
-  }
+.trackButtonCopy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
 
-  .bankrollCell strong {
-    font-size: 11px;
-  }
+.trackButtonCopy strong {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1.05;
+}
 
-  .raceNavButton {
-    min-width: 82px;
-  }
+.trackButtonCopy span {
+  color: #9d9fa4;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
 
-  .raceHeader {
-    padding: 11px;
-  }
+.trackButtonActive {
+  border-color: #ff8c00;
+  background: linear-gradient(135deg, rgba(151, 18, 22, .96), rgba(225, 70, 18, .94) 62%, rgba(255, 140, 0, .96));
+  box-shadow: 0 10px 24px rgba(155, 25, 16, .30), inset 0 1px 0 rgba(255,255,255,.12);
+}
 
-  .raceTitleRow h2 {
-    font-size: 19px;
-  }
+.trackButtonActive .trackButtonCode {
+  border-color: rgba(255,255,255,.32);
+  background: rgba(0,0,0,.24);
+  box-shadow: none;
+}
 
-  .betPadHeader {
-    padding: 11px;
-  }
+.trackButtonActive .trackButtonCopy span {
+  color: rgba(255,255,255,.74);
+}
 
-  .betPadBody {
-    padding: 11px;
-  }
-
-  .denominationGrid {
+@media (max-width: 560px) {
+  .trackSwitcherButtons {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
   }
 
-  .choiceButton {
-    min-height: 44px;
+  .trackButton {
+    width: 100%;
+    min-width: 0;
+    padding-right: 9px;
   }
 
-  .costGrid {
-    gap: 6px;
+  .trackButtonCode {
+    min-width: 38px;
   }
+}
 
-  .costValue {
-    font-size: 17px !important;
-  }
 
-  .bankrollSummary span {
-    font-size: 10px;
-  }
+/* G365 visible white racing-date calendar control */
+.racingDatePicker {
+  position: relative;
+  min-height: 42px;
+  padding: 0 44px 0 12px;
+  border: 1px solid rgba(255, 122, 26, 0.48);
+  border-radius: 10px;
+  background-color: #111214;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M16 3v4M8 3v4M3 10h18'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 19px 19px;
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+  color-scheme: dark;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
 
-  .bankrollSummary strong {
-    font-size: 13px;
-  }
+.racingDatePicker::-webkit-datetime-edit,
+.racingDatePicker::-webkit-datetime-edit-fields-wrapper,
+.racingDatePicker::-webkit-datetime-edit-text,
+.racingDatePicker::-webkit-datetime-edit-month-field,
+.racingDatePicker::-webkit-datetime-edit-day-field,
+.racingDatePicker::-webkit-datetime-edit-year-field {
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+}
+
+.racingDatePicker::-webkit-calendar-picker-indicator {
+  position: absolute;
+  right: 7px;
+  width: 30px;
+  height: 30px;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.racingDatePicker:hover,
+.racingDatePicker:focus {
+  border-color: #ff8c00;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(255, 122, 26, 0.14);
 }

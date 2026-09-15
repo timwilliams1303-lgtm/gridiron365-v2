@@ -9,6 +9,25 @@ import {
   useState,
 } from "react";
 
+type GreyhoundPastPerformance = {
+  raceDate: string | null;
+  performanceCode: string | null;
+  trackCode: string | null;
+  distanceYards: number | null;
+  condition: string | null;
+  weight: number | null;
+  boxNumber: number | null;
+  runningPositions: number[];
+  finishPosition: number | null;
+  marginText: string | null;
+  finishTime: number | null;
+  speedRating: number | null;
+  odds: string | null;
+  grade: string | null;
+  comment: string | null;
+  rawText: string;
+};
+
 type GreyhoundRunner = {
   trapNumber: number | null;
   trapColor: string | null;
@@ -18,6 +37,8 @@ type GreyhoundRunner = {
   form: string | null;
   odds: string | null;
   rawText?: string;
+  history?: GreyhoundPastPerformance[];
+  programBlockImageDataUrl?: string | null;
 };
 
 type ParsedGreyhoundRace = {
@@ -32,15 +53,28 @@ type ParsedGreyhoundRace = {
   trackCondition: string | null;
   runners: GreyhoundRunner[];
   rawText: string;
+  // Official Full Program: PDF page N is Race N for both GWD and GTS.
+  programPageImageDataUrl?: string | null;
 };
 
 type ImportResult = {
   success?: boolean;
   race?: unknown;
+  cardId?: string | number;
   raceId?: string | number;
   races?: unknown[];
   message?: string;
   [key: string]: unknown;
+};
+
+type GreyhoundAuthoritativeEntry = {
+  raceNumber: number;
+  boxNumber: number;
+  dogId: number;
+  dogName: string;
+  odds: string | null;
+  kennel: string | null;
+  weight: number | null;
 };
 
 type GreyhoundRaceCardImporterProps = {
@@ -54,6 +88,86 @@ type GreyhoundRaceCardImporterProps = {
   importEndpoint?: string;
 };
 
+function applyAuthoritativeEntries(
+  races: ParsedGreyhoundRace[],
+  authoritativeEntries: GreyhoundAuthoritativeEntry[],
+  trackCode: "GWD" | "GTS",
+): ParsedGreyhoundRace[] {
+  const entriesByRace = new Map<number, GreyhoundAuthoritativeEntry[]>();
+
+  for (const entry of authoritativeEntries) {
+    const current = entriesByRace.get(entry.raceNumber) ?? [];
+    current.push(entry);
+    entriesByRace.set(entry.raceNumber, current);
+  }
+
+  return races.map((race) => {
+    if (normalizeTrackCode(race.track) !== trackCode) {
+      return race;
+    }
+
+    const authoritativeForRace = (
+      entriesByRace.get(race.raceNumber) ?? []
+    ).sort((a, b) => a.boxNumber - b.boxNumber);
+
+    /*
+     * The official Entries PDF owns current-card dog identity.
+     *
+     * Rebuild the current runners FROM Entries Race + Box rather than from
+     * Program OCR. The Program contributes only the matching box's details,
+     * history and visual block.
+     *
+     * This is especially important at Wheeling because stakes races can have
+     * legitimate NO GREYHOUND / vacant boxes. Vacant boxes do not have an
+     * authoritative Entries dog row, so they are intentionally omitted here
+     * instead of creating a fake greyhound.
+     */
+    const programRunnerByBox = new Map<number, GreyhoundRunner>();
+
+    for (const runner of race.runners) {
+      if (runner.trapNumber !== null) {
+        programRunnerByBox.set(runner.trapNumber, runner);
+      }
+    }
+
+    return {
+      ...race,
+      runners: authoritativeForRace.map((authoritative) => {
+        const programRunner =
+          programRunnerByBox.get(authoritative.boxNumber);
+
+        return {
+          trapNumber: authoritative.boxNumber,
+          trapColor:
+            programRunner?.trapColor ??
+            (trackCode === "GWD"
+              ? WHEELING_TRAP_COLORS[authoritative.boxNumber] ?? null
+              : TRAP_COLORS[authoritative.boxNumber] ?? null),
+          // Race + Box from the official Entries PDF is authoritative.
+          name: authoritative.dogName,
+          trainer:
+            authoritative.kennel ??
+            programRunner?.trainer ??
+            null,
+          weight:
+            authoritative.weight !== null
+              ? String(authoritative.weight)
+              : programRunner?.weight ?? null,
+          form: programRunner?.form ?? null,
+          odds:
+            authoritative.odds ??
+            programRunner?.odds ??
+            null,
+          rawText: programRunner?.rawText,
+          history: programRunner?.history ?? [],
+          programBlockImageDataUrl:
+            programRunner?.programBlockImageDataUrl ?? null,
+        };
+      }),
+    };
+  });
+}
+
 type ProcessingStage =
   | "idle"
   | "reading"
@@ -61,7 +175,8 @@ type ProcessingStage =
   | "extracting"
   | "ocr"
   | "parsing"
-  | "importing";
+  | "importing"
+  | "deleting";
 
 const MIN_NATIVE_TEXT_LENGTH = 80;
 const PDF_RENDER_SCALE = 2;
@@ -307,6 +422,59 @@ function normalizeClockTime(
   return `${String(hour).padStart(2, "0")}:${String(
     minute,
   ).padStart(2, "0")}`;
+}
+
+const WHEELING_DEFAULT_FIRST_POST_MINUTES = 13 * 60;
+const WHEELING_DEFAULT_RACE_INTERVAL_MINUTES = 15;
+
+function minutesToClockTime(totalMinutes: number): string {
+  const normalized = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hour = Math.floor(normalized / 60);
+  const minute = normalized % 60;
+
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function getWheelingScheduledRaceTime(
+  raceNumber: number,
+  text: string,
+): string | null {
+  /*
+   * IMPORTANT:
+   * Never call the broad parseRaceTime(text) against an entire Wheeling
+   * Program page. Those pages contain many historical performance times.
+   * A historical "1:00" / "17:00" can otherwise be mistaken for the
+   * current race's scheduled post time (the Race 6 / Race 12 bug).
+   *
+   * Only a CURRENT-RACE header explicitly labelled "Post Time" is allowed
+   * to override Wheeling's card cadence.
+   */
+  const explicitPostTime = text.match(
+    /\bPost\s*Time\s*:\s*(\d{1,2}):(\d{2})\s*(AM|PM)\b/i,
+  );
+
+  if (explicitPostTime) {
+    return normalizeClockTime(
+      explicitPostTime[1],
+      explicitPostTime[2],
+      explicitPostTime[3],
+    );
+  }
+
+  if (raceNumber < 1) {
+    return null;
+  }
+
+  /*
+   * Wheeling's 2026 live schedule uses a 1:00 PM first post for normal
+   * Wednesday-Sunday afternoon cards. The official Program does not print
+   * race-by-race post times, so use the scheduled 15-minute card cadence.
+   */
+  const raceMinutes =
+    WHEELING_DEFAULT_FIRST_POST_MINUTES +
+    (raceNumber - 1) * WHEELING_DEFAULT_RACE_INTERVAL_MINUTES;
+
+  return minutesToClockTime(raceMinutes);
 }
 
 function parseRaceTime(text: string): string | null {
@@ -870,9 +1038,1113 @@ function isWheelingProgramText(text: string): boolean {
   );
 }
 
+
+function isTriStateProgramText(text: string): boolean {
+  return /\bTRI[\s-]?STATE\s+(?:FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH|NINTH|TENTH|ELEVENTH|TWELFTH|THIRTEENTH|FOURTEENTH|FIFTEENTH|SIXTEENTH|SEVENTEENTH)\s+RACE\b/i.test(
+    text,
+  );
+}
+
+function triStateRaceWordToNumber(value: string): number | null {
+  return WHEELING_PROGRAM_RACE_WORDS[value.toLowerCase()] ?? null;
+}
+
+function normalizeTriStateColor(value: string): string | null {
+  const normalized = cleanLine(value)
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[^a-z/]/g, "");
+
+  const colors: Record<string, string> = {
+    red: "Red",
+    blue: "Blue",
+    white: "White",
+    green: "Green",
+    black: "Black",
+    yellow: "Yellow",
+    "grn/wht": "Green / White",
+    grnwht: "Green / White",
+    "ylw/blk": "Yellow / Black",
+    ylwblk: "Yellow / Black",
+  };
+
+  return colors[normalized] ?? null;
+}
+
+type TriStateProgramDescriptor = {
+  trapNumber: number;
+  trapColor: string | null;
+  odds: string | null;
+  trainer: string | null;
+  kennel: string | null;
+  weight: string | null;
+  rawText: string;
+};
+
+function parseTriStateProgramDescriptors(
+  block: string,
+): TriStateProgramDescriptor[] {
+  const flat = cleanLine(
+    (block.split(/\bPicks\s*:/i)[0] ?? block)
+      .replace(/\bGrn\s*\/?\s*Wht\b/gi, "Grn/Wht")
+      .replace(/\bYlw\s*\/?\s*Blk\b/gi, "Ylw/Blk"),
+  );
+
+  /*
+   * The Tri-State PDF text layer does not reliably expose dog names, but
+   * morning-line odds + box/color markers are stable and give us eight
+   * runner sections in official program order.
+   *
+   * Depending on the PDF extractor the marker can be either:
+   *   "7-1 1 Red"
+   * or:
+   *   "7-1 Red 1"
+   */
+  const markerRegex =
+    /\b(\d{1,2})\s*-\s*(\d{1,2})\s+(?:(\d)\s*(Red|Blue|White|Green|Black|Yellow|Grn\/Wht|Ylw\/Blk)|(Red|Blue|White|Green|Black|Yellow|Grn\/Wht|Ylw\/Blk)\s*(\d))\b/gi;
+
+  const matches = Array.from(flat.matchAll(markerRegex));
+  const descriptors: TriStateProgramDescriptor[] = [];
+  const seen = new Set<number>();
+
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index];
+    const trapNumber = Number(match[3] ?? match[6]);
+    const rawColor = match[4] ?? match[5] ?? "";
+
+    if (
+      !Number.isInteger(trapNumber) ||
+      trapNumber < 1 ||
+      trapNumber > 8 ||
+      seen.has(trapNumber)
+    ) {
+      continue;
+    }
+
+    const startIndex = match.index ?? 0;
+    const endIndex =
+      matches[index + 1]?.index ??
+      flat.length;
+    const sectionText = flat.slice(startIndex, endIndex);
+
+    const kennelMatch = sectionText.match(
+      /\bKennel\s*:\s*(.+?)(?=\s+Trainer\s*:|$)/i,
+    );
+    const trainerMatch = sectionText.match(
+      /\bTrainer\s*:\s*([A-Za-z][A-Za-z .,'’&-]{1,70}?)(?=\s+(?:[A-Z]{1,5}\.|(?:\d{2}\/\d{2}|[ASE]\d{1,2})\s+(?:TS|WD)\b)|$)/i,
+    );
+
+    /*
+     * Current-card summary begins with best time + current weight:
+     *   "30.68 75 TS ..."
+     */
+    const weightMatch = sectionText.match(
+      /\b\d{2}\.\d{2}\s+(\d{2})\s+(?:TS|WD)\b/i,
+    );
+
+    descriptors.push({
+      trapNumber,
+      trapColor: normalizeTriStateColor(rawColor),
+      odds: `${match[1]}-${match[2]}`,
+      trainer: trainerMatch?.[1]
+        ? cleanLine(trainerMatch[1])
+        : null,
+      kennel: kennelMatch?.[1]
+        ? cleanLine(kennelMatch[1])
+        : null,
+      weight: weightMatch?.[1] ?? null,
+      rawText: sectionText,
+    });
+
+    seen.add(trapNumber);
+  }
+
+  return descriptors.sort(
+    (a, b) => a.trapNumber - b.trapNumber,
+  );
+}
+
+function cleanTriStateOcrName(value: string): string {
+  return cleanLine(value)
+    .replace(/^[^A-Z0-9'’]+/i, "")
+    .replace(/\s+(?:C|B|A|AA|D|M|TD)\s+[MD]\b.*$/i, "")
+    .replace(/\s+\d{2}\.\d{2}\b.*$/i, "")
+    .replace(/[|=:]+$/g, "")
+    .trim();
+}
+
+function looksLikeTriStateDogName(value: string): boolean {
+  const name = cleanTriStateOcrName(value);
+
+  if (!name || name.length < 4 || name.length > 42) {
+    return false;
+  }
+
+  /*
+   * Never allow race/program metadata to become a Greyhound name.
+   * These were the source of bad rows such as "Crs" and "TS 550 F".
+   */
+  if (
+    /^(?:CSR|CRS|TS|WD|F|M|D|C|B|A|AA|TD)$/i.test(name) ||
+    /\b(?:TS|WD)\s*\d{3,4}\b/i.test(name) ||
+    /\b\d{3,4}\s*(?:YARDS?|YDS?)\b/i.test(name) ||
+    /\b(?:CSR|CRS)\s*\d+\b/i.test(name) ||
+    /\b(?:KENNEL|TRAINER|GRADE|RACE|POST|ODDS|WEIGHT|STATUS|PICKS?)\b/i.test(name) ||
+    /^(TRI[\s-]?STATE|FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH|NINTH|TENTH|ELEVENTH|TWELFTH|THIRTEENTH|FOURTEENTH|FIFTEENTH|SIXTEENTH|SEVENTEENTH|RACE|GRADE|YARDS?|RED|BLUE|WHITE|GREEN|BLACK|YELLOW|KENNEL|TRAINER|PICKS?|POST\s+TIME)$/i.test(
+      name,
+    )
+  ) {
+    return false;
+  }
+
+  /*
+   * Official names are words, not numeric/program columns. Apostrophes,
+   * periods, hyphens and spaces are allowed.
+   */
+  return (
+    /[A-Z]{2}/i.test(name) &&
+    !/\d/.test(name) &&
+    !/^\d+(?:[-/.]\d+)*$/.test(name)
+  );
+}
+
+function extractTriStateDogNameFromHeaderOcr(
+  value: string,
+): string | null {
+  const lines = value
+    .split("\n")
+    .map((line) => cleanLine(line))
+    .filter(Boolean);
+
+  const candidates: string[] = [];
+
+  for (const originalLine of lines) {
+    let line = originalLine
+      .replace(/^\s*\d{1,2}\s*-\s*\d{1,2}\s+/i, "")
+      .replace(/^\s*[1-8]\s+/i, "")
+      .replace(
+        /^\s*(?:Red|Blue|White|Green|Black|Yellow|Grn\/?Wht|Ylw\/?Blk)\s+/i,
+        "",
+      )
+      .replace(/\s+(?:CSR|CRS)\s*\d+.*$/i, "")
+      .replace(/\s+Trainer\s*:.*$/i, "")
+      .replace(/\s+Kennel\s*:.*$/i, "")
+      .replace(/\s+\d{2}\.\d{2}\s+\d{2}\b.*$/i, "")
+      .trim();
+
+    /*
+     * If OCR captured extra text on the same line, prefer the leading
+     * all-caps phrase before obvious program metadata.
+     */
+    const leadingName = line.match(
+      /^([A-Z][A-Z'’.-]*(?:\s+[A-Z][A-Z'’.-]*){0,5})(?=\s+(?:AA|A|B|C|D|M|TD|CSR|CRS|TS|WD|\d)|$)/,
+    );
+
+    if (leadingName) {
+      line = leadingName[1];
+    }
+
+    const candidate = cleanTriStateOcrName(line);
+
+    if (looksLikeTriStateDogName(candidate)) {
+      candidates.push(candidate);
+    }
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  /*
+   * The bold dog-name line is normally short. Prefer the candidate with the
+   * strongest name shape rather than a long OCR sentence.
+   */
+  return candidates.sort((a, b) => {
+    const aWords = a.split(/\s+/).length;
+    const bWords = b.split(/\s+/).length;
+    const aScore = (aWords <= 4 ? 20 : 0) + Math.min(a.length, 24);
+    const bScore = (bWords <= 4 ? 20 : 0) + Math.min(b.length, 24);
+    return bScore - aScore;
+  })[0];
+}
+
+function parseTriStateOcrNames(
+  block: string,
+): Map<number, string> {
+  const names = new Map<number, string>();
+  const lines = block
+    .split("\n")
+    .map(cleanLine)
+    .filter(Boolean);
+
+  for (const line of lines) {
+    /*
+     * Primary OCR shape:
+     *   "1 JUST DID IT"
+     *   "7 ARKWILD B COLFAX"
+     */
+    const directMatch = line.match(
+      /^\s*([1-8])\s+(.{2,60}?)\s*$/i,
+    );
+
+    if (directMatch) {
+      const trapNumber = Number(directMatch[1]);
+      const candidate = cleanTriStateOcrName(directMatch[2]);
+
+      if (
+        !names.has(trapNumber) &&
+        looksLikeTriStateDogName(candidate)
+      ) {
+        names.set(trapNumber, candidate);
+        continue;
+      }
+    }
+
+    /*
+     * Tesseract sometimes keeps the morning-line odds/color before the
+     * box/name on one line.
+     */
+    const markerMatch = line.match(
+      /(?:^|\s)(?:\d{1,2}\s*-\s*\d{1,2})?\s*(?:Red|Blue|White|Green|Black|Yellow|Grn\/Wht|Ylw\/Blk)?\s*([1-8])\s+([A-Z][A-Z0-9'’.\- ]{1,42}?)(?=\s+(?:AA|A|B|C|D|M|TD)\s+[MD]\b|\s+\d{2}\.\d{2}\b|$)/i,
+    );
+
+    if (markerMatch) {
+      const trapNumber = Number(markerMatch[1]);
+      const candidate = cleanTriStateOcrName(markerMatch[2]);
+
+      if (
+        !names.has(trapNumber) &&
+        looksLikeTriStateDogName(candidate)
+      ) {
+        names.set(trapNumber, candidate);
+      }
+    }
+  }
+
+  /*
+   * Final flattened fallback for OCR engines that collapse visual rows.
+   */
+  const flat = cleanLine(block);
+  const flatRegex =
+    /\b([1-8])\s+([A-Z][A-Z0-9'’.\- ]{1,42}?)(?=\s+(?:AA|A|B|C|D|M|TD)\s+[MD]\b|\s+\d{2}\.\d{2}\b)/gi;
+
+  for (const match of flat.matchAll(flatRegex)) {
+    const trapNumber = Number(match[1]);
+    const candidate = cleanTriStateOcrName(match[2]);
+
+    if (
+      !names.has(trapNumber) &&
+      looksLikeTriStateDogName(candidate)
+    ) {
+      names.set(trapNumber, candidate);
+    }
+  }
+
+  return names;
+}
+
+function parseTriStatePastPerformances(
+  rawText: string,
+  programDate: string | null,
+): GreyhoundPastPerformance[] {
+  const normalized = normalizeWhitespace(rawText);
+  const candidates = new Set<string>();
+
+  for (const line of normalized
+    .split("\n")
+    .map(cleanLine)
+    .filter(Boolean)) {
+    candidates.add(line);
+  }
+
+  /*
+   * Native PDF extraction can flatten every runner row onto one line.
+   * Recover each dated performance segment so we can still store history
+   * even when OCR is imperfect.
+   */
+  const flat = cleanLine(normalized);
+  const rowRegex =
+    /(\d{2}\/\d{2})\s*([ASE])\s*(\d{1,2})\s+(TS|WD)\s+(\d{3,4})\s+([A-Z])\s+(\d{2}\.\d{2})\s+(\d{2})\s+([1-8])\s+(.+?)(?=\s+\d{2}\/\d{2}\s*[ASE]\s*\d{1,2}\s+(?:TS|WD)\b|$)/gi;
+
+  for (const match of flat.matchAll(rowRegex)) {
+    candidates.add(cleanLine(match[0]));
+  }
+
+  const history: GreyhoundPastPerformance[] = [];
+  const seen = new Set<string>();
+
+  for (const line of candidates) {
+    const match = line.match(
+      /^(\d{2}\/\d{2})\s*([ASE])\s*(\d{1,2})\s+(TS|WD)\s+(\d{3,4})\s+([A-Z])\s+(\d{2}\.\d{2})\s+(\d{2})\s+([1-8])\s+(.+)$/i,
+    );
+
+    if (!match) {
+      continue;
+    }
+
+    const raceDate =
+      inferProgramHistoryDate(match[1], programDate);
+    const performanceCode =
+      `${match[2].toUpperCase()}${match[3]}`;
+    const trackCode = match[4].toUpperCase();
+    const tail = cleanLine(match[10]);
+
+    const tailMatch = tail.match(
+      /(?:^|\s)(?:\d{1,2}\.\d{2}\s+)?(\d{2}\.\d{2}|OOP)\s+((?:\d+(?:\.\d+)?\*?)|----)\s+([A-Z-]{1,4})\s+(.+)$/i,
+    );
+
+    const runningCalls =
+      parseProgramRunningCalls(
+        tail,
+      );
+
+    const sourceKey = [
+      raceDate,
+      performanceCode,
+      trackCode,
+      match[5],
+      match[9],
+      tailMatch?.[1] ?? "",
+    ].join("|");
+
+    if (seen.has(sourceKey)) {
+      continue;
+    }
+
+    seen.add(sourceKey);
+
+    history.push({
+      raceDate,
+      performanceCode,
+      trackCode,
+      distanceYards: Number(match[5]),
+      condition: match[6].toUpperCase(),
+      weight: Number(match[8]),
+      boxNumber: Number(match[9]),
+      runningPositions:
+        runningCalls.runningPositions,
+      finishPosition:
+        runningCalls.finishPosition,
+      marginText:
+        runningCalls.marginText,
+      finishTime:
+        tailMatch && /^\d{2}\.\d{2}$/.test(tailMatch[1])
+          ? Number(tailMatch[1])
+          : null,
+      speedRating: null,
+      odds: tailMatch?.[2] ?? null,
+      grade: tailMatch?.[3] ?? null,
+      comment: tailMatch?.[4]
+        ? cleanLine(tailMatch[4])
+        : tail,
+      rawText: line,
+    });
+  }
+
+  return history.slice(0, 12);
+}
+
+
+function parseTriStateSequentialOcrNames(
+  block: string,
+): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+
+  for (const rawLine of block.split("\n")) {
+    const line = cleanLine(rawLine);
+
+    if (
+      !line ||
+      !/\bTrainer\s*:/i.test(line)
+    ) {
+      continue;
+    }
+
+    const currentTimeMatch = line.match(
+      /\b\d{2}\.\d{2}\s+\d{2}\b/,
+    );
+
+    if (!currentTimeMatch || currentTimeMatch.index === undefined) {
+      continue;
+    }
+
+    const prefix = line
+      .slice(0, currentTimeMatch.index)
+      .trim();
+
+    /*
+     * Pull the trailing uppercase name from the summary line. This works
+     * even when OCR damages the box/color immediately before the name.
+     */
+    const nameMatch = prefix.match(
+      /([A-Z][A-Z0-9'’.\-]*(?:\s+[A-Z][A-Z0-9'’.\-]*){0,5})$/,
+    );
+
+    if (!nameMatch) {
+      continue;
+    }
+
+    const candidate =
+      cleanTriStateOcrName(nameMatch[1]);
+
+    if (
+      looksLikeTriStateDogName(candidate) &&
+      !seen.has(candidate)
+    ) {
+      seen.add(candidate);
+      names.push(candidate);
+    }
+  }
+
+  return names.slice(0, 8);
+}
+
+function splitTriStateOcrRunnerSections(
+  block: string,
+): Map<number, string> {
+  const lines = block
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const starts: Array<{
+    index: number;
+    trapNumber: number;
+  }> = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = cleanLine(lines[index]);
+
+    const directMatch = line.match(
+      /(?:^|\s)([1-8])\s+[A-Z][A-Z0-9'’.\- ]{1,42}(?=\s+(?:AA|A|B|C|D|M|TD)\s+[MD]\b|\s+\d{2}\.\d{2}\b|$)/i,
+    );
+
+    if (directMatch) {
+      const trapNumber = Number(directMatch[1]);
+
+      if (!starts.some((start) => start.trapNumber === trapNumber)) {
+        starts.push({ index, trapNumber });
+      }
+    }
+  }
+
+  const sections = new Map<number, string>();
+
+  for (let index = 0; index < starts.length; index += 1) {
+    const start = starts[index];
+    const end =
+      starts[index + 1]?.index ??
+      lines.findIndex(
+        (line, lineIndex) =>
+          lineIndex > start.index &&
+          /^Picks\s*:/i.test(cleanLine(line)),
+      );
+
+    const sectionEnd =
+      end >= 0 ? end : lines.length;
+
+    sections.set(
+      start.trapNumber,
+      lines
+        .slice(start.index, sectionEnd)
+        .join("\n"),
+    );
+  }
+
+  return sections;
+}
+
+function cleanTriStateRecoveredDogNameBoundary(
+  value: string,
+  knownProgramNames: string[],
+): string {
+  let original = cleanTriStateOcrName(value);
+
+  if (!original) {
+    return original;
+  }
+
+  /*
+   * Tri-State's printed runner header has a single-letter grade/status
+   * column immediately beside the dog-name area. OCR can bleed that printed
+   * "B" into the left edge of the name:
+   *
+   *   "B WW BONNY SUE" -> "WW BONNY SUE"
+   *   "BCET DWARF"     -> "CET DWARF"
+   *
+   * Only repair a LEADING boundary B. An internal B is never touched, so
+   * "ARKWILD B COLFAX" remains exactly "ARKWILD B COLFAX".
+   */
+  if (/^B\s+[A-Z][A-Z'’.-]*(?:\s+[A-Z][A-Z'’.-]*)+/i.test(original)) {
+    original = original.replace(/^B\s+/i, "");
+  } else {
+    const firstWord = original.split(/\s+/)[0] ?? "";
+    const remainingWords = original.split(/\s+/).slice(1);
+
+    if (
+      /^B[A-Z]{3}$/i.test(firstWord) &&
+      remainingWords.length >= 1 &&
+      remainingWords.every((word) =>
+        /^[A-Z][A-Z'’.-]*$/i.test(word),
+      )
+    ) {
+      original = [
+        firstWord.slice(1),
+        ...remainingWords,
+      ].join(" ");
+    }
+  }
+
+  const normalizeKey = (name: string) =>
+    cleanTriStateOcrName(name)
+      .replace(/[^A-Z0-9]/gi, "")
+      .toUpperCase();
+
+  const known = knownProgramNames
+    .map((name) => cleanTriStateOcrName(name))
+    .filter((name) => looksLikeTriStateDogName(name));
+
+  const originalKey = normalizeKey(original);
+
+  /*
+   * Prefer an exact name already independently recovered elsewhere from the
+   * same official program. This safely repairs OCR boundary noise without
+   * inventing spelling.
+   */
+  const exactKnown = known.find(
+    (name) => normalizeKey(name) === originalKey,
+  );
+
+  if (exactKnown) {
+    return exactKnown;
+  }
+
+  /*
+   * OCR sometimes attaches ONE neighboring grade/column "B" to the left side
+   * of a Tri-State dog name. Only remove it when doing so matches another
+   * independently recovered program name. Never globally strip B because
+   * legitimate names such as ARKWILD B COLFAX must retain it.
+   */
+  const withoutLeadingStandaloneB = original.replace(
+    /^B\s+/i,
+    "",
+  );
+  const withoutLeadingAttachedB =
+    /^B[A-Z]/.test(original) ? original.slice(1) : original;
+
+  for (const repaired of [
+    withoutLeadingStandaloneB,
+    withoutLeadingAttachedB,
+  ]) {
+    const repairedKey = normalizeKey(repaired);
+
+    const match = known.find(
+      (name) => normalizeKey(name) === repairedKey,
+    );
+
+    if (match) {
+      return match;
+    }
+  }
+
+  return original;
+}
+
+function parseTriStateNamesByTrainer(
+  ocrBlock: string,
+  descriptors: TriStateProgramDescriptor[],
+  independentlyRecoveredNames: string[] = [],
+): Map<number, string> {
+  const names = new Map<number, string>();
+  const lines = ocrBlock
+    .split("\n")
+    .map((line) => cleanLine(line))
+    .filter(Boolean);
+
+  for (const descriptor of descriptors) {
+    const trainer = cleanLine(descriptor.trainer ?? "");
+
+    if (!trainer) {
+      continue;
+    }
+
+    const trainerKey = trainer
+      .replace(/[^A-Z]/gi, "")
+      .toUpperCase();
+
+    if (trainerKey.length < 4) {
+      continue;
+    }
+
+    const matchingLines = lines.filter((line) => {
+      const lineKey = line
+        .replace(/[^A-Z]/gi, "")
+        .toUpperCase();
+
+      return lineKey.includes(trainerKey);
+    });
+
+    for (const line of matchingLines) {
+      const trainerIndex = line.search(/\bTrainer\s*:/i);
+      const beforeTrainer =
+        trainerIndex >= 0
+          ? line.slice(0, trainerIndex)
+          : line;
+
+      /*
+       * Tri-State summary line shape is normally:
+       *   [odds] [box/color] DOG NAME ... current-time weight Trainer: Name
+       *
+       * Anchor on the already-correct trainer for THIS trap, then remove
+       * stable numeric/program columns from the left and right. This prevents
+       * names from shifting between boxes when OCR misses a trap number.
+       */
+      let candidateText = beforeTrainer
+        .replace(
+          /^\s*\d{1,2}\s*-\s*\d{1,2}\s+/,
+          "",
+        )
+        .replace(
+          /^\s*(?:[1-8]\s+)?(?:Red|Blue|White|Green|Black|Yellow|Grn\/?Wht|Ylw\/?Blk)\s+(?:[1-8]\s+)?/i,
+          "",
+        )
+        .replace(
+          /^\s*[1-8]\s+(?:Red|Blue|White|Green|Black|Yellow|Grn\/?Wht|Ylw\/?Blk)\s+/i,
+          "",
+        )
+        .replace(
+          /\s+\d{2}\.\d{2}\s+\d{2}\b.*$/i,
+          "",
+        )
+        .replace(
+          /\s+(?:TS|WD)\s+\d{3,4}\b.*$/i,
+          "",
+        )
+        .trim();
+
+      const words = candidateText.split(/\s+/);
+
+      /*
+       * Search every contiguous word span and keep the strongest valid dog
+       * name. Metadata tokens are rejected by looksLikeTriStateDogName().
+       */
+      const candidates: string[] = [];
+
+      for (let start = 0; start < words.length; start += 1) {
+        for (
+          let length = 1;
+          length <= 5 && start + length <= words.length;
+          length += 1
+        ) {
+          const candidate = cleanTriStateOcrName(
+            words.slice(start, start + length).join(" "),
+          );
+
+          if (looksLikeTriStateDogName(candidate)) {
+            candidates.push(candidate);
+          }
+        }
+      }
+
+      const best = candidates
+        .filter(
+          (candidate) =>
+            !/\b(?:Trainer|Kennel|Weight|Odds|Status)\b/i.test(
+              candidate,
+            ),
+        )
+        .sort((a, b) => {
+          const aUpper =
+            a === a.toUpperCase() ? 30 : 0;
+          const bUpper =
+            b === b.toUpperCase() ? 30 : 0;
+          const aWords = a.split(/\s+/).length;
+          const bWords = b.split(/\s+/).length;
+          const aShape =
+            aWords >= 1 && aWords <= 4 ? 20 : 0;
+          const bShape =
+            bWords >= 1 && bWords <= 4 ? 20 : 0;
+
+          return (
+            bUpper +
+            bShape +
+            Math.min(b.length, 24) -
+            (aUpper + aShape + Math.min(a.length, 24))
+          );
+        })[0];
+
+      if (best) {
+        names.set(
+          descriptor.trapNumber,
+          cleanTriStateRecoveredDogNameBoundary(
+            best,
+            independentlyRecoveredNames,
+          ),
+        );
+        break;
+      }
+    }
+  }
+
+  return names;
+}
+
+function parseTriStateNamesFromTrapBlocks(
+  ocrBlock: string,
+  descriptors: TriStateProgramDescriptor[],
+): Map<number, string> {
+  const names = new Map<number, string>();
+  const normalized = ocrBlock
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+/g, " ");
+
+  /*
+   * Use the descriptor metadata already tied to each trap (trainer, color,
+   * weight, odds) as anchors. This is intentionally race-agnostic: it runs
+   * for every Tri-State race page, not only Race 1.
+   */
+  for (const descriptor of descriptors) {
+    const trainer = cleanLine(descriptor.trainer ?? "");
+    const trainerKey = trainer.replace(/[^A-Z]/gi, "").toUpperCase();
+
+    if (trainerKey.length < 4) {
+      continue;
+    }
+
+    const lines = normalized
+      .split("\n")
+      .map((line) => cleanLine(line))
+      .filter(Boolean);
+
+    const trainerLineIndexes = lines
+      .map((line, index) => ({
+        index,
+        key: line.replace(/[^A-Z]/gi, "").toUpperCase(),
+      }))
+      .filter(({ key }) => key.includes(trainerKey))
+      .map(({ index }) => index);
+
+    for (const lineIndex of trainerLineIndexes) {
+      /*
+       * The dog header may wrap one or two OCR lines away from Trainer.
+       * Keep the search inside this trap's small local block.
+       */
+      const localStart = Math.max(0, lineIndex - 3);
+      const localEnd = Math.min(lines.length, lineIndex + 2);
+      const localLines = lines.slice(localStart, localEnd);
+
+      const candidates: string[] = [];
+
+      for (const localLine of localLines) {
+        let line = localLine
+          .replace(/\bTrainer\s*:.*$/i, "")
+          .replace(/\bKennel\s*:.*$/i, "")
+          .replace(
+            /^\s*\d{1,2}\s*-\s*\d{1,2}\s+/,
+            "",
+          )
+          .replace(
+            /^\s*[1-8]\s+(?:Red|Blue|White|Green|Black|Yellow|Green\s*\/\s*White|Yellow\s*\/\s*Black)\s+/i,
+            "",
+          )
+          .replace(
+            /^\s*(?:Red|Blue|White|Green|Black|Yellow|Green\s*\/\s*White|Yellow\s*\/\s*Black)\s+[1-8]\s+/i,
+            "",
+          )
+          .replace(
+            /\s+\d{2}\.\d{2}\s+\d{2}\b.*$/i,
+            "",
+          )
+          .replace(
+            /\s+(?:TS|WD)\s+\d{3,4}\b.*$/i,
+            "",
+          )
+          .replace(
+            /\s+(?:CSR|CRS)\s*\d+\b.*$/i,
+            "",
+          )
+          .trim();
+
+        if (!line) continue;
+
+        const words = line.split(/\s+/);
+
+        for (let start = 0; start < words.length; start += 1) {
+          for (
+            let length = 1;
+            length <= 5 && start + length <= words.length;
+            length += 1
+          ) {
+            const candidate =
+              cleanTriStateRecoveredDogNameBoundary(
+                words.slice(start, start + length).join(" "),
+                [],
+              );
+
+            if (
+              looksLikeTriStateDogName(candidate) &&
+              !/\b(?:Trainer|Kennel|Weight|Odds|Status|Race|Grade|Yards|Post|Time)\b/i.test(
+                candidate,
+              )
+            ) {
+              candidates.push(candidate);
+            }
+          }
+        }
+      }
+
+      const best = candidates.sort((a, b) => {
+        const score = (value: string) => {
+          const words = value.split(/\s+/);
+          const upper =
+            value === value.toUpperCase() ? 40 : 0;
+          const wordShape =
+            words.length >= 1 && words.length <= 4 ? 25 : 0;
+          const alphaOnly =
+            !/\d/.test(value) ? 20 : -50;
+          const metadataPenalty =
+            /^(?:TS|WD|CSR|CRS|F|M|D|C|B|A|AA|TD)$/i.test(
+              value,
+            )
+              ? -100
+              : 0;
+
+          return (
+            upper +
+            wordShape +
+            alphaOnly +
+            metadataPenalty +
+            Math.min(value.length, 28)
+          );
+        };
+
+        return score(b) - score(a);
+      })[0];
+
+      if (best) {
+        names.set(
+          descriptor.trapNumber,
+          cleanTriStateRecoveredDogNameBoundary(
+            best,
+            Array.from(names.values()),
+          ),
+        );
+        break;
+      }
+    }
+  }
+
+  return names;
+}
+
+function parseTriStateProgramRunners(
+  nativeBlock: string,
+  ocrBlock: string,
+  programDate: string | null,
+): GreyhoundRunner[] {
+  const descriptors =
+    parseTriStateProgramDescriptors(nativeBlock || ocrBlock);
+  const names = parseTriStateOcrNames(ocrBlock);
+  const trainerAnchoredNames =
+    parseTriStateNamesByTrainer(
+      ocrBlock,
+      descriptors,
+      Array.from(names.values()),
+    );
+  const trapBlockNames =
+    parseTriStateNamesFromTrapBlocks(
+      ocrBlock,
+      descriptors,
+    );
+  const ocrSections =
+    splitTriStateOcrRunnerSections(ocrBlock);
+
+  return descriptors
+    .map((descriptor) => {
+      const ocrSection =
+        ocrSections.get(descriptor.trapNumber) ?? "";
+      const historySource =
+        ocrSection || ocrBlock;
+
+      const historyByKey =
+        new Map<string, GreyhoundPastPerformance>();
+
+      for (const performance of [
+        ...parseTriStatePastPerformances(
+          descriptor.rawText,
+          programDate,
+        ),
+        ...parseTriStatePastPerformances(
+          historySource,
+          programDate,
+        ),
+      ]) {
+        const key = [
+          performance.raceDate,
+          performance.performanceCode,
+          performance.trackCode,
+          performance.distanceYards,
+          performance.boxNumber,
+          performance.finishTime,
+        ].join("|");
+
+        if (!historyByKey.has(key)) {
+          historyByKey.set(key, performance);
+        }
+      }
+
+      const history = Array.from(
+        historyByKey.values(),
+      ).slice(0, 12);
+
+      return {
+        trapNumber: descriptor.trapNumber,
+        trapColor: descriptor.trapColor,
+        name:
+          names.get(descriptor.trapNumber) ??
+          trainerAnchoredNames.get(
+            descriptor.trapNumber,
+          ) ??
+          trapBlockNames.get(
+            descriptor.trapNumber,
+          ) ??
+          `Tri-State Box ${descriptor.trapNumber}`,
+        trainer: descriptor.trainer,
+        weight: descriptor.weight,
+        form: null,
+        odds: descriptor.odds,
+        rawText: [
+          descriptor.rawText,
+          ocrSection,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        history,
+      };
+    })
+    .sort(
+      (a, b) =>
+        (a.trapNumber ?? 99) -
+        (b.trapNumber ?? 99),
+    );
+}
+
+function parseProgramHeaderRaceTime(
+  text: string,
+): string | null {
+  /*
+   * Program pages also contain historical race/performance times.
+   * Limit current-race time detection to the header area so neither
+   * GTS nor GWD can accidentally promote a dog's past-performance
+   * clock value into scheduled_post_time.
+   */
+  const headerText =
+    text
+      .split("\n")
+      .slice(0, 24)
+      .join("\n");
+
+  const explicitPostTime = headerText.match(
+    /\bPost\s*Time\s*:\s*(\d{1,2}):(\d{2})\s*(AM|PM)\b/i,
+  );
+
+  if (explicitPostTime) {
+    return normalizeClockTime(
+      explicitPostTime[1],
+      explicitPostTime[2],
+      explicitPostTime[3],
+    );
+  }
+
+  return parseRaceTime(headerText);
+}
+
+
+function parseTriStateProgramPage(
+  nativePageText: string,
+  ocrPageText: string,
+  fallbackRaceNumber: number,
+): ParsedGreyhoundRace | null {
+  const native = normalizeWhitespace(nativePageText);
+  const ocr = normalizeWhitespace(ocrPageText);
+  const metadataText = native || ocr;
+
+  if (!isTriStateProgramText(metadataText)) {
+    return null;
+  }
+
+  const headerMatch = metadataText.match(
+    /\bTRI[\s-]?STATE\s+(FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH|NINTH|TENTH|ELEVENTH|TWELFTH|THIRTEENTH|FOURTEENTH|FIFTEENTH|SIXTEENTH|SEVENTEENTH)\s+RACE\b/i,
+  );
+
+  const raceNumber =
+    (headerMatch
+      ? triStateRaceWordToNumber(headerMatch[1])
+      : null) ??
+    fallbackRaceNumber;
+
+  if (
+    !Number.isInteger(raceNumber) ||
+    raceNumber < 1 ||
+    raceNumber > 99
+  ) {
+    return null;
+  }
+
+  const raceDate = parseDate(metadataText);
+  const raceTime = parseProgramHeaderRaceTime(metadataText);
+  const raceHeader = metadataText.match(
+    /\b(\d{3,4})\s+YARDS?\s+GRADE\s*([A-Z]{1,4}\d{0,2})\b/i,
+  );
+
+  const runners =
+    parseTriStateProgramRunners(
+      native,
+      ocr,
+      raceDate,
+    );
+
+  return {
+    track: "Tri-State",
+    raceNumber,
+    raceDate,
+    raceTime,
+    grade:
+      raceHeader?.[2]?.toUpperCase() ??
+      parseGrade(metadataText),
+    distance: raceHeader?.[1]
+      ? `${raceHeader[1]} Yards`
+      : parseDistance(metadataText),
+    prizeMoney: parsePrizeMoney(metadataText),
+    weather: parseWeather(metadataText),
+    trackCondition: parseTrackCondition(metadataText),
+    runners,
+    rawText: [
+      native,
+      ocr
+        ? `===== OCR PAGE =====\n${ocr}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+  };
+}
+
 function normalizeProgramGreyhoundName(value: string): string {
   return cleanLine(value)
     .replace(/^[^A-Z0-9'’]+/i, "")
+    /*
+     * Wheeling OCR occasionally damages the opening parenthesis around the
+     * current grade:
+     *   "SUPERIOR JADE (D)" -> expected
+     *   "SUPERIOR JADE D)"  -> OCR variant
+     *
+     * Neither form is part of the greyhound's name.
+     */
+    .replace(/\s+\([A-Z]{1,4}\)\s*$/i, "")
+    .replace(/\s+[A-Z]{1,4}\)\s*$/i, "")
+    .replace(/\s+\([A-Z]{1,4}\s*$/i, "")
     .replace(/[=:|]+$/g, "")
     .trim();
 }
@@ -1011,8 +2283,10 @@ function parseWheelingProgramOcrRunners(
 
     const nameLine = lines[lineIndex];
     const sectionStart = Math.max(0, lineIndex - 1);
-    const sectionEnd = Math.min(nextLineIndex, lineIndex + 10);
-    const sectionText = lines.slice(sectionStart, sectionEnd).join(" ");
+    const sectionEnd = nextLineIndex;
+    const sectionLines = lines.slice(sectionStart, sectionEnd);
+    const sectionText = sectionLines.join(" ");
+    const sectionRawText = sectionLines.join("\n");
 
     const gradeIndex = nameLine.search(/\s*\([A-Z]{1,4}\)/i);
     const csrIndex = nameLine.search(/\s+CSR\s*\d{1,3}\b/i);
@@ -1053,7 +2327,7 @@ function parseWheelingProgramOcrRunners(
         : null,
       weight: weightMatch?.[1] ?? null,
       csr: csrMatch?.[1] ?? null,
-      rawText: sectionText,
+      rawText: sectionRawText,
     });
   }
 
@@ -1103,9 +2377,695 @@ function programRunnerDescriptorScore(
   return score;
 }
 
+
+function inferProgramHistoryDate(
+  mmdd: string,
+  programDate: string | null,
+): string | null {
+  if (!programDate || !/^\d{4}-\d{2}-\d{2}$/.test(programDate)) {
+    return null;
+  }
+
+  const match = mmdd.match(/^(\d{2})\/(\d{2})$/);
+  if (!match) return null;
+
+  const program = new Date(`${programDate}T12:00:00Z`);
+  let year = program.getUTCFullYear();
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+
+  if (month > program.getUTCMonth() + 1) year -= 1;
+
+  const candidate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  return /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? candidate : null;
+}
+
+type ParsedRunningCalls = {
+  runningPositions: number[];
+  finishPosition: number | null;
+  marginText: string | null;
+};
+
+function parseProgramRunningCalls(
+  tail: string,
+  distanceYards: number | null = null,
+  trackCode: string | null = null,
+): ParsedRunningCalls {
+  const cleaned = cleanLine(tail);
+
+  /*
+   * Find the first final-time-looking token after the running calls.
+   * This is intentionally independent of CSR/odds because Wheeling OCR can
+   * merge those fields (for example "6831.10") while the call positions
+   * before the final time remain usable.
+   */
+  const finalTimeMatch =
+    cleaned.match(
+      /(?:^|\s)(OOP|\d{2}\.\d{2}|\d{4})(?=\s|$)/i,
+    );
+
+  if (
+    !finalTimeMatch ||
+    finalTimeMatch.index === undefined
+  ) {
+    return {
+      runningPositions: [],
+      finishPosition: null,
+      marginText: null,
+    };
+  }
+
+  let prefix =
+    cleaned
+      .slice(
+        0,
+        finalTimeMatch.index,
+      )
+      .trim();
+
+  /*
+   * Tri-State may place a split immediately before final time.
+   * It is not a running position.
+   */
+  if (
+    String(trackCode ?? "").toUpperCase() === "TS"
+  ) {
+    prefix =
+      prefix.replace(
+        /\s+\d{1,2}\.\d{2}$/,
+        "",
+      );
+  }
+
+  type ParsedCallToken = {
+    raw: string;
+    position: number;
+    suffix: string | null;
+  };
+
+  const parsedTokens: ParsedCallToken[] = [];
+
+  for (
+    const rawToken of
+    prefix
+      .split(/\s+/)
+      .filter(Boolean)
+  ) {
+    /*
+     * Normal compact calls:
+     *   3, 31½, 717, 45½
+     *
+     * OCR-damaged Wheeling compact calls can end in punctuation:
+     *   81:, 700%
+     * The first digit is still the official position.
+     */
+    const token =
+      rawToken
+        .replace(/^[^0-9]+/, "")
+        .replace(/[)\]}]+$/, "");
+
+    const match =
+      token.match(
+        /^([1-8])([0-9½¼¾A-Za-z:;%+.\-]*)$/i,
+      );
+
+    if (!match) {
+      continue;
+    }
+
+    /*
+     * The first digit is the running position. Wheeling's PDF frequently
+     * compresses the FINISH + MARGIN into one token:
+     *
+     *   813½ -> finish 8, margin 13½
+     *   717  -> finish 7, margin 17
+     *
+     * OCR can destroy the fraction/margin while leaving the finish digit:
+     *
+     *   813½ -> 81:
+     *   79½  -> 79:
+     *   75½  -> 75:
+     *
+     * In those damaged cases retain the position but do NOT invent a margin.
+     */
+    const rawSuffix =
+      match[2] || "";
+
+    const suffix =
+      rawSuffix &&
+      !/[:;%+]/.test(rawSuffix)
+        ? rawSuffix
+        : null;
+
+    parsedTokens.push({
+      raw: token,
+      position: Number(match[1]),
+      suffix,
+    });
+  }
+
+  /*
+   * Wheeling 330 uses three calls after the box.
+   * Wheeling 548 and the standard route use four.
+   * Do not manufacture a checkpoint that the source did not provide.
+   */
+  const expectedCallCount =
+    String(trackCode ?? "").toUpperCase() === "WD" &&
+    distanceYards === 330
+      ? 3
+      : 4;
+
+  const actualCalls =
+    parsedTokens.slice(
+      0,
+      Math.min(
+        expectedCallCount,
+        parsedTokens.length,
+      ),
+    );
+
+  const finishToken =
+    actualCalls[
+      actualCalls.length - 1
+    ] ?? null;
+
+  let marginText =
+    finishToken?.suffix ?? null;
+
+  /*
+   * Some 548/TS extractions separate the finish margin into the token
+   * immediately after the four running calls.
+   */
+  if (
+    !marginText &&
+    actualCalls.length === expectedCallCount &&
+    parsedTokens.length > expectedCallCount
+  ) {
+    const candidate =
+      parsedTokens[expectedCallCount];
+
+    if (candidate) {
+      marginText =
+        candidate.raw;
+    }
+  }
+
+  return {
+    runningPositions:
+      actualCalls.map(
+        (token) =>
+          token.position,
+      ),
+    finishPosition:
+      finishToken?.position ??
+      null,
+    marginText,
+  };
+}
+
+function normalizeProgramFinishTimeToken(
+  value: string | null | undefined,
+): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const token = cleanLine(value).toUpperCase();
+
+  if (token === "OOP") {
+    return "OOP";
+  }
+
+  if (/^\d{2}\.\d{2}$/.test(token)) {
+    return token;
+  }
+
+  /*
+   * Wheeling OCR frequently drops the decimal:
+   *   4045 -> 40.45
+   *   3950 -> 39.50
+   *   3889 -> 38.89
+   */
+  if (/^\d{4}$/.test(token)) {
+    return `${token.slice(0, 2)}.${token.slice(2)}`;
+  }
+
+  return null;
+}
+
+function normalizeWheelingProgramOddsToken(
+  value: string | null | undefined,
+): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const token =
+    cleanLine(value)
+      .replace(/\*+$/, "");
+
+  if (
+    token === "----"
+  ) {
+    return token;
+  }
+
+  if (
+    /^\.\d{1,2}$/.test(token) ||
+    /^\d{1,2}\.\d{1,2}$/.test(token)
+  ) {
+    return token;
+  }
+
+  /*
+   * OCR commonly removes the decimal specifically from the final-odds
+   * column. Because this helper is called only for that structural column,
+   * these repairs are safe:
+   *
+   *   430  -> 4.30
+   *   650  -> 6.50
+   *   1150 -> 11.50
+   */
+  if (/^\d{3}$/.test(token)) {
+    return `${token.slice(0, 1)}.${token.slice(1)}`;
+  }
+
+  if (/^\d{4}$/.test(token)) {
+    return `${token.slice(0, 2)}.${token.slice(2)}`;
+  }
+
+  return token;
+}
+
+function parseWheelingPastPerformances(
+  rawText: string,
+  programDate: string | null,
+): GreyhoundPastPerformance[] {
+  const normalized =
+    normalizeWhitespace(rawText);
+
+  const candidates =
+    new Set<string>();
+
+  for (
+    const line of
+    normalized
+      .split("\n")
+      .map(cleanLine)
+      .filter(Boolean)
+  ) {
+    candidates.add(line);
+  }
+
+  /*
+   * Wheeling OCR often flattens multiple past-performance rows into one
+   * runner section. Recover every dated row independently.
+   */
+  const flat =
+    cleanLine(normalized);
+
+  const rowRegex =
+    /(\d{2}\/\d{2})\s*([ASE])\s*(\d{1,2})\s+(WD|TS)\s+(\d{3,4})\s+([A-Z])\s+(\d{1,2}(?:\.\d+)?)\s+(\d{2})\s+([1-8])\s+(.+?)(?=\s+\d{2}\/\d{2}\s*[ASE]\s*\d{1,2}\s+(?:WD|TS)\b|$)/gi;
+
+  for (
+    const rowMatch of
+    flat.matchAll(rowRegex)
+  ) {
+    candidates.add(
+      cleanLine(rowMatch[0]),
+    );
+  }
+
+  const history: GreyhoundPastPerformance[] = [];
+  const seen = new Set<string>();
+
+  const expectedCallsForDistance = (
+    distanceYards: number,
+  ) => distanceYards === 330 ? 3 : 4;
+
+  const parseCallToken = (
+    token: string,
+  ): {
+    position: number;
+    marginText: string | null;
+  } | null => {
+    const match = cleanLine(token).match(
+      /^([1-8])([0-9½¼¾A-Za-z:;%+.\-]*)$/i,
+    );
+
+    if (!match) return null;
+
+    const suffix = match[2] ?? "";
+
+    /*
+     * Wheeling compresses finish + margin into one token. OCR damage such
+     * as 79:, 75:, 813:, 88+ still leaves a trustworthy first digit.
+     * Keep that finish position, but never invent the damaged margin.
+     */
+    const marginText =
+      suffix &&
+      !/[:;%+]/.test(suffix) &&
+      /^(?:\d+(?:½|¼|¾)?|½|¼|¾|nk|ns|hd|n|h)$/i.test(suffix)
+        ? suffix
+        : null;
+
+    return {
+      position: Number(match[1]),
+      marginText,
+    };
+  };
+
+  const normalizeFinalTime = (
+    token: string | null,
+    distanceYards: number,
+  ): number | null => {
+    if (!token) return null;
+
+    if (/^\d{2}\.\d{2}$/.test(token)) {
+      return Number(token);
+    }
+
+    if (/^\d{4}$/.test(token)) {
+      const repaired =
+        Number(`${token.slice(0, 2)}.${token.slice(2)}`);
+
+      const plausible =
+        distanceYards === 330
+          ? repaired >= 16 && repaired <= 21
+          : distanceYards >= 650
+            ? repaired >= 34 && repaired <= 45
+            : repaired >= 27 && repaired <= 36;
+
+      return plausible ? repaired : null;
+    }
+
+    return null;
+  };
+
+  const normalizeOdds = (
+    token: string | null,
+  ): string | null => {
+    if (!token) return null;
+
+    const cleaned =
+      cleanLine(token).replace(/\*+$/, "");
+
+    if (
+      cleaned === "----" ||
+      /^\.\d{1,2}$/.test(cleaned) ||
+      /^\d{1,2}\.\d{1,2}$/.test(cleaned)
+    ) {
+      return cleaned;
+    }
+
+    // Decimal dropped specifically from Wheeling's final-odds column.
+    if (/^\d{3}$/.test(cleaned)) {
+      return `${cleaned[0]}.${cleaned.slice(1)}`;
+    }
+
+    if (/^\d{4}$/.test(cleaned)) {
+      return `${cleaned.slice(0, 2)}.${cleaned.slice(2)}`;
+    }
+
+    return cleaned;
+  };
+
+  for (const line of candidates) {
+    const match =
+      line.match(
+        /^(\d{2}\/\d{2})\s*([ASE])\s*(\d{1,2})\s+(WD|TS)\s+(\d{3,4})\s+([A-Z])\s+(\d{1,2}(?:\.\d+)?)\s+(\d{2})\s+([1-8])\s+(.+)$/i,
+      );
+
+    if (!match) continue;
+
+    const raceDate =
+      inferProgramHistoryDate(
+        match[1],
+        programDate,
+      );
+
+    const performanceCode =
+      `${match[2].toUpperCase()}${match[3]}`;
+
+    const trackCode =
+      match[4].toUpperCase();
+
+    const distanceYards =
+      Number(match[5]);
+
+    const tail =
+      cleanLine(match[10]);
+
+    const tokens =
+      tail.split(/\s+/).filter(Boolean);
+
+    const expectedCalls =
+      expectedCallsForDistance(
+        distanceYards,
+      );
+
+    const callTokens =
+      tokens.slice(0, expectedCalls);
+
+    const parsedCalls =
+      callTokens.map(parseCallToken);
+
+    const structuralCallsValid =
+      parsedCalls.length === expectedCalls &&
+      parsedCalls.every(
+        (row) => row !== null,
+      );
+
+    const structuralCalls =
+      structuralCallsValid
+        ? parsedCalls.filter(
+            (
+              row,
+            ): row is {
+              position: number;
+              marginText: string | null;
+            } => row !== null,
+          )
+        : [];
+
+    const fallbackCalls =
+      parseProgramRunningCalls(
+        tail,
+        distanceYards,
+        trackCode,
+      );
+
+    const runningPositions =
+      structuralCalls.length > 0
+        ? structuralCalls.map(
+            (row) => row.position,
+          )
+        : fallbackCalls.runningPositions;
+
+    const finishPosition =
+      structuralCalls.length > 0
+        ? structuralCalls.at(-1)?.position ?? null
+        : fallbackCalls.finishPosition;
+
+    const marginText =
+      structuralCalls.length > 0
+        ? structuralCalls.at(-1)?.marginText ?? null
+        : fallbackCalls.marginText;
+
+    /*
+     * Once the expected running-call columns are consumed, parse the
+     * remaining Wheeling columns by POSITION. This handles OCR-dropped
+     * decimals such as:
+     *
+     *   1825 -> 18.25
+     *   4045 -> 40.45
+     *   430  -> 4.30 odds
+     *   650  -> 6.50 odds
+     */
+    let cursor =
+      structuralCalls.length > 0
+        ? expectedCalls
+        : -1;
+
+    let finishTime: number | null = null;
+    let speedRating: number | null = null;
+    let odds: string | null = null;
+    let grade: string | null = null;
+    let comment: string | null = null;
+
+    if (cursor >= 0) {
+      finishTime =
+        normalizeFinalTime(
+          tokens[cursor] ?? null,
+          distanceYards,
+        );
+
+      if (finishTime !== null) {
+        cursor += 1;
+
+        const speedToken =
+          tokens[cursor] ?? null;
+
+        if (
+          speedToken &&
+          /^\d{1,3}$/.test(speedToken)
+        ) {
+          speedRating =
+            Number(speedToken);
+          cursor += 1;
+        }
+
+        const oddsToken =
+          tokens[cursor] ?? null;
+
+        if (oddsToken) {
+          odds =
+            normalizeOdds(oddsToken);
+          cursor += 1;
+        }
+
+        const gradeToken =
+          tokens[cursor] ?? null;
+
+        if (
+          gradeToken &&
+          /^[A-Z-]{1,4}$/i.test(
+            gradeToken,
+          )
+        ) {
+          grade =
+            gradeToken.toUpperCase();
+          cursor += 1;
+        }
+
+        comment =
+          tokens
+            .slice(cursor)
+            .join(" ")
+            .trim() || null;
+      }
+    }
+
+    /*
+     * Fall back to the older metadata extraction only when structural
+     * parsing could not recover that field.
+     */
+    const tailMatch =
+      tail.match(
+        /(?:^|\s)(\d{2}\.\d{2}|\d{4}|OOP)\s+(\d{1,3})\s+((?:(?:\d+(?:\.\d+)?)|(?:\.\d+)|\d{3,4})\*?|----)\s+([A-Z-]{1,4})\s+(.+)$/i,
+      );
+
+    const looseTailMatch =
+      tail.match(
+        /(?:^|\s)(\d{2}\.\d{2}|\d{4}|OOP)\s+(.+?)\s+([A-Z-]{1,4})\s+([A-Za-z].*)$/i,
+      );
+
+    if (finishTime === null) {
+      const finishTimeText =
+        normalizeProgramFinishTimeToken(
+          tailMatch?.[1] ??
+          looseTailMatch?.[1] ??
+          null,
+        );
+
+      if (
+        finishTimeText &&
+        /^\d{2}\.\d{2}$/.test(
+          finishTimeText,
+        )
+      ) {
+        finishTime =
+          Number(finishTimeText);
+      }
+    }
+
+    if (
+      speedRating === null &&
+      tailMatch?.[2]
+    ) {
+      speedRating =
+        Number(tailMatch[2]);
+    }
+
+    if (!odds) {
+      odds =
+        normalizeOdds(
+          tailMatch?.[3] ?? null,
+        );
+    }
+
+    if (!grade) {
+      grade =
+        (
+          tailMatch?.[4] ??
+          looseTailMatch?.[3] ??
+          null
+        )?.toUpperCase() ?? null;
+    }
+
+    if (!comment) {
+      comment =
+        cleanLine(
+          tailMatch?.[5] ??
+          looseTailMatch?.[4] ??
+          "",
+        ) || null;
+    }
+
+    const sourceKey = [
+      raceDate,
+      performanceCode,
+      trackCode,
+      distanceYards,
+      match[9],
+    ].join("|");
+
+    if (seen.has(sourceKey)) {
+      continue;
+    }
+
+    seen.add(sourceKey);
+
+    history.push({
+      raceDate,
+      performanceCode,
+      trackCode,
+      distanceYards,
+      condition:
+        match[6].toUpperCase(),
+      weight:
+        Number(match[8]),
+      boxNumber:
+        Number(match[9]),
+      runningPositions,
+      finishPosition,
+      marginText,
+      finishTime,
+      speedRating,
+      odds,
+      grade,
+      comment,
+      rawText:
+        line,
+    });
+  }
+
+  return history
+    .sort((a, b) =>
+      String(
+        b.raceDate ?? "",
+      ).localeCompare(
+        String(
+          a.raceDate ?? "",
+        ),
+      ),
+    )
+    .slice(0, 12);
+}
 function parseWheelingProgramRunners(
   ocrBlock: string,
   nativeBlock = "",
+  programDate: string | null = null,
 ): GreyhoundRunner[] {
   const ocrRunners = parseWheelingProgramOcrRunners(ocrBlock);
   const descriptors = parseWheelingProgramNativeTraps(nativeBlock || ocrBlock);
@@ -1152,6 +3112,53 @@ function parseWheelingProgramRunners(
       unused.delete(descriptor.trapNumber);
     }
 
+    const historyByKey =
+      new Map<string, GreyhoundPastPerformance>();
+
+    for (const performance of [
+      ...parseWheelingPastPerformances(
+        ocrRunner.rawText,
+        programDate,
+      ),
+      ...parseWheelingPastPerformances(
+        descriptor?.rawText ?? "",
+        programDate,
+      ),
+      ...parseWheelingPastPerformances(
+        [descriptor?.rawText, ocrRunner.rawText]
+          .filter(Boolean)
+          .join(" "),
+        programDate,
+      ),
+    ]) {
+      const key = [
+        performance.raceDate,
+        performance.performanceCode,
+        performance.trackCode,
+        performance.distanceYards,
+        performance.boxNumber,
+      ].join("|");
+
+      const existing = historyByKey.get(key);
+
+      /*
+       * Keep the richer copy when native and OCR extraction both found the
+       * same historical start.
+       */
+      const quality = (row: GreyhoundPastPerformance) =>
+        row.runningPositions.length * 5 +
+        (row.finishPosition !== null ? 3 : 0) +
+        (row.finishTime !== null ? 3 : 0) +
+        (row.speedRating !== null ? 1 : 0) +
+        (row.odds ? 1 : 0) +
+        (row.grade ? 1 : 0) +
+        (row.comment ? 1 : 0);
+
+      if (!existing || quality(performance) > quality(existing)) {
+        historyByKey.set(key, performance);
+      }
+    }
+
     runners.push({
       trapNumber,
       trapColor:
@@ -1175,6 +3182,13 @@ function parseWheelingProgramRunners(
       rawText: [descriptor?.rawText, ocrRunner.rawText]
         .filter(Boolean)
         .join(" || "),
+      history: Array.from(historyByKey.values())
+        .sort((a, b) =>
+          String(b.raceDate ?? "").localeCompare(
+            String(a.raceDate ?? ""),
+          ),
+        )
+        .slice(0, 12),
     });
   }
 
@@ -1205,6 +3219,8 @@ function parseWheelingProgramPage(
     /\b(\d{3,4})\s+YARDS?\s+GRADE\s+([A-Z]{1,4}\d{0,2})\b/i,
   );
 
+  const raceDate = parseDate(metadataText);
+
   const explicitPostTime = metadataText.match(
     /\bPost\s*Time\s*:\s*(\d{1,2}):(\d{2})\s*(AM|PM)\b/i,
   );
@@ -1212,14 +3228,14 @@ function parseWheelingProgramPage(
   return {
     track: "Wheeling",
     raceNumber,
-    raceDate: parseDate(metadataText),
+    raceDate,
     raceTime: explicitPostTime
       ? normalizeClockTime(
           explicitPostTime[1],
           explicitPostTime[2],
           explicitPostTime[3],
         )
-      : null,
+      : getWheelingScheduledRaceTime(raceNumber, metadataText),
     grade: headerMatch?.[2]?.toUpperCase() ?? parseGrade(metadataText),
     distance: headerMatch?.[1]
       ? `${headerMatch[1]} Yards`
@@ -1227,7 +3243,7 @@ function parseWheelingProgramPage(
     prizeMoney: parsePrizeMoney(metadataText),
     weather: parseWeather(metadataText),
     trackCondition: parseTrackCondition(metadataText),
-    runners: parseWheelingProgramRunners(ocr, native),
+    runners: parseWheelingProgramRunners(ocr, native, raceDate),
     rawText: [native, ocr ? `===== OCR PAGE =====\n${ocr}` : ""]
       .filter(Boolean)
       .join("\n\n"),
@@ -1288,7 +3304,7 @@ function splitRaceBlocks(text: string): string[] {
   }
 
   const programHeaderRegex =
-    /\bWHEELING\s+(?:FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH|NINTH|TENTH|ELEVENTH|TWELFTH|THIRTEENTH|FOURTEENTH|FIFTEENTH|SIXTEENTH|SEVENTEENTH)\s+RACE(?:\s+WHEELING)?\b/gi;
+    /\b(?:WHEELING|TRI[\s-]?STATE)\s+(?:FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH|NINTH|TENTH|ELEVENTH|TWELFTH|THIRTEENTH|FOURTEENTH|FIFTEENTH|SIXTEENTH|SEVENTEENTH)\s+RACE(?:\s+(?:WHEELING|TRI[\s-]?STATE))?\b/gi;
 
   while ((match = programHeaderRegex.exec(normalized)) !== null) {
     indexes.push(match.index);
@@ -1343,7 +3359,7 @@ function extractRaceNumber(block: string): number | null {
   }
 
   const programMatch = block.match(
-    /\bWHEELING\s+(FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH|NINTH|TENTH|ELEVENTH|TWELFTH|THIRTEENTH|FOURTEENTH|FIFTEENTH|SIXTEENTH|SEVENTEENTH)\s+RACE\b/i,
+    /\b(?:WHEELING|TRI[\s-]?STATE)\s+(FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH|NINTH|TENTH|ELEVENTH|TWELFTH|THIRTEENTH|FOURTEENTH|FIFTEENTH|SIXTEENTH|SEVENTEENTH)\s+RACE\b/i,
   );
 
   if (programMatch) {
@@ -1373,11 +3389,11 @@ function parseRaceCardText(
 
   const globalTrack = /\bWHEELING\b/i.test(normalized)
     ? "Wheeling"
-    : "";
+    : /\bTRI[\s-]?STATE\b/i.test(normalized)
+      ? "Tri-State"
+      : "";
   const globalDate = parseDate(normalized);
-  const wheelingFirstPost = /\bWHEELING\b/i.test(normalized)
-    ? parseRaceTime(normalized)
-    : null;
+  const isWheelingCard = /\bWHEELING\b/i.test(normalized);
 
   let lastTrack = globalTrack;
 
@@ -1408,12 +3424,9 @@ function parseRaceCardText(
           : track,
       raceNumber,
       raceDate: parseDate(block) ?? globalDate,
-      raceTime:
-        /\bWHEELING\b/i.test(normalized)
-          ? raceNumber === 1
-            ? wheelingFirstPost
-            : null
-          : parseRaceTime(block),
+      raceTime: isWheelingCard
+        ? getWheelingScheduledRaceTime(raceNumber, block)
+        : parseRaceTime(block),
       grade: parseGrade(block),
       distance: parseDistance(block),
       prizeMoney: parsePrizeMoney(block),
@@ -1505,6 +3518,11 @@ function mergeRaceRunners(
       form: preferred.form ?? fallback.form,
       odds: preferred.odds ?? fallback.odds,
       rawText: preferred.rawText ?? fallback.rawText,
+      history:
+        (preferred.history?.length ?? 0) >=
+        (fallback.history?.length ?? 0)
+          ? preferred.history
+          : fallback.history,
     });
   }
 
@@ -1577,6 +3595,108 @@ function mergeParsedRaces(
   });
 }
 
+function sessionFromFirstPostTime(
+  value: string | null | undefined,
+): "morning" | "afternoon" | "evening" | null {
+  if (!value) {
+    return null;
+  }
+
+  const match =
+    value.match(
+      /^(\d{1,2}):(\d{2})/,
+    );
+
+  if (!match) {
+    return null;
+  }
+
+  const hour =
+    Number(match[1]);
+
+  if (!Number.isFinite(hour)) {
+    return null;
+  }
+
+  if (hour < 12) {
+    return "morning";
+  }
+
+  if (hour >= 17) {
+    return "evening";
+  }
+
+  return "afternoon";
+}
+
+
+function getCardFirstPostTime(
+  races: ParsedGreyhoundRace[],
+): string | null {
+  const firstRace =
+    [...races]
+      .sort(
+        (a, b) =>
+          a.raceNumber -
+          b.raceNumber,
+      )[0];
+
+  return firstRace?.raceTime ?? null;
+}
+
+
+function inferCardSession(
+  races: ParsedGreyhoundRace[],
+  expectedSession?: string,
+): "morning" | "afternoon" | "evening" | "night" {
+  const explicit =
+    cleanLine(
+      expectedSession ?? "",
+    ).toLowerCase();
+
+  if (
+    explicit === "morning" ||
+    explicit === "afternoon" ||
+    explicit === "evening" ||
+    explicit === "night"
+  ) {
+    return explicit;
+  }
+
+  const fromFirstPost =
+    sessionFromFirstPostTime(
+      getCardFirstPostTime(
+        races,
+      ),
+    );
+
+  if (fromFirstPost) {
+    return fromFirstPost;
+  }
+
+  const firstRace =
+    [...races]
+      .sort(
+        (a, b) =>
+          a.raceNumber -
+          b.raceNumber,
+      )[0];
+
+  const trackCode =
+    firstRace
+      ? normalizeTrackCode(
+          firstRace.track,
+        )
+      : null;
+
+  if (trackCode === "GTS") {
+    return "evening";
+  }
+
+  return "afternoon";
+}
+
+
 function formatStage(stage: ProcessingStage): string {
   switch (stage) {
     case "reading":
@@ -1591,6 +3711,8 @@ function formatStage(stage: ProcessingStage): string {
       return "Parsing race card...";
     case "importing":
       return "Saving race...";
+    case "deleting":
+      return "Deleting saved card...";
     default:
       return "";
   }
@@ -1629,6 +3751,14 @@ export default function GreyhoundRaceCardImporter({
   const [pageCount, setPageCount] = useState(0);
 
   const busy = stage !== "idle";
+
+  const refreshRaceCardManagement = () => {
+    if (typeof window === "undefined") return;
+
+    window.setTimeout(() => {
+      window.location.reload();
+    }, 450);
+  };
 
   const selectedRace = useMemo(() => {
     if (selectedRaceIndex === null) {
@@ -1798,11 +3928,14 @@ export default function GreyhoundRaceCardImporter({
         /\bWHEELING\b/i.test(nativeText);
       const isWheelingProgram =
         isWheelingProgramText(nativeText);
+      const isTriStateProgram =
+        isTriStateProgramText(nativeText);
       const isWheelingEntriesCard =
         isWheelingCard && !isWheelingProgram;
 
       const needsOcr =
         isWheelingCard ||
+        isTriStateProgram ||
         sparsePages.length > 0 ||
         nativeText.length < MIN_NATIVE_TEXT_LENGTH ||
         nativeRaces.length === 0 ||
@@ -1820,7 +3953,7 @@ export default function GreyhoundRaceCardImporter({
       setUsedOcr(true);
       setProgress(48);
 
-      const { createWorker } = await import("tesseract.js");
+      const { createWorker, PSM } = await import("tesseract.js");
 
       const worker = await createWorker(
         "eng",
@@ -1850,12 +3983,19 @@ export default function GreyhoundRaceCardImporter({
         },
       );
 
+      if (isTriStateProgram) {
+        await worker.setParameters({
+          tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+        });
+      }
+
       const ocrPageTexts: string[] = [];
       const ocrPageTextByPage = new Map<number, string>();
 
       try {
         const pagesToOcr =
           isWheelingCard ||
+          isTriStateProgram ||
           nativeRaces.length === 0 ||
           nativeRaces.some(
             (race) => race.runners.length === 0,
@@ -2026,7 +4166,7 @@ export default function GreyhoundRaceCardImporter({
       setStage("parsing");
       setProgress(94);
 
-      const mergedRaces = isWheelingProgram
+      let mergedRaces = isWheelingProgram
         ? nativePageTexts
             .map((nativePageText, index) =>
               parseWheelingProgramPage(
@@ -2039,10 +4179,1319 @@ export default function GreyhoundRaceCardImporter({
               (race): race is ParsedGreyhoundRace => race !== null,
             )
             .sort((a, b) => a.raceNumber - b.raceNumber)
-        : mergeParsedRaces(
-            nativeRaces,
-            parseRaceCardText(ocrText),
+        : isTriStateProgram
+          ? nativePageTexts
+              .map((nativePageText, index) =>
+                parseTriStateProgramPage(
+                  nativePageText,
+                  ocrPageTextByPage.get(index + 1) ?? "",
+                  index + 1,
+                ),
+              )
+              .filter(
+                (race): race is ParsedGreyhoundRace => race !== null,
+              )
+              .sort((a, b) => a.raceNumber - b.raceNumber)
+          : mergeParsedRaces(
+              nativeRaces,
+              parseRaceCardText(ocrText),
+            );
+
+      let currentCardAuthoritativeEntries: GreyhoundAuthoritativeEntry[] = [];
+      let currentCardAuthoritativeTrackCode: "GWD" | "GTS" | null = null;
+
+      /*
+       * CURRENT-CARD DOG IDENTITY — OFFICIAL ENTRIES PDF IS AUTHORITATIVE
+       *
+       * This applies to BOTH Tri-State and Wheeling.
+       *
+       * Match strictly by:
+       *   track + race date + session + Race + Box
+       *
+       * The Full Program PDF may supply grade, distance, Past Performances,
+       * runner-block images and the full official page, but it must NEVER
+       * replace the dog identity already imported from Entries.
+       *
+       * Wheeling can contain legitimate vacant / NO GREYHOUND boxes. Those
+       * boxes have no authoritative dog row and therefore are not turned into
+       * fake greyhounds.
+       */
+      if (
+        (isTriStateProgram || isWheelingProgram) &&
+        mergedRaces.length > 0
+      ) {
+        const trackCode: "GWD" | "GTS" =
+          isWheelingProgram ? "GWD" : "GTS";
+
+        const trackLabel =
+          trackCode === "GWD" ? "Wheeling" : "Tri-State";
+
+        const raceDate =
+          mergedRaces.find((race) => Boolean(race.raceDate))?.raceDate ??
+          null;
+
+        const session = inferCardSession(
+          mergedRaces,
+          expectedSession,
+        );
+
+        if (!raceDate) {
+          throw new Error(
+            `${trackLabel} Program date could not be determined, so authoritative Entries cannot be matched.`,
           );
+        }
+
+        const params = new URLSearchParams({
+          leagueId,
+          trackCode,
+          raceDate,
+          session,
+        });
+
+        const authoritativeResponse = await fetch(
+          `/api/greyhound/entries/import?${params.toString()}`,
+          { method: "GET", cache: "no-store" },
+        );
+
+        const authoritativePayload =
+          (await authoritativeResponse.json().catch(() => ({}))) as {
+            success?: boolean;
+            entries?: GreyhoundAuthoritativeEntry[];
+            error?: string;
+            message?: string;
+          };
+
+        if (
+          !authoritativeResponse.ok ||
+          authoritativePayload.success !== true
+        ) {
+          throw new Error(
+            authoritativePayload.error ??
+              authoritativePayload.message ??
+              `Could not load authoritative ${trackLabel} Entries.`,
+          );
+        }
+
+        const authoritativeEntries =
+          authoritativePayload.entries ?? [];
+
+        /*
+         * Preserve the exact display names returned by the Entries API.
+         * Do not normalize, concatenate, title-case, or rebuild dogName.
+         * Internal spaces from the authoritative Entries import are retained.
+         */
+        currentCardAuthoritativeEntries = authoritativeEntries;
+        currentCardAuthoritativeTrackCode = trackCode;
+
+        if (authoritativeEntries.length === 0) {
+          throw new Error(
+            `${trackLabel} Program import requires the official Entries PDF to be imported first. No authoritative Entries were found for ${raceDate} (${session}).`,
+          );
+        }
+
+        /*
+         * Tri-State has a fixed 14 x 8 = 112 current-card runners.
+         * Keep that proven validation unchanged.
+         *
+         * Wheeling is deliberately NOT required to have 136 dog rows because
+         * official stakes races can contain vacant / NO GREYHOUND boxes.
+         */
+        if (
+          trackCode === "GTS" &&
+          authoritativeEntries.length !== 112
+        ) {
+          throw new Error(
+            `Tri-State Program import requires 112 authoritative Entries. Found ${authoritativeEntries.length}.`,
+          );
+        }
+
+        const authoritativeRaceNumbers = new Set(
+          authoritativeEntries.map((entry) => entry.raceNumber),
+        );
+
+        const racesMissingEntries = mergedRaces
+          .filter(
+            (race) =>
+              !authoritativeRaceNumbers.has(race.raceNumber),
+          )
+          .map((race) => race.raceNumber);
+
+        if (racesMissingEntries.length > 0) {
+          throw new Error(
+            `${trackLabel} Program does not match the imported Entries card. No authoritative dog rows were found for Race ${racesMissingEntries.join(", Race ")}.`,
+          );
+        }
+
+        /*
+         * Verify every authoritative Entries dog has a legal Race + Box key.
+         * Do not require all eight boxes at Wheeling because vacancies are real.
+         */
+        const invalidAuthoritative = authoritativeEntries.filter(
+          (entry) =>
+            !Number.isInteger(entry.raceNumber) ||
+            entry.raceNumber < 1 ||
+            !Number.isInteger(entry.boxNumber) ||
+            entry.boxNumber < 1 ||
+            entry.boxNumber > 8 ||
+            !Number.isFinite(entry.dogId) ||
+            entry.dogId <= 0 ||
+            !entry.dogName?.trim(),
+        );
+
+        if (invalidAuthoritative.length > 0) {
+          throw new Error(
+            `${trackLabel} Entries contain ${invalidAuthoritative.length} invalid Race + Box dog mapping${invalidAuthoritative.length === 1 ? "" : "s"}. Re-import the official Entries PDF before importing the Program.`,
+          );
+        }
+
+        const duplicateKeys = new Set<string>();
+        const seenKeys = new Set<string>();
+
+        for (const entry of authoritativeEntries) {
+          const key = `${entry.raceNumber}:${entry.boxNumber}`;
+
+          if (seenKeys.has(key)) {
+            duplicateKeys.add(key);
+          }
+
+          seenKeys.add(key);
+        }
+
+        if (duplicateKeys.size > 0) {
+          throw new Error(
+            `${trackLabel} Entries contain duplicate Race + Box mappings: ${Array.from(duplicateKeys)
+              .map((key) => {
+                const [raceNumber, boxNumber] = key.split(":");
+                return `Race ${raceNumber} Box ${boxNumber}`;
+              })
+              .join(", ")}.`,
+          );
+        }
+
+        mergedRaces = applyAuthoritativeEntries(
+          mergedRaces,
+          authoritativeEntries,
+          trackCode,
+        );
+
+        /*
+         * After rebuilding, every current runner now comes from Entries.
+         * Program OCR can no longer shift one dog's identity into another box.
+         */
+        const unresolved = mergedRaces.flatMap((race) =>
+          race.runners
+            .filter(
+              (runner) =>
+                runner.trapNumber === null ||
+                !runner.name?.trim(),
+            )
+            .map(
+              (runner) =>
+                `Race ${race.raceNumber} Box ${runner.trapNumber ?? "?"}`,
+            ),
+        );
+
+        if (unresolved.length > 0) {
+          throw new Error(
+            `${trackLabel} Program could not resolve authoritative Entries identity for ${unresolved.join(", ")}.`,
+          );
+        }
+      }
+
+      /*
+       * OFFICIAL FULL PROGRAM PAGE ARCHIVE
+       *
+       * Both supported tracks use one race per PDF page:
+       *   Page 1 = Race 1, Page 2 = Race 2, ... Page N = Race N.
+       *
+       * Preserve the ENTIRE rendered page once on its race. This is the source
+       * displayed beneath the eight runners in My Wagers. No dog-block crop,
+       * OCR name, odds marker, or Past Performances tab is required for display.
+       */
+      if (isWheelingProgram || isTriStateProgram) {
+        for (
+          let pageNumber = 1;
+          pageNumber <= pdf.numPages;
+          pageNumber += 1
+        ) {
+          const raceForPage = mergedRaces.find(
+            (race) => race.raceNumber === pageNumber,
+          );
+
+          if (!raceForPage) {
+            continue;
+          }
+
+          const page = await pdf.getPage(pageNumber);
+          const viewport = page.getViewport({
+            scale: PDF_RENDER_SCALE,
+          });
+          const pageCanvas = document.createElement("canvas");
+          const pageContext = pageCanvas.getContext("2d", {
+            alpha: false,
+          });
+
+          if (!pageContext) {
+            throw new Error(
+              `Could not create the official Program image for Race ${pageNumber}.`,
+            );
+          }
+
+          pageCanvas.width = Math.ceil(viewport.width);
+          pageCanvas.height = Math.ceil(viewport.height);
+
+          pageContext.fillStyle = "#ffffff";
+          pageContext.fillRect(
+            0,
+            0,
+            pageCanvas.width,
+            pageCanvas.height,
+          );
+
+          await page.render({
+            canvas: pageCanvas,
+            canvasContext: pageContext,
+            viewport,
+          }).promise;
+
+          raceForPage.programPageImageDataUrl =
+            pageCanvas.toDataURL("image/png");
+
+          pageCanvas.width = 1;
+          pageCanvas.height = 1;
+        }
+      }
+
+      const recoverTriStateNameFromExactCrop = async (
+        cropCanvas: HTMLCanvasElement,
+        worker: Awaited<ReturnType<typeof createWorker>>,
+        knownRaceNames: string[],
+      ): Promise<string | null> => {
+        /*
+         * Verified against the actual Sep. 15 Tri-State PDF:
+         *
+         * page width = 594 PDF points
+         * trap number starts around x=44
+         * bold dog name begins around x=58
+         * the next statistical/header columns begin around x=250
+         *
+         * The bold dog names themselves are NOT exposed by the PDF text layer
+         * even though the trap number and surrounding statistics are. So OCR
+         * only this exact printed name strip. No history/comments/trainer text
+         * can enter this rectangle.
+         */
+        const sourceScale =
+          cropCanvas.width / 594;
+
+        const sx = Math.max(
+          0,
+          Math.floor(57 * sourceScale),
+        );
+        /*
+         * With the 16-point block top pad, the bold name is now actually
+         * present near the top of this crop. Read a slightly taller strip to
+         * cover font ascenders/descenders without reaching Trainer/history.
+         */
+        const sy = Math.max(
+          0,
+          Math.floor(1 * sourceScale),
+        );
+        const sw = Math.min(
+          cropCanvas.width - sx,
+          Math.ceil((250 - 57) * sourceScale),
+        );
+        const sh = Math.min(
+          cropCanvas.height - sy,
+          Math.ceil(24 * sourceScale),
+        );
+
+        if (sw <= 0 || sh <= 0) {
+          return null;
+        }
+
+        const nameCanvas =
+          document.createElement("canvas");
+
+        /*
+         * The source is already rendered at PDF_RENDER_SCALE. Enlarge the
+         * isolated bold-name strip another 4x for Tesseract.
+         */
+        const upscale = 4;
+        nameCanvas.width = sw * upscale;
+        nameCanvas.height = sh * upscale;
+
+        const context =
+          nameCanvas.getContext("2d", {
+            alpha: false,
+          });
+
+        if (!context) {
+          return null;
+        }
+
+        context.fillStyle = "#ffffff";
+        context.fillRect(
+          0,
+          0,
+          nameCanvas.width,
+          nameCanvas.height,
+        );
+        context.imageSmoothingEnabled = true;
+        context.drawImage(
+          cropCanvas,
+          sx,
+          sy,
+          sw,
+          sh,
+          0,
+          0,
+          nameCanvas.width,
+          nameCanvas.height,
+        );
+
+        await worker.setParameters({
+          tessedit_pageseg_mode: PSM.SINGLE_LINE,
+          preserve_interword_spaces: "1",
+          tessedit_char_whitelist:
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'-. ",
+        });
+
+        const result =
+          await worker.recognize(nameCanvas);
+
+        nameCanvas.width = 1;
+        nameCanvas.height = 1;
+
+        const raw = cleanLine(
+          (result.data.text ?? "")
+            .replace(/\r/g, " ")
+            .replace(/\n/g, " "),
+        )
+          .replace(/^\s*[1-8]\s+/, "")
+          .replace(
+            /\s+(?:TS|WD|Kennel|Trainer|Weight|Odds)\b.*$/i,
+            "",
+          )
+          .trim();
+
+        const cleaned =
+          cleanTriStateRecoveredDogNameBoundary(
+            raw,
+            knownRaceNames,
+          );
+
+        if (
+          !cleaned ||
+          !looksLikeTriStateDogName(cleaned) ||
+          /^Tri-State Box \d+$/i.test(cleaned) ||
+          /\d/.test(cleaned)
+        ) {
+          return null;
+        }
+
+        return cleaned;
+      };
+
+      const recoverTriStateNameFromProgramImage = async (
+        pageCanvas: HTMLCanvasElement,
+        trapNumber: number,
+        worker: Awaited<ReturnType<typeof createWorker>>,
+      ): Promise<string | null> => {
+        /*
+         * Verified from the ACTUAL uploaded Tri-State PDF object structure:
+         *
+         * Each current dog name is its own embedded image object.
+         * Page 1 name-image bounding boxes are exactly:
+         *   trap 1: (57,  77) -> (242,  93)
+         *   trap 2: (57, 157) -> (242, 173)
+         *   trap 3: (57, 237) -> (242, 253)
+         *   ...
+         *   trap 8: (57, 637) -> (242, 653)
+         *
+         * So do NOT infer the name from text, comments, trainer, or a runner
+         * crop. Read the exact embedded-name rectangle directly from the
+         * rendered official program page.
+         */
+        if (
+          trapNumber < 1 ||
+          trapNumber > 8
+        ) {
+          return null;
+        }
+
+        const pageScale =
+          pageCanvas.width / 594;
+
+        const pdfX1 = 57;
+        const pdfX2 = 242;
+        const pdfY1 =
+          77 + (trapNumber - 1) * 80;
+        const pdfY2 = pdfY1 + 16;
+
+        const sx = Math.round(
+          pdfX1 * pageScale,
+        );
+        const sy = Math.round(
+          pdfY1 * pageScale,
+        );
+        const sw = Math.round(
+          (pdfX2 - pdfX1) * pageScale,
+        );
+        const sh = Math.round(
+          (pdfY2 - pdfY1) * pageScale,
+        );
+
+        if (
+          sx < 0 ||
+          sy < 0 ||
+          sw <= 0 ||
+          sh <= 0 ||
+          sx + sw > pageCanvas.width ||
+          sy + sh > pageCanvas.height
+        ) {
+          return null;
+        }
+
+        const nameCanvas =
+          document.createElement("canvas");
+
+        const upscale = 5;
+        nameCanvas.width = sw * upscale;
+        nameCanvas.height = sh * upscale;
+
+        const context =
+          nameCanvas.getContext("2d", {
+            alpha: false,
+          });
+
+        if (!context) {
+          return null;
+        }
+
+        context.fillStyle = "#ffffff";
+        context.fillRect(
+          0,
+          0,
+          nameCanvas.width,
+          nameCanvas.height,
+        );
+        context.imageSmoothingEnabled = true;
+        context.drawImage(
+          pageCanvas,
+          sx,
+          sy,
+          sw,
+          sh,
+          0,
+          0,
+          nameCanvas.width,
+          nameCanvas.height,
+        );
+
+        await worker.setParameters({
+          tessedit_pageseg_mode:
+            PSM.SINGLE_LINE,
+          preserve_interword_spaces: "1",
+          tessedit_char_whitelist:
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'-. ",
+        });
+
+        const result =
+          await worker.recognize(
+            nameCanvas,
+          );
+
+        nameCanvas.width = 1;
+        nameCanvas.height = 1;
+
+        const name = cleanLine(
+          (result.data.text ?? "")
+            .replace(/\r/g, " ")
+            .replace(/\n/g, " "),
+        ).trim();
+
+        if (
+          !name ||
+          name.length < 2 ||
+          /\d/.test(name) ||
+          !/[A-Za-z]/.test(name)
+        ) {
+          return null;
+        }
+
+        return name;
+      };
+
+      /*
+       * Preserve the EXACT visual dog block from the imported official PDF.
+       *
+       * IMPORTANT: crop boundaries are located from each trap's stable
+       * morning-line/box/color marker, NOT from the parsed dog name. That
+       * means a damaged OCR name cannot cause the wrong dog's program block
+       * to be saved.
+       *
+       * For Tri-State, after the exact band is cropped we OCR only the header
+       * portion of that band. This is the authoritative name-recovery fallback
+       * for boxes whose full-page OCR missed the dog name.
+       */
+      if (isWheelingProgram || isTriStateProgram) {
+        const normalizedMarkerText = (value: string) =>
+          cleanLine(value)
+            .replace(/\s+/g, "")
+            .replace(/[^A-Z0-9/-]/gi, "")
+            .toUpperCase();
+
+        const nameWorker = isTriStateProgram
+          ? await createWorker("eng")
+          : null;
+
+        if (nameWorker) {
+          await nameWorker.setParameters({
+            tessedit_pageseg_mode: PSM.SPARSE_TEXT,
+          });
+        }
+
+        try {
+          for (
+            let pageNumber = 1;
+            pageNumber <= pdf.numPages;
+            pageNumber += 1
+          ) {
+            const parsedPage = isWheelingProgram
+              ? parseWheelingProgramPage(
+                  nativePageTexts[pageNumber - 1] ?? "",
+                  ocrPageTextByPage.get(pageNumber) ?? "",
+                  pageNumber,
+                )
+              : parseTriStateProgramPage(
+                  nativePageTexts[pageNumber - 1] ?? "",
+                  ocrPageTextByPage.get(pageNumber) ?? "",
+                  pageNumber,
+                );
+
+            if (!parsedPage) {
+              continue;
+            }
+
+            const raceForPage =
+              mergedRaces.find(
+                (race) => race.raceNumber === parsedPage.raceNumber,
+              ) ?? parsedPage;
+
+            if (raceForPage.runners.length === 0) {
+              continue;
+            }
+
+            const page = await pdf.getPage(pageNumber);
+            const viewport = page.getViewport({
+              scale: PDF_RENDER_SCALE,
+            });
+            const content = await page.getTextContent();
+
+            const textItems = content.items
+              .map((item) => {
+                if (
+                  !("str" in item) ||
+                  typeof item.str !== "string" ||
+                  !("transform" in item) ||
+                  !Array.isArray(item.transform)
+                ) {
+                  return null;
+                }
+
+                const transform = item.transform as number[];
+                const [viewportX, viewportY] =
+                  viewport.convertToViewportPoint(
+                    Number(transform[4] ?? 0),
+                    Number(transform[5] ?? 0),
+                  );
+
+                return {
+                  text: item.str,
+                  x: viewportX,
+                  y: viewportY,
+                };
+              })
+              .filter(
+                (
+                  item,
+                ): item is {
+                  text: string;
+                  x: number;
+                  y: number;
+                } => item !== null,
+              );
+
+            /*
+             * Rebuild visual text lines from native PDF coordinates. Morning
+             * line + trap/color markers are much more stable than dog names.
+             */
+            const visualLines: Array<{
+              y: number;
+              text: string;
+            }> = [];
+
+            for (const item of [...textItems].sort(
+              (a, b) =>
+                Math.abs(a.y - b.y) <= 4
+                  ? a.x - b.x
+                  : a.y - b.y,
+            )) {
+              const existing = visualLines.find(
+                (line) => Math.abs(line.y - item.y) <= 4,
+              );
+
+              if (existing) {
+                existing.text += ` ${item.text}`;
+              } else {
+                visualLines.push({
+                  y: item.y,
+                  text: item.text,
+                });
+              }
+            }
+
+            /*
+             * Native-PDF runner-name extraction for BOTH Tri-State and
+             * Wheeling.
+             *
+             * IMPORTANT: Do not concatenate arbitrary same-line text. The
+             * official program header is:
+             *
+             *   [morning line] [trap] [DOG NAME] ... other columns ...
+             *
+             * The dog name is the contiguous native-PDF text immediately
+             * following the trap number. Stop as soon as a meaningful
+             * horizontal gap or another program column begins.
+             */
+            const nativeNameByTrap = new Map<number, string>();
+
+            type PositionedTextItem = {
+              text: string;
+              x: number;
+              y: number;
+              width: number;
+              height: number;
+            };
+
+            const positionedTextItems: PositionedTextItem[] =
+              content.items
+                .map((item) => {
+                  if (
+                    !("str" in item) ||
+                    typeof item.str !== "string" ||
+                    !("transform" in item) ||
+                    !Array.isArray(item.transform)
+                  ) {
+                    return null;
+                  }
+
+                  const transform = item.transform as number[];
+                  const [x, y] =
+                    viewport.convertToViewportPoint(
+                      Number(transform[4] ?? 0),
+                      Number(transform[5] ?? 0),
+                    );
+
+                  const rawWidth =
+                    "width" in item &&
+                    typeof item.width === "number"
+                      ? item.width
+                      : 0;
+                  const rawHeight =
+                    "height" in item &&
+                    typeof item.height === "number"
+                      ? item.height
+                      : Math.abs(
+                          Number(transform[3] ?? 0),
+                        );
+
+                  return {
+                    text: cleanLine(item.str),
+                    x,
+                    y,
+                    width:
+                      rawWidth * PDF_RENDER_SCALE,
+                    height:
+                      Math.max(
+                        rawHeight * PDF_RENDER_SCALE,
+                        1,
+                      ),
+                  };
+                })
+                .filter(
+                  (
+                    item,
+                  ): item is PositionedTextItem =>
+                    item !== null && Boolean(item.text),
+                );
+
+            const isProgramColumnStart = (
+              value: string,
+            ) => {
+              const text = cleanLine(value);
+
+              return (
+                /^(?:Kennel|Trainer)\s*:/i.test(text) ||
+                /^(?:TS|WD)$/i.test(text) ||
+                /^(?:CSR|CRS)$/i.test(text) ||
+                /^(?:Red|Blue|White|Green|Black|Yellow)$/i.test(
+                  text,
+                ) ||
+                /^\d{2}(?:\.\d+)?$/.test(text) ||
+                /^[A-Z]\s+[A-Z]$/.test(text)
+              );
+            };
+
+            for (let trap = 1; trap <= 8; trap += 1) {
+              /*
+               * A real trap header is followed immediately on the same
+               * baseline by alphabetic dog-name text. This excludes trap
+               * numbers that appear inside historical running lines.
+               */
+              const trapItems =
+                positionedTextItems
+                  .filter(
+                    (item) =>
+                      item.text === String(trap),
+                  )
+                  .sort((a, b) => a.y - b.y);
+
+              const candidates: Array<{
+                name: string;
+                score: number;
+              }> = [];
+
+              for (const trapItem of trapItems) {
+                const sameBaseline =
+                  positionedTextItems
+                    .filter(
+                      (item) =>
+                        item.x > trapItem.x &&
+                        Math.abs(
+                          item.y - trapItem.y,
+                        ) <=
+                          Math.max(
+                            3,
+                            trapItem.height * 0.38,
+                          ),
+                    )
+                    .sort((a, b) => a.x - b.x);
+
+                if (sameBaseline.length === 0) {
+                  continue;
+                }
+
+                const pieces: string[] = [];
+                let previousRight =
+                  trapItem.x +
+                  Math.max(trapItem.width, 1);
+
+                for (const item of sameBaseline) {
+                  const value = cleanLine(item.text);
+                  if (!value) continue;
+
+                  const gap = item.x - previousRight;
+
+                  /*
+                   * Names may be split into multiple PDF text items, but those
+                   * pieces sit very close together. A large gap means the next
+                   * program column has started. This prevents text such as
+                   * "Comfortable Lead Oya Remember Win" from becoming a name.
+                   */
+                  const maxNameGap =
+                    Math.max(
+                      18,
+                      trapItem.height * 1.15,
+                    );
+
+                  if (
+                    pieces.length > 0 &&
+                    gap > maxNameGap
+                  ) {
+                    break;
+                  }
+
+                  if (
+                    pieces.length > 0 &&
+                    isProgramColumnStart(value)
+                  ) {
+                    break;
+                  }
+
+                  /*
+                   * Before accepting the first piece, require it to look like
+                   * actual name text and to be physically close to the trap.
+                   */
+                  if (pieces.length === 0) {
+                    if (
+                      gap > Math.max(
+                        28,
+                        trapItem.height * 1.8,
+                      ) ||
+                      !/[A-Za-z]/.test(value) ||
+                      isProgramColumnStart(value)
+                    ) {
+                      continue;
+                    }
+                  }
+
+                  if (
+                    /\b(?:Kennel|Trainer|Weight|Odds)\s*:/i.test(
+                      value,
+                    )
+                  ) {
+                    break;
+                  }
+
+                  pieces.push(value);
+                  previousRight =
+                    item.x +
+                    Math.max(item.width, 1);
+
+                  if (
+                    pieces.length >= 5 ||
+                    pieces.join(" ").length >= 36
+                  ) {
+                    break;
+                  }
+                }
+
+                const rawName = cleanLine(
+                  pieces.join(" "),
+                )
+                  .replace(
+                    /^\s*[1-8]\s+/,
+                    "",
+                  )
+                  .trim();
+
+                /*
+                 * Native names are usually uppercase in both official
+                 * programs. Do not run the old broad OCR boundary heuristic
+                 * here; native PDF text should be preserved as printed.
+                 */
+                if (
+                  !rawName ||
+                  rawName.length < 2 ||
+                  /\d/.test(rawName) ||
+                  isProgramColumnStart(rawName) ||
+                  /\b(?:Kennel|Trainer|Weight|Odds|Race|Grade|Yards|Post|Time|Lead|Remember|Win)\b/i.test(
+                    rawName,
+                  )
+                ) {
+                  continue;
+                }
+
+                const words =
+                  rawName.split(/\s+/);
+
+                const uppercaseLetters =
+                  rawName
+                    .replace(/[^A-Za-z]/g, "");
+                const uppercaseScore =
+                  uppercaseLetters &&
+                  uppercaseLetters ===
+                    uppercaseLetters.toUpperCase()
+                    ? 50
+                    : 0;
+
+                candidates.push({
+                  name: rawName,
+                  score:
+                    uppercaseScore +
+                    (words.length >= 1 &&
+                    words.length <= 4
+                      ? 30
+                      : -30) +
+                    Math.min(
+                      rawName.length,
+                      25,
+                    ),
+                });
+              }
+
+              const best =
+                candidates.sort(
+                  (a, b) =>
+                    b.score - a.score,
+                )[0];
+
+              if (best) {
+                nativeNameByTrap.set(
+                  trap,
+                  best.name,
+                );
+              }
+            }
+
+            /*
+             * Apply native names only when confidently found. Otherwise keep
+             * the existing parsed name and allow the narrow OCR fallback.
+             */
+            for (const runner of raceForPage.runners) {
+              if (!runner.trapNumber) continue;
+
+              const nativeName =
+                nativeNameByTrap.get(
+                  runner.trapNumber,
+                );
+
+              if (
+                nativeName &&
+                !["GTS", "GWD"].includes(
+                  normalizeTrackCode(raceForPage.track) ?? "",
+                )
+              ) {
+                /*
+                 * Never let Program text replace an official Entries name.
+                 * GTS/GWD current-card identity is Race + Box from Entries.
+                 */
+                runner.name = nativeName;
+              }
+            }
+
+            const located: Array<{
+              runner: GreyhoundRunner;
+              y: number;
+            }> = [];
+
+            for (const runner of raceForPage.runners) {
+              const trap = runner.trapNumber;
+
+              if (!trap) continue;
+
+              const oddsKey = normalizedMarkerText(
+                runner.odds ?? "",
+              );
+              const colorKey = normalizedMarkerText(
+                runner.trapColor ?? "",
+              );
+
+              const lineCandidates = visualLines
+                .map((line) => ({
+                  ...line,
+                  key: normalizedMarkerText(line.text),
+                }))
+                .filter((line) => {
+                  const hasTrap =
+                    new RegExp(
+                      `(?:^|[^0-9])${trap}(?:[^0-9]|$)`,
+                    ).test(line.text);
+
+                  if (!hasTrap) return false;
+
+                  const hasOdds =
+                    !oddsKey || line.key.includes(oddsKey);
+                  const hasColor =
+                    !colorKey || line.key.includes(colorKey);
+
+                  /*
+                   * Trap colors are unique on an eight-dog card, so require
+                   * the color whenever it is available. Also require the
+                   * morning line when the PDF text layer exposes it.
+                   */
+                  return hasColor && hasOdds;
+                })
+                .sort((a, b) => {
+                  const aOdds =
+                    oddsKey && a.key.includes(oddsKey) ? 1 : 0;
+                  const bOdds =
+                    oddsKey && b.key.includes(oddsKey) ? 1 : 0;
+                  const aColor =
+                    colorKey &&
+                    a.key.includes(colorKey)
+                      ? 1
+                      : 0;
+                  const bColor =
+                    colorKey &&
+                    b.key.includes(colorKey)
+                      ? 1
+                      : 0;
+
+                  return bOdds + bColor - (aOdds + aColor);
+                });
+
+              const markerLine = lineCandidates[0];
+
+              if (markerLine) {
+                located.push({
+                  runner,
+                  y: markerLine.y,
+                });
+              }
+            }
+
+            /*
+             * If native marker extraction is sparse, use the stable vertical
+             * order of the markers we DID find to estimate only missing box
+             * starts. We never use a bad dog name as a crop boundary.
+             */
+            located.sort((a, b) => a.y - b.y);
+
+            if (located.length < 2) {
+              continue;
+            }
+
+            const markerGaps = located
+              .slice(1)
+              .map(
+                (entry, index) =>
+                  entry.y - located[index].y,
+              )
+              .filter((gap) => gap > 30);
+
+            const typicalBandHeight =
+              markerGaps.length > 0
+                ? [...markerGaps].sort((a, b) => a - b)[
+                    Math.floor(markerGaps.length / 2)
+                  ]
+                : Math.max(120, viewport.height / 8);
+
+            const byTrap = new Map(
+              located.map((entry) => [
+                entry.runner.trapNumber,
+                entry,
+              ]),
+            );
+
+            if (located.length >= 4) {
+              const first = located[0];
+
+              for (const runner of raceForPage.runners) {
+                if (
+                  !runner.trapNumber ||
+                  byTrap.has(runner.trapNumber)
+                ) {
+                  continue;
+                }
+
+                const estimatedY =
+                  first.y +
+                  (runner.trapNumber -
+                    (first.runner.trapNumber ?? 1)) *
+                    typicalBandHeight;
+
+                if (
+                  estimatedY > 0 &&
+                  estimatedY < viewport.height
+                ) {
+                  located.push({
+                    runner,
+                    y: estimatedY,
+                  });
+                }
+              }
+
+              located.sort((a, b) => a.y - b.y);
+            }
+
+            const pageCanvas =
+              document.createElement("canvas");
+            pageCanvas.width =
+              Math.ceil(viewport.width);
+            pageCanvas.height =
+              Math.ceil(viewport.height);
+
+            const pageContext =
+              pageCanvas.getContext("2d", {
+                alpha: false,
+              });
+
+            if (!pageContext) {
+              continue;
+            }
+
+            pageContext.fillStyle = "#ffffff";
+            pageContext.fillRect(
+              0,
+              0,
+              pageCanvas.width,
+              pageCanvas.height,
+            );
+
+            await page.render({
+              canvas: pageCanvas,
+              canvasContext: pageContext,
+              viewport,
+            }).promise;
+
+            /*
+             * Tri-State current names are embedded images at deterministic
+             * coordinates. Resolve them directly from the page BEFORE any
+             * runner-block crop or fallback parsing.
+             */
+            if (
+              nameWorker &&
+              normalizeTrackCode(
+                raceForPage.track,
+              ) === "GTS"
+            ) {
+              for (
+                const runner of raceForPage.runners
+              ) {
+                if (!runner.trapNumber) {
+                  continue;
+                }
+
+                const embeddedImageName =
+                  await recoverTriStateNameFromProgramImage(
+                    pageCanvas,
+                    runner.trapNumber,
+                    nameWorker,
+                  );
+
+                if (
+                  embeddedImageName &&
+                  !currentCardAuthoritativeTrackCode
+                ) {
+                  /*
+                   * Legacy fallback only. When official Entries are loaded,
+                   * the Program image is never allowed to change dog identity.
+                   */
+                  runner.name =
+                    embeddedImageName;
+                }
+              }
+
+              await nameWorker.setParameters({
+                tessedit_pageseg_mode:
+                  PSM.SPARSE_TEXT,
+                preserve_interword_spaces:
+                  "1",
+              });
+            }
+
+            /*
+             * The actual Tri-State PDF places the graphical bold dog name
+             * about 11 PDF points ABOVE the odds/color marker line. The old
+             * 4-point pad literally cropped the name out before OCR.
+             *
+             * Use 16 PDF points so the full trap/name header is preserved.
+             * Crop bottoms still use the next runner marker, so each block
+             * remains isolated.
+             */
+            const topPad = Math.max(
+              24,
+              Math.round(16 * PDF_RENDER_SCALE),
+            );
+
+            for (
+              let index = 0;
+              index < located.length;
+              index += 1
+            ) {
+              const current = located[index];
+              const next = located[index + 1];
+
+              const cropTop = Math.max(
+                0,
+                Math.floor(current.y - topPad),
+              );
+
+              const cropBottom = Math.min(
+                pageCanvas.height,
+                Math.max(
+                  cropTop + 80,
+                  next
+                    ? Math.floor(next.y - topPad)
+                    : Math.floor(
+                        current.y +
+                          typicalBandHeight -
+                          topPad,
+                      ),
+                ),
+              );
+
+              const cropHeight =
+                cropBottom - cropTop;
+
+              if (cropHeight <= 0) {
+                continue;
+              }
+
+              const cropCanvas =
+                document.createElement("canvas");
+              cropCanvas.width =
+                pageCanvas.width;
+              cropCanvas.height =
+                cropHeight;
+
+              const cropContext =
+                cropCanvas.getContext("2d", {
+                  alpha: false,
+                });
+
+              if (!cropContext) {
+                continue;
+              }
+
+              cropContext.fillStyle = "#ffffff";
+              cropContext.fillRect(
+                0,
+                0,
+                cropCanvas.width,
+                cropCanvas.height,
+              );
+
+              cropContext.drawImage(
+                pageCanvas,
+                0,
+                cropTop,
+                pageCanvas.width,
+                cropHeight,
+                0,
+                0,
+                cropCanvas.width,
+                cropHeight,
+              );
+
+              current.runner.programBlockImageDataUrl =
+                cropCanvas.toDataURL("image/png");
+
+              /*
+               * Tri-State names are now authoritative from the previously
+               * imported Entries PDF. Keep the exact Program crop for Past
+               * Performances, but do not OCR/overwrite the saved dog identity.
+               */
+
+              cropCanvas.width = 1;
+              cropCanvas.height = 1;
+            }
+
+            pageCanvas.width = 1;
+            pageCanvas.height = 1;
+          }
+        } finally {
+          if (nameWorker) {
+            await nameWorker.terminate();
+          }
+        }
+      }
+
+      /*
+       * FINAL IDENTITY LOCK
+       *
+       * Program parsing below the initial Entries merge can inspect names while
+       * locating/cropping runner blocks. Rebuild the runners one final time
+       * from authoritative Entries after ALL Program extraction is complete.
+       *
+       * This guarantees:
+       *   - Race + Box determines the dog.
+       *   - The exact Entries dogName is displayed/stored, including spaces.
+       *   - Program OCR/native text can never leak into current dog identity.
+       *   - Wheeling vacant boxes remain vacant instead of becoming fake dogs.
+       */
+      if (
+        currentCardAuthoritativeTrackCode &&
+        currentCardAuthoritativeEntries.length > 0
+      ) {
+        mergedRaces = applyAuthoritativeEntries(
+          mergedRaces,
+          currentCardAuthoritativeEntries,
+          currentCardAuthoritativeTrackCode,
+        );
+      }
 
       const combinedText = normalizeWhitespace(
         [
@@ -2337,6 +5786,319 @@ export default function GreyhoundRaceCardImporter({
     }
   };
 
+  const importProgramPage = async (race: ParsedGreyhoundRace) => {
+    const imageDataUrl = race.programPageImageDataUrl?.trim();
+
+    // TXT/manual imports and non-Full-Program sources do not have a page image.
+    if (!imageDataUrl) {
+      return { saved: false };
+    }
+
+    if (!race.raceDate) {
+      throw new Error(
+        `Race ${race.raceNumber} has an official Program page but no race date.`,
+      );
+    }
+
+    const response = await fetch("/api/greyhound/program-pages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        leagueId,
+        trackCode: normalizeTrackCode(race.track),
+        programDate: race.raceDate,
+        raceNumber: race.raceNumber,
+        pageNumber: race.raceNumber,
+        imageDataUrl,
+        sourceFileName: fileName || null,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      success?: boolean;
+      message?: string;
+    };
+
+    if (!response.ok || payload.success !== true) {
+      throw new Error(
+        payload.message ??
+          `Race ${race.raceNumber} official Program page failed to save with HTTP ${response.status}.`,
+      );
+    }
+
+    return { saved: true };
+  };
+
+  const importProgramHistory = async (race: ParsedGreyhoundRace) => {
+    const historyTrackCode = normalizeTrackCode(race.track);
+
+    if (historyTrackCode === "GTS" || historyTrackCode === "GWD") {
+      /*
+       * Current-card identity for BOTH supported tracks comes from the official
+       * Entries PDF Race + Box mapping.
+       *
+       * Tri-State must have eight dogs per race.
+       * Wheeling may have fewer because official vacant / NO GREYHOUND boxes
+       * are legitimate and must never become fake dog records.
+       */
+      if (
+        historyTrackCode === "GTS" &&
+        race.runners.length !== 8
+      ) {
+        throw new Error(
+          `Tri-State Race ${race.raceNumber} is not ready to save: ` +
+            `expected 8 authoritative Entries runners but found ${race.runners.length}.`,
+        );
+      }
+
+      if (
+        historyTrackCode === "GWD" &&
+        race.runners.length === 0
+      ) {
+        throw new Error(
+          `Wheeling Race ${race.raceNumber} is not ready to save: no authoritative Entries runners were found.`,
+        );
+      }
+
+      const unresolved = race.runners.filter(
+        (runner) =>
+          !runner.name?.trim() ||
+          /^Tri-State Box \d+$/i.test(runner.name.trim()) ||
+          /^Wheeling Box \d+$/i.test(runner.name.trim()) ||
+          /^NO\s+GREYHOUND$/i.test(runner.name.trim()),
+      );
+
+      if (unresolved.length > 0) {
+        throw new Error(
+          `${historyTrackCode === "GWD" ? "Wheeling" : "Tri-State"} Race ${race.raceNumber} is not ready to save: ` +
+            `${unresolved.length} Race + Box identity ` +
+            `${unresolved.length === 1 ? "is" : "are"} missing from the authoritative Entries mapping.`,
+        );
+      }
+    }
+    const runners = race.runners
+      .filter(
+        (runner) =>
+          !/^Tri-State Box \d+$/i.test(
+            runner.name.trim(),
+          ) &&
+          !/^Wheeling Box \d+$/i.test(
+            runner.name.trim(),
+          ) &&
+          !/^NO\s+GREYHOUND$/i.test(
+            runner.name.trim(),
+          ) &&
+          (
+            (runner.history?.length ?? 0) > 0 ||
+            Boolean(runner.rawText?.trim()) ||
+            Boolean(
+              runner.programBlockImageDataUrl,
+            )
+          ),
+      )
+      .map((runner) => {
+        const historyByKey =
+          new Map<string, GreyhoundPastPerformance>();
+
+        for (const performance of runner.history ?? []) {
+          const key = [
+            performance.raceDate,
+            performance.performanceCode,
+            performance.trackCode,
+            performance.distanceYards,
+            performance.boxNumber,
+          ].join("|");
+
+          const existing = historyByKey.get(key);
+          const quality = (row: GreyhoundPastPerformance) =>
+            row.runningPositions.length * 5 +
+            (row.finishPosition !== null ? 3 : 0) +
+            (row.finishTime !== null ? 3 : 0) +
+            (row.speedRating !== null ? 1 : 0) +
+            (row.odds ? 1 : 0) +
+            (row.grade ? 1 : 0) +
+            (row.comment ? 1 : 0);
+
+          if (!existing || quality(performance) > quality(existing)) {
+            historyByKey.set(key, performance);
+          }
+        }
+
+        return {
+          name: runner.name,
+          trainer: runner.trainer,
+          kennel: null,
+          programBlock: runner.rawText?.trim() || null,
+          programBlockImageDataUrl:
+            runner.programBlockImageDataUrl ?? null,
+          history: Array.from(historyByKey.values()),
+        };
+      });
+
+    if (runners.length === 0) return { imported: 0 };
+
+    const response = await fetch("/api/greyhound/dog-history/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        leagueId,
+        programTrack: race.track,
+        programDate: race.raceDate,
+        runners,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      success?: boolean;
+      imported?: number;
+      message?: string;
+    };
+
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.message ?? `Dog history import failed with HTTP ${response.status}.`);
+    }
+
+    return { imported: Number(payload.imported ?? 0) };
+  };
+
+  const handleDeleteSavedCard = async () => {
+    resetMessages();
+
+    if (!selectedRace) {
+      setError("Select a race from the card first.");
+      return;
+    }
+
+    if (!selectedRace.raceDate) {
+      setError(
+        "This parsed card does not have a valid race date, so the saved card cannot be identified.",
+      );
+      return;
+    }
+
+    const session =
+      inferCardSession(
+        parsedRaces,
+        expectedSession,
+      );
+
+    const confirmed =
+      window.confirm(
+        `Delete the saved ${selectedRace.track} card for ${selectedRace.raceDate} (${session})?\n\n` +
+          "This is intended only for correcting/re-importing a card. " +
+          "The delete will be refused automatically if wagers, race results, payouts, Survivor picks, scratches, or dog results already exist.",
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setStage("deleting");
+      setProgress(25);
+
+      const response =
+        await fetch(
+          importEndpoint,
+          {
+            method: "DELETE",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              leagueId,
+              track:
+                selectedRace.track,
+              raceDate:
+                selectedRace.raceDate,
+              session,
+            }),
+          },
+        );
+
+      setProgress(75);
+
+      const payload =
+        (await response
+          .json()
+          .catch(() => ({}))) as {
+            success?: boolean;
+            error?: string;
+            message?: string;
+            cardId?: number;
+            racesDeleted?: number;
+            activity?: Record<
+              string,
+              number
+            >;
+          };
+
+      if (
+        !response.ok ||
+        payload.success !== true
+      ) {
+        let detail = "";
+
+        if (payload.activity) {
+          const activeItems =
+            Object.entries(
+              payload.activity,
+            )
+              .filter(
+                ([, count]) =>
+                  Number(count) > 0,
+              )
+              .map(
+                ([key, count]) =>
+                  `${key}: ${count}`,
+              );
+
+          if (
+            activeItems.length > 0
+          ) {
+            detail =
+              ` Existing activity: ${activeItems.join(", ")}.`;
+          }
+        }
+
+        throw new Error(
+          `${
+            payload.error ??
+            payload.message ??
+            `Delete failed with HTTP ${response.status}.`
+          }${detail}`,
+        );
+      }
+
+      setProgress(100);
+
+      setSuccess(
+        `${
+          payload.message ??
+          "Saved card deleted."
+        } ${
+          payload.racesDeleted ?? 0
+        } races were removed. You can now click SAVE ALL RACES to re-import this same parsed program.`,
+      );
+    } catch (unknownError) {
+      console.error(
+        "Greyhound card delete failed:",
+        unknownError,
+      );
+
+      setError(
+        unknownError instanceof Error
+          ? unknownError.message
+          : "The saved Greyhound card could not be deleted.",
+      );
+
+      setProgress(0);
+    } finally {
+      setStage("idle");
+    }
+  };
+
+
   const handleImportSelectedRace = async () => {
     resetMessages();
 
@@ -2378,6 +6140,13 @@ export default function GreyhoundRaceCardImporter({
                 selectedRace.raceNumber,
               raceDate: selectedRace.raceDate,
               raceTime: selectedRace.raceTime,
+              cardFirstPostTime:
+                getCardFirstPostTime(parsedRaces),
+              session:
+                inferCardSession(
+                  parsedRaces,
+                  expectedSession,
+                ),
               grade: selectedRace.grade,
               distance: selectedRace.distance,
               prizeMoney:
@@ -2398,6 +6167,7 @@ export default function GreyhoundRaceCardImporter({
                     weight: runner.weight,
                     form: runner.form,
                     odds: runner.odds,
+                    history: runner.history ?? [],
                   }),
                 ),
             },
@@ -2424,13 +6194,17 @@ export default function GreyhoundRaceCardImporter({
         );
       }
 
+      const pageResult = await importProgramPage(selectedRace);
+      const historyResult = await importProgramHistory(selectedRace);
+
       setProgress(100);
 
       setSuccess(
-        `${selectedRace.track} Race ${selectedRace.raceNumber} imported successfully.`,
+        `${selectedRace.track} Race ${selectedRace.raceNumber} imported successfully. ${pageResult.saved ? "Official full Program page saved. " : ""}${historyResult.imported} program-history starts saved.`,
       );
 
       onImportSuccess?.(result);
+      refreshRaceCardManagement();
     } catch (unknownError) {
       console.error(
         "Greyhound race import failed:",
@@ -2448,6 +6222,97 @@ export default function GreyhoundRaceCardImporter({
       setStage("idle");
     }
   };
+
+  const finalizeImportedCard = async (
+    result: ImportResult,
+    races: ParsedGreyhoundRace[],
+  ) => {
+    const cardId =
+      typeof result.cardId === "number" ||
+      typeof result.cardId === "string"
+        ? result.cardId
+        : null;
+
+    const firstRace =
+      [...races].sort(
+        (a, b) =>
+          a.raceNumber - b.raceNumber,
+      )[0];
+
+    const trackCode =
+      firstRace
+        ? normalizeTrackCode(
+            firstRace.track,
+          )
+        : null;
+
+    if (!cardId || !trackCode) {
+      throw new Error(
+        "All races were saved, but the card could not be finalized because its card ID or track could not be determined.",
+      );
+    }
+
+    setImportProgressLabel(
+      "Finalizing and publishing official race card...",
+    );
+
+    const response =
+      await fetch(
+        importEndpoint,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            leagueId,
+            action: "finalize_card",
+            cardId,
+            track: trackCode,
+            raceDate:
+              firstRace?.raceDate ??
+              null,
+            session:
+              inferCardSession(
+                races,
+                expectedSession,
+              ),
+          }),
+        },
+      );
+
+    let payload: ImportResult & {
+      confirmed?: boolean;
+      error?: string;
+    };
+
+    try {
+      payload =
+        (await response.json()) as ImportResult & {
+          confirmed?: boolean;
+          error?: string;
+        };
+    } catch {
+      payload = {};
+    }
+
+    if (
+      !response.ok ||
+      payload.confirmed !== true
+    ) {
+      throw new Error(
+        typeof payload.error === "string"
+          ? payload.error
+          : typeof payload.message === "string"
+            ? payload.message
+            : `Card finalization failed with HTTP ${response.status}.`,
+      );
+    }
+
+    return payload;
+  };
+
 
   const handleImportAllRaces = async () => {
     resetMessages();
@@ -2510,6 +6375,13 @@ export default function GreyhoundRaceCardImporter({
                 raceNumber: race.raceNumber,
                 raceDate: race.raceDate,
                 raceTime: race.raceTime,
+                cardFirstPostTime:
+                  getCardFirstPostTime(parsedRaces),
+                session:
+                  inferCardSession(
+                    parsedRaces,
+                    expectedSession,
+                  ),
                 grade: race.grade,
                 distance: race.distance,
                 prizeMoney: race.prizeMoney,
@@ -2523,6 +6395,7 @@ export default function GreyhoundRaceCardImporter({
                   weight: runner.weight,
                   form: runner.form,
                   odds: runner.odds,
+                  history: runner.history ?? [],
                 })),
               },
             }),
@@ -2547,22 +6420,42 @@ export default function GreyhoundRaceCardImporter({
           );
         }
 
+        await importProgramPage(race);
+        await importProgramHistory(race);
         results.push(result);
         setProgress(Math.round((current / total) * 100));
       }
 
+      const lastResult = results[results.length - 1];
+
+      if (!lastResult) {
+        throw new Error(
+          "The races were saved, but no final import result was available to finalize the card.",
+        );
+      }
+
+      setProgress(98);
+
+      const finalization =
+        await finalizeImportedCard(
+          lastResult,
+          parsedRaces,
+        );
+
       setProgress(100);
       setImportProgressLabel(
-        `${total} of ${total} races saved successfully.`,
+        `${total} of ${total} races saved and card published.`,
       );
       setSuccess(
-        `${total} of ${total} races imported successfully.`,
+        `${total} of ${total} races imported successfully. Official ${normalizeTrackCode(parsedRaces[0]?.track ?? "") === "GTS" ? "Tri-State" : "Wheeling"} card confirmed and published.`,
       );
 
-      const lastResult = results[results.length - 1];
-      if (lastResult) {
-        onImportSuccess?.(lastResult);
-      }
+      onImportSuccess?.({
+        ...lastResult,
+        ...finalization,
+      });
+
+      refreshRaceCardManagement();
     } catch (unknownError) {
       console.error(
         "Greyhound all-races import failed:",
@@ -2623,6 +6516,8 @@ export default function GreyhoundRaceCardImporter({
         .gh-drop-copy{max-width:430px;margin:7px auto 0;color:#858a91;font-size:10px;line-height:1.6}
         .gh-btn{display:inline-flex;min-height:43px;align-items:center;justify-content:center;padding:10px 16px;border-radius:9px;cursor:pointer;font-size:10px;font-weight:950;letter-spacing:.025em;transition:.15s}
         .gh-btn.primary{border:1px solid #e15b20;background:linear-gradient(135deg,#a32617,#ef681c);color:#fff;box-shadow:0 8px 22px rgba(112,24,11,.25)}
+        .gh-btn.danger{background:#270808;color:#fecaca;border-color:#7f1d1d}
+        .gh-btn.danger:hover:not(:disabled){background:#450a0a;border-color:#ef4444;color:#fff}
         .gh-btn.secondary{border:1px solid #93401f;background:#21130f;color:#ffad7c}
         .gh-btn.dark{border:1px solid #37393d;background:#191a1d;color:#c4c7cc}
         .gh-btn:hover{filter:brightness(1.12);transform:translateY(-1px)}
@@ -2964,6 +6859,20 @@ export default function GreyhoundRaceCardImporter({
                   <div className="gh-save">
                     <button
                       type="button"
+                      onClick={handleDeleteSavedCard}
+                      disabled={
+                        busy ||
+                        !selectedRace.raceDate
+                      }
+                      className="gh-btn danger"
+                      title="Delete the already-saved card so this parsed program can be imported again."
+                    >
+                      {stage === "deleting"
+                        ? "DELETING CARD..."
+                        : "DELETE SAVED CARD"}
+                    </button>
+                    <button
+                      type="button"
                       onClick={handleImportSelectedRace}
                       disabled={busy || selectedRace.runners.length === 0}
                       className="gh-btn secondary"
@@ -3059,4 +6968,9 @@ export default function GreyhoundRaceCardImporter({
     </div>
   );
 }
+
+
+
+
+
 

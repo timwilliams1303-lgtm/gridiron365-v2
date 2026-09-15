@@ -23,6 +23,11 @@ type SettingsRow = {
   competition_days: number[] | null;
   starting_bankroll: number | string;
   track_scope: GreyhoundCommissionerSettingsData["trackScope"];
+  wagering_style: GreyhoundCommissionerSettingsData["wageringStyle"];
+  live_race_lock_minutes_before_post: number | null;
+  live_mandatory_race_action: boolean | null;
+  live_minimum_wager_percent: number | string | null;
+  live_auto_wager_enabled: boolean | null;
   card_lock_minutes_before_first_post: number;
   scratch_check_minutes_before_first_post: number;
   entry_pull_timezone: string;
@@ -61,47 +66,54 @@ export default async function GreyhoundCommissionerSettingsPage({
 
   const admin = createSupabaseAdminClient();
 
-  const [{ data: settingsData, error: settingsError }, { data: roundsData, error: roundsError }] =
-    await Promise.all([
-      admin
-        .from("greyhound_league_settings")
-        .select(`
-          game_format,
-          team_setup_mode,
-          survivor_mode,
-          duration_mode,
-          competition_start_date,
-          competition_end_date,
-          competition_weeks,
-          competition_days,
-          starting_bankroll,
-          track_scope,
-          card_lock_minutes_before_first_post,
-          scratch_check_minutes_before_first_post,
-          entry_pull_timezone,
-          allow_win,
-          allow_place,
-          allow_show,
-          allow_exacta,
-          allow_quinella,
-          allow_trifecta,
-          allow_superfecta
-        `)
-        .eq("league_id", leagueId)
-        .maybeSingle(),
-      admin
-        .from("greyhound_competition_rounds")
-        .select(`
-          id,
-          round_number,
-          round_name,
-          start_date,
-          number_of_days,
-          end_date
-        `)
-        .eq("league_id", leagueId)
-        .order("round_number", { ascending: true }),
-    ]);
+  const [
+    { data: settingsData, error: settingsError },
+    { data: roundsData, error: roundsError },
+  ] = await Promise.all([
+    admin
+      .from("greyhound_league_settings")
+      .select(`
+        game_format,
+        team_setup_mode,
+        survivor_mode,
+        duration_mode,
+        competition_start_date,
+        competition_end_date,
+        competition_weeks,
+        competition_days,
+        starting_bankroll,
+        track_scope,
+        wagering_style,
+        live_race_lock_minutes_before_post,
+        live_mandatory_race_action,
+        live_minimum_wager_percent,
+        live_auto_wager_enabled,
+        card_lock_minutes_before_first_post,
+        scratch_check_minutes_before_first_post,
+        entry_pull_timezone,
+        allow_win,
+        allow_place,
+        allow_show,
+        allow_exacta,
+        allow_quinella,
+        allow_trifecta,
+        allow_superfecta
+      `)
+      .eq("league_id", leagueId)
+      .maybeSingle(),
+    admin
+      .from("greyhound_competition_rounds")
+      .select(`
+        id,
+        round_number,
+        round_name,
+        start_date,
+        number_of_days,
+        end_date
+      `)
+      .eq("league_id", leagueId)
+      .order("round_number", { ascending: true }),
+  ]);
 
   if (settingsError) {
     throw new Error(settingsError.message);
@@ -130,6 +142,20 @@ export default async function GreyhoundCommissionerSettingsPage({
       : [0, 1, 2, 3, 4, 5, 6],
     startingBankroll: Number(row?.starting_bankroll ?? 100),
     trackScope: row?.track_scope ?? "wheeling",
+
+    wageringStyle:
+      row?.wagering_style === "live_bankroll"
+        ? "live_bankroll"
+        : "whole_card",
+    liveRaceLockMinutesBeforePost:
+      row?.live_race_lock_minutes_before_post ?? 5,
+    liveMandatoryRaceAction:
+      row?.live_mandatory_race_action ?? false,
+    liveMinimumWagerPercent:
+      Number(row?.live_minimum_wager_percent ?? 10),
+    liveAutoWagerEnabled:
+      row?.live_auto_wager_enabled ?? true,
+
     cardLockMinutesBeforeFirstPost:
       row?.card_lock_minutes_before_first_post ?? 5,
     scratchCheckMinutesBeforeFirstPost:

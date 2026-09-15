@@ -32,6 +32,17 @@ type DogSummary = {
 
 type RecentFormRow = {
   dogResultId: number;
+  // Legacy imported-program renderer fields remain optional only so the
+  // preserved JSX below stays type-safe. recentTimeline now contains G365
+  // rows exclusively, so these fields are never used for Recent Form.
+  performanceCode?: string | null;
+  finishTime?: number | null;
+  speedRating?: number | null;
+  odds?: string | null;
+  condition?: string | null;
+  runningPositions?: number[] | null;
+  marginText?: string | null;
+  comment?: string | null;
   raceId: number | null;
   raceDate: string;
   raceNumber: number;
@@ -53,6 +64,38 @@ type RecentFormRow = {
   kennel: string | null;
   trainer: string | null;
   recentResultNumber: number;
+};
+
+type ProgramHistoryRow = {
+  id: number;
+  raceDate: string | null;
+  performanceCode: string | null;
+  trackCode: string | null;
+  trackName: string | null;
+  distanceYards: number | null;
+  condition: string | null;
+  weight: number | string | null;
+  boxNumber: number | null;
+  runningPositions: number[];
+  finishPosition: number | null;
+  marginText: string | null;
+  finishTime: number | string | null;
+  speedRating: number | null;
+  odds: string | null;
+  grade: string | null;
+  comment: string | null;
+  source: string;
+};
+
+type ProgramBlock = {
+  id: number;
+  programTrackCode: string | null;
+  programDate: string | null;
+  kennel: string | null;
+  trainer: string | null;
+  programBlockText: string;
+  programBlockImageDataUrl: string | null;
+  source: string;
 };
 
 type TrackSplit = {
@@ -93,6 +136,8 @@ type DogProfile = {
   dog: DogIdentity;
   summary: DogSummary;
   recentForm: RecentFormRow[];
+  programHistory: ProgramHistoryRow[];
+  programBlocks: ProgramBlock[];
   splits: {
     tracks: TrackSplit[];
     grades: GradeSplit[];
@@ -104,10 +149,7 @@ type DogProfile = {
 
 type TabKey =
   | "recent"
-  | "tracks"
-  | "grades"
-  | "distances"
-  | "boxes";
+  | "program";
 
 type Props = {
   leagueId: string;
@@ -213,6 +255,277 @@ function ordinal(
       return `${value}th`;
   }
 }
+
+function runningPositionLabels(
+  count: number,
+): string[] {
+  if (count >= 4) {
+    return [
+      "Break",
+      "1st Turn",
+      "Backstretch",
+      "Finish",
+    ].slice(0, count);
+  }
+
+  if (count === 4) {
+    return [
+      "Break",
+      "1st Turn",
+      "Backstretch",
+      "Finish",
+    ];
+  }
+
+  if (count === 3) {
+    return [
+      "Break",
+      "Turn",
+      "Finish",
+    ];
+  }
+
+  if (count === 2) {
+    return [
+      "Break",
+      "Finish",
+    ];
+  }
+
+  if (count === 1) {
+    return [
+      "Finish",
+    ];
+  }
+
+  return [];
+}
+
+function formatFinalOdds(
+  value: string | null | undefined,
+): string | null {
+  const raw = String(value ?? "")
+    .trim()
+    .replace(/\*+$/, "");
+
+  if (!raw || raw === "----") {
+    return null;
+  }
+
+  // Preserve odds already supplied in program/fractional style.
+  const fractional = raw.match(
+    /^(\d+)\s*[-/]\s*(\d+)$/,
+  );
+
+  if (fractional) {
+    return `${fractional[1]}-${fractional[2]}`;
+  }
+
+  const decimal = Number(raw);
+
+  if (!Number.isFinite(decimal) || decimal < 0) {
+    return raw;
+  }
+
+  /*
+   * The imported program value is the track's final odds-to-1 price.
+   * Display it in the familiar racebook style:
+   *
+   *   9.30  -> 9-1
+   *   7.30  -> 7-1
+   *   4.30  -> 4-1
+   *   11.50 -> 11-1
+   *
+   * For odds below even money, retain useful precision:
+   *   0.80 -> 4-5
+   *   0.50 -> 1-2
+   */
+  if (decimal >= 1) {
+    return `${Math.floor(decimal)}-1`;
+  }
+
+  if (decimal === 0) {
+    return "0-1";
+  }
+
+  const denominators = [
+    2, 5, 10, 20, 100,
+  ];
+
+  let bestNumerator = 1;
+  let bestDenominator = 1;
+  let bestError = Number.POSITIVE_INFINITY;
+
+  for (const denominator of denominators) {
+    const numerator = Math.max(
+      1,
+      Math.round(decimal * denominator),
+    );
+    const error = Math.abs(
+      decimal - numerator / denominator,
+    );
+
+    if (error < bestError) {
+      bestError = error;
+      bestNumerator = numerator;
+      bestDenominator = denominator;
+    }
+  }
+
+  const gcd = (a: number, b: number): number =>
+    b === 0 ? a : gcd(b, a % b);
+
+  const divisor = gcd(
+    bestNumerator,
+    bestDenominator,
+  );
+
+  return `${bestNumerator / divisor}-${bestDenominator / divisor}`;
+}
+function RunningPositionLine({
+  boxNumber,
+  positions,
+  marginText,
+  finalOdds,
+}: {
+  boxNumber: number | null;
+  positions: number[];
+  finishPosition: number | null;
+  marginText: string | null;
+  finalOdds?: string | null;
+}) {
+  const cleanPositions =
+    Array.isArray(
+      positions,
+    )
+      ? positions.filter(
+          (position) =>
+            Number.isInteger(
+              Number(
+                position,
+              ),
+            ) &&
+            Number(
+              position,
+            ) >= 1 &&
+            Number(
+              position,
+            ) <= 8,
+        )
+      : [];
+
+  if (
+    boxNumber === null &&
+    cleanPositions.length === 0
+  ) {
+    return null;
+  }
+
+  const labels =
+    runningPositionLabels(
+      cleanPositions.length,
+    );
+
+  return (
+    <div className="gdp-running-wrap">
+      <div className="gdp-running-title">
+        RUNNING POSITIONS
+      </div>
+
+      <div className="gdp-running-line">
+        {boxNumber !== null ? (
+          <>
+            <div className="gdp-running-call">
+              <span>
+                Box
+              </span>
+
+              <strong>
+                {boxNumber}
+              </strong>
+            </div>
+
+            {cleanPositions.length >
+            0 ? (
+              <span className="gdp-running-arrow">
+                →
+              </span>
+            ) : null}
+          </>
+        ) : null}
+
+        {cleanPositions.map(
+          (
+            position,
+            index,
+          ) => {
+            const isLast =
+              index ===
+              cleanPositions.length -
+                1;
+
+            return (
+              <div
+                key={`${labels[index] ?? "Call"}-${index}`}
+                className="gdp-running-fragment"
+              >
+                <div
+                  className={`gdp-running-call ${
+                    isLast
+                      ? "finish"
+                      : ""
+                  }`}
+                >
+                  <span>
+                    {labels[
+                      index
+                    ] ??
+                      `Call ${
+                        index + 1
+                      }`}
+                  </span>
+
+                  <strong>
+                    {position}
+                  </strong>
+
+                  {isLast &&
+                  marginText ? (
+                    <small>
+                      Margin {marginText}
+                    </small>
+                  ) : null}
+                </div>
+
+                {!isLast ? (
+                  <span className="gdp-running-arrow">
+                    →
+                  </span>
+                ) : null}
+              </div>
+            );
+          },
+        )}
+
+        {formatFinalOdds(finalOdds) ? (
+          <>
+            <span className="gdp-running-arrow">
+              →
+            </span>
+
+            <div className="gdp-final-odds">
+              <span>Final Odds</span>
+              <strong>
+                {formatFinalOdds(finalOdds)}
+              </strong>
+            </div>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 
 function StatBox({
   label,
@@ -392,6 +705,24 @@ export default function GreyhoundDogProfileModal({
 
   const summary =
     profile?.summary;
+
+  const recentTimeline =
+    profile
+      ? profile.recentForm
+          .map((row) => ({
+            kind: "g365" as const,
+            key: `g365-${row.dogResultId}`,
+            sortDate: row.raceDate ?? "",
+            row,
+          }))
+          .sort(
+            (first, second) =>
+              second.sortDate.localeCompare(
+                first.sortDate,
+              ),
+          )
+      : [];
+
 
   return (
     <>
@@ -634,301 +965,357 @@ export default function GreyhoundDogProfileModal({
                   >
                     Recent Form
                   </button>
-
-                  <button
-                    type="button"
-                    className={
-                      activeTab ===
-                      "tracks"
-                        ? "active"
-                        : ""
-                    }
-                    onClick={() =>
-                      setActiveTab(
-                        "tracks",
-                      )
-                    }
-                  >
-                    Track
-                  </button>
-
-                  <button
-                    type="button"
-                    className={
-                      activeTab ===
-                      "grades"
-                        ? "active"
-                        : ""
-                    }
-                    onClick={() =>
-                      setActiveTab(
-                        "grades",
-                      )
-                    }
-                  >
-                    Grade
-                  </button>
-
-                  <button
-                    type="button"
-                    className={
-                      activeTab ===
-                      "distances"
-                        ? "active"
-                        : ""
-                    }
-                    onClick={() =>
-                      setActiveTab(
-                        "distances",
-                      )
-                    }
-                  >
-                    Distance
-                  </button>
-
-                  <button
-                    type="button"
-                    className={
-                      activeTab ===
-                      "boxes"
-                        ? "active"
-                        : ""
-                    }
-                    onClick={() =>
-                      setActiveTab(
-                        "boxes",
-                      )
-                    }
-                  >
-                    Box
-                  </button>
                 </div>
 
                 <div className="gdp-content">
                   {activeTab ===
                   "recent" ? (
-                    profile.recentForm
-                      .length ===
+                    recentTimeline.length ===
                     0 ? (
                       <div className="gdp-empty">
-                        No recorded
-                        official results
-                        yet.
+                        No G365 race results
+                        recorded yet.
                       </div>
                     ) : (
                       <div className="gdp-form-list">
-                        {profile.recentForm.map(
-                          (
-                            row,
-                          ) => (
-                            <div
-                              key={
-                                row.dogResultId
-                              }
-                              className="gdp-form-card"
-                            >
-                              <div className="gdp-finish">
-                                <strong>
-                                  {ordinal(
-                                    row.finishPosition,
-                                  )}
-                                </strong>
+                        {recentTimeline.map(
+                          (item) => {
+                            if (
+                              item.kind ===
+                              "g365"
+                            ) {
+                              const row =
+                                item.row;
 
-                                <span>
-                                  FINISH
-                                </span>
-                              </div>
-
-                              <div className="gdp-form-main">
-                                <div className="gdp-form-title">
-                                  {row.trackCode ??
-                                    "G365"}{" "}
-                                  · Race{" "}
-                                  {
-                                    row.raceNumber
+                              return (
+                                <div
+                                  key={
+                                    item.key
                                   }
-                                </div>
+                                  className="gdp-form-card"
+                                >
+                                  <div className="gdp-finish">
+                                    <strong>
+                                      {ordinal(
+                                        row.finishPosition,
+                                      )}
+                                    </strong>
 
-                                <div className="gdp-form-date">
-                                  {formatDate(
-                                    row.raceDate,
-                                  )}
-                                </div>
-
-                                <div className="gdp-form-meta">
-                                  {row.grade ? (
                                     <span>
-                                      Grade{" "}
+                                      FINISH
+                                    </span>
+                                  </div>
+
+                                  <div className="gdp-form-main">
+                                    <div className="gdp-history-source-row">
+                                      <span className="gdp-history-source g365">
+                                        G365 RESULT
+                                      </span>
+                                    </div>
+
+                                    <div className="gdp-form-title">
+                                      {row.trackCode ??
+                                        "G365"}{" "}
+                                      · Race{" "}
                                       {
-                                        row.grade
+                                        row.raceNumber
                                       }
-                                    </span>
-                                  ) : null}
+                                    </div>
 
-                                  {row.distanceYards ? (
-                                    <span>
-                                      {
-                                        row.distanceYards
-                                      }{" "}
-                                      Yards
-                                    </span>
-                                  ) : null}
+                                    <div className="gdp-form-date">
+                                      {formatDate(
+                                        row.raceDate,
+                                      )}
+                                    </div>
 
-                                  {row.boxNumber ? (
-                                    <span>
-                                      Box{" "}
-                                      {
-                                        row.boxNumber
-                                      }
-                                    </span>
-                                  ) : null}
+                                    <div className="gdp-form-meta">
+                                      {row.grade ? (
+                                        <span>
+                                          Grade{" "}
+                                          {
+                                            row.grade
+                                          }
+                                        </span>
+                                      ) : null}
 
-                                  {row.fieldSize ? (
-                                    <span>
-                                      {
-                                        row.fieldSize
-                                      }{" "}
-                                      Dogs
-                                    </span>
-                                  ) : null}
+                                      {row.distanceYards ? (
+                                        <span>
+                                          {
+                                            row.distanceYards
+                                          }{" "}
+                                          Yards
+                                        </span>
+                                      ) : null}
+
+                                      {row.boxNumber ? (
+                                        <span>
+                                          Box{" "}
+                                          {
+                                            row.boxNumber
+                                          }
+                                        </span>
+                                      ) : null}
+
+                                      {row.fieldSize ? (
+                                        <span>
+                                          {
+                                            row.fieldSize
+                                          }{" "}
+                                          Dogs
+                                        </span>
+                                      ) : null}
+
+                                      {row.oddsText ? (
+                                        <span>
+                                          Odds{" "}
+                                          {
+                                            row.oddsText
+                                          }
+                                        </span>
+                                      ) : null}
+                                    </div>
+
+                                    {(row.trainer ||
+                                      row.kennel) && (
+                                      <div className="gdp-form-secondary">
+                                        {row.trainer
+                                          ? `Trainer: ${row.trainer}`
+                                          : ""}
+
+                                        {row.trainer &&
+                                        row.kennel
+                                          ? " · "
+                                          : ""}
+
+                                        {row.kennel
+                                          ? `Kennel: ${row.kennel}`
+                                          : ""}
+                                      </div>
+                                    )}
+
+                                    {row.raceComment ? (
+                                      <div className="gdp-comment">
+                                        {
+                                          row.raceComment
+                                        }
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            const row =
+                              item.row;
+
+                            return (
+                              <div
+                                key={
+                                  item.key
+                                }
+                                className="gdp-form-card gdp-program-form-card"
+                              >
+                                <div className="gdp-program-history-mark">
+                                  <strong>
+                                    {row.performanceCode ??
+                                      "PP"}
+                                  </strong>
+
+                                  <span>
+                                    PROGRAM
+                                  </span>
                                 </div>
 
-                                {(row.trainer ||
-                                  row.kennel) && (
-                                  <div className="gdp-form-secondary">
-                                    {row.trainer
-                                      ? `Trainer: ${row.trainer}`
-                                      : ""}
+                                <div className="gdp-form-main">
+                                  <div className="gdp-history-source-row">
+                                    <span className="gdp-history-source program">
+                                      PROGRAM HISTORY
+                                    </span>
+                                  </div>
 
-                                    {row.trainer &&
-                                    row.kennel
-                                      ? " · "
-                                      : ""}
-
-                                    {row.kennel
-                                      ? `Kennel: ${row.kennel}`
+                                  <div className="gdp-form-title">
+                                    {row.trackName ??
+                                      row.trackCode ??
+                                      "Track"}
+                                    {row.performanceCode
+                                      ? ` · ${row.performanceCode}`
                                       : ""}
                                   </div>
-                                )}
 
-                                {row.raceComment ? (
-                                  <div className="gdp-comment">
-                                    {
-                                      row.raceComment
+                                  <div className="gdp-form-date">
+                                    {formatDate(
+                                      row.raceDate,
+                                    )}
+                                  </div>
+
+                                  <div className="gdp-form-meta">
+                                    {row.grade ? (
+                                      <span>
+                                        Grade{" "}
+                                        {
+                                          row.grade
+                                        }
+                                      </span>
+                                    ) : null}
+
+                                    {row.distanceYards ? (
+                                      <span>
+                                        {
+                                          row.distanceYards
+                                        }{" "}
+                                        Yards
+                                      </span>
+                                    ) : null}
+
+                                    {row.boxNumber ? (
+                                      <span>
+                                        Box{" "}
+                                        {
+                                          row.boxNumber
+                                        }
+                                      </span>
+                                    ) : null}
+
+                                    {row.weight !==
+                                    null ? (
+                                      <span>
+                                        Wgt{" "}
+                                        {formatNumber(
+                                          row.weight,
+                                          0,
+                                        )}
+                                      </span>
+                                    ) : null}
+
+                                    {row.finishTime !==
+                                    null ? (
+                                      <span>
+                                        Time{" "}
+                                        {formatNumber(
+                                          row.finishTime,
+                                          2,
+                                        )}
+                                      </span>
+                                    ) : null}
+
+                                    {row.speedRating !==
+                                    null ? (
+                                      <span>
+                                        SPD{" "}
+                                        {
+                                          row.speedRating
+                                        }
+                                      </span>
+                                    ) : null}
+
+                                    {row.odds ? (
+                                      <span>
+                                        Odds{" "}
+                                        {
+                                          formatFinalOdds(
+                                            row.odds,
+                                          )
+                                        }
+                                      </span>
+                                    ) : null}
+
+                                    {row.condition ? (
+                                      <span>
+                                        {
+                                          row.condition
+                                        }
+                                      </span>
+                                    ) : null}
+                                  </div>
+
+                                  <RunningPositionLine
+                                    boxNumber={
+                                      row.boxNumber
                                     }
-                                  </div>
-                                ) : null}
+                                    positions={
+                                      row.runningPositions ?? []
+                                    }
+                                    finishPosition={
+                                      row.finishPosition
+                                    }
+                                    marginText={
+                                      row.marginText ?? null
+                                    }
+                                    finalOdds={
+                                      row.odds
+                                    }
+                                  />
+
+                                  {row.comment ? (
+                                    <div className="gdp-comment">
+                                      {
+                                        row.comment
+                                      }
+                                    </div>
+                                  ) : null}
+                                </div>
                               </div>
-                            </div>
-                          ),
+                            );
+                          },
                         )}
                       </div>
                     )
                   ) : null}
 
                   {activeTab ===
-                  "tracks" ? (
-                    <SplitTable
-                      headers={[
-                        "Track",
-                        "Recorded",
-                        "Wins",
-                        "ITM",
-                        "Avg Finish",
-                      ]}
-                      rows={profile.splits.tracks.map(
-                        (
-                          row,
-                        ) => [
-                          `${row.trackCode} · ${row.trackName}`,
-                          row.recordedResults,
-                          row.wins,
-                          row.itmFinishes,
-                          row.averageRecordedFinish ??
-                            "—",
-                        ],
-                      )}
-                    />
+                  "program" ? (
+                    (profile.programBlocks ?? []).length === 0 ? (
+                      <div className="gdp-empty">
+                        No preserved imported program block yet. Re-import the
+                        official Wheeling or Tri-State program once.
+                      </div>
+                    ) : (
+                      <div className="gdp-source-program-list">
+                        {(profile.programBlocks ?? []).map((block) => (
+                          <section key={block.id} className="gdp-source-program-card">
+                            <div className="gdp-source-program-head">
+                              <div>
+                                <strong>
+                                  {block.programTrackCode === "GWD"
+                                    ? "WHEELING"
+                                    : block.programTrackCode === "GTS"
+                                      ? "TRI-STATE"
+                                      : block.programTrackCode ?? "PROGRAM"}
+                                </strong>
+                                <span>OFFICIAL IMPORTED PROGRAM</span>
+                              </div>
+                              {block.programDate ? (
+                                <time>{formatDate(block.programDate)}</time>
+                              ) : null}
+                            </div>
+
+                            {(block.kennel || block.trainer) ? (
+                              <div className="gdp-source-program-meta">
+                                {block.kennel ? <span>KENNEL: {block.kennel}</span> : null}
+                                {block.trainer ? <span>TRAINER: {block.trainer}</span> : null}
+                              </div>
+                            ) : null}
+
+                            <div className="gdp-source-program-scroll">
+                              {block.programBlockImageDataUrl ? (
+                                <img
+                                  className="gdp-source-program-image"
+                                  src={block.programBlockImageDataUrl}
+                                  alt={`${dogName} official imported program past performances`}
+                                  draggable={false}
+                                />
+                              ) : (
+                                <pre className="gdp-source-program-text">
+                                  {block.programBlockText}
+                                </pre>
+                              )}
+                            </div>
+                          </section>
+                        ))}
+                      </div>
+                    )
                   ) : null}
 
-                  {activeTab ===
-                  "grades" ? (
-                    <SplitTable
-                      headers={[
-                        "Grade",
-                        "Recorded",
-                        "Wins",
-                        "ITM",
-                        "Avg Finish",
-                      ]}
-                      rows={profile.splits.grades.map(
-                        (
-                          row,
-                        ) => [
-                          row.grade ??
-                            "—",
-                          row.recordedResults,
-                          row.wins,
-                          row.itmFinishes,
-                          row.averageRecordedFinish ??
-                            "—",
-                        ],
-                      )}
-                    />
-                  ) : null}
-
-                  {activeTab ===
-                  "distances" ? (
-                    <SplitTable
-                      headers={[
-                        "Distance",
-                        "Recorded",
-                        "Wins",
-                        "ITM",
-                        "Avg Finish",
-                      ]}
-                      rows={profile.splits.distances.map(
-                        (
-                          row,
-                        ) => [
-                          row.distanceYards
-                            ? `${row.distanceYards} Yards`
-                            : "—",
-                          row.recordedResults,
-                          row.wins,
-                          row.itmFinishes,
-                          row.averageRecordedFinish ??
-                            "—",
-                        ],
-                      )}
-                    />
-                  ) : null}
-
-                  {activeTab ===
-                  "boxes" ? (
-                    <SplitTable
-                      headers={[
-                        "Box",
-                        "Recorded",
-                        "Wins",
-                        "ITM",
-                        "Avg Finish",
-                      ]}
-                      rows={profile.splits.boxes.map(
-                        (
-                          row,
-                        ) => [
-                          row.boxNumber ??
-                            "—",
-                          row.recordedResults,
-                          row.wins,
-                          row.itmFinishes,
-                          row.averageRecordedFinish ??
-                            "—",
-                        ],
-                      )}
-                    />
-                  ) : null}
                 </div>
               </>
             ) : null}
@@ -1199,6 +1586,193 @@ export default function GreyhoundDogProfileModal({
               padding: 14px;
             }
 
+            .gdp-history-source-row {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 6px;
+              margin-bottom: 6px;
+            }
+
+            .gdp-history-source {
+              display: inline-flex;
+              align-items: center;
+              min-height: 22px;
+              padding: 4px 7px;
+              border-radius: 999px;
+              font-size: 7px;
+              font-weight: 950;
+              letter-spacing: .08em;
+              text-transform: uppercase;
+            }
+
+            .gdp-history-source.g365 {
+              border: 1px solid rgba(48,156,91,.38);
+              background: rgba(15,86,47,.28);
+              color: #9ce8bc;
+            }
+
+            .gdp-history-source.program {
+              border: 1px solid rgba(235,91,27,.42);
+              background: rgba(105,35,10,.30);
+              color: #ffab78;
+            }
+
+            .gdp-program-form-card {
+              border-color: rgba(212,78,24,.35);
+              background:
+                linear-gradient(105deg,rgba(104,28,10,.18),#101113 44%);
+            }
+
+            .gdp-program-history-mark {
+              display: flex;
+              width: 64px;
+              min-width: 64px;
+              min-height: 64px;
+              align-self: stretch;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              border-right: 1px solid rgba(218,82,25,.30);
+              background: rgba(81,24,8,.28);
+              text-align: center;
+            }
+
+            .gdp-program-history-mark strong {
+              max-width: 58px;
+              color: #fff;
+              font-size: 13px;
+              line-height: 1.05;
+              font-weight: 950;
+              overflow-wrap: anywhere;
+            }
+
+            .gdp-program-history-mark span {
+              margin-top: 4px;
+              color: #d97745;
+              font-size: 6px;
+              font-weight: 950;
+              letter-spacing: .08em;
+            }
+
+            .gdp-running-wrap {
+              width: fit-content;
+              max-width: 100%;
+              margin-top: 9px;
+              padding: 8px 9px;
+              border: 1px solid #2d3034;
+              border-radius: 10px;
+              background: rgba(0,0,0,.24);
+            }
+
+            .gdp-running-title {
+              margin-bottom: 7px;
+              color: #d26a38;
+              font-size: 7px;
+              font-weight: 950;
+              letter-spacing: .10em;
+              text-transform: uppercase;
+            }
+
+            .gdp-running-line {
+              display: flex;
+              max-width: 100%;
+              align-items: center;
+              gap: 5px;
+              overflow-x: auto;
+              padding-bottom: 2px;
+              scrollbar-width: thin;
+            }
+
+            .gdp-running-fragment {
+              display: flex;
+              flex: 0 0 auto;
+              align-items: center;
+              gap: 5px;
+            }
+
+            .gdp-running-call {
+              display: grid;
+              min-width: 54px;
+              min-height: 48px;
+              place-items: center;
+              align-content: center;
+              gap: 2px;
+              padding: 6px 7px;
+              border: 1px solid #373a3f;
+              border-radius: 9px;
+              background: #121315;
+              text-align: center;
+            }
+
+            .gdp-running-call.finish {
+              border-color: rgba(231,91,28,.52);
+              background: rgba(107,31,9,.28);
+            }
+
+            .gdp-running-call span {
+              color: #777d84;
+              font-size: 6px;
+              font-weight: 950;
+              letter-spacing: .06em;
+              text-transform: uppercase;
+              white-space: nowrap;
+            }
+
+            .gdp-running-call strong {
+              color: #fff;
+              font-size: 17px;
+              line-height: 1;
+              font-weight: 950;
+            }
+
+            .gdp-running-call small {
+              margin-top: 1px;
+              color: #ff9e67;
+              font-size: 6px;
+              font-weight: 900;
+              letter-spacing: .02em;
+              white-space: nowrap;
+            }
+
+            .gdp-final-odds {
+              display: grid;
+              min-width: 70px;
+              min-height: 52px;
+              flex: 0 0 auto;
+              place-items: center;
+              align-content: center;
+              gap: 2px;
+              padding: 6px 8px;
+              border: 1px solid rgba(231,91,28,.42);
+              border-radius: 9px;
+              background: rgba(107,31,9,.18);
+              text-align: center;
+            }
+
+            .gdp-final-odds span {
+              color: #d26a38;
+              font-size: 6px;
+              font-weight: 950;
+              letter-spacing: .06em;
+              text-transform: uppercase;
+              white-space: nowrap;
+            }
+
+            .gdp-final-odds strong {
+              color: #fff;
+              font-size: 14px;
+              line-height: 1;
+              font-weight: 950;
+              white-space: nowrap;
+            }
+
+            .gdp-running-arrow {
+              flex: 0 0 auto;
+              color: #8b4a2b;
+              font-size: 12px;
+              font-weight: 950;
+            }
+
             .gdp-form-list {
               display: grid;
               gap: 8px;
@@ -1290,6 +1864,71 @@ export default function GreyhoundDogProfileModal({
               color: #aeb2b8;
               font-size: 9px;
               line-height: 1.55;
+            }
+
+            .gdp-program-list {
+              display: grid;
+              gap: 8px;
+            }
+
+            .gdp-program-card {
+              padding: 12px;
+              border: 1px solid #2b2d30;
+              border-radius: 12px;
+              background: #111214;
+            }
+
+            .gdp-program-top {
+              display: flex;
+              align-items: flex-start;
+              justify-content: space-between;
+              gap: 12px;
+            }
+
+            .gdp-program-top > div:first-child {
+              min-width: 0;
+            }
+
+            .gdp-program-top strong {
+              display: block;
+              color: #fff;
+              font-size: 13px;
+              font-weight: 950;
+            }
+
+            .gdp-program-top span {
+              display: block;
+              margin-top: 3px;
+              color: #82878f;
+              font-size: 9px;
+            }
+
+            .gdp-speed {
+              display: flex;
+              min-width: 48px;
+              flex: 0 0 auto;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              padding: 7px 8px;
+              border: 1px solid rgba(255, 101, 31, 0.36);
+              border-radius: 9px;
+              background: rgba(116, 31, 12, 0.22);
+            }
+
+            .gdp-speed strong {
+              color: #fff;
+              font-size: 17px;
+              line-height: 1;
+              font-weight: 950;
+            }
+
+            .gdp-speed span {
+              margin-top: 3px;
+              color: #e37840;
+              font-size: 7px;
+              font-weight: 950;
+              letter-spacing: 0.09em;
             }
 
             .gdp-table-wrap {
@@ -1417,6 +2056,53 @@ export default function GreyhoundDogProfileModal({
                 flex-direction: column;
               }
             }
+
+            .gdp-source-program-list { display:grid; gap:14px; }
+            .gdp-source-program-card {
+              overflow:hidden; border:1px solid #34363b; border-radius:14px;
+              background:#f8f6ef; box-shadow:0 12px 30px rgba(0,0,0,.28);
+            }
+            .gdp-source-program-head {
+              display:flex; align-items:center; justify-content:space-between; gap:12px;
+              padding:10px 12px; border-bottom:2px solid #111;
+              background:linear-gradient(90deg,#250805,#7f1d0d 55%,#111); color:#fff;
+            }
+            .gdp-source-program-head > div { display:flex; align-items:baseline; gap:9px; }
+            .gdp-source-program-head strong { font-size:12px; font-weight:950; letter-spacing:.08em; }
+            .gdp-source-program-head span,.gdp-source-program-head time {
+              color:#fdba74; font-size:9px; font-weight:900; letter-spacing:.08em;
+            }
+            .gdp-source-program-meta {
+              display:flex; flex-wrap:wrap; gap:6px 16px; padding:7px 12px;
+              border-bottom:1px solid #b8b3a8; background:#e5e1d7; color:#18181b;
+              font-size:9px; font-weight:900;
+            }
+            .gdp-source-program-scroll {
+              overflow-x:auto; -webkit-overflow-scrolling:touch; background:#f8f6ef;
+            }
+            .gdp-source-program-image {
+              display:block;
+              width:auto;
+              max-width:none;
+              height:auto;
+              min-width:100%;
+              background:#fff;
+              image-rendering:auto;
+              user-select:none;
+            }
+
+            .gdp-source-program-text {
+              width:max-content; min-width:100%; margin:0; padding:12px 14px 14px;
+              background:transparent; color:#09090b;
+              font-family:"Arial Narrow","Roboto Condensed",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+              font-size:11px; font-weight:800; line-height:1.35; white-space:pre; tab-size:2;
+            }
+            @media (max-width:640px) {
+              .gdp-source-program-head { align-items:flex-start; flex-direction:column; }
+              .gdp-source-program-head > div { align-items:flex-start; flex-direction:column; gap:2px; }
+              .gdp-source-program-text { font-size:10px; }
+            }
+
           `}</style>
         </div>
       ) : null}

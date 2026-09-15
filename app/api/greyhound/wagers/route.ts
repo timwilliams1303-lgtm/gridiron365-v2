@@ -463,6 +463,72 @@ export async function POST(
 
     /*
      * ==========================================================
+     * G365 WAGERING STYLE
+     * ==========================================================
+     *
+     * whole_card:
+     *   Preserve the existing card-wide lock exactly.
+     *
+     * live_bankroll:
+     *   The database Live Bankroll engine is authoritative for:
+     *   - current-race-only wagering
+     *   - individual race lock
+     *   - busted bankroll
+     *   - race requirement snapshots
+     * ==========================================================
+     */
+
+    const {
+      data: wageringSettings,
+      error: wageringSettingsError,
+    } = await admin
+      .from(
+        "greyhound_league_settings"
+      )
+      .select(
+        "wagering_style"
+      )
+      .eq(
+        "league_id",
+        leagueId
+      )
+      .order(
+        "id",
+        { ascending: true }
+      )
+      .limit(1)
+      .maybeSingle();
+
+    if (wageringSettingsError) {
+      return jsonError(
+        wageringSettingsError.message,
+        500
+      );
+    }
+
+    const wageringStyle =
+      String(
+        wageringSettings
+          ?.wagering_style ??
+        "whole_card"
+      )
+        .trim()
+        .toLowerCase();
+
+    if (
+      wageringStyle !==
+        "whole_card" &&
+      wageringStyle !==
+        "live_bankroll"
+    ) {
+      return jsonError(
+        `Unsupported Greyhound wagering style: ${wageringStyle}.`,
+        500
+      );
+    }
+
+    /*
+     * ==========================================================
      * G365 WHOLE-CARD WAGER LOCK
      * ==========================================================
      *
@@ -635,9 +701,13 @@ export async function POST(
       );
 
     if (
-      terminalOrLocked ||
-      persistedLockReached ||
-      calculatedLockReached
+      wageringStyle ===
+        "whole_card" &&
+      (
+        terminalOrLocked ||
+        persistedLockReached ||
+        calculatedLockReached
+      )
     ) {
       return jsonError(
         "Wagering is closed for this Greyhound card. The entire card locks 5 minutes before Race 1.",
@@ -672,7 +742,7 @@ export async function POST(
       data,
       error,
     } = await admin.rpc(
-      "place_greyhound_wager",
+      "place_greyhound_wager_v2",
       {
         p_league_id:
           leagueId,
@@ -735,6 +805,21 @@ export async function POST(
         ) ||
         lower.includes(
           "already started"
+        ) ||
+        lower.includes(
+          "live bankroll"
+        ) ||
+        lower.includes(
+          "not available yet"
+        ) ||
+        lower.includes(
+          "not currently open"
+        ) ||
+        lower.includes(
+          "busted"
+        ) ||
+        lower.includes(
+          "no remaining live races"
         )
           ? 409
           : 400;

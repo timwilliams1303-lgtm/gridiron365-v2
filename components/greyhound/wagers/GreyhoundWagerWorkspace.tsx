@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import GreyhoundDogProfileModal from "@/components/greyhound/GreyhoundDogProfileModal";
+import GreyhoundRaceProgramCard from "@/components/greyhound/GreyhoundRaceProgramCard";
 import GreyhoundMyWagers from "@/components/greyhound/wagers/GreyhoundMyWagers";
 import GreyhoundDailySurvivorPanel from "@/components/greyhound/wagers/GreyhoundDailySurvivorPanel";
 import styles from "./GreyhoundWagerWorkspace.module.css";
@@ -58,6 +59,8 @@ type Race = {
   scheduledPostTime: string | null;
   actualPostTime: string | null;
   raceStatus: string;
+  wageringOpen?: boolean;
+  liveRaceState?: string | null;
   entries: Entry[];
 };
 
@@ -69,6 +72,7 @@ type AvailableCard = {
   cardStatus: string;
   scheduledFirstPost: string | null;
   lockAt: string | null;
+  wageringOpen?: boolean;
   track: {
     id: number;
     code: string;
@@ -93,6 +97,11 @@ type WorkspaceData = {
     competitionWeeks?: number | null;
     competitionDays?: number[];
     startingBankroll: number;
+    wageringStyle?: "whole_card" | "live_bankroll";
+    liveRaceLockMinutesBeforePost?: number;
+    liveMandatoryRaceAction?: boolean;
+    liveMinimumWagerPercent?: number;
+    liveAutoWagerEnabled?: boolean;
     allowedWagers: Partial<Record<string, boolean>>;
   };
   card?: {
@@ -111,6 +120,8 @@ type WorkspaceData = {
   availableCards?: AvailableCard[];
   completedRacingDates?: string[];
   selectedDate?: string | null;
+  weekStart?: string | null;
+  weekEnd?: string | null;
   bankroll?: {
     id: number;
     startingBankroll: number;
@@ -118,6 +129,22 @@ type WorkspaceData = {
     amountUnallocated: number;
     officialReturn: number;
     cardStatus: string;
+  } | null;
+  liveBankroll?: {
+    currentRaceId: number | null;
+    currentRaceNumber: number | null;
+    raceState: string | null;
+    openingBankroll: number;
+    minimumRequired: number;
+    qualifyingWagerTotal: number;
+    remainingRequired: number;
+    requirementSatisfied: boolean;
+    autoWagerEntryId: number | null;
+    autoWagerAmount: number;
+    selectedAutoWagerEntryId: number | null;
+    openedAt: string | null;
+    lockedAt: string | null;
+    settledAt: string | null;
   } | null;
   races?: Race[];
 };
@@ -697,16 +724,9 @@ function isTrackRaceDate(
    * A real published card is authoritative and allows holiday /
    * special-date racing even when the normal weekly calendar is dark.
    */
-  return (
-    regularTrackRaceDay(
-      value,
-      trackCode
-    ) ||
-    publishedTrackCardExists(
-      cards,
-      value,
-      trackCode
-    )
+  return regularTrackRaceDay(
+    value,
+    trackCode
   );
 }
 
@@ -796,6 +816,41 @@ function nextTrackRacingDate(
     settings,
     cards
   );
+}
+
+
+function expectedTrackSessionLabel(
+  value: string,
+  settings:
+    WorkspaceData["settings"],
+  cards:
+    AvailableCard[]
+) {
+  const tracks =
+    expectedTracksForDate(
+      value,
+      settings,
+      cards
+    );
+
+  if (
+    tracks.length ===
+    1
+  ) {
+    return tracks[0] ===
+      "GTS"
+      ? "Tri-State evening"
+      : "Wheeling";
+  }
+
+  if (
+    tracks.length >
+    1
+  ) {
+    return "Wheeling / Tri-State";
+  }
+
+  return "Greyhound";
 }
 
 
@@ -1066,13 +1121,53 @@ function trapStyle(
 }
 
 
+function countdownLabel(
+  target: string | null | undefined,
+  nowMs: number
+) {
+  if (!target) return "Lock time TBD";
+
+  const targetMs = new Date(target).getTime();
+  if (!Number.isFinite(targetMs)) return "Lock time TBD";
+
+  const remaining = Math.max(0, targetMs - nowMs);
+  if (remaining <= 0) return "LOCKED";
+
+  const totalSeconds = Math.floor(remaining / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return hours > 0
+    ? `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`
+    : `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+
+function liveRaceLockAt(
+  race: Race | null,
+  minutesBeforePost: number
+) {
+  if (!race?.scheduledPostTime) return null;
+
+  const postMs = new Date(race.scheduledPostTime).getTime();
+  if (!Number.isFinite(postMs)) return null;
+
+  return new Date(
+    postMs - Math.max(0, minutesBeforePost) * 60 * 1000
+  ).toISOString();
+}
+
+
 function isRaceOpen(
   race:
     Race | null,
   cardStatus:
     string | null | undefined,
   lockAt:
-    string | null | undefined
+    string | null | undefined,
+  wageringStyle:
+    "whole_card" | "live_bankroll" = "whole_card"
 ) {
   if (!race) {
     return false;
@@ -1089,18 +1184,18 @@ function isRaceOpen(
     return false;
   }
 
-  if (
-    [
-      "locked",
-      "final",
-      "cancelled",
-    ].includes(
-      String(
-        cardStatus ??
-        ""
-      )
-    )
-  ) {
+  const normalizedCardStatus =
+    String(cardStatus ?? "").toLowerCase();
+
+  if (["final", "cancelled"].includes(normalizedCardStatus)) {
+    return false;
+  }
+
+  if (wageringStyle === "live_bankroll") {
+    return race.wageringOpen === true;
+  }
+
+  if (["locked", "in_progress"].includes(normalizedCardStatus)) {
     return false;
   }
 
@@ -1225,6 +1320,13 @@ export default function GreyhoundWagerWorkspace({
     );
 
   const [
+    positionEntryIds,
+    setPositionEntryIds,
+  ] =
+    useState<Array<number | null>>([]);
+
+
+  const [
     keyEntryId,
     setKeyEntryId,
   ] =
@@ -1270,6 +1372,17 @@ export default function GreyhoundWagerWorkspace({
 
 
   const [
+    liveClockMs,
+    setLiveClockMs,
+  ] = useState(() => Date.now());
+
+  const [
+    savingAutoSelection,
+    setSavingAutoSelection,
+  ] = useState(false);
+
+
+  const [
     activeView,
     setActiveView,
   ] = useState<
@@ -1280,8 +1393,8 @@ export default function GreyhoundWagerWorkspace({
   const [selectedTrackCode, setSelectedTrackCode] =
     useState<"GWD" | "GTS" | null>(null);
 
-  const [selectedDate, setSelectedDate] =
-    useState<string>("");
+  const [selectedCardId, setSelectedCardId] =
+    useState<number | null>(null);
 
 
   const load =
@@ -1290,274 +1403,92 @@ export default function GreyhoundWagerWorkspace({
         preserveRace =
           true
       ) => {
-        setLoading(
-          true
-        );
-
-        setError(
-          null
-        );
+        setLoading(true);
+        setError(null);
 
         try {
-          const query =
-            new URLSearchParams({
-              leagueId,
-            });
+          const query = new URLSearchParams({ leagueId });
 
-          if (selectedDate) {
-            query.set(
-              "date",
-              selectedDate
-            );
+          if (selectedCardId) {
+            query.set("cardId", String(selectedCardId));
           }
 
-          if (selectedTrackCode) {
-            query.set(
-              "track",
-              selectedTrackCode
-            );
-          }
+          const response = await fetch(
+            `/api/greyhound/wager-workspace?${query.toString()}`,
+            {
+              method: "GET",
+              cache: "no-store",
+            }
+          );
 
-          const response =
-            await fetch(
-              `/api/greyhound/wager-workspace?${query.toString()}`,
-              {
-                method:
-                  "GET",
-                cache:
-                  "no-store",
-              }
-            );
+          const payload = (await response.json()) as WorkspaceData;
 
-          const payload =
-            (
-              await response.json()
-            ) as WorkspaceData;
-
-          if (
-            !response.ok ||
-            !payload.success
-          ) {
+          if (!response.ok || !payload.success) {
             throw new Error(
-              payload.error ??
-              "Unable to load Greyhound race card."
+              payload.error ?? "Unable to load Greyhound race card."
             );
           }
 
-          const completedDates =
-            new Set(
-              payload.completedRacingDates ??
-              []
+          setData(payload);
+
+          if (!selectedCardId && payload.card?.id) {
+            setSelectedCardId(payload.card.id);
+            setSelectedTrackCode(
+              payload.card.track?.code === "GTS" ? "GTS" : "GWD"
             );
+          }
 
-          const easternToday =
-            easternTodayIsoDate();
+          const loadedRaces = payload.races ?? [];
 
-          const currentCompetitionDate =
-            currentOrNextTrackRacingDate(
-              easternToday,
-              payload.settings,
-              payload.availableCards ??
-                []
-            );
-
-          let targetDate =
-            selectedDate ||
-            currentCompetitionDate;
-
-          /*
-           * Never leave My Wagers parked on a completed or
-           * commissioner-excluded competition day.
-           *
-           * The league's saved Competition Days are authoritative.
-           * This means a league using Tue/Thu/Sat, for example,
-           * advances directly to the next Tue/Thu/Sat instead of
-           * following a hard-coded Greyhound calendar.
-           */
-          let advanceGuard = 0;
-
-          while (
-            targetDate &&
-            (
-              targetDate <
-                currentCompetitionDate ||
-              completedDates.has(
-                targetDate
-              ) ||
-              !isCompetitionDate(
-                targetDate,
-                payload.settings
-              )
-            ) &&
-            advanceGuard < 370
-          ) {
-            const nextDate =
-              nextTrackRacingDate(
-                targetDate,
-                payload.settings,
-                payload.availableCards ??
-                  []
-              );
+          setSelectedRaceId((current) => {
+            const payloadStyle =
+              payload.settings?.wageringStyle === "live_bankroll"
+                ? "live_bankroll"
+                : "whole_card";
 
             if (
-              nextDate === targetDate
+              payloadStyle === "live_bankroll" &&
+              payload.liveBankroll?.currentRaceId &&
+              loadedRaces.some(
+                (race) =>
+                  race.id === payload.liveBankroll?.currentRaceId
+              )
             ) {
-              break;
+              return payload.liveBankroll.currentRaceId;
             }
 
-            targetDate =
-              nextDate;
-
-            advanceGuard += 1;
-          }
-
-          if (
-            targetDate &&
-            targetDate !== selectedDate
-          ) {
-            setSelectedDate(
-              targetDate
-            );
-
-            const expectedTracks =
-              expectedTracksForDate(
-                targetDate,
-                payload.settings,
-                payload.availableCards ??
-                  []
-              );
-
-            setSelectedTrackCode(
-              expectedTracks.length ===
-                1
-                ? expectedTracks[0]
-                : null
-            );
-
-            setSelectedRaceId(
-              null
-            );
-
-            setSelectedEntryIds(
-              []
-            );
-
-            setKeyEntryId(
-              null
-            );
-
-            setAlternate1EntryId(
-              null
-            );
-
-            setAlternate2EntryId(
-              null
-            );
-
-            setData({
-              ...payload,
-              selectedDate:
-                targetDate,
-              card:
-                null,
-              bankroll:
-                null,
-              races:
-                [],
-            });
-
-            return;
-          }
-
-          // A racing date never auto-opens a track. The API may discover and
-          // publish Wheeling/Tri-State cards automatically, but members must
-          // click the track button before races, runners, bankroll, or Bet Pad
-          // content is loaded for that card.
-          if (!selectedTrackCode) {
-            setData({
-              ...payload,
-              selectedDate:
-                targetDate ||
-                payload.selectedDate ||
-                null,
-              card: null,
-              bankroll: null,
-              races: [],
-            });
-
-            setSelectedRaceId(
-              null
-            );
-
-            return;
-          }
-
-          setData(
-            payload
-          );
-
-          const races =
-            payload.races ??
-            [];
-
-          setSelectedRaceId(
-            (
-              current
-            ) => {
-              if (
-                preserveRace &&
-                current &&
-                races.some(
-                  (
-                    race
-                  ) =>
-                    race.id ===
-                    current
-                )
-              ) {
-                return current;
-              }
-
-              const firstOpen =
-                races.find(
-                  (
-                    race
-                  ) =>
-                    isRaceOpen(
-                      race,
-                      payload.card
-                        ?.cardStatus,
-                      payload.card
-                        ?.lockAt
-                    )
-                );
-
-              return (
-                firstOpen?.id ??
-                races[0]
-                  ?.id ??
-                null
-              );
+            if (
+              preserveRace &&
+              current &&
+              loadedRaces.some((race) => race.id === current)
+            ) {
+              return current;
             }
-          );
-        } catch (
-          loadError
-        ) {
+
+            const firstOpen = loadedRaces.find((race) =>
+              isRaceOpen(
+                race,
+                payload.card?.cardStatus,
+                payload.card?.lockAt,
+                payloadStyle
+              )
+            );
+
+            return firstOpen?.id ?? loadedRaces[0]?.id ?? null;
+          });
+        } catch (loadError) {
           setError(
             loadError instanceof Error
               ? loadError.message
               : "Unable to load Greyhound race card."
           );
         } finally {
-          setLoading(
-            false
-          );
+          setLoading(false);
         }
       },
       [
         leagueId,
-        selectedDate,
-        selectedTrackCode,
+        selectedCardId,
       ]
     );
 
@@ -1574,6 +1505,16 @@ export default function GreyhoundWagerWorkspace({
   );
 
 
+  useEffect(() => {
+    const interval = window.setInterval(
+      () => setLiveClockMs(Date.now()),
+      1000
+    );
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+
   useEffect(
     () => {
       const interval =
@@ -1583,7 +1524,7 @@ export default function GreyhoundWagerWorkspace({
               true
             );
           },
-          60000
+          15000
         );
 
       return () =>
@@ -1606,46 +1547,37 @@ export default function GreyhoundWagerWorkspace({
     data?.availableCards ??
     [];
 
-  const cardsForSelectedDate =
+  const weeklyCards =
     useMemo(
       () =>
-        selectedDate
-          ? availableCards
-              .filter(
-                (card) =>
-                  card.raceDate ===
-                  selectedDate
-              )
-              .sort((a, b) => {
-                const trackOrder = (card: AvailableCard) =>
-                  card.track?.code === "GWD"
-                    ? 0
-                    : card.track?.code === "GTS"
-                      ? 1
-                      : 2;
+        [...availableCards].sort((a, b) => {
+          const dateCompare = a.raceDate.localeCompare(b.raceDate);
+          if (dateCompare !== 0) return dateCompare;
 
-                return trackOrder(a) - trackOrder(b);
-              })
-          : [],
-      [
-        availableCards,
-        selectedDate,
-      ]
-    );
+          const timeCompare = String(a.scheduledFirstPost ?? "").localeCompare(
+            String(b.scheduledFirstPost ?? "")
+          );
+          if (timeCompare !== 0) return timeCompare;
 
-  const availableDates =
-    useMemo(
-      () =>
-        Array.from(
-          new Set(
-            availableCards.map(
-              (card) =>
-                card.raceDate
-            )
-          )
-        ).sort(),
+          return (a.track?.code ?? "").localeCompare(b.track?.code ?? "");
+        }),
       [availableCards]
     );
+
+
+  const wageringStyle =
+    data?.settings?.wageringStyle === "live_bankroll"
+      ? "live_bankroll"
+      : "whole_card";
+
+  const isLiveBankroll =
+    wageringStyle === "live_bankroll";
+
+  const liveBankroll =
+    data?.liveBankroll ?? null;
+
+  const liveRaceLockMinutes =
+    data?.settings?.liveRaceLockMinutesBeforePost ?? 5;
 
 
   const selectedRace =
@@ -1721,6 +1653,7 @@ export default function GreyhoundWagerWorkspace({
       setSelectedEntryIds(
         []
       );
+      setPositionEntryIds([]);
       setKeyEntryId(
         null
       );
@@ -1816,10 +1749,17 @@ export default function GreyhoundWagerWorkspace({
           structure ===
           "straight"
         ) {
-          return selectedEntryIds.length ===
-            requiredLegs
-            ? [[...selectedEntryIds]]
-            : [];
+          const orderedPositions =
+            positionEntryIds.slice(0, requiredLegs);
+
+          return (
+            orderedPositions.length === requiredLegs &&
+            orderedPositions.every(
+              (entryId): entryId is number => entryId !== null
+            )
+              ? [[...orderedPositions]]
+              : []
+          );
         }
 
         if (
@@ -1846,6 +1786,7 @@ export default function GreyhoundWagerWorkspace({
       },
       [
         keyEntryId,
+        positionEntryIds,
         requiredLegs,
         selectedEntryIds,
         structure,
@@ -1872,8 +1813,107 @@ export default function GreyhoundWagerWorkspace({
       data?.card
         ?.cardStatus,
       data?.card
-        ?.lockAt
+        ?.lockAt,
+      wageringStyle
     );
+
+
+  const currentLiveRace =
+    isLiveBankroll && liveBankroll?.currentRaceId
+      ? races.find(
+          (race) =>
+            race.id === liveBankroll.currentRaceId
+        ) ?? null
+      : null;
+
+  const currentLiveRaceLockAt =
+    liveRaceLockAt(
+      currentLiveRace,
+      liveRaceLockMinutes
+    );
+
+  const liveBusted =
+    isLiveBankroll &&
+    (
+      liveBankroll?.raceState === "busted" ||
+      (data?.bankroll?.amountUnallocated ?? 0) <= 0
+    );
+
+  const liveRequirementEnabled =
+    isLiveBankroll &&
+    Boolean(data?.settings?.liveMandatoryRaceAction);
+
+  const liveRequirementRemaining =
+    liveBankroll?.remainingRequired ?? 0;
+
+  const liveRequirementSatisfied =
+    liveBankroll?.requirementSatisfied ?? true;
+
+  const selectedAutoEntry =
+    currentLiveRace?.entries.find(
+      (entry) =>
+        entry.id ===
+        liveBankroll?.selectedAutoWagerEntryId
+    ) ?? null;
+
+  async function saveLiveAutoSelection(
+    entryId: number | null
+  ) {
+    if (
+      !isLiveBankroll ||
+      !data?.bankroll?.id ||
+      !currentLiveRace
+    ) {
+      return;
+    }
+
+    setSavingAutoSelection(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetch(
+        "/api/greyhound/live-bankroll/auto-selection",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            leagueId,
+            bankrollCardId: data.bankroll.id,
+            raceId: currentLiveRace.id,
+            entryId,
+          }),
+        }
+      );
+
+      const payload = await response.json();
+
+      if (!response.ok || !payload.success) {
+        throw new Error(
+          payload.error ??
+          "Unable to save the Live Bankroll auto-wager selection."
+        );
+      }
+
+      setSuccess(
+        entryId === null
+          ? "Auto-wager dog selection cleared. G365 will use the lowest-numbered active box if an auto-wager is required."
+          : "Auto-wager dog saved for this race."
+      );
+
+      await load(true);
+    } catch (selectionError) {
+      setError(
+        selectionError instanceof Error
+          ? selectionError.message
+          : "Unable to save the Live Bankroll auto-wager selection."
+      );
+    } finally {
+      setSavingAutoSelection(false);
+    }
+  }
 
 
   const primaryEntryIds =
@@ -1882,6 +1922,9 @@ export default function GreyhoundWagerWorkspace({
         Array.from(
           new Set([
             ...selectedEntryIds,
+            ...positionEntryIds.filter(
+              (entryId): entryId is number => entryId !== null
+            ),
             ...(keyEntryId !== null
               ? [keyEntryId]
               : []),
@@ -1889,6 +1932,7 @@ export default function GreyhoundWagerWorkspace({
         ),
       [
         selectedEntryIds,
+        positionEntryIds,
         keyEntryId,
       ]
     );
@@ -2010,15 +2054,17 @@ export default function GreyhoundWagerWorkspace({
       return;
     }
 
-    // Straight exotic: each finishing-position column owns one runner.
+    // Straight exotic: every finishing-position bubble owns its exact slot.
+    // Keep empty slots so choosing 2nd before 1st never moves that dog to 1st.
     setKeyEntryId(null);
-    setSelectedEntryIds((current) => {
+    setSelectedEntryIds([]);
+    setPositionEntryIds((current) => {
       const next: Array<number | null> = Array.from(
         { length: requiredLegs },
         (_, index) => current[index] ?? null
       );
 
-      // A greyhound cannot occupy two finishing positions in one ticket.
+      // A greyhound cannot occupy two finishing positions on one ticket.
       for (let index = 0; index < next.length; index += 1) {
         if (index !== columnIndex && next[index] === entry.id) {
           next[index] = null;
@@ -2028,30 +2074,24 @@ export default function GreyhoundWagerWorkspace({
       next[columnIndex] =
         next[columnIndex] === entry.id ? null : entry.id;
 
-      return next.filter((id): id is number => id !== null);
+      return next;
     });
   }
 
 
-  function openTrack(trackCode: "GWD" | "GTS") {
-    const matchingCard =
-      cardsForSelectedDate.find(
-        (card) =>
-          card.track?.code ===
-          trackCode
-      );
-
-    if (!matchingCard) {
-      setError(
-        `No confirmed ${trackCode === "GTS" ? "Tri-State" : "Wheeling"} card is available for ${selectedDate || "the selected date"}.`
-      );
+  function openCard(card: AvailableCard) {
+    if (card.wageringOpen === false) {
       return;
     }
 
-    setSelectedTrackCode(trackCode);
+    setSelectedCardId(card.id);
+    setSelectedTrackCode(
+      card.track?.code === "GTS" ? "GTS" : "GWD"
+    );
     setActiveView("betting");
     setSelectedRaceId(null);
     setSelectedEntryIds([]);
+    setPositionEntryIds([]);
     setKeyEntryId(null);
     setAlternate1EntryId(null);
     setAlternate2EntryId(null);
@@ -2060,17 +2100,21 @@ export default function GreyhoundWagerWorkspace({
   }
 
 
-  function chooseDate(nextDate: string) {
-    setSelectedDate(nextDate);
-    setSelectedTrackCode(null);
-    setActiveView("betting");
-    setSelectedRaceId(null);
-    setSelectedEntryIds([]);
-    setKeyEntryId(null);
-    setAlternate1EntryId(null);
-    setAlternate2EntryId(null);
-    setError(null);
-    setSuccess(null);
+  function openTrack(trackCode: "GWD" | "GTS") {
+    const matchingCard = weeklyCards.find(
+      (card) =>
+        card.track?.code === trackCode &&
+        card.wageringOpen !== false
+    );
+
+    if (!matchingCard) {
+      setError(
+        `No open ${trackCode === "GTS" ? "Tri-State" : "Wheeling"} card is available this week.`
+      );
+      return;
+    }
+
+    openCard(matchingCard);
   }
 
 
@@ -2223,6 +2267,7 @@ export default function GreyhoundWagerWorkspace({
       setSelectedEntryIds(
         []
       );
+      setPositionEntryIds([]);
 
       setAlternate1EntryId(
         null
@@ -2249,6 +2294,37 @@ export default function GreyhoundWagerWorkspace({
       );
     }
   }
+
+
+  const ticketPositionEntries =
+    Array.from({ length: requiredLegs }, (_, index) => {
+      const entryId = positionEntryIds[index] ?? null;
+      return entryId
+        ? selectedRace?.entries.find((entry) => entry.id === entryId) ?? null
+        : null;
+    });
+
+  const ticketKeyEntry =
+    keyEntryId !== null
+      ? selectedRace?.entries.find((entry) => entry.id === keyEntryId) ?? null
+      : null;
+
+  const ticketSelectedEntries =
+    selectedEntryIds
+      .map((entryId) =>
+        selectedRace?.entries.find((entry) => entry.id === entryId) ?? null
+      )
+      .filter((entry): entry is Entry => entry !== null);
+
+  const ticketAlternate1 =
+    alternate1EntryId !== null
+      ? selectedRace?.entries.find((entry) => entry.id === alternate1EntryId) ?? null
+      : null;
+
+  const ticketAlternate2 =
+    alternate2EntryId !== null
+      ? selectedRace?.entries.find((entry) => entry.id === alternate2EntryId) ?? null
+      : null;
 
 
   const selectedEntryLabels =
@@ -2371,15 +2447,9 @@ export default function GreyhoundWagerWorkspace({
               ) : (
                 <div className={styles.cardMeta}>
                   <span>
-                    {selectedDate
-                      ? `Waiting for ${expectedTrackLabel(
-                          selectedDate,
-                          data?.settings,
-                          availableCards
-                        )} on ${dateOnlyLabel(
-                          selectedDate
-                        )}`
-                      : "Waiting for the next scheduled Greyhound card"}
+                    {data?.weekStart && data?.weekEnd
+                      ? `Weekly cards ${dateOnlyLabel(data.weekStart)} – ${dateOnlyLabel(data.weekEnd)}`
+                      : "Waiting for the next uploaded Greyhound card"}
                   </span>
                 </div>
               )}
@@ -2426,89 +2496,87 @@ export default function GreyhoundWagerWorkspace({
 
         <div
           className={styles.trackSwitcher}
-          style={{
-            alignItems: "stretch",
-            gap: 14,
-          }}
+          style={{ alignItems: "stretch", gap: 14 }}
         >
-          <div
-            className={styles.trackSwitcherCopy}
-            style={{
-              minWidth: 0,
-              flex: "1 1 260px",
-            }}
-          >
-            <span className={styles.sectionLabel}>Racing Date</span>
-            <strong>Choose the date, then choose the track</strong>
+          <div style={{ width: "100%", minWidth: 0 }}>
             <div
               style={{
-                marginTop: 10,
                 display: "flex",
+                alignItems: "end",
+                justifyContent: "space-between",
+                gap: 12,
                 flexWrap: "wrap",
-                gap: 8,
-                alignItems: "center",
               }}
             >
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(event) =>
-                  chooseDate(event.target.value)
-                }
-                className={styles.racingDatePicker}
-              />
+              <div>
+                <span className={styles.sectionLabel}>Weekly Race Cards</span>
+                <strong style={{ display: "block", marginTop: 2 }}>
+                  Monday – Sunday
+                </strong>
+              </div>
 
-              {availableDates.length > 0 ? (
-                <span
-                  style={{
-                    color: "#8f949b",
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                >
-                  {availableDates.length} available racing date{availableDates.length === 1 ? "" : "s"}
+              {data?.weekStart && data?.weekEnd ? (
+                <span style={{ color: "#9a9da2", fontSize: 12, fontWeight: 800 }}>
+                  {dateOnlyLabel(data.weekStart)} – {dateOnlyLabel(data.weekEnd)}
                 </span>
               ) : null}
             </div>
-          </div>
 
-          <div
-            style={{
-              flex: "2 1 360px",
-              minWidth: 0,
-            }}
-          >
-            <span className={styles.sectionLabel}>Available Cards</span>
             <div
               className={styles.trackSwitcherButtons}
-              style={{
-                marginTop: 8,
-                flexWrap: "wrap",
-              }}
+              style={{ marginTop: 10, flexWrap: "wrap", alignItems: "stretch" }}
             >
-              {cardsForSelectedDate.length > 0 ? (
-                cardsForSelectedDate.map((card) => {
-                  const code =
-                    card.track?.code === "GTS"
-                      ? "GTS"
-                      : "GWD";
-
-                  const active =
-                    data?.card?.id === card.id;
+              {weeklyCards.length > 0 ? (
+                weeklyCards.map((card) => {
+                  const code = card.track?.code === "GTS" ? "GTS" : "GWD";
+                  const active = data?.card?.id === card.id;
+                  const open = card.wageringOpen !== false;
 
                   return (
                     <button
                       key={card.id}
                       type="button"
-                      className={`${styles.trackButton} ${active ? styles.trackButtonActive : ""}`}
-                      onClick={() => openTrack(code)}
+                      disabled={!open}
+                      className={`${styles.trackButton} ${
+                        active ? styles.trackButtonActive : ""
+                      }`}
+                      onClick={() => openCard(card)}
+                      style={{
+                        opacity: open ? 1 : 0.46,
+                        cursor: open ? "pointer" : "not-allowed",
+                        minWidth: 150,
+                      }}
                     >
-                      {code === "GTS" ? "Tri-State" : "Wheeling"}
-                      {card.session ? ` · ${card.session}` : ""}
+                      <span style={{ display: "block", fontWeight: 950 }}>
+                        {code === "GTS" ? "Tri-State" : "Wheeling"}
+                      </span>
+                      <span
+                        style={{
+                          display: "block",
+                          marginTop: 2,
+                          fontSize: 11,
+                          fontWeight: 850,
+                        }}
+                      >
+                        {dateOnlyLabel(card.raceDate)}
+                        {card.session ? ` · ${card.session}` : ""}
+                      </span>
+                      {!open ? (
+                        <span
+                          style={{
+                            display: "block",
+                            marginTop: 3,
+                            fontSize: 10,
+                            fontWeight: 950,
+                          }}
+                        >
+                          LOCKED
+                        </span>
+                      ) : null}
                     </button>
                   );
                 })
-              ) : selectedDate ? (
+              ) : (
                 <div
                   style={{
                     width: "100%",
@@ -2521,23 +2589,7 @@ export default function GreyhoundWagerWorkspace({
                     fontWeight: 800,
                   }}
                 >
-                  {`Waiting for the confirmed ${expectedTrackLabel(
-                    selectedDate,
-                    data?.settings,
-                    availableCards
-                  )} card for ${dateOnlyLabel(
-                    selectedDate
-                  )}.`}
-                </div>
-              ) : (
-                <div
-                  style={{
-                    color: "#9a9da2",
-                    fontSize: 13,
-                    fontWeight: 800,
-                  }}
-                >
-                  Choose a date to see available cards.
+                  No commissioner-confirmed race cards have been uploaded for this Monday–Sunday week.
                 </div>
               )}
             </div>
@@ -2622,33 +2674,184 @@ export default function GreyhoundWagerWorkspace({
           </div>
         ) : null}
 
-        {!data?.card && cardsForSelectedDate.length === 0 ? (
+        {!data?.card && weeklyCards.length === 0 ? (
           <div className={styles.waitingBanner}>
             <strong>
               Waiting for the next race card
             </strong>
 
             <span>
-              G365 will add Wheeling or Tri-State above automatically as soon
-              as the official card is published.
+              Uploaded and commissioner-confirmed cards for the current Monday–Sunday week will appear above.
             </span>
           </div>
         ) : null}
 
-        {!data?.card && cardsForSelectedDate.length > 0 ? (
+        {!data?.card && weeklyCards.length > 0 ? (
           <div className={styles.waitingBanner}>
             <strong>
-              Choose Wheeling or Tri-State
+              Choose an available weekly card
             </strong>
 
             <span>
-              Select an available track above to open its races and runners.
+              Select an available card above to open its races, runners, wager options, alternates, and Official Program.
             </span>
           </div>
         ) : null}
 
         {data?.card ? (
           <>
+        {isLiveBankroll ? (
+          <div
+            style={{
+              marginBottom: 14,
+              padding: 14,
+              border: "1px solid rgba(255,122,26,.42)",
+              borderRadius: 14,
+              background:
+                "linear-gradient(135deg,rgba(152,20,23,.22),rgba(227,93,21,.08) 55%,rgba(255,255,255,.025))",
+              boxShadow: "0 14px 34px rgba(0,0,0,.22)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                flexWrap: "wrap",
+                alignItems: "flex-start",
+              }}
+            >
+              <div>
+                <div style={{ color: "#ff8a35", fontSize: 10, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase" }}>
+                  Live Bankroll Challenge
+                </div>
+                <div style={{ marginTop: 4, color: "#fff", fontSize: 18, fontWeight: 950 }}>
+                  {liveBusted
+                    ? "BUSTED"
+                    : currentLiveRace
+                      ? `Race ${currentLiveRace.raceNumber} is ${liveBankroll?.raceState === "open" ? "OPEN" : String(liveBankroll?.raceState ?? "waiting").toUpperCase()}`
+                      : "Waiting for the next race"}
+                </div>
+                <div style={{ marginTop: 4, color: "#9da1a7", fontSize: 11, fontWeight: 800, lineHeight: 1.45 }}>
+                  Only the current race can be wagered. The next race opens after the previous race is official and settled.
+                </div>
+              </div>
+
+              <div style={{ minWidth: 150, textAlign: "right" }}>
+                <div style={{ color: "#8f949b", fontSize: 9, fontWeight: 950, textTransform: "uppercase", letterSpacing: ".08em" }}>
+                  Race Lock
+                </div>
+                <strong style={{ display: "block", marginTop: 3, color: liveBankroll?.raceState === "open" ? "#fff" : "#9da1a7", fontSize: 17 }}>
+                  {currentLiveRace
+                    ? countdownLabel(currentLiveRaceLockAt, liveClockMs)
+                    : "—"}
+                </strong>
+                {currentLiveRace?.scheduledPostTime ? (
+                  <span style={{ display: "block", marginTop: 2, color: "#777d85", fontSize: 9, fontWeight: 800 }}>
+                    Post {dateLabel(currentLiveRace.scheduledPostTime)}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit,minmax(125px,1fr))",
+                gap: 8,
+                marginTop: 12,
+              }}
+            >
+              {[
+                ["Available", money(data?.bankroll?.amountUnallocated ?? 0)],
+                ["Opening Race Bankroll", money(liveBankroll?.openingBankroll ?? 0)],
+                ["Official Returns", money(data?.bankroll?.officialReturn ?? 0)],
+                ["Race Wagered", money(liveBankroll?.qualifyingWagerTotal ?? 0)],
+              ].map(([label, value]) => (
+                <div key={label} style={{ padding: "9px 10px", border: "1px solid rgba(255,255,255,.09)", borderRadius: 10, background: "rgba(0,0,0,.24)" }}>
+                  <span style={{ display: "block", color: "#858b93", fontSize: 9, fontWeight: 900, textTransform: "uppercase" }}>
+                    {label}
+                  </span>
+                  <strong style={{ display: "block", marginTop: 3, color: "#fff", fontSize: 15 }}>
+                    {value}
+                  </strong>
+                </div>
+              ))}
+            </div>
+
+            {liveRequirementEnabled ? (
+              <div style={{ marginTop: 10, padding: 11, border: liveRequirementSatisfied ? "1px solid rgba(255,255,255,.10)" : "1px solid rgba(255,122,26,.34)", borderRadius: 11, background: "rgba(0,0,0,.22)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ color: "#ff8a35", fontSize: 9, fontWeight: 950, letterSpacing: ".08em", textTransform: "uppercase" }}>
+                      Required Race Action
+                    </div>
+                    <strong style={{ display: "block", marginTop: 3, color: "#fff", fontSize: 13 }}>
+                      {liveRequirementSatisfied
+                        ? "Requirement satisfied"
+                        : `${money(liveRequirementRemaining)} still required`}
+                    </strong>
+                  </div>
+
+                  <div style={{ textAlign: "right", color: "#a5a9ae", fontSize: 10, fontWeight: 850 }}>
+                    Minimum {money(liveBankroll?.minimumRequired ?? 0)}
+                    <br />
+                    Fixed from race-opening bankroll
+                  </div>
+                </div>
+
+                {data?.settings?.liveAutoWagerEnabled &&
+                currentLiveRace &&
+                liveBankroll?.raceState === "open" ? (
+                  <label style={{ display: "grid", gap: 5, marginTop: 10 }}>
+                    <span style={{ color: "#a5a9ae", fontSize: 9, fontWeight: 900, textTransform: "uppercase" }}>
+                      Auto-Wager Dog if Short at Lock
+                    </span>
+                    <select
+                      value={liveBankroll?.selectedAutoWagerEntryId ?? ""}
+                      disabled={savingAutoSelection || liveBusted}
+                      onChange={(event) => {
+                        const next = event.target.value
+                          ? Number(event.target.value)
+                          : null;
+                        void saveLiveAutoSelection(next);
+                      }}
+                      style={{ width: "100%", minHeight: 42, padding: "0 10px", border: "1px solid rgba(255,255,255,.14)", borderRadius: 9, background: "#101113", color: "#fff", fontWeight: 850, colorScheme: "dark" }}
+                    >
+                      <option value="">
+                        Automatic fallback · lowest active box
+                      </option>
+                      {currentLiveRace.entries
+                        .filter((entry) => entry.entryStatus === "active" && entry.dogId !== null)
+                        .sort((a, b) => a.boxNumber - b.boxNumber)
+                        .map((entry) => (
+                          <option key={`live-auto-${entry.id}`} value={entry.id}>
+                            {`#${entry.boxNumber} ${entry.dogName ?? "Runner"}`}
+                          </option>
+                        ))}
+                    </select>
+                    <span style={{ color: "#747a82", fontSize: 9, lineHeight: 1.4 }}>
+                      {selectedAutoEntry
+                        ? `Saved: #${selectedAutoEntry.boxNumber} ${selectedAutoEntry.dogName ?? "Runner"}.`
+                        : "No dog selected. If required, G365 uses the lowest-numbered active box."}
+                    </span>
+                  </label>
+                ) : null}
+
+                {Boolean(liveBankroll?.autoWagerAmount && liveBankroll.autoWagerAmount > 0) ? (
+                  <div style={{ marginTop: 8, color: "#ffb078", fontSize: 10, fontWeight: 900 }}>
+                    Auto-wager placed: {money(liveBankroll?.autoWagerAmount ?? 0)}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div style={{ marginTop: 10, color: "#858b93", fontSize: 10, fontWeight: 800 }}>
+                Race action is optional. You may skip this race.
+              </div>
+            )}
+          </div>
+        ) : null}
+
         <div className={styles.raceNav}>
           {races.length >
             0 ? (
@@ -2666,18 +2869,33 @@ export default function GreyhoundWagerWorkspace({
                     data.card
                       ?.cardStatus,
                     data.card
-                      ?.lockAt
+                      ?.lockAt,
+                    wageringStyle
+                  );
+
+                const liveCurrent =
+                  isLiveBankroll &&
+                  race.id === liveBankroll?.currentRaceId;
+
+                const liveFutureLocked =
+                  isLiveBankroll &&
+                  !liveCurrent &&
+                  ["scheduled", "upcoming"].includes(
+                    String(race.raceStatus).toLowerCase()
                   );
 
                 return (
                   <button
                     key={race.id}
                     type="button"
-                    onClick={() =>
+                    disabled={liveFutureLocked}
+                    onClick={() => {
+                      if (liveFutureLocked) return;
+
                       setSelectedRaceId(
                         race.id
-                      )
-                    }
+                      );
+                    }}
                     className={`${styles.raceNavButton} ${
                       active
                         ? styles.raceNavButtonActive
@@ -2696,9 +2914,21 @@ export default function GreyhoundWagerWorkspace({
                       }
                     >
                       {open
-                        ? dateLabel(
-                            race.scheduledPostTime
+                        ? (
+                            isLiveBankroll
+                              ? `OPEN · ${countdownLabel(
+                                  liveRaceLockAt(
+                                    race,
+                                    liveRaceLockMinutes
+                                  ),
+                                  liveClockMs
+                                )}`
+                              : dateLabel(
+                                  race.scheduledPostTime
+                                )
                           )
+                        : liveFutureLocked
+                          ? "WAITING"
                         : displayRaceStatus(
                             race.raceStatus,
                             data?.card?.cardStatus
@@ -2775,9 +3005,19 @@ export default function GreyhoundWagerWorkspace({
                     }
                   >
                     {raceOpen
-                      ? `Open • ${dateLabel(
-                          selectedRace.scheduledPostTime
-                        )}`
+                      ? (
+                          isLiveBankroll
+                            ? `Open • ${countdownLabel(
+                                liveRaceLockAt(
+                                  selectedRace,
+                                  liveRaceLockMinutes
+                                ),
+                                liveClockMs
+                              )}`
+                            : `Open • ${dateLabel(
+                                selectedRace.scheduledPostTime
+                              )}`
+                        )
                       : `Closed • ${displayRaceStatus(
                           selectedRace.raceStatus,
                           data?.card?.cardStatus
@@ -2824,6 +3064,7 @@ export default function GreyhoundWagerWorkspace({
                     {selectedRace.entries.map((entry) => {
                       const selected =
                         selectedEntryIds.includes(entry.id) ||
+                        positionEntryIds.includes(entry.id) ||
                         keyEntryId === entry.id;
 
                       const active = entry.entryStatus === "active";
@@ -2902,7 +3143,7 @@ export default function GreyhoundWagerWorkspace({
                             } else if (structure === "box") {
                               checked = selectedEntryIds.includes(entry.id);
                             } else {
-                              checked = selectedEntryIds[columnIndex] === entry.id;
+                              checked = positionEntryIds[columnIndex] === entry.id;
                             }
 
                             return (
@@ -2950,6 +3191,14 @@ export default function GreyhoundWagerWorkspace({
                     })}
                   </div>
                 </div>
+
+                <GreyhoundRaceProgramCard
+                  leagueId={leagueId}
+                  raceNumber={selectedRace.raceNumber}
+                  raceDate={data?.card?.raceDate}
+                  trackCode={data?.card?.track?.code}
+                  entries={selectedRace.entries}
+                />
               </>
             ) : (
               <div className={styles.waitingRaceCard}>
@@ -3062,118 +3311,90 @@ export default function GreyhoundWagerWorkspace({
             </div>
 
             <div className={styles.betPadBody}>
-              <div>
-                <div className={styles.fieldLabel}>
-                  Wager Type
-                </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2,minmax(0,1fr))",
+                  gap: 10,
+                }}
+              >
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span className={styles.fieldLabel}>Wager Type</span>
+                  <select
+                    value={wagerType}
+                    disabled={!data?.card}
+                    onChange={(event) => {
+                      const next = event.target.value as WagerType;
+                      setWagerType(next);
+                      setSelectedEntryIds([]);
+                      setPositionEntryIds([]);
+                      setKeyEntryId(null);
+                      setAlternate1EntryId(null);
+                      setAlternate2EntryId(null);
+                    }}
+                    aria-label="Wager Type"
+                    style={{
+                      width: "100%",
+                      minWidth: 0,
+                      minHeight: 46,
+                      border: "1px solid rgba(255,122,26,.55)",
+                      borderRadius: 10,
+                      background: "#151515",
+                      color: "#fff",
+                      padding: "0 11px",
+                      fontSize: 13,
+                      fontWeight: 900,
+                      colorScheme: "dark",
+                    }}
+                  >
+                    {(Object.keys(WAGER_LABELS) as WagerType[]).map((type) => (
+                      <option
+                        key={type}
+                        value={type}
+                        disabled={!isWagerAllowed(type, allowedWagers)}
+                      >
+                        {WAGER_LABELS[type]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-                <div className={styles.wagerTypeGrid}>
-                  {(
-                    Object.keys(
-                      WAGER_LABELS
-                    ) as WagerType[]
-                  ).map(
-                    (
-                      type
-                    ) => {
-                      const allowed =
-                        isWagerAllowed(
-                          type,
-                          allowedWagers
-                        );
-
-                      return (
-                        <button
-                          key={
-                            type
-                          }
-                          type="button"
-                          disabled={
-                            !allowed ||
-                            !data?.card
-                          }
-                          onClick={() =>
-                            setWagerType(
-                              type
-                            )
-                          }
-                          className={`${styles.choiceButton} ${
-                            wagerType ===
-                            type
-                              ? styles.choiceButtonActive
-                              : ""
-                          }`}
-                        >
-                          {
-                            WAGER_LABELS[
-                              type
-                            ]
-                          }
-                        </button>
-                      );
-                    }
-                  )}
-                </div>
+                <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <span className={styles.fieldLabel}>Bet Option</span>
+                  <select
+                    value={isStraightWager(wagerType) ? "straight" : structure}
+                    disabled={!data?.card || isStraightWager(wagerType)}
+                    onChange={(event) => {
+                      const option = event.target.value as WagerStructure;
+                      setStructure(option);
+                      setSelectedEntryIds([]);
+                      setPositionEntryIds([]);
+                      setKeyEntryId(null);
+                      setAlternate1EntryId(null);
+                      setAlternate2EntryId(null);
+                    }}
+                    aria-label="Bet Option"
+                    style={{
+                      width: "100%",
+                      minWidth: 0,
+                      minHeight: 46,
+                      border: "1px solid rgba(255,122,26,.55)",
+                      borderRadius: 10,
+                      background: "#151515",
+                      color: "#fff",
+                      padding: "0 11px",
+                      fontSize: 13,
+                      fontWeight: 900,
+                      colorScheme: "dark",
+                      opacity: isStraightWager(wagerType) ? 0.65 : 1,
+                    }}
+                  >
+                    <option value="straight">Straight</option>
+                    <option value="key">Key</option>
+                    <option value="box">Box</option>
+                  </select>
+                </label>
               </div>
-
-              {!isStraightWager(
-                wagerType
-              ) ? (
-                <div>
-                  <div className={styles.fieldLabel}>
-                    Structure
-                  </div>
-
-                  <div className={styles.twoColumn}>
-                    {(
-                      [
-                        "straight",
-                        "key",
-                        "box",
-                      ] as WagerStructure[]
-                    ).map(
-                      (
-                        option
-                      ) => (
-                        <button
-                          key={
-                            option
-                          }
-                          type="button"
-                          disabled={
-                            !data?.card
-                          }
-                          onClick={() => {
-                            setStructure(
-                              option
-                            );
-                            setSelectedEntryIds(
-                              []
-                            );
-                            setKeyEntryId(
-                              null
-                            );
-                            setAlternate1EntryId(
-                              null
-                            );
-                            setAlternate2EntryId(
-                              null
-                            );
-                          }}
-                          className={`${styles.choiceButton} ${
-                            structure ===
-                            option
-                              ? styles.choiceButtonActive
-                              : ""
-                          }`}
-                        >
-                          {option}
-                        </button>
-                      )
-                    )}
-                  </div>
-                </div>
-              ) : null}
 
               <div>
                 <div className={styles.fieldLabel}>
@@ -3275,67 +3496,157 @@ export default function GreyhoundWagerWorkspace({
               </div>
 
               <div className={styles.selectionsBox}>
-                <div className={styles.selectionsHeader}>
-                  <span>
-                    Your Selections
-                  </span>
+                <div
+                  style={{
+                    overflow: "hidden",
+                    border: "1px solid rgba(255,122,26,.46)",
+                    borderRadius: 14,
+                    background: "#0b0b0c",
+                    boxShadow: "0 14px 34px rgba(0,0,0,.28)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      padding: "12px 13px",
+                      borderBottom: "1px dashed rgba(255,255,255,.16)",
+                      background: "linear-gradient(135deg,rgba(153,29,22,.24),rgba(249,115,22,.08))",
+                    }}
+                  >
+                    <div>
+                      <div style={{ color: "#ff8a35", fontSize: 9, fontWeight: 950, letterSpacing: ".13em" }}>
+                        G365 BETTING TICKET
+                      </div>
+                      <div style={{ marginTop: 4, color: "#fff", fontSize: 13, fontWeight: 950 }}>
+                        {data?.card?.track?.name ?? data?.card?.track?.code ?? "Greyhound Racing"}
+                        {selectedRace ? ` · Race ${selectedRace.raceNumber}` : ""}
+                      </div>
+                      <div style={{ marginTop: 2, color: "#8e949c", fontSize: 10, fontWeight: 800 }}>
+                        {data?.card?.raceDate ? dateOnlyLabel(data.card.raceDate) : "Race card not selected"}
+                      </div>
+                    </div>
 
-                  {selectedEntryIds.length >
-                    0 ||
-                  keyEntryId ? (
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedEntryIds(
-                          []
-                        );
-                        setKeyEntryId(
-                          null
-                        );
-                        setAlternate1EntryId(
-                          null
-                        );
-                        setAlternate2EntryId(
-                          null
-                        );
+                        setSelectedEntryIds([]);
+                        setPositionEntryIds([]);
+                        setKeyEntryId(null);
+                        setAlternate1EntryId(null);
+                        setAlternate2EntryId(null);
+                      }}
+                      aria-label="Reset betting ticket"
+                      title="Reset betting ticket"
+                      style={{
+                        alignSelf: "flex-start",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                        minHeight: 30,
+                        padding: "0 10px",
+                        border: "1px solid rgba(255,138,53,.42)",
+                        borderRadius: 999,
+                        background:
+                          "linear-gradient(180deg,rgba(255,122,26,.12),rgba(255,122,26,.035))",
+                        color: "#ff9a52",
+                        fontSize: 9,
+                        fontWeight: 950,
+                        letterSpacing: ".08em",
+                        textTransform: "uppercase",
+                        cursor: "pointer",
+                        boxShadow: "inset 0 1px 0 rgba(255,255,255,.035)",
                       }}
                     >
-                      Clear
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          fontSize: 13,
+                          lineHeight: 1,
+                          transform: "translateY(-.5px)",
+                        }}
+                      >
+                        ↺
+                      </span>
+                      Reset Ticket
                     </button>
-                  ) : null}
-                </div>
-
-                {selectedEntryLabels.length ===
-                0 ? (
-                  <div className={styles.noSelections}>
-                    {data?.card
-                      ? "Select runners from the race card."
-                      : "Waiting for the race card."}
                   </div>
-                ) : (
-                  <div className={styles.selectionList}>
-                    {selectedEntryLabels.map(
-                      (
-                        label,
-                        index
-                      ) => (
-                        <div
-                          key={`${label}-${index}`}
-                          className={styles.selectionItem}
-                        >
-                          <span>
-                            {index +
-                              1}
-                          </span>
 
-                          <strong>
-                            {label}
-                          </strong>
+                  <div style={{ padding: "12px 13px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+                      <div>
+                        <div style={{ color: "#fff", fontSize: 15, fontWeight: 950 }}>
+                          {WAGER_LABELS[wagerType]}
                         </div>
-                      )
-                    )}
+                        <div style={{ marginTop: 2, color: "#ff8a35", fontSize: 10, fontWeight: 950, textTransform: "uppercase" }}>
+                          {isStraightWager(wagerType) ? "Straight" : structure}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ color: "#8e949c", fontSize: 9, fontWeight: 900 }}>AMOUNT / COMBO</div>
+                        <strong style={{ color: "#fff", fontSize: 14 }}>{money(denomination)}</strong>
+                      </div>
+                    </div>
+
+                    <div style={{ borderTop: "1px dashed rgba(255,255,255,.13)", paddingTop: 10 }}>
+                      {isStraightWager(wagerType) ? (
+                        ticketSelectedEntries.length ? ticketSelectedEntries.map((entry) => (
+                          <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
+                            <span style={{ ...trapStyle(entry.boxNumber), width: 28, height: 28, borderRadius: 999, display: "grid", placeItems: "center", fontWeight: 950 }}>{entry.boxNumber}</span>
+                            <strong>{entry.dogName ?? "Runner"}</strong>
+                          </div>
+                        )) : <div className={styles.noSelections}>Select a runner.</div>
+                      ) : structure === "straight" ? (
+                        ticketPositionEntries.map((entry, index) => (
+                          <div key={`ticket-position-${index}`} style={{ display: "grid", gridTemplateColumns: "42px 28px minmax(0,1fr)", alignItems: "center", gap: 8, padding: "6px 0" }}>
+                            <span style={{ color: "#ff8a35", fontSize: 10, fontWeight: 950 }}>{["1ST","2ND","3RD","4TH"][index]}</span>
+                            {entry ? <span style={{ ...trapStyle(entry.boxNumber), width: 28, height: 28, borderRadius: 999, display: "grid", placeItems: "center", fontWeight: 950 }}>{entry.boxNumber}</span> : <span style={{ width: 28, height: 28, border: "1px dashed #555", borderRadius: 999 }} />}
+                            <strong style={{ color: entry ? "#fff" : "#666" }}>{entry?.dogName ?? "Select dog"}</strong>
+                          </div>
+                        ))
+                      ) : structure === "key" ? (
+                        <>
+                          <div style={{ color: "#ff8a35", fontSize: 9, fontWeight: 950, marginBottom: 5 }}>KEY</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 9, minHeight: 32 }}>
+                            {ticketKeyEntry ? <>
+                              <span style={{ ...trapStyle(ticketKeyEntry.boxNumber), width: 28, height: 28, borderRadius: 999, display: "grid", placeItems: "center", fontWeight: 950 }}>{ticketKeyEntry.boxNumber}</span>
+                              <strong>{ticketKeyEntry.dogName ?? "Runner"}</strong>
+                            </> : <span style={{ color: "#666", fontWeight: 850 }}>Select key dog</span>}
+                          </div>
+                          <div style={{ color: "#ff8a35", fontSize: 9, fontWeight: 950, margin: "10px 0 5px" }}>WITH</div>
+                          {ticketSelectedEntries.length ? ticketSelectedEntries.map((entry) => (
+                            <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "4px 0" }}>
+                              <span style={{ ...trapStyle(entry.boxNumber), width: 28, height: 28, borderRadius: 999, display: "grid", placeItems: "center", fontWeight: 950 }}>{entry.boxNumber}</span>
+                              <strong>{entry.dogName ?? "Runner"}</strong>
+                            </div>
+                          )) : <span style={{ color: "#666", fontWeight: 850 }}>Select with dog(s)</span>}
+                        </>
+                      ) : (
+                        ticketSelectedEntries.length ? ticketSelectedEntries.map((entry) => (
+                          <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0" }}>
+                            <span style={{ ...trapStyle(entry.boxNumber), width: 28, height: 28, borderRadius: 999, display: "grid", placeItems: "center", fontWeight: 950 }}>{entry.boxNumber}</span>
+                            <strong>{entry.dogName ?? "Runner"}</strong>
+                          </div>
+                        )) : <div className={styles.noSelections}>Select dogs for the box.</div>
+                      )}
+                    </div>
+
+                    {(ticketAlternate1 || ticketAlternate2) ? (
+                      <div style={{ marginTop: 10, paddingTop: 9, borderTop: "1px dashed rgba(255,255,255,.13)", color: "#aaa", fontSize: 10, fontWeight: 850 }}>
+                        {ticketAlternate1 ? <div>ALT 1 · #{ticketAlternate1.boxNumber} {ticketAlternate1.dogName ?? "Runner"}</div> : null}
+                        {ticketAlternate2 ? <div style={{ marginTop: 3 }}>ALT 2 · #{ticketAlternate2.boxNumber} {ticketAlternate2.dogName ?? "Runner"}</div> : null}
+                      </div>
+                    ) : null}
+
+                    <div style={{ marginTop: 11, paddingTop: 10, borderTop: "1px dashed rgba(255,255,255,.16)", display: "grid", gap: 5 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", color: "#aaa", fontSize: 11, fontWeight: 850 }}><span>Combinations</span><strong>{combinationJson.length}</strong></div>
+                      <div style={{ display: "flex", justifyContent: "space-between", color: "#fff", fontSize: 14, fontWeight: 950 }}><span>TOTAL WAGER</span><strong style={{ color: "#ff8a35" }}>{money(totalCost)}</strong></div>
+                      <div style={{ display: "flex", justifyContent: "space-between", color: "#aaa", fontSize: 11, fontWeight: 850 }}><span>Bankroll After</span><strong>{money(afterWager)}</strong></div>
+                    </div>
                   </div>
-                )}
+                </div>
 
                 <div
                   style={{
@@ -3697,6 +4008,7 @@ export default function GreyhoundWagerWorkspace({
                   placing ||
                   !data?.card ||
                   !raceOpen ||
+                  liveBusted ||
                   combinationJson.length ===
                     0 ||
                   totalCost <=
@@ -3713,11 +4025,15 @@ export default function GreyhoundWagerWorkspace({
                   ? "Placing Wager…"
                   : !data?.card
                     ? "Waiting for Race Card"
-                    : raceOpen
-                      ? `Place ${WAGER_LABELS[wagerType]} • ${money(
-                          totalCost
-                        )}`
-                      : "Wagering Closed"}
+                    : liveBusted
+                      ? "BUSTED"
+                      : raceOpen
+                        ? `Place ${WAGER_LABELS[wagerType]} • ${money(
+                            totalCost
+                          )}`
+                        : isLiveBankroll
+                          ? "Waiting for Current Race"
+                          : "Wagering Closed"}
               </button>
 
               <p className={styles.betNote}>
@@ -3728,6 +4044,9 @@ export default function GreyhoundWagerWorkspace({
                 Scratch alternates are optional and are attempted in Alternate
                 1 then Alternate 2 order. The server validates the wager again
                 before bankroll is committed.
+                {isLiveBankroll
+                  ? " Live Bankroll only accepts wagers on the current open race; official settlement returns become available for the next race."
+                  : ""}
               </p>
             </div>
           </aside>
@@ -3746,3 +4065,4 @@ export default function GreyhoundWagerWorkspace({
     </section>
   );
 }
+

@@ -15,12 +15,14 @@ const GAME_FORMATS = [
 
 const TEAM_SETUP_MODES = ["random", "manual"] as const;
 const SURVIVOR_MODES = ["round", "daily"] as const;
+const WAGERING_STYLES = ["whole_card", "live_bankroll"] as const;
 const DURATION_MODES = ["single_day", "date_range", "weeks", "rounds"] as const;
 const VALID_COMPETITION_DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 
 type GameFormat = (typeof GAME_FORMATS)[number];
 type TeamSetupMode = (typeof TEAM_SETUP_MODES)[number];
 type SurvivorMode = (typeof SURVIVOR_MODES)[number];
+type WageringStyle = (typeof WAGERING_STYLES)[number];
 type DurationMode = (typeof DURATION_MODES)[number];
 
 type RoundInput = {
@@ -97,6 +99,17 @@ function normalizeSettingsResponse(
       : [...VALID_COMPETITION_DAYS],
     startingBankroll: Number(row.starting_bankroll ?? 0),
     trackScope: row.track_scope,
+    wageringStyle:
+      row.wagering_style === "live_bankroll" ? "live_bankroll" : "whole_card",
+    liveRaceLockMinutesBeforePost: Number(
+      row.live_race_lock_minutes_before_post ?? 5,
+    ),
+    liveMandatoryRaceAction: Boolean(row.live_mandatory_race_action),
+    liveMinimumWagerPercent: Number(row.live_minimum_wager_percent ?? 10),
+    liveAutoWagerEnabled:
+      row.live_auto_wager_enabled == null
+        ? true
+        : Boolean(row.live_auto_wager_enabled),
     cardLockMinutesBeforeFirstPost: Number(
       row.card_lock_minutes_before_first_post ?? 0,
     ),
@@ -176,6 +189,11 @@ export async function GET(request: Request) {
             competition_days,
             starting_bankroll,
             track_scope,
+            wagering_style,
+            live_race_lock_minutes_before_post,
+            live_mandatory_race_action,
+            live_minimum_wager_percent,
+            live_auto_wager_enabled,
             card_lock_minutes_before_first_post,
             scratch_check_minutes_before_first_post,
             entry_pull_timezone,
@@ -273,6 +291,22 @@ export async function PATCH(request: Request) {
     ) as DurationMode;
 
     const startingBankroll = Number(body?.startingBankroll);
+    const wageringStyle = String(
+      body?.wageringStyle ?? "whole_card",
+    ) as WageringStyle;
+    const liveRaceLockMinutes = asInteger(
+      body?.liveRaceLockMinutesBeforePost,
+    );
+    const liveMandatoryRaceAction = asBoolean(
+      body?.liveMandatoryRaceAction,
+    );
+    const liveMinimumWagerPercent = Number(
+      body?.liveMinimumWagerPercent ?? 10,
+    );
+    const liveAutoWagerEnabled =
+      body?.liveAutoWagerEnabled == null
+        ? true
+        : asBoolean(body.liveAutoWagerEnabled);
     const cardLockMinutes = asInteger(body?.cardLockMinutesBeforeFirstPost);
     const scratchCheckMinutes = asInteger(
       body?.scratchCheckMinutesBeforeFirstPost,
@@ -312,6 +346,39 @@ export async function PATCH(request: Request) {
 
     if (!Number.isFinite(startingBankroll) || startingBankroll <= 0) {
       return jsonError("Starting bankroll must be greater than $0.", 400);
+    }
+
+    if (!WAGERING_STYLES.includes(wageringStyle)) {
+      return jsonError("Choose a valid Greyhound wagering style.", 400);
+    }
+
+    if (
+      wageringStyle === "live_bankroll" &&
+      (
+        liveRaceLockMinutes == null ||
+        liveRaceLockMinutes < 0 ||
+        liveRaceLockMinutes > 60
+      )
+    ) {
+      return jsonError(
+        "Live race lock must be between 0 and 60 minutes before post.",
+        400,
+      );
+    }
+
+    if (
+      wageringStyle === "live_bankroll" &&
+      liveMandatoryRaceAction &&
+      (
+        !Number.isFinite(liveMinimumWagerPercent) ||
+        liveMinimumWagerPercent <= 0 ||
+        liveMinimumWagerPercent > 100
+      )
+    ) {
+      return jsonError(
+        "Live minimum bankroll action must be greater than 0% and no more than 100%.",
+        400,
+      );
     }
 
     if (
@@ -492,6 +559,17 @@ export async function PATCH(request: Request) {
           ? normalizedCompetitionDays
           : [...VALID_COMPETITION_DAYS],
       starting_bankroll: startingBankroll,
+      wagering_style: wageringStyle,
+      live_race_lock_minutes_before_post:
+        liveRaceLockMinutes == null ? 5 : liveRaceLockMinutes,
+      live_mandatory_race_action: liveMandatoryRaceAction,
+      live_minimum_wager_percent:
+        Number.isFinite(liveMinimumWagerPercent) &&
+        liveMinimumWagerPercent > 0 &&
+        liveMinimumWagerPercent <= 100
+          ? liveMinimumWagerPercent
+          : 10,
+      live_auto_wager_enabled: liveAutoWagerEnabled,
       card_lock_minutes_before_first_post: cardLockMinutes,
       scratch_check_minutes_before_first_post: scratchCheckMinutes,
       entry_pull_timezone: entryPullTimezone,
@@ -523,6 +601,11 @@ export async function PATCH(request: Request) {
         competition_days,
         starting_bankroll,
         track_scope,
+        wagering_style,
+        live_race_lock_minutes_before_post,
+        live_mandatory_race_action,
+        live_minimum_wager_percent,
+        live_auto_wager_enabled,
         card_lock_minutes_before_first_post,
         scratch_check_minutes_before_first_post,
         entry_pull_timezone,
@@ -542,6 +625,94 @@ export async function PATCH(request: Request) {
 
     if (!updatedSettings) {
       return jsonError("Greyhound league settings were not found.", 404);
+    }
+
+    /*
+     * Starting bankroll is a per-racing-card starting value.
+     *
+     * Existing cards that have already been used must keep the bankroll they
+     * started with. Only pristine, unfinalized bankroll cards may inherit a
+     * newly saved commissioner starting-bankroll value.
+     *
+     * A pristine card has no wagers and no official returns, so changing its
+     * starting amount cannot rewrite contest history.
+     */
+    const { data: activeBankrollRows, error: activeBankrollLoadError } =
+      await admin
+        .from("greyhound_bankroll_cards")
+        .select(
+          "id, starting_bankroll, amount_unallocated, card_status, finalized_at",
+        )
+        .eq("league_id", leagueId)
+        .is("finalized_at", null);
+
+    if (activeBankrollLoadError) {
+      return jsonError(activeBankrollLoadError.message, 500);
+    }
+
+    for (const bankrollRow of activeBankrollRows ?? []) {
+      const bankrollStatus = String(bankrollRow.card_status ?? "")
+        .trim()
+        .toLowerCase();
+
+      if (bankrollStatus === "final" || bankrollStatus === "cancelled") {
+        continue;
+      }
+
+      const bankrollCardId = Number(bankrollRow.id);
+
+      const { count: wagerCount, error: wagerCountError } = await admin
+        .from("greyhound_wagers")
+        .select("id", { count: "exact", head: true })
+        .eq("bankroll_card_id", bankrollCardId);
+
+      if (wagerCountError) {
+        return jsonError(wagerCountError.message, 500);
+      }
+
+      if ((wagerCount ?? 0) > 0) {
+        continue;
+      }
+
+      const oldStartingBankroll = Number(
+        bankrollRow.starting_bankroll ?? 0,
+      );
+      const oldAmountUnallocated = Number(
+        bankrollRow.amount_unallocated ?? 0,
+      );
+
+      if (
+        !Number.isFinite(oldStartingBankroll) ||
+        !Number.isFinite(oldAmountUnallocated)
+      ) {
+        return jsonError(
+          `Bankroll card ${bankrollCardId} contains invalid bankroll values.`,
+          500,
+        );
+      }
+
+      /*
+       * Require the unused card to still be financially pristine. This avoids
+       * overwriting a card whose balance was changed by some non-wager
+       * lifecycle operation.
+       */
+      if (Math.abs(oldAmountUnallocated - oldStartingBankroll) > 0.005) {
+        continue;
+      }
+
+      const { error: bankrollSyncError } = await admin
+        .from("greyhound_bankroll_cards")
+        .update({
+          starting_bankroll: startingBankroll,
+          amount_unallocated: startingBankroll,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", bankrollCardId)
+        .eq("league_id", leagueId);
+
+      if (bankrollSyncError) {
+        return jsonError(bankrollSyncError.message, 500);
+      }
     }
 
     const { error: deleteRoundsError } = await admin

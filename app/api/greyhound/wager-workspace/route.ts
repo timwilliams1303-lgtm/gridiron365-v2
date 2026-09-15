@@ -24,6 +24,11 @@ type SettingsRow = {
   competition_weeks: number | null;
   competition_days: number[] | null;
   starting_bankroll: number | string;
+  wagering_style: string | null;
+  live_race_lock_minutes_before_post: number | null;
+  live_mandatory_race_action: boolean | null;
+  live_minimum_wager_percent: number | string | null;
+  live_auto_wager_enabled: boolean | null;
   allow_win: boolean;
   allow_place: boolean;
   allow_show: boolean;
@@ -230,6 +235,18 @@ export async function GET(
       return jsonError("track must be GWD or GTS.", 400);
     }
 
+    const requestedCardIdRaw =
+      (url.searchParams.get("cardId") ?? "").trim();
+
+    const requestedCardId =
+      /^\d+$/.test(requestedCardIdRaw)
+        ? Number(requestedCardIdRaw)
+        : null;
+
+    if (requestedCardIdRaw && !requestedCardId) {
+      return jsonError("cardId must be a positive integer.", 400);
+    }
+
     const requestedDateRaw =
       (url.searchParams.get("date") ?? "").trim();
 
@@ -285,6 +302,11 @@ export async function GET(
           competition_weeks,
           competition_days,
           starting_bankroll,
+          wagering_style,
+          live_race_lock_minutes_before_post,
+          live_mandatory_race_action,
+          live_minimum_wager_percent,
+          live_auto_wager_enabled,
           allow_win,
           allow_place,
           allow_show,
@@ -343,6 +365,26 @@ export async function GET(
           settings.starting_bankroll,
           100
         ),
+      wageringStyle:
+        settings.wagering_style === "live_bankroll"
+          ? "live_bankroll"
+          : "whole_card",
+      liveRaceLockMinutesBeforePost:
+        numberValue(
+          settings.live_race_lock_minutes_before_post,
+          5
+        ),
+      liveMandatoryRaceAction:
+        Boolean(settings.live_mandatory_race_action),
+      liveMinimumWagerPercent:
+        numberValue(
+          settings.live_minimum_wager_percent,
+          10
+        ),
+      liveAutoWagerEnabled:
+        settings.live_auto_wager_enabled == null
+          ? true
+          : Boolean(settings.live_auto_wager_enabled),
       allowedWagers: {
         win: Boolean(settings.allow_win),
         place: Boolean(settings.allow_place),
@@ -354,6 +396,11 @@ export async function GET(
         superfecta: Boolean(settings.allow_superfecta),
       },
     };
+
+    const wageringStyle =
+      settings.wagering_style === "live_bankroll"
+        ? "live_bankroll"
+        : "whole_card";
 
     // Betting-card selection is independent from the legacy league track_scope.
     // Members pick a racing date, then select Wheeling or Tri-State for that date.
@@ -525,12 +572,37 @@ export async function GET(
         .map(([raceDate]) => raceDate)
         .sort();
 
+    /*
+     * Weekly Race Cards are always Monday through Sunday.
+     * The published/confirmed cards in that window drive the member UI.
+     * Locked/final cards remain visible, but are marked unavailable and cannot
+     * be selected for a new wager.
+     */
+    const today = new Date();
+    const easternDateText = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(today);
+
+    const easternToday = new Date(`${easternDateText}T12:00:00Z`);
+    const mondayOffset = (easternToday.getUTCDay() + 6) % 7;
+    const weekStartDate = new Date(easternToday);
+    weekStartDate.setUTCDate(weekStartDate.getUTCDate() - mondayOffset);
+    const weekEndDate = new Date(weekStartDate);
+    weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6);
+
+    const isoDate = (value: Date) => value.toISOString().slice(0, 10);
+    const weekStart = isoDate(weekStartDate);
+    const weekEnd = isoDate(weekEndDate);
+    const nowMs = Date.now();
+
     const candidateCards =
       allConfirmedCards.filter(
         (card) =>
-          !["final", "cancelled"].includes(
-            String(card.card_status)
-          )
+          card.race_date >= weekStart &&
+          card.race_date <= weekEnd
       );
 
     const availableCards =
@@ -556,6 +628,41 @@ export async function GET(
               card.scheduled_first_post,
             lockAt:
               card.lock_at,
+            wageringOpen: (() => {
+              const status = String(card.card_status ?? "").toLowerCase();
+
+              if (["final", "cancelled"].includes(status)) {
+                return false;
+              }
+
+              /*
+               * Whole Card uses the persisted card-wide lock.
+               * Live Bankroll remains selectable after Race 1/card lock because
+               * the currently-open race is authoritative instead.
+               */
+              if (wageringStyle === "live_bankroll") {
+                return true;
+              }
+
+              if (["locked", "in_progress"].includes(status)) {
+                return false;
+              }
+
+              const persistedLock = card.lock_at
+                ? new Date(card.lock_at).getTime()
+                : null;
+              const firstPost = card.scheduled_first_post
+                ? new Date(card.scheduled_first_post).getTime()
+                : null;
+              const effectiveLock =
+                persistedLock !== null && Number.isFinite(persistedLock)
+                  ? persistedLock
+                  : firstPost !== null && Number.isFinite(firstPost)
+                    ? firstPost - 5 * 60 * 1000
+                    : null;
+
+              return effectiveLock === null || effectiveLock > nowMs;
+            })(),
             track: track
               ? {
                   id:
@@ -586,6 +693,8 @@ export async function GET(
         settings: settingsPayload,
         availableCards,
         completedRacingDates,
+        weekStart,
+        weekEnd,
         card: null,
         races: [],
         bankroll: null,
@@ -660,9 +769,44 @@ export async function GET(
       candidateCards.filter(
         (card) => {
           if (
+            requestedCardId &&
+            Number(card.id) !== requestedCardId
+          ) {
+            return false;
+          }
+
+          if (
             requestedDate &&
             card.race_date !==
               requestedDate
+          ) {
+            return false;
+          }
+
+          const status = String(card.card_status ?? "").toLowerCase();
+          const persistedLock = card.lock_at
+            ? new Date(card.lock_at).getTime()
+            : null;
+          const firstPost = card.scheduled_first_post
+            ? new Date(card.scheduled_first_post).getTime()
+            : null;
+          const effectiveLock =
+            persistedLock !== null && Number.isFinite(persistedLock)
+              ? persistedLock
+              : firstPost !== null && Number.isFinite(firstPost)
+                ? firstPost - 5 * 60 * 1000
+                : null;
+
+          if (["final", "cancelled"].includes(status)) {
+            return false;
+          }
+
+          if (
+            wageringStyle === "whole_card" &&
+            (
+              ["locked", "in_progress"].includes(status) ||
+              (effectiveLock !== null && effectiveLock <= nowMs)
+            )
           ) {
             return false;
           }
@@ -696,7 +840,8 @@ export async function GET(
     // falling back to one track.
     if (
       requestedDate &&
-      !requestedTrackCode
+      !requestedTrackCode &&
+      !requestedCardId
     ) {
       return NextResponse.json(
         {
@@ -771,7 +916,18 @@ export async function GET(
     }
 
     const selectedCard =
-      eligibleCards.find(
+      (requestedCardId
+        ? eligibleCards.find((card) => Number(card.id) === requestedCardId)
+        : null) ??
+      [...eligibleCards]
+        .sort((a, b) => {
+          const dateCompare = String(a.race_date).localeCompare(String(b.race_date));
+          if (dateCompare !== 0) return dateCompare;
+          return String(a.scheduled_first_post ?? "").localeCompare(
+            String(b.scheduled_first_post ?? "")
+          );
+        })
+        .find(
         (
           card
         ) => {
@@ -1027,6 +1183,37 @@ export async function GET(
     }
 
 
+    /*
+     * In Live Bankroll mode, initialize/snapshot the currently eligible race
+     * for this member's newly ensured bankroll card, then refresh the bankroll
+     * from authoritative wager/return totals before returning workspace data.
+     */
+    if (wageringStyle === "live_bankroll") {
+      const { error: liveOpenError } = await admin.rpc(
+        "open_greyhound_live_race",
+        {
+          p_league_id: leagueId,
+          p_racing_card_id: Number(selectedCard.id),
+        }
+      );
+
+      if (liveOpenError) {
+        return jsonError(liveOpenError.message, 500);
+      }
+
+      const { error: liveRefreshError } = await admin.rpc(
+        "refresh_greyhound_bankroll_card",
+        {
+          p_bankroll_card_id: Number(bankrollCardId),
+        }
+      );
+
+      if (liveRefreshError) {
+        return jsonError(liveRefreshError.message, 500);
+      }
+    }
+
+
     const {
       data:
         bankrollData,
@@ -1063,6 +1250,62 @@ export async function GET(
         bankrollError.message,
         500
       );
+    }
+
+
+    let liveRaceState: Record<string, unknown> | null = null;
+    let liveAutoSelection: Record<string, unknown> | null = null;
+
+    if (wageringStyle === "live_bankroll") {
+      const { data: liveStateData, error: liveStateError } = await admin
+        .from("greyhound_live_race_bankrolls")
+        .select(`
+          id,
+          race_id,
+          race_number,
+          opening_bankroll,
+          minimum_required,
+          qualifying_wager_total,
+          remaining_required,
+          auto_wager_entry_id,
+          auto_wager_amount,
+          requirement_satisfied,
+          race_state,
+          opened_at,
+          locked_at,
+          settled_at
+        `)
+        .eq("bankroll_card_id", Number(bankrollCardId))
+        .in("race_state", ["waiting", "open", "locked", "busted"])
+        .order("race_number", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (liveStateError) {
+        return jsonError(liveStateError.message, 500);
+      }
+
+      liveRaceState = liveStateData as Record<string, unknown> | null;
+
+      const liveRaceId = liveRaceState
+        ? Number(liveRaceState.race_id)
+        : null;
+
+      if (liveRaceId && Number.isFinite(liveRaceId)) {
+        const { data: selectionData, error: selectionError } = await admin
+          .from("greyhound_live_auto_wager_selections")
+          .select("entry_id")
+          .eq("bankroll_card_id", Number(bankrollCardId))
+          .eq("race_id", liveRaceId)
+          .maybeSingle();
+
+        if (selectionError) {
+          return jsonError(selectionError.message, 500);
+        }
+
+        liveAutoSelection =
+          selectionData as Record<string, unknown> | null;
+      }
     }
 
 
@@ -1124,6 +1367,20 @@ export async function GET(
             String(
               race.race_status
             ),
+          wageringOpen:
+            wageringStyle === "live_bankroll"
+              ? (
+                  liveRaceState !== null &&
+                  Number(liveRaceState.race_id) === Number(race.id) &&
+                  String(liveRaceState.race_state) === "open"
+                )
+              : undefined,
+          liveRaceState:
+            wageringStyle === "live_bankroll" &&
+            liveRaceState !== null &&
+            Number(liveRaceState.race_id) === Number(race.id)
+              ? String(liveRaceState.race_state)
+              : null,
           entries:
             (
               entriesByRace.get(
@@ -1206,6 +1463,8 @@ export async function GET(
         settings: settingsPayload,
         availableCards,
         completedRacingDates,
+        weekStart,
+        weekEnd,
         selectedDate:
           selectedCard.race_date,
         card: {
@@ -1267,6 +1526,61 @@ export async function GET(
                   String(
                     bankrollData.card_status
                   ),
+              }
+            : null,
+        liveBankroll:
+          wageringStyle === "live_bankroll"
+            ? {
+                currentRaceId:
+                  liveRaceState
+                    ? Number(liveRaceState.race_id)
+                    : null,
+                currentRaceNumber:
+                  liveRaceState
+                    ? Number(liveRaceState.race_number)
+                    : null,
+                raceState:
+                  liveRaceState
+                    ? String(liveRaceState.race_state)
+                    : null,
+                openingBankroll:
+                  liveRaceState
+                    ? numberValue(liveRaceState.opening_bankroll, 0)
+                    : 0,
+                minimumRequired:
+                  liveRaceState
+                    ? numberValue(liveRaceState.minimum_required, 0)
+                    : 0,
+                qualifyingWagerTotal:
+                  liveRaceState
+                    ? numberValue(liveRaceState.qualifying_wager_total, 0)
+                    : 0,
+                remainingRequired:
+                  liveRaceState
+                    ? numberValue(liveRaceState.remaining_required, 0)
+                    : 0,
+                requirementSatisfied:
+                  liveRaceState
+                    ? Boolean(liveRaceState.requirement_satisfied)
+                    : true,
+                autoWagerEntryId:
+                  liveRaceState?.auto_wager_entry_id == null
+                    ? null
+                    : Number(liveRaceState.auto_wager_entry_id),
+                autoWagerAmount:
+                  liveRaceState
+                    ? numberValue(liveRaceState.auto_wager_amount, 0)
+                    : 0,
+                selectedAutoWagerEntryId:
+                  liveAutoSelection?.entry_id == null
+                    ? null
+                    : Number(liveAutoSelection.entry_id),
+                openedAt:
+                  liveRaceState?.opened_at ?? null,
+                lockedAt:
+                  liveRaceState?.locked_at ?? null,
+                settledAt:
+                  liveRaceState?.settled_at ?? null,
               }
             : null,
         races:
