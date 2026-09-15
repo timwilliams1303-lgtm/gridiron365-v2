@@ -586,9 +586,25 @@ export async function GET(
       day: "2-digit",
     }).format(today);
 
-    const easternToday = new Date(`${easternDateText}T12:00:00Z`);
-    const mondayOffset = (easternToday.getUTCDay() + 6) % 7;
-    const weekStartDate = new Date(easternToday);
+    /*
+     * Anchor the weekly card window to the requested racing date when one is
+     * supplied. This lets League Home walk forward into the next published
+     * card/week instead of always receiving only the server's current week.
+     */
+    const cardWindowDateText =
+      requestedDate ??
+      easternDateText;
+
+    const cardWindowDate =
+      new Date(
+        `${cardWindowDateText}T12:00:00Z`
+      );
+
+    const mondayOffset =
+      (cardWindowDate.getUTCDay() + 6) % 7;
+
+    const weekStartDate =
+      new Date(cardWindowDate);
     weekStartDate.setUTCDate(weekStartDate.getUTCDate() - mondayOffset);
     const weekEndDate = new Date(weekStartDate);
     weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6);

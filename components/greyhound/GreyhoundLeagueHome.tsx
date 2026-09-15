@@ -795,33 +795,150 @@ export default function GreyhoundLeagueHome({
               );
 
           /*
-           * No card for the current/next racing date:
-           * show Waiting.
-           *
-           * Do NOT fall back to an older card.
+           * If this date has no card, roll forward to the earliest actual
+           * future card returned by the workspace API. Never fall back to an
+           * older card and never invent placeholder races.
            */
-          if (
-            availableCards.length ===
-            0
-          ) {
+          if (availableCards.length === 0) {
+            /*
+             * availableCards from a date-only workspace request can be scoped
+             * to that requested date. Therefore we cannot assume tomorrow's
+             * published card is already present in today's response.
+             *
+             * Walk forward through actual competition dates and ask the API
+             * for each date until the next real card is found.
+             */
+            let searchDate = targetDate;
+            let futureOverview: WorkspaceData | null = null;
+            let nextCard: CardData | null = null;
+
+            for (
+              let attempts = 0;
+              attempts < 45;
+              attempts += 1
+            ) {
+              searchDate = addIsoDays(
+                searchDate,
+                1,
+              );
+
+              const candidateOverview =
+                await fetchWorkspace(
+                  searchDate,
+                );
+
+              const candidateCards =
+                (
+                  candidateOverview.availableCards ??
+                  []
+                )
+                  .filter(
+                    (card) =>
+                      card.raceDate ===
+                        searchDate &&
+                      ![
+                        "final",
+                        "cancelled",
+                      ].includes(
+                        String(
+                          card.cardStatus,
+                        ).toLowerCase(),
+                      ),
+                  )
+                  .sort(
+                    (
+                      a,
+                      b,
+                    ) =>
+                      cardSortValue(a) -
+                      cardSortValue(b),
+                  );
+
+              if (
+                candidateCards.length >
+                0
+              ) {
+                futureOverview =
+                  candidateOverview;
+                nextCard =
+                  candidateCards[0];
+                break;
+              }
+            }
+
+            if (
+              nextCard &&
+              futureOverview
+            ) {
+              const nextTrackCode =
+                nextCard.track?.code ??
+                null;
+
+              setDisplayDate(
+                nextCard.raceDate,
+              );
+
+              if (
+                nextTrackCode
+              ) {
+                const nextDetail =
+                  await fetchWorkspace(
+                    nextCard.raceDate,
+                    nextTrackCode,
+                  );
+
+                /*
+                 * A track-specific request should return the exact card.
+                 * If it does, use the full detail so the dashboard shows the
+                 * real race count and individual scheduled post times.
+                 */
+                if (
+                  nextDetail.card?.id ===
+                  nextCard.id
+                ) {
+                  setData(
+                    nextDetail,
+                  );
+                  setError("");
+                  return;
+                }
+              }
+
+              /*
+               * Even if detail loading is unavailable for some reason, keep
+               * showing the real next card rather than reverting to a stale
+               * "waiting for today" message.
+               */
+              setData({
+                ...futureOverview,
+                selectedDate:
+                  nextCard.raceDate,
+                card:
+                  nextCard,
+                bankroll:
+                  null,
+                races:
+                  futureOverview.races ??
+                  [],
+              });
+
+              setError("");
+              return;
+            }
+
             setData({
               ...overview,
-
               selectedDate:
                 targetDate,
-
               card:
                 null,
-
               bankroll:
                 null,
-
               races:
                 [],
             });
 
             setError("");
-
             return;
           }
 
@@ -1008,10 +1125,6 @@ export default function GreyhoundLeagueHome({
     data?.bankroll
       ?.amountUnallocated ??
     startingBankroll;
-
-  const displayedCardDate =
-    data?.card?.raceDate ??
-    displayDate;
 
   const today =
     easternTodayIsoDate();
@@ -1424,64 +1537,16 @@ export default function GreyhoundLeagueHome({
                   }
                 >
                   <h3>
-                    Waiting for the
-                    next active race
-                    card
+                    Waiting for the next published race card
                   </h3>
 
                   <p>
-                    G365 is checking
-                    the Greyhound feed
-                    automatically for{" "}
-                    {formatDate(
-                      displayedCardDate,
-                    )}
-                    . When the card is
-                    published, it will
-                    appear here
-                    automatically.
+                    G365 is checking the Greyhound feed automatically.
+                    No upcoming confirmed or scheduled card is currently
+                    available for this league. As soon as the next card
+                    is published, its track, race count, race date, and
+                    first post will appear here automatically.
                   </p>
-                </div>
-
-                <div
-                  className={
-                    styles.placeholderRaces
-                  }
-                >
-                  {Array.from(
-                    {
-                      length: 8,
-                    },
-                    (
-                      _,
-                      index,
-                    ) =>
-                      index + 1,
-                  ).map(
-                    (
-                      raceNumber,
-                    ) => (
-                      <div
-                        key={
-                          raceNumber
-                        }
-                        className={
-                          styles.placeholderRace
-                        }
-                      >
-                        <strong>
-                          Race{" "}
-                          {
-                            raceNumber
-                          }
-                        </strong>
-
-                        <span>
-                          Waiting
-                        </span>
-                      </div>
-                    ),
-                  )}
                 </div>
               </div>
             )}
