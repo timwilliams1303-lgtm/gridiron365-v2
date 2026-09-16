@@ -444,29 +444,44 @@ export default function GreyhoundEntriesImporter({
               ];
             }
           } else {
-            const rowBlockHeight = 92;
-            regions =
-              pageNo === 1
-                ? [
-                    { raceNumber: 1, x: leftX,  y: 104,   width: columnWidth, height: rowBlockHeight },
-                    { raceNumber: 2, x: leftX,  y: 261.5, width: columnWidth, height: rowBlockHeight },
-                    { raceNumber: 3, x: leftX,  y: 419,   width: columnWidth, height: rowBlockHeight },
-                    { raceNumber: 4, x: leftX,  y: 576.5, width: columnWidth, height: rowBlockHeight },
-                    { raceNumber: 5, x: rightX, y: 94,    width: columnWidth, height: rowBlockHeight },
-                    { raceNumber: 6, x: rightX, y: 251.5, width: columnWidth, height: rowBlockHeight },
-                    { raceNumber: 7, x: rightX, y: 409,   width: columnWidth, height: rowBlockHeight },
-                    { raceNumber: 8, x: rightX, y: 566.5, width: columnWidth, height: rowBlockHeight },
-                  ]
-                : pageNo === 2
-                  ? [
-                      { raceNumber: 9,  x: leftX,  y: 94,    width: columnWidth, height: rowBlockHeight },
-                      { raceNumber: 10, x: leftX,  y: 251.5, width: columnWidth, height: rowBlockHeight },
-                      { raceNumber: 11, x: leftX,  y: 409,   width: columnWidth, height: rowBlockHeight },
-                      { raceNumber: 12, x: leftX,  y: 556.5, width: columnWidth, height: rowBlockHeight },
-                      { raceNumber: 13, x: rightX, y: 94,    width: columnWidth, height: rowBlockHeight },
-                      { raceNumber: 14, x: rightX, y: 251.5, width: columnWidth, height: rowBlockHeight },
-                    ]
-                  : [];
+            /*
+             * TRI-STATE
+             *
+             * Do not use the old runner-row-only 92pt crops here. The first
+             * runner moves vertically depending on how many lines of wager
+             * copy appear under the race heading. On the 09/17/26 card that
+             * clipped Box 1 from R2, R3, R4 and R14.
+             *
+             * OCR the complete race band instead, exactly like the safer
+             * Wheeling strategy. Each crop starts above the race heading and
+             * ends after Box 8. Small overlap is intentional; the synthetic
+             * race marker added below owns every parsed Race + Box row.
+             */
+            const triLeftX = 6;
+            const triRightX = 306;
+            const triColumnWidth = 300;
+
+            if (pageNo === 1) {
+              regions = [
+                { raceNumber: 1, x: triLeftX,  y: 45,    width: triColumnWidth, height: 165 },
+                { raceNumber: 2, x: triLeftX,  y: 198,   width: triColumnWidth, height: 165 },
+                { raceNumber: 3, x: triLeftX,  y: 351,   width: triColumnWidth, height: 165 },
+                { raceNumber: 4, x: triLeftX,  y: 504,   width: triColumnWidth, height: 165 },
+                { raceNumber: 5, x: triRightX, y: 45,    width: triColumnWidth, height: 165 },
+                { raceNumber: 6, x: triRightX, y: 198,   width: triColumnWidth, height: 165 },
+                { raceNumber: 7, x: triRightX, y: 351,   width: triColumnWidth, height: 165 },
+                { raceNumber: 8, x: triRightX, y: 504,   width: triColumnWidth, height: 165 },
+              ];
+            } else if (pageNo === 2) {
+              regions = [
+                { raceNumber: 9,  x: triLeftX,  y: 45,  width: triColumnWidth, height: 165 },
+                { raceNumber: 10, x: triLeftX,  y: 198, width: triColumnWidth, height: 165 },
+                { raceNumber: 11, x: triLeftX,  y: 351, width: triColumnWidth, height: 155 },
+                { raceNumber: 12, x: triLeftX,  y: 494, width: triColumnWidth, height: 175 },
+                { raceNumber: 13, x: triRightX, y: 45,  width: triColumnWidth, height: 165 },
+                { raceNumber: 14, x: triRightX, y: 198, width: triColumnWidth, height: 175 },
+              ];
+            }
           }
 
           for (const region of regions) {
@@ -537,6 +552,26 @@ export default function GreyhoundEntriesImporter({
               if (seenBoxes.size < 8) {
                 await worker.setParameters({
                   tessedit_pageseg_mode: PSM.SPARSE_TEXT,
+                  preserve_interword_spaces: "1",
+                });
+                recognized = await worker.recognize(raceCanvas);
+                raceText += `\n${recognized.data.text ?? ""}`;
+              }
+            } else {
+              // Tri-State normally reads cleanly in SINGLE_BLOCK, but retry the
+              // same full race band when OCR still fails to expose all 8 box
+              // rows. This is generic and never hardcodes a race or dog name.
+              const seenBoxes = new Set(
+                raceText
+                  .split(/\r?\n/)
+                  .map((line) => line.match(/^\s*([1-8])[\s.)-]+/))
+                  .filter(Boolean)
+                  .map((match) => Number(match?.[1])),
+              );
+
+              if (seenBoxes.size < 8) {
+                await worker.setParameters({
+                  tessedit_pageseg_mode: PSM.SINGLE_COLUMN,
                   preserve_interword_spaces: "1",
                 });
                 recognized = await worker.recognize(raceCanvas);
