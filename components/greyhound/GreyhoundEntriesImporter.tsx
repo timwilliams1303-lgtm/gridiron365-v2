@@ -558,20 +558,31 @@ export default function GreyhoundEntriesImporter({
                 raceText += `\n${recognized.data.text ?? ""}`;
               }
             } else {
-              // Tri-State normally reads cleanly in SINGLE_BLOCK, but retry the
-              // same full race band when OCR still fails to expose all 8 box
-              // rows. This is generic and never hardcodes a race or dog name.
-              const seenBoxes = new Set(
-                raceText
-                  .split(/\r?\n/)
-                  .map((line) => line.match(/^\s*([1-8])[\s.)-]+/))
-                  .filter(Boolean)
-                  .map((match) => Number(match?.[1])),
-              );
+              /*
+               * Tri-State multi-pass OCR. Do not decide that a box was read just
+               * because Tesseract emitted a line beginning with 1-8; the row can
+               * still be unusable when the dog name or odds were damaged. Merge
+               * SINGLE_BLOCK + SINGLE_COLUMN first, then ask the real Entries
+               * parser how many Race + Box rows are actually valid. If fewer
+               * than eight survive, add SPARSE_TEXT as the final recovery pass.
+               *
+               * This keeps the fix card-agnostic: no race numbers, box numbers,
+               * dates, or dog names are hardcoded.
+               */
+              await worker.setParameters({
+                tessedit_pageseg_mode: PSM.SINGLE_COLUMN,
+                preserve_interword_spaces: "1",
+              });
+              recognized = await worker.recognize(raceCanvas);
+              raceText += `\n${recognized.data.text ?? ""}`;
 
-              if (seenBoxes.size < 8) {
+              const parsedAfterColumn = parseEntriesText(
+                `${region.raceNumber}TH Grade\n${raceText}`,
+              ).filter((entry) => entry.raceNumber === region.raceNumber);
+
+              if (parsedAfterColumn.length < 8) {
                 await worker.setParameters({
-                  tessedit_pageseg_mode: PSM.SINGLE_COLUMN,
+                  tessedit_pageseg_mode: PSM.SPARSE_TEXT,
                   preserve_interword_spaces: "1",
                 });
                 recognized = await worker.recognize(raceCanvas);
