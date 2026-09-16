@@ -143,8 +143,12 @@ function applyAuthoritativeEntries(
             (trackCode === "GWD"
               ? WHEELING_TRAP_COLORS[authoritative.boxNumber] ?? null
               : TRAP_COLORS[authoritative.boxNumber] ?? null),
-          // Race + Box from the official Entries PDF is authoritative.
-          name: authoritative.dogName,
+          // Race + Box + dog name from the official Entries PDF are authoritative.
+          // Never rebuild, normalize, or replace the current-card dog name from
+          // Program OCR. Program parsing contributes history/details/images only.
+          name: normalizeTriStateLeadingNameFragments(
+            normalizeGreyhoundName(authoritative.dogName),
+          ),
           trainer:
             authoritative.kennel ??
             programRunner?.trainer ??
@@ -278,6 +282,10 @@ function normalizeTrackName(value: string): string {
 
 function normalizeGreyhoundName(value: string): string {
   return cleanLine(value)
+    // Program dog-name OCR only: common glyph substitutions from the printed name field.
+    // Keep these corrections scoped to names so race/box/odds/weight numbers are untouched.
+    .replace(/\|/g, "I")
+    .replace(/0/g, "O")
     .replace(/^[1-6][.\s):-]+/, "")
     .replace(/\s+\([A-Z]{2,4}\)$/i, "")
     .trim();
@@ -1164,13 +1172,77 @@ function parseTriStateProgramDescriptors(
   );
 }
 
+function normalizeTriStateLeadingNameFragments(value: string): string {
+  const name = cleanLine(value);
+  const parts = name.split(/\s+/).filter(Boolean);
+
+  if (parts.length < 2) return name;
+
+  /*
+   * BOTH TRACKS — repair OCR that inserts a false space inside the FIRST
+   * printed dog-name word. This is a word-fragment reconstruction rule, not
+   * a prefix list and not a list of known greyhound names.
+   *
+   * Examples from official program OCR:
+   *   "JS p Lucid Lynx"  -> "Jsp Lucid Lynx"
+   *   "J S P Hasty Halo" -> "Jsp Hasty Halo"
+   *   "W w Dance Party"  -> "Ww Dance Party"
+   *   "BL azin Knockout" -> "Blazin Knockout"
+   *
+   * The important signal is that OCR produced a short all-uppercase leading
+   * fragment followed by a lowercase continuation. A normal next word starts
+   * with an uppercase letter, so names such as "Arkwild B Colfax" are left
+   * untouched.
+   */
+  if (/^[A-Z]{1,3}$/.test(parts[0]) && /^[a-z][A-Za-z'’.-]*$/.test(parts[1])) {
+    const joined = `${parts[0]}${parts[1]}`;
+    const reconstructed =
+      joined.charAt(0).toUpperCase() + joined.slice(1).toLowerCase();
+    return cleanLine([reconstructed, ...parts.slice(2)].join(" "));
+  }
+
+  /*
+   * Tesseract can also split the first printed word into individual letters:
+   * "J S P Hasty Halo". Collapse only the leading run of single-letter
+   * fragments, stopping before the first real word. This does not touch
+   * internal single-letter words.
+   */
+  if (!/^[A-Za-z]$/.test(parts[0])) return name;
+
+  const leading: string[] = [];
+  let consumed = 0;
+
+  while (
+    consumed < parts.length - 1 &&
+    consumed < 4 &&
+    /^[A-Za-z]$/.test(parts[consumed])
+  ) {
+    leading.push(parts[consumed]);
+    consumed += 1;
+  }
+
+  if (leading.length < 2) return name;
+
+  const joined = leading.join("");
+  const reconstructed =
+    joined.charAt(0).toUpperCase() + joined.slice(1).toLowerCase();
+
+  return cleanLine([reconstructed, ...parts.slice(consumed)].join(" "));
+}
+
 function cleanTriStateOcrName(value: string): string {
-  return cleanLine(value)
+  const cleaned = cleanLine(value)
+    // Program dog-name OCR only: recover common letter glyphs without changing
+    // numeric program fields such as race, box, odds, times, or weights.
+    .replace(/\|/g, "I")
+    .replace(/0/g, "O")
     .replace(/^[^A-Z0-9'’]+/i, "")
     .replace(/\s+(?:C|B|A|AA|D|M|TD)\s+[MD]\b.*$/i, "")
     .replace(/\s+\d{2}\.\d{2}\b.*$/i, "")
     .replace(/[|=:]+$/g, "")
     .trim();
+
+  return normalizeTriStateLeadingNameFragments(cleaned);
 }
 
 function looksLikeTriStateDogName(value: string): boolean {
@@ -4719,7 +4791,11 @@ export default function GreyhoundRaceCardImporter({
           return null;
         }
 
-        return name;
+        // Apply the same generic first-word reconstruction used for both tracks
+        // and by the Entries reader. This fixes OCR output such as
+        // "JS p Lucid Lynx" -> "Jsp Lucid Lynx" without hardcoding a dog
+        // name or prefix. Internal single-letter words remain untouched.
+        return normalizeTriStateLeadingNameFragments(name);
       };
 
       /*
@@ -6968,6 +7044,10 @@ export default function GreyhoundRaceCardImporter({
     </div>
   );
 }
+
+
+
+
 
 
 

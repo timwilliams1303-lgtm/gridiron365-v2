@@ -30,50 +30,26 @@ function clean(value: string) {
 }
 
 function normalizeDogNameSpacing(value: string) {
-  let name = clean(value)
-    // Remove OCR debris before applying authoritative name-spacing repairs.
-    // Example from the Wheeling Entries sheet: "~~ DDBraun" -> "DDBraun".
-    .replace(/^[~`^_=|:;,.·•…"“”‘’\\/\-–—\s]+/, "")
-    .replace(/\s*'\s*/g, "'")
-    .replace(/\s*-\s*/g, "-");
-
-  /*
-   * OCR sometimes collapses the official printed name into one token
-   * (e.g. JUSTDID IT / LIMITEDITION). Never guess word boundaries from
-   * arbitrary letters. Repair only high-confidence greyhound prefixes and
-   * punctuation patterns; otherwise preserve the OCR spaces that exist.
-   */
-  name = name
-    /*
-     * Preserve the printed kennel/name prefix as its own word when OCR
-     * collapses the gap. These are high-confidence prefixes used on the
-     * official Entries sheets. Example: "DDBraun" -> "DD Braun".
-     */
-    .replace(/^WW(?=[A-Z])/i, "WW ")
-    .replace(/^JSP(?=[A-Z])/i, "JSP ")
-    .replace(/^JS(?=[A-Z])/i, "JS ")
-    .replace(/^CET(?=[A-Z])/i, "CET ")
-    .replace(/^GLS(?=[A-Z])/i, "GLS ")
-    .replace(/^TNT(?=[A-Z])/i, "TNT ")
-    .replace(/^FF(?=[A-Z])/i, "FF ")
-    .replace(/^DD(?=[A-Z])/i, "DD ")
-    .replace(/^DC(?=[A-Z])/i, "DC ")
-    .replace(/^FG(?=[A-Z])/i, "FG ")
-    .replace(/^XMC(?=[A-Z])/i, "XMC ")
-    .replace(/^AJN(?=[A-Z])/i, "AJN ")
-    .replace(/^NS(?=[A-Z])/i, "NS ")
-    .replace(/^RG(?=[A-Z])/i, "RG ")
-    .replace(/^BL(?=[A-Z])/i, "BL ")
-    .replace(/^MD(?=[A-Z])/i, "MD ")
-    .replace(/^RJ'S(?=[A-Z])/i, "RJ'S ")
-    .replace(/^TF'S(?=[A-Z])/i, "TF'S ")
-    .replace(/^CG'S(?=[A-Z])/i, "CG'S ")
-    .replace(/^HJ'S(?=[A-Z])/i, "HJ'S ")
-    .replace(/^JA'S(?=[A-Z])/i, "JA'S ")
-    .replace(/^OYA(?=[A-Z])/i, "O YA ")
-    .replace(/^ARKWILDB(?=[A-Z])/i, "ARKWILD B ");
-
-  return clean(name);
+  // Keep the proven Entries OCR/parser intact. Only correct the two
+  // character substitutions we know are invalid in greyhound names:
+  // OCR vertical bar -> capital I, OCR zero -> capital O.
+  // Do not use a Tesseract whitelist here because that also affects the
+  // shared worker used by the full Race + Box row parser.
+  return clean(value)
+    .replace(/\|/g, "I")
+    .replace(/0/g, "O")
+    // In the isolated printed dog-name field Tesseract can read the
+    // descender on a final lowercase j as a closing bracket. Keep this
+    // correction scoped to the end of a name word so ordinary punctuation
+    // elsewhere is not rewritten.
+    .replace(/\](?=\s|$)/g, "j")
+    // The same condensed font can make a lowercase i look like lowercase l
+    // in a three-letter leading word (for example the printed "Ali").
+    // Restrict this to that narrow glyph shape/position instead of applying
+    // a dangerous global l -> i substitution.
+    .replace(/^([A-Z][a-z])l(?=\s)/, "$1i")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function parseEntriesMetadata(text: string) {
@@ -176,6 +152,7 @@ function parseEntriesText(text: string): EntryRow[] {
     if (
       !dogName ||
       dogName.length < 2 ||
+      !/[A-Za-z]/.test(dogName) ||
       isVacantDogLabel(dogName) ||
       /\b(?:Track|Handicapper|Grade|Distance|Wps|Quiniela|Perfecta|Trifecta|Super)\b/i.test(
         dogName,
@@ -288,6 +265,26 @@ function removeDuplicateWheelingDogs(entries: EntryRow[]) {
   );
 }
 
+
+type EmbeddedNameField = {
+  raceNumber: number;
+  trapNumber: number;
+  dogName: string;
+};
+
+type PdfMatrix = [number, number, number, number, number, number];
+
+function multiplyPdfMatrix(a: PdfMatrix, b: PdfMatrix): PdfMatrix {
+  return [
+    a[0] * b[0] + a[2] * b[1],
+    a[1] * b[0] + a[3] * b[1],
+    a[0] * b[2] + a[2] * b[3],
+    a[1] * b[2] + a[3] * b[3],
+    a[0] * b[4] + a[2] * b[5] + a[4],
+    a[1] * b[4] + a[3] * b[5] + a[5],
+  ];
+}
+
 export default function GreyhoundEntriesImporter({
   leagueId,
   onImported,
@@ -330,6 +327,7 @@ export default function GreyhoundEntriesImporter({
       const worker = await createWorker("eng");
       const chunks: string[] = [];
       const nativeTextChunks: string[] = [];
+      const embeddedNameFields: EmbeddedNameField[] = [];
 
       // The Entries header is native PDF text. Read it directly before OCRing
       // the graphical runner rows.
@@ -413,8 +411,8 @@ export default function GreyhoundEntriesImporter({
             // Deliberately overlap adjacent bands by a few PDF points.
             // The synthetic race marker below controls race ownership, so
             // overlap is safer than clipping Box 1 or Box 8.
-            const bandY = [48, 232, 422, 610];
-            const bandH = [205, 211, 210, 182];
+            const bandY = [48, 232, 422, 570];
+            const bandH = [205, 211, 210, 222];
 
             if (pageNo === 1) {
               regions = [
@@ -484,6 +482,185 @@ export default function GreyhoundEntriesImporter({
             }
           }
 
+          /*
+           * AUTHORITATIVE DOG-NAME PASS
+           *
+           * The official Entries PDFs store every runner cell as a tiny image
+           * XObject. The Greyhound-name cell is placed at PDF x ~= 56 on the
+           * left column and x ~= 350 on the right column. Rather than OCRing a
+           * whole race band and then trying to repair spacing, use the PDF
+           * operator list to locate each embedded name image and OCR only the
+           * visible Greyhound column. Race ownership comes from the same broad
+           * race regions already used by the proven 112/112 safety parser.
+           *
+           * This is layout/geometry based, not dog-name or prefix based, and it
+           * works for both Tri-State and Wheeling official Entries PDFs.
+           */
+          const operatorList = await page.getOperatorList();
+          const ops = pdfjs.OPS;
+          let ctm: PdfMatrix = [1, 0, 0, 1, 0, 0];
+          const ctmStack: PdfMatrix[] = [];
+          const namePlacements: Array<{
+            x: number;
+            yTop: number;
+            width: number;
+            height: number;
+          }> = [];
+
+          for (let opIndex = 0; opIndex < operatorList.fnArray.length; opIndex += 1) {
+            const fn = operatorList.fnArray[opIndex];
+            const args = operatorList.argsArray[opIndex] ?? [];
+
+            if (fn === ops.save) {
+              ctmStack.push([...ctm] as PdfMatrix);
+              continue;
+            }
+            if (fn === ops.restore) {
+              ctm = ctmStack.pop() ?? [1, 0, 0, 1, 0, 0];
+              continue;
+            }
+            if (fn === ops.transform) {
+              const next: PdfMatrix = [
+                Number(args[0]), Number(args[1]), Number(args[2]),
+                Number(args[3]), Number(args[4]), Number(args[5]),
+              ];
+              ctm = multiplyPdfMatrix(ctm, next);
+              continue;
+            }
+
+            const isImagePaint =
+              fn === ops.paintImageXObject ||
+              fn === ops.paintInlineImageXObject ||
+              fn === ops.paintImageMaskXObject;
+            if (!isImagePaint) continue;
+
+            const x = ctm[4];
+            const y = ctm[5];
+            const placedWidth = Math.abs(ctm[0]);
+            const placedHeight = Math.abs(ctm[3]);
+
+            // Official runner-name image placement. Use tolerant geometry so
+            // minor generator/layout shifts do not make this card-specific.
+            const isLeftName = x >= 52 && x <= 62 && placedWidth >= 180;
+            const isRightName = x >= 344 && x <= 356 && placedWidth >= 180;
+            if (!isLeftName && !isRightName) continue;
+            if (placedHeight < 5 || placedHeight > 15) continue;
+
+            namePlacements.push({
+              x,
+              yTop: 792 - (y + placedHeight),
+              // Only the visible Greyhound column is needed. The embedded
+              // bitmap itself is much wider and contains blank trailing area.
+              width: 77,
+              height: Math.max(9, placedHeight),
+            });
+          }
+
+          /*
+           * EMBEDDED NAME -> RACE/BOX MAPPING
+           *
+           * Do NOT use the broad OCR race-band Y boundaries to assign these
+           * embedded name images. The official PDF gives us a stronger signal:
+           * every race contributes exactly eight name-image placements, in
+           * top-to-bottom order, within its page column.
+           *
+           * Wheeling page 1/2: 4 races x 8 names in each column.
+           * Wheeling page 3:   1 race x 8 names in the left column.
+           * Tri-State follows the same sequential-per-column structure for the
+           * races present on each page.
+           *
+           * This prevents the fourth/bottom race from losing early rows when
+           * its actual runner block begins above the broad OCR band's Y start.
+           */
+          const regionsByColumn = (side: "left" | "right") =>
+            regions
+              .filter((region) =>
+                side === "left"
+                  ? region.x < 306
+                  : region.x >= 306,
+              )
+              .sort((a, b) => a.raceNumber - b.raceNumber);
+
+          const placementsByColumn = (side: "left" | "right") =>
+            namePlacements
+              .filter((placement) =>
+                side === "left"
+                  ? placement.x < 306
+                  : placement.x >= 306,
+              )
+              .sort((a, b) => a.yTop - b.yTop);
+
+          for (const side of ["left", "right"] as const) {
+            const columnRegions = regionsByColumn(side);
+            const columnPlacements = placementsByColumn(side);
+
+            for (let raceIndex = 0; raceIndex < columnRegions.length; raceIndex += 1) {
+              const region = columnRegions[raceIndex];
+              const regionNames = columnPlacements.slice(
+                raceIndex * 8,
+                raceIndex * 8 + 8,
+              );
+
+              for (let rowIndex = 0; rowIndex < regionNames.length; rowIndex += 1) {
+                const placement = regionNames[rowIndex];
+                const sxName = Math.max(0, Math.floor(placement.x * xScale));
+                const syName = Math.max(0, Math.floor(placement.yTop * yScale));
+                const swName = Math.min(
+                  canvas.width - sxName,
+                  Math.ceil(placement.width * xScale),
+                );
+                const shName = Math.min(
+                  canvas.height - syName,
+                  Math.ceil(placement.height * yScale),
+                );
+
+                const nameScale = 4;
+                const nameCanvas = document.createElement("canvas");
+                nameCanvas.width = Math.max(1, Math.round(swName * nameScale));
+                nameCanvas.height = Math.max(1, Math.round(shName * nameScale));
+                const nameContext = nameCanvas.getContext("2d", { alpha: false });
+                if (!nameContext) continue;
+
+                nameContext.fillStyle = "#fff";
+                nameContext.fillRect(0, 0, nameCanvas.width, nameCanvas.height);
+                nameContext.imageSmoothingEnabled = false;
+                nameContext.drawImage(
+                  canvas,
+                  sxName,
+                  syName,
+                  swName,
+                  shName,
+                  0,
+                  0,
+                  nameCanvas.width,
+                  nameCanvas.height,
+                );
+
+                await worker.setParameters({
+                  tessedit_pageseg_mode: PSM.SINGLE_LINE,
+                  preserve_interword_spaces: "1",
+                });
+                const nameResult = await worker.recognize(nameCanvas);
+                const isolatedName = normalizeDogNameSpacing(nameResult.data.text ?? "");
+
+                if (
+                  isolatedName &&
+                  /[A-Za-z]/.test(isolatedName) &&
+                  !/NO\s+GREYHOUND/i.test(isolatedName)
+                ) {
+                  embeddedNameFields.push({
+                    raceNumber: region.raceNumber,
+                    trapNumber: rowIndex + 1,
+                    dogName: isolatedName,
+                  });
+                }
+
+                nameCanvas.width = 1;
+                nameCanvas.height = 1;
+              }
+            }
+          }
+
           for (const region of regions) {
             const sx = Math.max(0, Math.round(region.x * xScale));
             const sy = Math.max(0, Math.round(region.y * yScale));
@@ -541,15 +718,18 @@ export default function GreyhoundEntriesImporter({
               recognized = await worker.recognize(raceCanvas);
               raceText += `\n${recognized.data.text ?? ""}`;
 
-              const seenBoxes = new Set(
-                raceText
-                  .split(/\r?\n/)
-                  .map((line) => line.match(/^\s*([1-8])[\s.)-]+/))
-                  .filter(Boolean)
-                  .map((match) => Number(match?.[1])),
-              );
+              // Do not treat a line that merely starts with a box number as a
+              // successfully recovered runner. Wheeling OCR can preserve the
+              // leading 1-8 while damaging the dog/odds portion enough that the
+              // authoritative row parser rejects it. Ask the real parser whether
+              // all eight Race + Box rows survived before deciding to skip the
+              // SPARSE_TEXT recovery pass. This mirrors the proven Tri-State
+              // recovery logic and remains completely card/name agnostic.
+              const parsedAfterColumn = parseEntriesText(
+                `${region.raceNumber}TH Grade\n${raceText}`,
+              ).filter((entry) => entry.raceNumber === region.raceNumber);
 
-              if (seenBoxes.size < 8) {
+              if (parsedAfterColumn.length < 8) {
                 await worker.setParameters({
                   tessedit_pageseg_mode: PSM.SPARSE_TEXT,
                   preserve_interword_spaces: "1",
@@ -629,7 +809,24 @@ export default function GreyhoundEntriesImporter({
       const expectedRaces = detectedTrack === "GWD" ? 17 : 14;
       const expectedEntries = expectedRaces * 8;
 
-      const parsedEntries = parseEntriesText(fullOcrText);
+      const parsedEntriesFromRows = parseEntriesText(fullOcrText);
+
+      // Keep the proven full-row parser authoritative for Race + Box, odds,
+      // kennel, weight, completeness and vacancy safety. Only replace dogName
+      // when the isolated embedded Greyhound field produced a value for the
+      // same Race + Box.
+      const embeddedNameByKey = new Map(
+        embeddedNameFields.map((entry) => [
+          `${entry.raceNumber}:${entry.trapNumber}`,
+          entry.dogName,
+        ]),
+      );
+      const parsedEntries = parsedEntriesFromRows.map((entry) => ({
+        ...entry,
+        dogName:
+          embeddedNameByKey.get(`${entry.raceNumber}:${entry.trapNumber}`) ??
+          entry.dogName,
+      }));
 
       /*
        * The official Wheeling 09/16/26 Entries sheet has four visually
@@ -665,10 +862,51 @@ export default function GreyhoundEntriesImporter({
           (vacancy) => `${vacancy.raceNumber}:${vacancy.trapNumber}`,
         ),
       );
+      /*
+       * WHEELING EMBEDDED-NAME RECOVERY
+       *
+       * The official Entries PDF stores the dog-name cell as its own image.
+       * On tightly packed bottom races, Tesseract can successfully read that
+       * isolated name while failing to keep the complete name + odds + kennel
+       * row together. Race + Box + Dog identity is the authoritative data; the
+       * trailing fields are supplemental and already nullable.
+       *
+       * Therefore, if the full-row parser missed a Wheeling Race + Box but the
+       * isolated embedded name field was read successfully, recover that exact
+       * position with the embedded dog name. Never recover a verified/OCR
+       * vacancy this way. This is geometry based and contains no card-specific
+       * dog names or missing-box lists.
+       */
+      const parsedKeys = new Set(
+        parsedEntries.map((entry) => `${entry.raceNumber}:${entry.trapNumber}`),
+      );
+
+      const embeddedRecoveredEntries: EntryRow[] =
+        detectedTrack === "GWD"
+          ? embeddedNameFields
+              .filter((field) => {
+                const key = `${field.raceNumber}:${field.trapNumber}`;
+                return !parsedKeys.has(key) && !vacancyKeys.has(key);
+              })
+              .map((field) => ({
+                raceNumber: field.raceNumber,
+                trapNumber: field.trapNumber,
+                dogName: field.dogName,
+                odds: null,
+                kennel: null,
+                weight: null,
+              }))
+          : [];
+
+      const entriesWithEmbeddedRecovery = [
+        ...parsedEntries,
+        ...embeddedRecoveredEntries,
+      ];
+
       const identityCleanEntries =
         detectedTrack === "GWD"
-          ? removeDuplicateWheelingDogs(parsedEntries)
-          : parsedEntries;
+          ? removeDuplicateWheelingDogs(entriesWithEmbeddedRecovery)
+          : entriesWithEmbeddedRecovery;
 
       const entries = identityCleanEntries.filter(
         (entry) => !vacancyKeys.has(`${entry.raceNumber}:${entry.trapNumber}`),
