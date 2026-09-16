@@ -73,6 +73,14 @@ type WorkspaceData = {
   error?: string;
 };
 
+type LeagueHomeCardData = {
+  success: boolean;
+  card?: CardData | null;
+  races?: WorkspaceData["races"];
+  message?: string;
+  error?: string;
+};
+
 type Props = {
   leagueId: string;
 };
@@ -685,6 +693,43 @@ export default function GreyhoundLeagueHome({
       [leagueId],
     );
 
+  const fetchNextPublishedCard =
+    useCallback(
+      async () => {
+        const params =
+          new URLSearchParams();
+
+        params.set(
+          "leagueId",
+          leagueId,
+        );
+
+        const response =
+          await fetch(
+            `/api/greyhound/league-home-card?${params.toString()}`,
+            {
+              cache: "no-store",
+            },
+          );
+
+        const payload =
+          (await response.json()) as LeagueHomeCardData;
+
+        if (
+          !response.ok ||
+          payload.success === false
+        ) {
+          throw new Error(
+            payload.error ??
+              "Unable to load the next published Greyhound card.",
+          );
+        }
+
+        return payload;
+      },
+      [leagueId],
+    );
+
   const load =
     useCallback(
       async (
@@ -695,330 +740,97 @@ export default function GreyhoundLeagueHome({
         }
 
         try {
-          /*
-           * Always recalculate "today" during every refresh.
-           * This is important if the browser stays open overnight.
-           */
           const currentDate =
             easternTodayIsoDate();
 
           /*
-           * First request is date-only.
-           *
-           * The wager-workspace API intentionally does
-           * not auto-open a track for a date-only request.
-           *
-           * We use this request to get:
-           * - availableCards
-           * - completedRacingDates
-           * - league/settings information
+           * Keep the existing workspace request for league/settings data.
+           * Card discovery itself is now independent from wager-workspace.
            */
-          let overview =
+          const overview =
             await fetchWorkspace(
               currentDate,
             );
 
-          let targetDate =
-            advancePastCompletedDates(
+          const published =
+            await fetchNextPublishedCard();
+
+          if (!published.card) {
+            setDisplayDate(
               currentDate,
-              overview.completedRacingDates ??
-                [],
-              overview.settings,
             );
 
-          /*
-           * If today's entire racing date has completed,
-           * load metadata for the next racing date instead.
-           */
-          if (
-            targetDate !==
-            currentDate
-          ) {
-            overview =
-              await fetchWorkspace(
-                targetDate,
-              );
+            setData({
+              ...overview,
+              selectedDate:
+                currentDate,
+              card:
+                null,
+              bankroll:
+                null,
+              races:
+                [],
+            });
 
-            targetDate =
-              advancePastCompletedDates(
-                targetDate,
-                overview.completedRacingDates ??
-                  [],
-                overview.settings,
-              );
-
-            /*
-             * Extremely defensive:
-             * if another completed date was skipped,
-             * get the final target-date overview too.
-             */
-            if (
-              overview.selectedDate !==
-              targetDate
-            ) {
-              overview =
-                await fetchWorkspace(
-                  targetDate,
-                );
-            }
+            setError("");
+            return;
           }
+
+          const nextCard =
+            published.card;
 
           setDisplayDate(
-            targetDate,
+            nextCard.raceDate,
           );
-
-          const availableCards =
-            (
-              overview.availableCards ??
-              []
-            )
-              .filter(
-                (card) =>
-                  card.raceDate ===
-                    targetDate &&
-                  ![
-                    "final",
-                    "cancelled",
-                  ].includes(
-                    String(
-                      card.cardStatus,
-                    ).toLowerCase(),
-                  ),
-              )
-              .sort(
-                (
-                  a,
-                  b,
-                ) =>
-                  cardSortValue(a) -
-                  cardSortValue(b),
-              );
-
-          /*
-           * If this date has no card, roll forward to the earliest actual
-           * future card returned by the workspace API. Never fall back to an
-           * older card and never invent placeholder races.
-           */
-          if (availableCards.length === 0) {
-            /*
-             * availableCards from a date-only workspace request can be scoped
-             * to that requested date. Therefore we cannot assume tomorrow's
-             * published card is already present in today's response.
-             *
-             * Walk forward through actual competition dates and ask the API
-             * for each date until the next real card is found.
-             */
-            let searchDate = targetDate;
-            let futureOverview: WorkspaceData | null = null;
-            let nextCard: CardData | null = null;
-
-            for (
-              let attempts = 0;
-              attempts < 45;
-              attempts += 1
-            ) {
-              searchDate = addIsoDays(
-                searchDate,
-                1,
-              );
-
-              const candidateOverview =
-                await fetchWorkspace(
-                  searchDate,
-                );
-
-              const candidateCards =
-                (
-                  candidateOverview.availableCards ??
-                  []
-                )
-                  .filter(
-                    (card) =>
-                      card.raceDate ===
-                        searchDate &&
-                      ![
-                        "final",
-                        "cancelled",
-                      ].includes(
-                        String(
-                          card.cardStatus,
-                        ).toLowerCase(),
-                      ),
-                  )
-                  .sort(
-                    (
-                      a,
-                      b,
-                    ) =>
-                      cardSortValue(a) -
-                      cardSortValue(b),
-                  );
-
-              if (
-                candidateCards.length >
-                0
-              ) {
-                futureOverview =
-                  candidateOverview;
-                nextCard =
-                  candidateCards[0];
-                break;
-              }
-            }
-
-            if (
-              nextCard &&
-              futureOverview
-            ) {
-              const nextTrackCode =
-                nextCard.track?.code ??
-                null;
-
-              setDisplayDate(
-                nextCard.raceDate,
-              );
-
-              if (
-                nextTrackCode
-              ) {
-                const nextDetail =
-                  await fetchWorkspace(
-                    nextCard.raceDate,
-                    nextTrackCode,
-                  );
-
-                /*
-                 * A track-specific request should return the exact card.
-                 * If it does, use the full detail so the dashboard shows the
-                 * real race count and individual scheduled post times.
-                 */
-                if (
-                  nextDetail.card?.id ===
-                  nextCard.id
-                ) {
-                  setData(
-                    nextDetail,
-                  );
-                  setError("");
-                  return;
-                }
-              }
-
-              /*
-               * Even if detail loading is unavailable for some reason, keep
-               * showing the real next card rather than reverting to a stale
-               * "waiting for today" message.
-               */
-              setData({
-                ...futureOverview,
-                selectedDate:
-                  nextCard.raceDate,
-                card:
-                  nextCard,
-                bankroll:
-                  null,
-                races:
-                  futureOverview.races ??
-                  [],
-              });
-
-              setError("");
-              return;
-            }
-
-            setData({
-              ...overview,
-              selectedDate:
-                targetDate,
-              card:
-                null,
-              bankroll:
-                null,
-              races:
-                [],
-            });
-
-            setError("");
-            return;
-          }
-
-          /*
-           * The home dashboard is an overview, so if one or
-           * more cards exist for the correct date we may
-           * automatically display the earliest card.
-           *
-           * My Wagers still requires the member to click
-           * Wheeling or Tri-State before opening the card.
-           */
-          const selectedCard =
-            availableCards[0];
 
           const trackCode =
-            selectedCard.track?.code ??
+            nextCard.track?.code ??
             null;
 
-          if (!trackCode) {
-            setData({
-              ...overview,
-
-              selectedDate:
-                targetDate,
-
-              card:
-                selectedCard,
-
-              bankroll:
-                null,
-
-              races:
-                [],
-            });
-
-            setError("");
-
-            return;
-          }
-
-          const detail =
-            await fetchWorkspace(
-              targetDate,
-              trackCode,
-            );
-
           /*
-           * Final safety check:
-           * never show a card from another date under
-           * Today's Racing.
+           * Try to load the full member workspace for the discovered card.
+           * This preserves bankroll/live-wager data when available.
            */
-          if (
-            detail.card &&
-            detail.card.raceDate !==
-              targetDate
-          ) {
-            setData({
-              ...overview,
+          if (trackCode) {
+            try {
+              const detail =
+                await fetchWorkspace(
+                  nextCard.raceDate,
+                  trackCode,
+                );
 
-              selectedDate:
-                targetDate,
+              if (
+                detail.card &&
+                Number(detail.card.id) ===
+                  Number(nextCard.id)
+              ) {
+                setData(
+                  detail,
+                );
 
-              card:
-                null,
-
-              bankroll:
-                null,
-
-              races:
-                [],
-            });
-
-            setError("");
-
-            return;
+                setError("");
+                return;
+              }
+            } catch {
+              /*
+               * League Home must still show a valid published race card even
+               * if the wagering workspace is temporarily unable to select it.
+               */
+            }
           }
 
-          setData(
-            detail,
-          );
+          setData({
+            ...overview,
+            selectedDate:
+              nextCard.raceDate,
+            card:
+              nextCard,
+            bankroll:
+              null,
+            races:
+              published.races ??
+              [],
+          });
 
           setError("");
         } catch (
@@ -1036,6 +848,7 @@ export default function GreyhoundLeagueHome({
         }
       },
       [
+        fetchNextPublishedCard,
         fetchWorkspace,
       ],
     );
