@@ -863,16 +863,16 @@ export default function GreyhoundEntriesImporter({
         ),
       );
       /*
-       * WHEELING EMBEDDED-NAME RECOVERY
+       * EMBEDDED-NAME RECOVERY — WHEELING + TRI-STATE
        *
-       * The official Entries PDF stores the dog-name cell as its own image.
+       * Both official Entries PDF layouts store the dog-name cell as its own image.
        * On tightly packed bottom races, Tesseract can successfully read that
        * isolated name while failing to keep the complete name + odds + kennel
        * row together. Race + Box + Dog identity is the authoritative data; the
        * trailing fields are supplemental and already nullable.
        *
-       * Therefore, if the full-row parser missed a Wheeling Race + Box but the
-       * isolated embedded name field was read successfully, recover that exact
+       * Therefore, if the full-row parser missed a Race + Box but the isolated
+       * embedded name field was read successfully, recover that exact
        * position with the embedded dog name. Never recover a verified/OCR
        * vacancy this way. This is geometry based and contains no card-specific
        * dog names or missing-box lists.
@@ -882,21 +882,19 @@ export default function GreyhoundEntriesImporter({
       );
 
       const embeddedRecoveredEntries: EntryRow[] =
-        detectedTrack === "GWD"
-          ? embeddedNameFields
-              .filter((field) => {
-                const key = `${field.raceNumber}:${field.trapNumber}`;
-                return !parsedKeys.has(key) && !vacancyKeys.has(key);
-              })
-              .map((field) => ({
-                raceNumber: field.raceNumber,
-                trapNumber: field.trapNumber,
-                dogName: field.dogName,
-                odds: null,
-                kennel: null,
-                weight: null,
-              }))
-          : [];
+        embeddedNameFields
+          .filter((field) => {
+            const key = `${field.raceNumber}:${field.trapNumber}`;
+            return !parsedKeys.has(key) && !vacancyKeys.has(key);
+          })
+          .map((field) => ({
+            raceNumber: field.raceNumber,
+            trapNumber: field.trapNumber,
+            dogName: field.dogName,
+            odds: null,
+            kennel: null,
+            weight: null,
+          }));
 
       const entriesWithEmbeddedRecovery = [
         ...parsedEntries,
