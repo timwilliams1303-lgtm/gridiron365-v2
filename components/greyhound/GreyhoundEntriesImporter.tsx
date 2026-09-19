@@ -236,6 +236,38 @@ function parseVacantBoxes(text: string): VacantBox[] {
 }
 
 
+function countVacancySignalsByRace(text: string) {
+  const counts = new Map<number, number>();
+  let raceNumber: number | null = null;
+  let seenInRace = false;
+
+  for (const raw of text.replace(/\r/g, "").split("\n")) {
+    const line = clean(raw);
+    if (!line) continue;
+
+    const race = line.match(/\b(\d{1,2})(?:ST|ND|RD|TH)\s+Grade\b/i);
+    if (race) {
+      const n = Number(race[1]);
+      raceNumber = n >= 1 && n <= 17 ? n : null;
+      seenInRace = false;
+      continue;
+    }
+    if (!raceNumber) continue;
+
+    // raceText is built from multiple OCR segmentation passes, so the same
+    // printed vacancy can appear more than once. We only need to know whether
+    // this race contains a vacancy signal that the Race+Box parser failed to
+    // attach to a box.
+    const normalized = normalizeVacancyText(line);
+    if (/\bNO\s*GREY\s*HOUND(?:\s*[1IL])?\b/i.test(normalized)) {
+      seenInRace = true;
+      counts.set(raceNumber, 1);
+    }
+  }
+
+  return counts;
+}
+
 function removeDuplicateWheelingDogs(entries: EntryRow[]) {
   const firstByIdentity = new Map<string, EntryRow>();
   const duplicateKeys = new Set<string>();
@@ -854,7 +886,7 @@ export default function GreyhoundEntriesImporter({
             ]
           : null;
 
-      const vacancies =
+      let vacancies =
         detectedTrack === "GWD"
           ? verifiedWheelingVacancies ??
             Array.from(
@@ -873,6 +905,68 @@ export default function GreyhoundEntriesImporter({
                 a.trapNumber - b.trapNumber,
             )
           : [];
+
+      /*
+       * WHEELING VACANCY RECOVERY
+       *
+       * Some official Wheeling sheets print a vacancy as NO GREYHOUND1.
+       * That label can OCR successfully while the leading box number is lost,
+       * so parseVacantBoxes cannot attach the vacancy to Race + Box.
+       *
+       * Recover only under a deliberately strict condition:
+       *   1. the race has exactly ONE unaccounted box after normal dog/vacancy parsing;
+       *   2. OCR independently contains a NO GREYHOUND vacancy signal in that race;
+       *   3. that race does not already have a mapped vacancy.
+       *
+       * This is card/date/dog agnostic and does not weaken the 8-box safety
+       * validation. A race with two missing boxes or no printed vacancy signal
+       * still fails instead of guessing.
+       */
+      if (detectedTrack === "GWD" && verifiedWheelingVacancies === null) {
+        const vacancySignals = countVacancySignalsByRace(fullOcrText);
+
+        for (let race = 1; race <= expectedRaces; race += 1) {
+          const accounted = new Set<number>([
+            ...parsedEntries
+              .filter((entry) => entry.raceNumber === race)
+              .map((entry) => entry.trapNumber),
+            ...vacancies
+              .filter((vacancy) => vacancy.raceNumber === race)
+              .map((vacancy) => vacancy.trapNumber),
+          ]);
+
+          const missingBoxes = Array.from({ length: 8 }, (_, index) => index + 1)
+            .filter((box) => !accounted.has(box));
+
+          const mappedVacancies = vacancies.filter(
+            (vacancy) => vacancy.raceNumber === race,
+          ).length;
+
+          if (
+            missingBoxes.length === 1 &&
+            mappedVacancies === 0 &&
+            (vacancySignals.get(race) ?? 0) > 0
+          ) {
+            vacancies.push({
+              raceNumber: race,
+              trapNumber: missingBoxes[0],
+            });
+          }
+        }
+
+        vacancies = Array.from(
+          new Map(
+            vacancies.map((vacancy) => [
+              `${vacancy.raceNumber}:${vacancy.trapNumber}`,
+              vacancy,
+            ]),
+          ).values(),
+        ).sort(
+          (a, b) =>
+            a.raceNumber - b.raceNumber ||
+            a.trapNumber - b.trapNumber,
+        );
+      }
 
       // A legitimate vacancy owns its Race + Box. OCR retries can hallucinate
       // nearby text as a dog at that same position, so remove every overlap
