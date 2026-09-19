@@ -108,11 +108,10 @@ function isVacantDogLabel(value: string) {
     return true;
   }
 
-  // Official Wheeling vacant boxes are printed as NO GREYHOUND.
-  // OCR can append stray characters such as 1/I/L, so once the
-  // normalized label begins with NO GREYHOUND, the box is vacant.
+  // Official Wheeling vacant boxes are printed as NO GREYHOUND. OCR can
+  // append a stray 1/I/L, so compare the compact prefix rather than requiring
+  // an exact end-of-string match.
   const compact = normalized.replace(/\s+/g, "");
-
   return compact.startsWith("NOGREYHOUND");
 }
 
@@ -222,14 +221,16 @@ function parseVacantBoxes(text: string): VacantBox[] {
     const trapNumber = Number(boxMatch[1]);
     const remainder = clean(boxMatch[2]);
 
-    // A Wheeling box is vacant whenever the row begins with the official
-    // NO GREYHOUND label. isVacantDogLabel tolerates harmless OCR suffixes
-    // such as NO GREYHOUND1 while Race + Box still comes from this row.
-    if (isVacantDogLabel(remainder)) {
-      rows.push({
-        raceNumber,
-        trapNumber,
-      });
+    // A vacant row has no odds/kennel payload, but OCR may render the printed
+    // NO GREYHOUND label with odd spacing/punctuation. Read only the leading
+    // label so unrelated text later in the crop cannot create a vacancy.
+    const leadingLabel = remainder
+      .replace(/\s+\([^)]*\).*$/, "")
+      .replace(/\s{2,}.*$/, "")
+      .trim();
+
+    if (isVacantDogLabel(leadingLabel) || isVacantDogLabel(remainder)) {
+      rows.push({ raceNumber, trapNumber });
     }
   }
 
@@ -331,6 +332,7 @@ export default function GreyhoundEntriesImporter({
       const chunks: string[] = [];
       const nativeTextChunks: string[] = [];
       const embeddedNameFields: EmbeddedNameField[] = [];
+      const embeddedVacantBoxes: VacantBox[] = [];
 
       // The Entries header is native PDF text. Read it directly before OCRing
       // the graphical runner rows.
@@ -646,10 +648,18 @@ export default function GreyhoundEntriesImporter({
                 const nameResult = await worker.recognize(nameCanvas);
                 const isolatedName = normalizeDogNameSpacing(nameResult.data.text ?? "");
 
-                if (
+                if (isolatedName && isVacantDogLabel(isolatedName)) {
+                  // Vacancies use the same embedded runner-name placement as
+                  // ordinary dogs. This preserves Race + Box even when the
+                  // broad OCR text reads the printed label as NO GREYHOUND1
+                  // or fails to keep the leading box number on the same line.
+                  embeddedVacantBoxes.push({
+                    raceNumber: region.raceNumber,
+                    trapNumber: rowIndex + 1,
+                  });
+                } else if (
                   isolatedName &&
-                  /[A-Za-z]/.test(isolatedName) &&
-                  !/NO\s+GREYHOUND/i.test(isolatedName)
+                  /[A-Za-z]/.test(isolatedName)
                 ) {
                   embeddedNameFields.push({
                     raceNumber: region.raceNumber,
@@ -832,29 +842,34 @@ export default function GreyhoundEntriesImporter({
       }));
 
       /*
-       * The official Wheeling 09/16/26 Entries sheet has four visually
-       * verified NO GREYHOUND positions. OCR on the tightly packed Race 7
-       * band can both miss R7-B6 and hallucinate a vacancy in an adjacent
-       * overlapped band. For this exact official card, use the verified
-       * Race+Box vacancy snapshot instead of allowing OCR to move a vacancy.
+       * WHEELING VACANCIES
        *
-       * This is deliberately card-scoped. Other Wheeling cards continue to
-       * use parseVacantBoxes(fullOcrText), so future cards are not forced to
-       * have these same vacancy positions.
+       * Use both independent sources:
+       *   1) full race-band OCR when it preserves "box + NO GREYHOUND";
+       *   2) the embedded runner-name image geometry, which already owns the
+       *      exact Race + Box position for all eight runner slots.
+       *
+       * The second path is what handles printed/OCR labels such as
+       * "NO GREYHOUND1" when the broad OCR loses the leading box number.
+       * No race number, date, dog name, or vacancy count is hard-coded.
        */
-      const verifiedWheelingVacancies: VacantBox[] | null =
-        detectedTrack === "GWD" && metadata.raceDate === "2026-09-16"
-          ? [
-              { raceNumber: 7, trapNumber: 3 },
-              { raceNumber: 7, trapNumber: 6 },
-              { raceNumber: 8, trapNumber: 5 },
-              { raceNumber: 9, trapNumber: 5 },
-            ]
-          : null;
-
       const vacancies =
         detectedTrack === "GWD"
-          ? verifiedWheelingVacancies ?? parseVacantBoxes(fullOcrText)
+          ? Array.from(
+              new Map(
+                [
+                  ...parseVacantBoxes(fullOcrText),
+                  ...embeddedVacantBoxes,
+                ].map((vacancy) => [
+                  `${vacancy.raceNumber}:${vacancy.trapNumber}`,
+                  vacancy,
+                ]),
+              ).values(),
+            ).sort(
+              (a, b) =>
+                a.raceNumber - b.raceNumber ||
+                a.trapNumber - b.trapNumber,
+            )
           : [];
 
       // A legitimate vacancy owns its Race + Box. OCR retries can hallucinate
