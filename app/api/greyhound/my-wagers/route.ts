@@ -15,7 +15,7 @@ type EntryRow = {
 
 type DogRow = {
   id: number;
-  name: string | null;
+  display_name: string | null;
 };
 
 type RaceRow = {
@@ -82,7 +82,6 @@ type WagerRow = {
   refund_reason: string | null;
 };
 
-
 type GreyhoundSettingsRow = {
   game_format: string | null;
 };
@@ -117,7 +116,6 @@ function uniqueNumbers(values: Array<number | null | undefined>) {
     ),
   );
 }
-
 
 function cleanName(value: unknown) {
   return String(value ?? "")
@@ -353,6 +351,7 @@ export async function GET(request: NextRequest) {
     }
 
     const fantasyTeamId = Number(participant.id);
+
     const naming = await loadParticipantNamingContext(
       supabase,
       leagueId,
@@ -499,12 +498,16 @@ export async function GET(request: NextRequest) {
       ),
     );
 
+    /*
+     * greyhound_dogs uses display_name as the canonical dog-name column.
+     * Do not query the legacy/nonexistent "name" column here.
+     */
     let dogRows: DogRow[] = [];
 
     if (dogIds.length > 0) {
       const { data, error } = await supabase
         .from("greyhound_dogs")
-        .select("id, name")
+        .select("id, display_name")
         .in("id", dogIds);
 
       if (error) {
@@ -577,7 +580,7 @@ export async function GET(request: NextRequest) {
           entry.dog_id === null
             ? null
             : Number(entry.dog_id),
-        dogName: dog?.name ?? null,
+        dogName: dog?.display_name ?? null,
         boxNumber: Number(entry.box_number),
         entryStatus: entry.entry_status,
       };
@@ -655,6 +658,7 @@ export async function GET(request: NextRequest) {
           alternate1: resolveEntry(
             wager.alternate_1_entry_id,
           ),
+
           alternate2: resolveEntry(
             wager.alternate_2_entry_id,
           ),
@@ -861,7 +865,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as {
@@ -883,7 +886,10 @@ export async function POST(request: NextRequest) {
 
     if (action !== "save_name" && action !== "cancel_wager") {
       return NextResponse.json(
-        { success: false, error: "Unsupported My Wagers action." },
+        {
+          success: false,
+          error: "Unsupported My Wagers action.",
+        },
         { status: 400 },
       );
     }
@@ -907,23 +913,29 @@ export async function POST(request: NextRequest) {
 
       if (!Number.isInteger(wagerId) || wagerId <= 0) {
         return NextResponse.json(
-          { success: false, error: "A valid wagerId is required." },
+          {
+            success: false,
+            error: "A valid wagerId is required.",
+          },
           { status: 400 },
         );
       }
 
-      const { data: cancelResult, error: cancelError } = await supabase.rpc(
-        "cancel_greyhound_wager",
-        {
-          p_league_id: leagueId,
-          p_user_id: access.userId,
-          p_wager_id: wagerId,
-        },
-      );
+      const { data: cancelResult, error: cancelError } =
+        await supabase.rpc(
+          "cancel_greyhound_wager",
+          {
+            p_league_id: leagueId,
+            p_user_id: access.userId,
+            p_wager_id: wagerId,
+          },
+        );
 
       if (cancelError) {
         const message =
-          cancelError.message ?? "Unable to cancel Greyhound wager.";
+          cancelError.message ??
+          "Unable to cancel Greyhound wager.";
+
         const lower = message.toLowerCase();
 
         const status = lower.includes("not found")
@@ -938,10 +950,15 @@ export async function POST(request: NextRequest) {
             : 400;
 
         return NextResponse.json(
-          { success: false, error: message },
+          {
+            success: false,
+            error: message,
+          },
           {
             status,
-            headers: { "Cache-Control": "no-store" },
+            headers: {
+              "Cache-Control": "no-store",
+            },
           },
         );
       }
@@ -952,11 +969,14 @@ export async function POST(request: NextRequest) {
           action: "cancel_wager",
           wagerId,
           result: cancelResult,
-          message: "Wager cancelled and bankroll restored.",
+          message:
+            "Wager cancelled and bankroll restored.",
         },
         {
           status: 200,
-          headers: { "Cache-Control": "no-store" },
+          headers: {
+            "Cache-Control": "no-store",
+          },
         },
       );
     }
@@ -973,13 +993,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: participant, error: participantError } = await supabase
-      .from("fantasy_teams")
-      .select("id")
-      .eq("league_id", leagueId)
-      .eq("owner_id", access.userId)
-      .eq("active", true)
-      .maybeSingle();
+    const { data: participant, error: participantError } =
+      await supabase
+        .from("fantasy_teams")
+        .select("id")
+        .eq("league_id", leagueId)
+        .eq("owner_id", access.userId)
+        .eq("active", true)
+        .maybeSingle();
 
     if (participantError) {
       throw new Error(
@@ -991,13 +1012,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "No active Greyhound entry was found for this league.",
+          error:
+            "No active Greyhound entry was found for this league.",
         },
         { status: 404 },
       );
     }
 
     const fantasyTeamId = Number(participant.id);
+
     const naming = await loadParticipantNamingContext(
       supabase,
       leagueId,
@@ -1008,7 +1031,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Greyhound participant identity has not been created yet.",
+          error:
+            "Greyhound participant identity has not been created yet.",
         },
         { status: 409 },
       );
@@ -1019,7 +1043,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            error: "You are not assigned to a Greyhound competition team yet.",
+            error:
+              "You are not assigned to a Greyhound competition team yet.",
           },
           { status: 409 },
         );
@@ -1027,7 +1052,9 @@ export async function POST(request: NextRequest) {
 
       const { error: teamUpdateError } = await supabase
         .from("greyhound_competition_teams")
-        .update({ team_name: name })
+        .update({
+          team_name: name,
+        })
         .eq("league_id", leagueId)
         .eq("id", naming.competitionTeamId);
 
@@ -1039,7 +1066,9 @@ export async function POST(request: NextRequest) {
     } else {
       const { error: entryUpdateError } = await supabase
         .from("greyhound_participants")
-        .update({ entry_name: name })
+        .update({
+          entry_name: name,
+        })
         .eq("league_id", leagueId)
         .eq("id", naming.participantId);
 
@@ -1056,7 +1085,9 @@ export async function POST(request: NextRequest) {
        */
       const { error: fantasyTeamUpdateError } = await supabase
         .from("fantasy_teams")
-        .update({ team_name: name })
+        .update({
+          team_name: name,
+        })
         .eq("league_id", leagueId)
         .eq("id", fantasyTeamId)
         .eq("owner_id", access.userId);
@@ -1083,7 +1114,8 @@ export async function POST(request: NextRequest) {
           gameFormat: updatedNaming.gameFormat,
           namingMode: updatedNaming.namingMode,
           entryName: updatedNaming.entryName,
-          competitionTeamId: updatedNaming.competitionTeamId,
+          competitionTeamId:
+            updatedNaming.competitionTeamId,
           teamNumber: updatedNaming.teamNumber,
           teamName: updatedNaming.teamName,
           canEditName: updatedNaming.editable,
@@ -1097,7 +1129,10 @@ export async function POST(request: NextRequest) {
       },
     );
   } catch (error) {
-    console.error("[greyhound/my-wagers] POST failed", error);
+    console.error(
+      "[greyhound/my-wagers] POST failed",
+      error,
+    );
 
     const message =
       error instanceof Error
