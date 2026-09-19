@@ -9,6 +9,7 @@ export type LeagueType =
   | "season_long"
   | "nfl_playoffs"
   | "pickem"
+  | "nhl_traditional"
   | "greyhound";
 
 
@@ -226,6 +227,18 @@ function validateLeagueCombination(
 
 
   if (
+    leagueType ===
+      "nhl_traditional" &&
+    playerSelectionMode !==
+      "draft"
+  ) {
+    throw new Error(
+      "NHL Traditional leagues must use a draft."
+    );
+  }
+
+
+  if (
     (
       leagueType ===
         "season_long" ||
@@ -267,10 +280,11 @@ function validateLeagueCombination(
 
   if (
     leagueType !== "traditional" &&
+    leagueType !== "nhl_traditional" &&
     playerSelectionMode === "draft"
   ) {
     throw new Error(
-      "Only Traditional leagues can use a draft."
+      "Draft mode can only be used by Traditional or NHL Traditional leagues."
     );
   }
 
@@ -433,6 +447,8 @@ export async function createLeague(
     input.leagueType ===
       "season_long" ||
     input.leagueType ===
+      "nhl_traditional" ||
+    input.leagueType ===
       "pickem"
   ) {
     teamName =
@@ -555,6 +571,8 @@ export async function createLeague(
       "nfl_playoffs" &&
     returnedLeagueType !==
       "pickem" &&
+    returnedLeagueType !==
+      "nhl_traditional" &&
     returnedLeagueType !==
       "greyhound"
   ) {
@@ -981,4 +999,3 @@ export async function getMyLeagues(
 
   return result;
 }
-

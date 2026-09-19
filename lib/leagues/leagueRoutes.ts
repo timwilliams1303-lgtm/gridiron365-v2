@@ -2,7 +2,7 @@ import type {
   G365LeagueType,
   LeagueCapabilityKey,
   SeasonLongCompetitionFormat,
-} from "./leagueCapabilities";
+} from "@/lib/leagues/leagueCapabilities";
 
 export type LeagueNavItem = {
   key: LeagueCapabilityKey;
@@ -12,9 +12,12 @@ export type LeagueNavItem = {
   exact?: boolean;
 };
 
-export type LeaguePrimaryAction = {
-  label: string;
-  href: string;
+type GetLeagueNavItemsArgs = {
+  leagueId: string;
+  leagueType: G365LeagueType;
+  competitionFormat?: SeasonLongCompetitionFormat | null;
+  playoffsEnabled?: boolean;
+  isCommissioner?: boolean;
 };
 
 type GetLeaguePrimaryActionArgs = {
@@ -25,7 +28,7 @@ type GetLeaguePrimaryActionArgs = {
 export function getLeaguePrimaryAction({
   leagueId,
   leagueType,
-}: GetLeaguePrimaryActionArgs): LeaguePrimaryAction {
+}: GetLeaguePrimaryActionArgs) {
   const base = `/league/${leagueId}`;
 
   switch (leagueType) {
@@ -35,17 +38,28 @@ export function getLeaguePrimaryAction({
         href: `${base}/team`,
       };
 
+    case "nhl_traditional":
+      return {
+        label: "My Team",
+        href: `${base}/nhl/team`,
+      };
+
     case "season_long":
+      return {
+        label: "My Entry",
+        href: `${base}/season-long/my-entry`,
+      };
+
     case "nfl_playoffs":
       return {
         label: "My Entry",
-        href: `${base}/entry`,
+        href: `${base}/nfl-playoffs/my-entry`,
       };
 
     case "pickem":
       return {
         label: "My Picks",
-        href: `${base}/pickem/my-picks`,
+        href: `${base}/pickem/picks`,
       };
 
     case "greyhound":
@@ -54,20 +68,13 @@ export function getLeaguePrimaryAction({
         href: `${base}/greyhound/wagers`,
       };
 
-    default: {
-      const exhaustiveCheck: never = leagueType;
-      return exhaustiveCheck;
-    }
+    default:
+      return {
+        label: "League Home",
+        href: base,
+      };
   }
 }
-
-type GetLeagueNavItemsArgs = {
-  leagueId: string;
-  leagueType: G365LeagueType;
-  competitionFormat?: SeasonLongCompetitionFormat | null;
-  playoffsEnabled?: boolean;
-  isCommissioner?: boolean;
-};
 
 export function getLeagueNavItems({
   leagueId,
@@ -78,6 +85,11 @@ export function getLeagueNavItems({
 }: GetLeagueNavItemsArgs): LeagueNavItem[] {
   const base = `/league/${leagueId}`;
 
+  /*
+   * =========================================
+   * TRADITIONAL NFL
+   * =========================================
+   */
   if (leagueType === "traditional") {
     const items: LeagueNavItem[] = [
       {
@@ -90,7 +102,7 @@ export function getLeagueNavItems({
       {
         key: "myTeam",
         label: "My Team",
-        mobileLabel: "Team",
+        mobileLabel: "My Team",
         href: `${base}/team`,
       },
       {
@@ -101,8 +113,8 @@ export function getLeagueNavItems({
       },
       {
         key: "rankings",
-        label: "My Rankings",
-        mobileLabel: "Rankings",
+        label: "Rankings",
+        mobileLabel: "Ranks",
         href: `${base}/rankings`,
       },
       {
@@ -130,6 +142,18 @@ export function getLeagueNavItems({
         href: `${base}/trades`,
       },
       {
+        key: "draft",
+        label: "Draft",
+        mobileLabel: "Draft",
+        href: `${base}/draft`,
+      },
+      {
+        key: "draftGrades",
+        label: "Draft Grades",
+        mobileLabel: "Grades",
+        href: `${base}/draft-grades`,
+      },
+      {
         key: "playoffs",
         label: "Playoffs",
         mobileLabel: "Playoffs",
@@ -143,22 +167,9 @@ export function getLeagueNavItems({
       },
       {
         key: "history",
-        label: "League History",
+        label: "History",
         mobileLabel: "History",
         href: `${base}/history`,
-      },
-      {
-        key: "draft",
-        label: "Draft",
-        mobileLabel: "Draft",
-        href: `${base}/draft`,
-        exact: true,
-      },
-      {
-        key: "draftGrades",
-        label: "Draft Grades",
-        mobileLabel: "Grades",
-        href: `${base}/draft/grades`,
       },
       {
         key: "settings",
@@ -180,7 +191,124 @@ export function getLeagueNavItems({
     return items;
   }
 
+  /*
+   * =========================================
+   * NHL TRADITIONAL
+   *
+   * Shared navigation for:
+   * - Redraft
+   * - Dynasty
+   *
+   * Individual pages can add dynasty-specific
+   * behavior without requiring a second league
+   * type or separate navigation system.
+   * =========================================
+   */
+  if (leagueType === "nhl_traditional") {
+    const nhlBase = `${base}/nhl`;
+
+    const items: LeagueNavItem[] = [
+      {
+        key: "home",
+        label: "Home",
+        mobileLabel: "Home",
+        href: nhlBase,
+        exact: true,
+      },
+      {
+        key: "myTeam",
+        label: "My Team",
+        mobileLabel: "My Team",
+        href: `${nhlBase}/team`,
+      },
+      {
+        key: "leagueTeams",
+        label: "Teams",
+        mobileLabel: "Teams",
+        href: `${nhlBase}/teams`,
+      },
+      {
+        key: "players",
+        label: "Players",
+        mobileLabel: "Players",
+        href: `${nhlBase}/players`,
+      },
+      {
+        key: "rankings",
+        label: "Rankings",
+        mobileLabel: "Ranks",
+        href: `${nhlBase}/rankings`,
+      },
+      {
+        key: "matchups",
+        label: "Matchups",
+        mobileLabel: "Matchups",
+        href: `${nhlBase}/matchups`,
+      },
+      {
+        key: "standings",
+        label: "Standings",
+        mobileLabel: "Standings",
+        href: `${nhlBase}/standings`,
+      },
+      {
+        key: "waivers",
+        label: "Waivers",
+        mobileLabel: "Waivers",
+        href: `${nhlBase}/waivers`,
+      },
+      {
+        key: "trades",
+        label: "Trades",
+        mobileLabel: "Trades",
+        href: `${nhlBase}/trades`,
+      },
+      {
+        key: "draft",
+        label: "Draft",
+        mobileLabel: "Draft",
+        href: `${nhlBase}/draft`,
+      },
+      {
+        key: "playoffs",
+        label: "Playoffs",
+        mobileLabel: "Playoffs",
+        href: `${nhlBase}/playoffs`,
+      },
+      {
+        key: "recap",
+        label: "Recap",
+        mobileLabel: "Recap",
+        href: `${nhlBase}/recap`,
+      },
+      {
+        key: "trophyCase",
+        label: "Trophy Case",
+        mobileLabel: "Trophies",
+        href: `${nhlBase}/trophy-case`,
+      },
+    ];
+
+    if (isCommissioner) {
+      items.push({
+        key: "commissioner",
+        label: "Commissioner",
+        mobileLabel: "Commish",
+        href: `${nhlBase}/commissioner`,
+      });
+    }
+
+    return items;
+  }
+
+  /*
+   * =========================================
+   * SEASON-LONG
+   * =========================================
+   */
   if (leagueType === "season_long") {
+    const seasonLongBase = `${base}/season-long`;
+
     const isHeadToHead =
       competitionFormat === "head_to_head";
 
@@ -189,14 +317,14 @@ export function getLeagueNavItems({
         key: "home",
         label: "Home",
         mobileLabel: "Home",
-        href: base,
+        href: seasonLongBase,
         exact: true,
       },
       {
         key: "myEntry",
         label: "My Entry",
-        mobileLabel: "Entry",
-        href: `${base}/entry`,
+        mobileLabel: "My Entry",
+        href: `${seasonLongBase}/my-entry`,
       },
     ];
 
@@ -205,14 +333,14 @@ export function getLeagueNavItems({
         key: "matchups",
         label: "Matchups",
         mobileLabel: "Matchups",
-        href: `${base}/season-long/matchups`,
+        href: `${seasonLongBase}/matchups`,
       });
     } else {
       items.push({
         key: "leagueTeams",
         label: "League Teams",
         mobileLabel: "Teams",
-        href: `${base}/teams`,
+        href: `${seasonLongBase}/teams`,
       });
     }
 
@@ -220,18 +348,15 @@ export function getLeagueNavItems({
       key: "standings",
       label: "Standings",
       mobileLabel: "Standings",
-      href: `${base}/standings`,
+      href: `${seasonLongBase}/standings`,
     });
 
-    if (
-      isHeadToHead &&
-      playoffsEnabled
-    ) {
+    if (isHeadToHead && playoffsEnabled) {
       items.push({
         key: "playoffs",
         label: "Playoffs",
         mobileLabel: "Playoffs",
-        href: `${base}/season-long/playoffs`,
+        href: `${seasonLongBase}/playoffs`,
       });
     }
 
@@ -240,19 +365,19 @@ export function getLeagueNavItems({
         key: "recap",
         label: "Recap",
         mobileLabel: "Recap",
-        href: `${base}/season-long/recap`,
+        href: `${seasonLongBase}/recap`,
       },
       {
         key: "trophyCase",
         label: "Trophy Case",
         mobileLabel: "Trophies",
-        href: `${base}/season-long/trophy-case`,
+        href: `${seasonLongBase}/trophy-case`,
       },
       {
         key: "settings",
         label: "Settings",
         mobileLabel: "Settings",
-        href: `${base}/settings`,
+        href: `${seasonLongBase}/settings`,
       }
     );
 
@@ -261,63 +386,70 @@ export function getLeagueNavItems({
         key: "commissioner",
         label: "Commissioner",
         mobileLabel: "Commish",
-        href: `${base}/commissioner`,
+        href: `${seasonLongBase}/commissioner`,
       });
     }
 
     return items;
   }
 
+  /*
+   * =========================================
+   * NFL PLAYOFFS
+   * =========================================
+   */
   if (leagueType === "nfl_playoffs") {
+    const playoffBase = `${base}/nfl-playoffs`;
+
     const items: LeagueNavItem[] = [
       {
         key: "home",
         label: "Home",
         mobileLabel: "Home",
-        href: base,
+        href: playoffBase,
         exact: true,
       },
       {
         key: "myEntry",
         label: "My Entry",
-        mobileLabel: "Entry",
-        href: `${base}/entry`,
+        mobileLabel: "My Entry",
+        href: `${playoffBase}/my-entry`,
       },
       {
         key: "leagueTeams",
         label: "League Teams",
         mobileLabel: "Teams",
-        href: `${base}/nfl-playoffs/teams`,
+        href: `${playoffBase}/teams`,
       },
       {
         key: "standings",
         label: "Standings",
         mobileLabel: "Standings",
-        href: `${base}/nfl-playoffs/standings`,
+        href: `${playoffBase}/standings`,
       },
       {
         key: "playoffs",
-        label: "NFL Playoffs",
+        label: "Playoffs",
         mobileLabel: "Playoffs",
-        href: `${base}/nfl-playoffs/playoffs`,
+        href: `${playoffBase}/playoffs`,
       },
       {
         key: "recap",
         label: "Recap",
         mobileLabel: "Recap",
-        href: `${base}/nfl-playoffs/recap`,
+        href: `${playoffBase}/recap`,
       },
       {
         key: "trophyCase",
         label: "Trophy Case",
         mobileLabel: "Trophies",
-        href: `${base}/nfl-playoffs/trophy-case`,
+        href: `${playoffBase}/trophy-case`,
       },
       {
         key: "settings",
         label: "Settings",
         mobileLabel: "Settings",
-        href: `${base}/nfl-playoffs/settings`,
+        href: `${playoffBase}/settings`,
       },
     ];
 
@@ -326,57 +458,130 @@ export function getLeagueNavItems({
         key: "commissioner",
         label: "Commissioner",
         mobileLabel: "Commish",
-        href: `${base}/commissioner`,
+        href: `${playoffBase}/commissioner`,
       });
     }
 
     return items;
   }
 
-  if (leagueType === "greyhound") {
+  /*
+   * =========================================
+   * G365 PICK'EM
+   * =========================================
+   */
+  if (leagueType === "pickem") {
+    const pickemBase = `${base}/pickem`;
+
     const items: LeagueNavItem[] = [
       {
         key: "home",
         label: "Home",
         mobileLabel: "Home",
-        href: base,
+        href: pickemBase,
+        exact: true,
+      },
+      {
+        key: "picks",
+        label: "My Picks",
+        mobileLabel: "My Picks",
+        href: `${pickemBase}/picks`,
+      },
+      {
+        key: "leaguePicks",
+        label: "League Picks",
+        mobileLabel: "League",
+        href: `${pickemBase}/league-picks`,
+      },
+      {
+        key: "games",
+        label: "Games",
+        mobileLabel: "Games",
+        href: `${pickemBase}/games`,
+      },
+      {
+        key: "standings",
+        label: "Standings",
+        mobileLabel: "Standings",
+        href: `${pickemBase}/standings`,
+      },
+      {
+        key: "recap",
+        label: "Recap",
+        mobileLabel: "Recap",
+        href: `${pickemBase}/recap`,
+      },
+      {
+        key: "settings",
+        label: "Settings",
+        mobileLabel: "Settings",
+        href: `${pickemBase}/settings`,
+      },
+    ];
+
+    if (isCommissioner) {
+      items.push({
+        key: "commissioner",
+        label: "Commissioner",
+        mobileLabel: "Commish",
+        href: `${pickemBase}/commissioner`,
+      });
+    }
+
+    return items;
+  }
+
+  /*
+   * =========================================
+   * GREYHOUND RACING
+   * =========================================
+   */
+  if (leagueType === "greyhound") {
+    const greyhoundBase = `${base}/greyhound`;
+
+    const items: LeagueNavItem[] = [
+      {
+        key: "home",
+        label: "Home",
+        mobileLabel: "Home",
+        href: greyhoundBase,
         exact: true,
       },
       {
         key: "wagers",
         label: "My Wagers",
         mobileLabel: "Wagers",
-        href: `${base}/greyhound/wagers`,
+        href: `${greyhoundBase}/wagers`,
       },
       {
         key: "leagueWagers",
         label: "League Wagers",
         mobileLabel: "League",
-        href: `${base}/greyhound/league-wagers`,
+        href: `${greyhoundBase}/league-wagers`,
       },
       {
         key: "standings",
         label: "Standings",
         mobileLabel: "Standings",
-        href: `${base}/greyhound/standings`,
+        href: `${greyhoundBase}/standings`,
       },
       {
         key: "recap",
         label: "Recap",
         mobileLabel: "Recap",
-        href: `${base}/greyhound/recap`,
+        href: `${greyhoundBase}/recap`,
       },
       {
         key: "trophyCase",
         label: "Trophy Case",
         mobileLabel: "Trophies",
-        href: `${base}/greyhound/trophy-case`,
+        href: `${greyhoundBase}/trophy-case`,
       },
       {
         key: "settings",
         label: "Settings",
         mobileLabel: "Settings",
-        href: `${base}/greyhound/settings`,
+        href: `${greyhoundBase}/settings`,
       },
     ];
 
@@ -385,67 +590,12 @@ export function getLeagueNavItems({
         key: "commissioner",
         label: "Commissioner",
         mobileLabel: "Commish",
-        href: `${base}/commissioner`,
+        href: `${greyhoundBase}/commissioner`,
       });
     }
 
     return items;
   }
 
-  const items: LeagueNavItem[] = [
-    {
-      key: "home",
-      label: "Home",
-      mobileLabel: "Home",
-      href: base,
-      exact: true,
-    },
-    {
-      key: "picks",
-      label: "My Picks",
-      mobileLabel: "Picks",
-      href: `${base}/pickem/my-picks`,
-    },
-    {
-      key: "leaguePicks",
-      label: "League Picks",
-      mobileLabel: "League",
-      href: `${base}/pickem/league-picks`,
-    },
-    {
-      key: "games",
-      label: "Games",
-      mobileLabel: "Games",
-      href: `${base}/pickem/games`,
-    },
-    {
-      key: "standings",
-      label: "Standings",
-      mobileLabel: "Standings",
-      href: `${base}/pickem/standings`,
-    },
-    {
-      key: "recap",
-      label: "Recap",
-      mobileLabel: "Recap",
-      href: `${base}/pickem/recap`,
-    },
-    {
-      key: "settings",
-      label: "Settings",
-      mobileLabel: "Settings",
-      href: `${base}/pickem/settings`,
-    },
-  ];
-
-  if (isCommissioner) {
-    items.push({
-      key: "commissioner",
-      label: "Commissioner",
-      mobileLabel: "Commish",
-      href: `${base}/commissioner`,
-    });
-  }
-
-  return items;
+  return [];
 }

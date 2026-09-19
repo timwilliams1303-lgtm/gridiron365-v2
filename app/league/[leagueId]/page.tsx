@@ -3,6 +3,7 @@ import SeasonLongLeagueHome from "@/components/season-long/SeasonLongLeagueHome"
 import TraditionalLeagueHome from "@/components/traditional/TraditionalLeagueHome";
 import NflPlayoffsLeagueHome from "@/components/nfl-playoffs/NflPlayoffsLeagueHome";
 import GreyhoundLeagueHome from "@/components/greyhound/GreyhoundLeagueHome";
+import NhlTraditionalLeagueHome from "@/components/nhl-traditional/NhlTraditionalLeagueHome";
 
 import {
   requireLeagueMember,
@@ -83,6 +84,16 @@ export default async function LeagueHomePage({
     case "greyhound":
       return (
         <GreyhoundLeagueHome
+          leagueId={
+            leagueId
+          }
+        />
+      );
+
+
+    case "nhl_traditional":
+      return (
+        <NhlTraditionalLeagueHome
           leagueId={
             leagueId
           }

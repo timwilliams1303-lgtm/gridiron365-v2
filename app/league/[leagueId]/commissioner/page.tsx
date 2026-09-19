@@ -12,6 +12,7 @@ import PickemCommissioner from "@/components/pickem/PickemCommissioner";
 import SeasonLongCommissioner from "@/components/season-long/SeasonLongCommissioner";
 import TraditionalCommissioner from "@/components/traditional/TraditionalCommissioner";
 import GreyhoundCommissioner from "@/components/greyhound/GreyhoundCommissioner";
+import NhlTraditionalCommissioner from "@/components/nhl-traditional/NhlTraditionalCommissioner";
 
 import NflPlayoffsCommissionerOperations
   from "@/components/nfl-playoffs/NflPlayoffsCommissionerOperations";
@@ -523,6 +524,13 @@ export default async function CommissionerPage({
           }
         />
       );
+
+case "nhl_traditional":
+  return (
+    <NhlTraditionalCommissioner
+      leagueId={leagueId}
+    />
+  );
 
     default:
       redirect(

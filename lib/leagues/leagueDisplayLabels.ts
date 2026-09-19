@@ -35,6 +35,13 @@ export function getLeagueDisplayLabels({
         "TRAD";
       break;
 
+    case "nhl_traditional":
+      leagueTypeLabel =
+        "NHL TRADITIONAL";
+      mobileLeagueTypeLabel =
+        "NHL";
+      break;
+
     case "season_long":
       leagueTypeLabel =
         "SEASON-LONG";
@@ -86,6 +93,13 @@ export function getLeagueDisplayLabels({
   /*
    * Salary / no-salary labels only apply to the league
    * types that actually use player-selection modes.
+   *
+   * NHL Traditional always uses draft mode, so "DRAFT"
+   * is intentionally not displayed here. Its useful
+   * format label will come from nhl_traditional_settings:
+   *
+   *   redraft
+   *   dynasty
    */
   if (
     leagueType === "season_long" ||

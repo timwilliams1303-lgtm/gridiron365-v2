@@ -25,7 +25,8 @@ import {
 
 function formatLeagueType(
   leagueType: string,
-  playerSelectionMode: string
+  playerSelectionMode: string,
+  nhlLeagueFormat?: string | null
 ) {
   if (
     leagueType ===
@@ -80,6 +81,17 @@ function formatLeagueType(
       "pickem"
   ) {
     return "G365 Pick'em";
+  }
+
+
+  if (
+    leagueType ===
+      "nhl_traditional"
+  ) {
+    return nhlLeagueFormat ===
+      "dynasty"
+      ? "NHL Dynasty"
+      : "NHL Traditional Draft";
   }
 
 
@@ -193,6 +205,74 @@ export default async function MyLeaguesPage() {
       supabase,
       user.id
     );
+
+
+  const nhlLeagueIds =
+    leagues
+      .filter(
+        (league) =>
+          league.leagueType ===
+          "nhl_traditional"
+      )
+      .map(
+        (league) =>
+          league.id
+      );
+
+
+  const nhlLeagueFormats =
+    new Map<string, string>();
+
+
+  if (
+    nhlLeagueIds.length >
+    0
+  ) {
+    const {
+      data:
+        nhlTraditionalSettings,
+      error:
+        nhlTraditionalSettingsError,
+    } = await supabase
+      .from(
+        "nhl_traditional_settings"
+      )
+      .select(
+        "league_id, league_format"
+      )
+      .in(
+        "league_id",
+        nhlLeagueIds
+      );
+
+
+    if (
+      nhlTraditionalSettingsError
+    ) {
+      console.error(
+        "Unable to load NHL Traditional league formats:",
+        nhlTraditionalSettingsError
+      );
+    } else {
+      for (
+        const setting of
+        nhlTraditionalSettings ??
+        []
+      ) {
+        if (
+          typeof setting.league_id ===
+            "string" &&
+          typeof setting.league_format ===
+            "string"
+        ) {
+          nhlLeagueFormats.set(
+            setting.league_id,
+            setting.league_format
+          );
+        }
+      }
+    }
+  }
 
 
   const sortedLeagues =
@@ -448,7 +528,10 @@ export default async function MyLeaguesPage() {
                         >
                           {formatLeagueType(
                             league.leagueType,
-                            league.playerSelectionMode
+                            league.playerSelectionMode,
+                            nhlLeagueFormats.get(
+                              league.id
+                            )
                           )}
                         </span>
 

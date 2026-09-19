@@ -39,6 +39,7 @@ type LeagueFormat = {
     | "playoffs_salary"
     | "playoffs_no_salary"
     | "pickem"
+    | "nhl_traditional"
     | "greyhound";
 
   title:
@@ -161,6 +162,23 @@ const leagueFormats:
 
     {
       id:
+        "nhl_traditional",
+
+      title:
+        "NHL Traditional",
+
+      description:
+        "Season-long head-to-head fantasy hockey with a live draft, daily lineup changes, exclusive player ownership, waivers, trades, standings, and playoffs.",
+
+      leagueType:
+        "nhl_traditional",
+
+      playerSelectionMode:
+        "draft",
+    },
+
+    {
+      id:
         "greyhound",
 
       title:
@@ -188,6 +206,15 @@ type TraditionalCreationStatus = {
   timeZone: string;
   message: string;
 };
+
+
+type NhlTraditionalLeagueFormat =
+  | "redraft"
+  | "dynasty";
+
+type NhlTraditionalPositionMode =
+  | "detailed"
+  | "fdg";
 
 
 type GreyhoundGameFormat =
@@ -292,6 +319,17 @@ export default function CreateLeaguePage() {
           .getFullYear()
       )
     );
+
+
+  const [
+    nhlLeagueFormat,
+    setNhlLeagueFormat,
+  ] = useState<NhlTraditionalLeagueFormat>("redraft");
+
+  const [
+    nhlPositionMode,
+    setNhlPositionMode,
+  ] = useState<NhlTraditionalPositionMode>("detailed");
 
 
   const [
@@ -494,6 +532,11 @@ export default function CreateLeaguePage() {
     "traditional";
 
 
+  const isNhlTraditional =
+    selectedFormat.leagueType ===
+    "nhl_traditional";
+
+
   const isSeasonLong =
     selectedFormat.leagueType ===
     "season_long";
@@ -516,6 +559,7 @@ export default function CreateLeaguePage() {
 
   const requiresTeamName =
     isTraditional ||
+    isNhlTraditional ||
     isSeasonLong ||
     isPickem;
 
@@ -666,42 +710,137 @@ export default function CreateLeaguePage() {
       }
 
 
-      const result =
-        await createLeague(
-          supabase,
+      let result: {
+        success: boolean;
+        leagueId: string;
+        leagueType: LeagueType;
+      };
+
+
+      if (isNhlTraditional) {
+        const {
+          data: nhlCreateData,
+          error: nhlCreateError,
+        } = await supabase.rpc(
+          "create_nhl_traditional_league_transaction",
           {
-            name:
-              leagueName,
-
-            leagueType:
-              selectedFormat
-                .leagueType,
-
-            playerSelectionMode:
-              selectedFormat
-                .playerSelectionMode,
-
-            season:
-              parsedSeason,
-
-            teamName:
-              requiresTeamName
-                ? teamName
-                : undefined,
-
-            /*
-             * Traditional defaults to
-             * 14 regular-season weeks.
-             *
-             * Commissioners can change
-             * this later in league settings.
-             */
-            regularSeasonWeeks:
-              isTraditional
-                ? 14
-                : undefined,
+            p_name: leagueName,
+            p_season: parsedSeason,
+            p_team_name: teamName,
+            p_league_format: nhlLeagueFormat,
+            p_position_mode: nhlPositionMode,
           }
         );
+
+
+        if (
+          nhlCreateError
+        ) {
+          throw new Error(
+            nhlCreateError.message
+          );
+        }
+
+
+        if (
+          !nhlCreateData ||
+          typeof nhlCreateData !==
+            "object" ||
+          Array.isArray(
+            nhlCreateData
+          )
+        ) {
+          throw new Error(
+            "The NHL Traditional league could not be created."
+          );
+        }
+
+
+        const nhlResult =
+          nhlCreateData as {
+            success?: unknown;
+            leagueId?: unknown;
+            leagueType?: unknown;
+          };
+
+
+        if (
+          nhlResult.success !==
+            true ||
+          typeof nhlResult.leagueId !==
+            "string" ||
+          nhlResult.leagueType !==
+            "nhl_traditional"
+        ) {
+          throw new Error(
+            "The NHL Traditional league could not be created."
+          );
+        }
+
+
+        result = {
+          success: true,
+          leagueId:
+            nhlResult.leagueId,
+          leagueType:
+            "nhl_traditional",
+        };
+      } else {
+        const standardResult =
+          await createLeague(
+            supabase,
+            {
+              name:
+                leagueName,
+
+              leagueType:
+                selectedFormat
+                  .leagueType,
+
+              playerSelectionMode:
+                selectedFormat
+                  .playerSelectionMode,
+
+              season:
+                parsedSeason,
+
+              teamName:
+                requiresTeamName
+                  ? teamName
+                  : undefined,
+
+              /*
+               * Traditional defaults to
+               * 14 regular-season weeks.
+               *
+               * Commissioners can change
+               * this later in league settings.
+               */
+              regularSeasonWeeks:
+                isTraditional
+                  ? 14
+                  : undefined,
+            }
+          );
+
+
+        if (
+          !standardResult.success
+        ) {
+          throw new Error(
+            "The league could not be created."
+          );
+        }
+
+
+        result = {
+          success: true,
+          leagueId:
+            standardResult.leagueId,
+          leagueType:
+            standardResult.leagueType,
+        };
+      }
 
 
       if (
@@ -969,6 +1108,15 @@ export default function CreateLeaguePage() {
                         </span>
                       ) : null}
                     </>
+                  ) : format.leagueType ===
+                    "nhl_traditional" ? (
+                    <span
+                      style={
+                        styles.traditionalBadge
+                      }
+                    >
+                      REDRAFT OR DYNASTY • H2H
+                    </span>
                   ) : (
                     <span
                       style={
@@ -1079,7 +1227,8 @@ export default function CreateLeaguePage() {
             {requiresTeamName ? (
               <FormField
                 label={
-                  isTraditional
+                  isTraditional ||
+                  isNhlTraditional
                     ? "My Team Name"
                     : "My Entry Name"
                 }
@@ -1096,9 +1245,11 @@ export default function CreateLeaguePage() {
                   )
                 }
                 placeholder={
-                  isTraditional
-                    ? "Example: Gridiron Bisons"
-                    : "Example: Sunday Crushers"
+                  isNhlTraditional
+                    ? "Example: Ice Breakers"
+                    : isTraditional
+                      ? "Example: Gridiron Bisons"
+                      : "Example: Sunday Crushers"
                 }
                 maxLength={100}
                 disabled={
@@ -1126,6 +1277,270 @@ export default function CreateLeaguePage() {
                   scoring, waivers, trades, playoffs, invitations,
                   and draft settings.
                 </span>
+              </div>
+            ) : null}
+
+
+            {isNhlTraditional ? (
+              <div
+                style={
+                  styles.nhlSetup
+                }
+              >
+                <div
+                  style={
+                    styles.nhlSectionHead
+                  }
+                >
+                  <p
+                    style={
+                      styles.nhlEyebrow
+                    }
+                  >
+                    NHL TRADITIONAL
+                  </p>
+
+                  <h3
+                    style={
+                      styles.nhlTitle
+                    }
+                  >
+                    League Format
+                  </h3>
+
+                  <p
+                    style={
+                      styles.nhlHelp
+                    }
+                  >
+                    Choose whether player ownership resets with a full draft
+                    every season or carries forward from season to season.
+                  </p>
+                </div>
+
+                <div
+                  style={
+                    styles.nhlChoiceGrid
+                  }
+                >
+                  {([
+                    [
+                      "redraft",
+                      "Redraft",
+                      "Draft the full player pool each season. League history and trophies remain, but player ownership resets for the new season.",
+                    ],
+                    [
+                      "dynasty",
+                      "Dynasty",
+                      "Keep player ownership across seasons and use offseason rookie/eligible-player drafts with persistent future draft-pick assets.",
+                    ],
+                  ] as const).map(
+                    ([
+                      value,
+                      title,
+                      description,
+                    ]) => {
+                      const selected =
+                        nhlLeagueFormat ===
+                        value;
+
+                      return (
+                        <button
+                          key={
+                            value
+                          }
+                          type="button"
+                          disabled={
+                            working
+                          }
+                          onClick={
+                            () => {
+                              setNhlLeagueFormat(
+                                value
+                              );
+
+                              setMessage(
+                                ""
+                              );
+
+                              setIsError(
+                                false
+                              );
+                            }
+                          }
+                          style={{
+                            ...styles.nhlChoice,
+                            ...(selected
+                              ? styles.nhlChoiceSelected
+                              : {}),
+                          }}
+                        >
+                          <strong>
+                            {title}
+                          </strong>
+
+                          <span>
+                            {description}
+                          </span>
+
+                          <span
+                            style={{
+                              ...styles.choicePill,
+                              ...(selected
+                                ? styles.choicePillSelected
+                                : {}),
+                            }}
+                          >
+                            {selected
+                              ? "SELECTED"
+                              : "SELECT"}
+                          </span>
+                        </button>
+                      );
+                    }
+                  )}
+                </div>
+
+                <div
+                  style={
+                    styles.nhlSubsection
+                  }
+                >
+                  <div>
+                    <p
+                      style={
+                        styles.nhlEyebrow
+                      }
+                    >
+                      POSITION SETUP
+                    </p>
+
+                    <h3
+                      style={
+                        styles.nhlSubTitle
+                      }
+                    >
+                      Roster Positions
+                    </h3>
+
+                    <p
+                      style={
+                        styles.nhlHelp
+                      }
+                    >
+                      This controls fantasy lineup eligibility. Every player's
+                      actual NHL position remains stored in the NHL player
+                      database.
+                    </p>
+                  </div>
+
+                  <div
+                    style={
+                      styles.nhlChoiceGrid
+                    }
+                  >
+                    {([
+                      [
+                        "detailed",
+                        "Detailed Positions",
+                        "C / LW / RW / D / G / UTIL. Best for leagues that want actual forward-position eligibility.",
+                      ],
+                      [
+                        "fdg",
+                        "Simplified F / D / G",
+                        "Centers and wings all qualify as forwards. Lineups use F / D / G.",
+                      ],
+                    ] as const).map(
+                      ([
+                        value,
+                        title,
+                        description,
+                      ]) => {
+                        const selected =
+                          nhlPositionMode ===
+                          value;
+
+                        return (
+                          <button
+                            key={
+                              value
+                            }
+                            type="button"
+                            disabled={
+                              working
+                            }
+                            onClick={
+                              () => {
+                                setNhlPositionMode(
+                                  value
+                                );
+
+                                setMessage(
+                                  ""
+                                );
+
+                                setIsError(
+                                  false
+                                );
+                              }
+                            }
+                            style={{
+                              ...styles.nhlChoice,
+                              ...(selected
+                                ? styles.nhlChoiceSelected
+                                : {}),
+                            }}
+                          >
+                            <strong>
+                              {title}
+                            </strong>
+
+                            <span>
+                              {description}
+                            </span>
+
+                            <span
+                              style={{
+                                ...styles.choicePill,
+                                ...(selected
+                                  ? styles.choicePillSelected
+                                  : {}),
+                              }}
+                            >
+                              {selected
+                                ? "SELECTED"
+                                : "SELECT"}
+                            </span>
+                          </button>
+                        );
+                      }
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  style={
+                    styles.nhlSummary
+                  }
+                >
+                  <strong>
+                    {nhlLeagueFormat ===
+                    "dynasty"
+                      ? "Dynasty"
+                      : "Redraft"}
+                    {" • "}
+                    {nhlPositionMode ===
+                    "fdg"
+                      ? "F / D / G"
+                      : "C / LW / RW / D / G / UTIL"}
+                  </strong>
+
+                  <span>
+                    Weekly head-to-head matchups with daily lineup changes.
+                    Each player locks individually when that player's real NHL
+                    game begins.
+                  </span>
+                </div>
               </div>
             ) : null}
 
@@ -2051,6 +2466,103 @@ const styles = {
       1.5,
   },
 
+  nhlSetup: {
+    display: "grid",
+    gap: "18px",
+    padding: "16px",
+    border: "1px solid rgba(255,94,0,.24)",
+    borderRadius: "14px",
+    background:
+      "linear-gradient(180deg,rgba(255,69,0,.055),rgba(8,8,10,.7))",
+  },
+
+  nhlSectionHead: {
+    display: "grid",
+    gap: "5px",
+  },
+
+  nhlEyebrow: {
+    margin: 0,
+    color: "#ff8c00",
+    fontSize: "9px",
+    fontWeight: 900,
+    letterSpacing: ".12em",
+  },
+
+  nhlTitle: {
+    margin: 0,
+    color: "#fff",
+    fontSize: "20px",
+  },
+
+  nhlSubTitle: {
+    margin: "3px 0 0",
+    color: "#fff",
+    fontSize: "16px",
+  },
+
+  nhlHelp: {
+    margin: "4px 0 0",
+    color: "#949ba7",
+    fontSize: "12px",
+    lineHeight: 1.5,
+  },
+
+  nhlChoiceGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(210px,1fr))",
+    gap: "10px",
+  },
+
+  nhlChoice: {
+    minHeight: "145px",
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "flex-start",
+    gap: "8px",
+    padding: "14px",
+    border: "1px solid rgba(255,255,255,.09)",
+    borderRadius: "12px",
+    background: "#101114",
+    color: "#fff",
+    textAlign: "left" as const,
+    cursor: "pointer",
+    lineHeight: 1.5,
+    fontSize: "11px",
+  },
+
+  nhlChoiceSelected: {
+    border: "1px solid rgba(255,94,0,.78)",
+    boxShadow:
+      "0 10px 28px rgba(255,69,0,.12)",
+    background:
+      "linear-gradient(145deg,rgba(76,20,8,.42),#101114)",
+  },
+
+  nhlSubsection: {
+    display: "grid",
+    gap: "12px",
+    paddingTop: "16px",
+    borderTop:
+      "1px solid rgba(255,255,255,.08)",
+  },
+
+  nhlSummary: {
+    display: "grid",
+    gap: "6px",
+    padding: "12px",
+    border:
+      "1px solid rgba(255,140,0,.18)",
+    borderRadius: "10px",
+    background:
+      "rgba(255,140,0,.05)",
+    color: "#b8bdc6",
+    fontSize: "11px",
+    lineHeight: 1.5,
+  },
+
+
   greyhoundSetup: {
     display: "grid",
     gap: "18px",
@@ -2372,4 +2884,4 @@ const styles = {
     paddingRight:
       "24px",
   },
-};
+}

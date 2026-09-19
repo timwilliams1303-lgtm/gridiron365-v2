@@ -1,4 +1,3 @@
-
 export type ParticipantSlotMode =
   | "existing_slot"
   | "auto_create_slot";
@@ -147,6 +146,34 @@ const PARTICIPANT_POLICIES:
       ) =>
         `/league/${leagueId}`,
     },
+
+    /*
+     * NHL Traditional
+     *
+     * Both Redraft and Dynasty use the same participant
+     * lifecycle and the same /league/[leagueId] route tree.
+     *
+     * NHL Traditional uses commissioner-created fantasy-team
+     * slots. Invitations claim an existing slot so that team
+     * identity, roster history, matchup history, dynasty
+     * ownership, awards, and trophies can remain attached to
+     * the same franchise when an owner is replaced.
+     */
+    nhl_traditional: {
+      leagueType:
+        "nhl_traditional",
+
+      slotMode:
+        "existing_slot",
+
+      acceptanceInitializer:
+        "none",
+
+      getHomePath: (
+        leagueId
+      ) =>
+        `/league/${leagueId}`,
+    },
   };
 
 
@@ -205,4 +232,3 @@ export function getLeagueParticipantHomePath(
     `/league/${leagueId}`
   );
 }
-

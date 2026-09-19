@@ -108,7 +108,7 @@ function isVacantDogLabel(value: string) {
   // Wheeling OCR varies between GREYHOUND / GREY HOUND and can insert
   // punctuation or substitute zero for O. Keep this intentionally narrow:
   // it must still contain NO + GREY + HOUND in that order.
-  return /^NO\s*GREY\s*HOUND$/i.test(normalized);
+  return /^NO\s*GREY\s*HOUND(?:\s*[1IL])?$/i.test(normalized);
 }
 
 function parseEntriesText(text: string): EntryRow[] {
@@ -328,6 +328,7 @@ export default function GreyhoundEntriesImporter({
       const chunks: string[] = [];
       const nativeTextChunks: string[] = [];
       const embeddedNameFields: EmbeddedNameField[] = [];
+      const embeddedVacantBoxes: VacantBox[] = [];
 
       // The Entries header is native PDF text. Read it directly before OCRing
       // the graphical runner rows.
@@ -643,10 +644,14 @@ export default function GreyhoundEntriesImporter({
                 const nameResult = await worker.recognize(nameCanvas);
                 const isolatedName = normalizeDogNameSpacing(nameResult.data.text ?? "");
 
-                if (
+                if (isolatedName && isVacantDogLabel(isolatedName)) {
+                  embeddedVacantBoxes.push({
+                    raceNumber: region.raceNumber,
+                    trapNumber: rowIndex + 1,
+                  });
+                } else if (
                   isolatedName &&
-                  /[A-Za-z]/.test(isolatedName) &&
-                  !/NO\s+GREYHOUND/i.test(isolatedName)
+                  /[A-Za-z]/.test(isolatedName)
                 ) {
                   embeddedNameFields.push({
                     raceNumber: region.raceNumber,
@@ -851,7 +856,22 @@ export default function GreyhoundEntriesImporter({
 
       const vacancies =
         detectedTrack === "GWD"
-          ? verifiedWheelingVacancies ?? parseVacantBoxes(fullOcrText)
+          ? verifiedWheelingVacancies ??
+            Array.from(
+              new Map(
+                [
+                  ...parseVacantBoxes(fullOcrText),
+                  ...embeddedVacantBoxes,
+                ].map((vacancy) => [
+                  `${vacancy.raceNumber}:${vacancy.trapNumber}`,
+                  vacancy,
+                ]),
+              ).values(),
+            ).sort(
+              (a, b) =>
+                a.raceNumber - b.raceNumber ||
+                a.trapNumber - b.trapNumber,
+            )
           : [];
 
       // A legitimate vacancy owns its Race + Box. OCR retries can hallucinate

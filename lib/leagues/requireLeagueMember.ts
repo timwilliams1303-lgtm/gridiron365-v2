@@ -19,7 +19,8 @@ export type LeagueType =
   | "season_long"
   | "nfl_playoffs"
   | "pickem"
-  | "greyhound";
+  | "greyhound"
+  | "nhl_traditional";
 
 
 export type PlayerSelectionMode =
@@ -119,7 +120,9 @@ function isLeagueType(
     value ===
       "pickem" ||
     value ===
-      "greyhound"
+      "greyhound" ||
+    value ===
+      "nhl_traditional"
   );
 }
 
@@ -604,6 +607,9 @@ export async function requireLeagueMember(
    *
    * - G365 Pick'em
    *   Unified CFB / NFL / NHL participant and entry identity.
+   *
+   * - NHL Traditional
+   *   NHL Redraft / Dynasty fantasy-team identity and roster ownership.
    * =========================================
    */
   let fantasyTeam:
@@ -619,7 +625,9 @@ export async function requireLeagueMember(
     league.league_type ===
       "nfl_playoffs" ||
     league.league_type ===
-      "pickem"
+      "pickem" ||
+    league.league_type ===
+      "nhl_traditional"
   ) {
     console.log(
       "[LEAGUE ACCESS] 6A TEAM QUERY START",

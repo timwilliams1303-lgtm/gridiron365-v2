@@ -3,6 +3,7 @@ export type G365LeagueType =
   | "season_long"
   | "nfl_playoffs"
   | "pickem"
+  | "nhl_traditional"
   | "greyhound";
 
 export type SeasonLongCompetitionFormat =
@@ -80,6 +81,11 @@ export function getLeagueCapabilities({
   playoffsEnabled = false,
   isCommissioner = false,
 }: GetLeagueCapabilitiesArgs): LeagueCapabilities {
+  /*
+   * =========================================
+   * NFL TRADITIONAL
+   * =========================================
+   */
   if (leagueType === "traditional") {
     return {
       ...none,
@@ -101,6 +107,70 @@ export function getLeagueCapabilities({
     };
   }
 
+  /*
+   * =========================================
+   * NHL TRADITIONAL
+   *
+   * Shared capabilities for:
+   * - Redraft
+   * - Dynasty
+   *
+   * All planned NHL league tabs are exposed
+   * now so the complete league structure is
+   * visible while individual pages are built.
+   * =========================================
+   */
+  if (leagueType === "nhl_traditional") {
+    return {
+      ...none,
+
+      home: true,
+
+      myTeam: true,
+      leagueTeams: true,
+
+      players: true,
+      rankings: true,
+
+      matchups: true,
+      standings: true,
+
+      waivers: true,
+      trades: true,
+
+      draft: true,
+      playoffs: true,
+
+      recap: true,
+      trophyCase: true,
+
+      /*
+       * NHL uses the dedicated Recap route
+       * rather than NFL Traditional's
+       * seasonRecap route.
+       */
+      seasonRecap: false,
+
+      /*
+       * We are not exposing separate NHL
+       * History or Settings tabs at this
+       * stage.
+       */
+      history: false,
+      settings: false,
+
+      /*
+       * Commissioner remains permission-based.
+       */
+      commissioner: isCommissioner,
+    };
+  }
+
+  /*
+   * =========================================
+   * SEASON-LONG
+   * =========================================
+   */
   if (leagueType === "season_long") {
     const isHeadToHead =
       competitionFormat === "head_to_head";
@@ -122,6 +192,11 @@ export function getLeagueCapabilities({
     };
   }
 
+  /*
+   * =========================================
+   * NFL PLAYOFFS
+   * =========================================
+   */
   if (leagueType === "nfl_playoffs") {
     return {
       ...none,
@@ -137,6 +212,11 @@ export function getLeagueCapabilities({
     };
   }
 
+  /*
+   * =========================================
+   * G365 PICK'EM
+   * =========================================
+   */
   if (leagueType === "pickem") {
     return {
       ...none,
@@ -151,6 +231,11 @@ export function getLeagueCapabilities({
     };
   }
 
+  /*
+   * =========================================
+   * GREYHOUND RACING
+   * =========================================
+   */
   if (leagueType === "greyhound") {
     return {
       ...none,

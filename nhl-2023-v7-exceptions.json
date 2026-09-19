@@ -1,0 +1,740 @@
+[
+    {
+        "type":  "rejected_goals",
+        "offset":  0,
+        "internalGameId":  41,
+        "externalGameId":  "2023020624",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  7,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  0,
+        "internalGameId":  54,
+        "externalGameId":  "2023020823",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  5,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  0,
+        "internalGameId":  57,
+        "externalGameId":  "2023020867",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  9,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  0,
+        "internalGameId":  61,
+        "externalGameId":  "2023020926",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  7,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  0,
+        "internalGameId":  76,
+        "externalGameId":  "2023021176",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  9,
+        "rejectedPbpGoalEvents":  5
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  0,
+        "internalGameId":  109,
+        "externalGameId":  "2023020411",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  9,
+        "rejectedPbpGoalEvents":  5
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  0,
+        "internalGameId":  136,
+        "externalGameId":  "2023020918",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  5,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  0,
+        "internalGameId":  163,
+        "externalGameId":  "2023020039",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  5,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  0,
+        "internalGameId":  172,
+        "externalGameId":  "2023020207",
+        "goalsFound":  8,
+        "rawPbpGoalEvents":  11,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  0,
+        "internalGameId":  176,
+        "externalGameId":  "2023020260",
+        "goalsFound":  8,
+        "rawPbpGoalEvents":  11,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "error",
+        "offset":  0,
+        "detail":  {
+                       "internalGameId":  13,
+                       "externalGameId":  "2023020145",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020145: unmatched score remainder 2-1."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  0,
+        "detail":  {
+                       "internalGameId":  30,
+                       "externalGameId":  "2023020457",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020457: unmatched score remainder 2-2."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  0,
+        "detail":  {
+                       "internalGameId":  143,
+                       "externalGameId":  "2023021009",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023021009: unmatched score remainder 2-1."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  0,
+        "detail":  {
+                       "internalGameId":  189,
+                       "externalGameId":  "2023020450",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020450: unmatched score remainder 0-1."
+                   }
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  250,
+        "internalGameId":  255,
+        "externalGameId":  "2023020384",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  10,
+        "rejectedPbpGoalEvents":  4
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  250,
+        "internalGameId":  274,
+        "externalGameId":  "2023020686",
+        "goalsFound":  2,
+        "rawPbpGoalEvents":  5,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  250,
+        "internalGameId":  339,
+        "externalGameId":  "2023020600",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  8,
+        "rejectedPbpGoalEvents":  2
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  250,
+        "internalGameId":  368,
+        "externalGameId":  "2023021165",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  5,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  250,
+        "internalGameId":  375,
+        "externalGameId":  "2023021298",
+        "goalsFound":  8,
+        "rawPbpGoalEvents":  9,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  250,
+        "internalGameId":  466,
+        "externalGameId":  "2023020475",
+        "goalsFound":  2,
+        "rawPbpGoalEvents":  3,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  250,
+        "internalGameId":  475,
+        "externalGameId":  "2023020608",
+        "goalsFound":  2,
+        "rawPbpGoalEvents":  5,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  250,
+        "internalGameId":  495,
+        "externalGameId":  "2023021067",
+        "goalsFound":  8,
+        "rawPbpGoalEvents":  9,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  250,
+        "internalGameId":  499,
+        "externalGameId":  "2023021109",
+        "goalsFound":  12,
+        "rawPbpGoalEvents":  13,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "error",
+        "offset":  250,
+        "detail":  {
+                       "internalGameId":  334,
+                       "externalGameId":  "2023020510",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020510: unmatched score remainder 0-1."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  250,
+        "detail":  {
+                       "internalGameId":  395,
+                       "externalGameId":  "2023020335",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020335: unmatched score remainder 4-3."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  250,
+        "detail":  {
+                       "internalGameId":  406,
+                       "externalGameId":  "2023020563",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020563: unmatched score remainder 2-1."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  250,
+        "detail":  {
+                       "internalGameId":  443,
+                       "externalGameId":  "2023020032",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020032: unmatched score remainder 5-3."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  250,
+        "detail":  {
+                       "internalGameId":  468,
+                       "externalGameId":  "2023020503",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020503: unmatched score remainder 1-0."
+                   }
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  507,
+        "externalGameId":  "2023020013",
+        "goalsFound":  2,
+        "rawPbpGoalEvents":  5,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  508,
+        "externalGameId":  "2023020048",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  7,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  525,
+        "externalGameId":  "2023020396",
+        "goalsFound":  8,
+        "rawPbpGoalEvents":  9,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  553,
+        "externalGameId":  "2023020966",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  7,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  567,
+        "externalGameId":  "2023021305",
+        "goalsFound":  2,
+        "rawPbpGoalEvents":  3,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  568,
+        "externalGameId":  "2023020005",
+        "goalsFound":  10,
+        "rawPbpGoalEvents":  11,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  573,
+        "externalGameId":  "2023020121",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  7,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  574,
+        "externalGameId":  "2023020138",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  7,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  593,
+        "externalGameId":  "2023020610",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  7,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  594,
+        "externalGameId":  "2023020635",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  5,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  610,
+        "externalGameId":  "2023020963",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  9,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  624,
+        "externalGameId":  "2023021276",
+        "goalsFound":  8,
+        "rawPbpGoalEvents":  9,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  633,
+        "externalGameId":  "2023020248",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  11,
+        "rejectedPbpGoalEvents":  5
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  636,
+        "externalGameId":  "2023020312",
+        "goalsFound":  0,
+        "rawPbpGoalEvents":  1,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  659,
+        "externalGameId":  "2023020829",
+        "goalsFound":  2,
+        "rawPbpGoalEvents":  3,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  678,
+        "externalGameId":  "2023021270",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  6,
+        "rejectedPbpGoalEvents":  2
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  688,
+        "externalGameId":  "2023020225",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  7,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  727,
+        "externalGameId":  "2023021119",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  9,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  729,
+        "externalGameId":  "2023021159",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  6,
+        "rejectedPbpGoalEvents":  2
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  500,
+        "internalGameId":  742,
+        "externalGameId":  "2023020254",
+        "goalsFound":  2,
+        "rawPbpGoalEvents":  3,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "error",
+        "offset":  500,
+        "detail":  {
+                       "internalGameId":  580,
+                       "externalGameId":  "2023020300",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020300: unmatched score remainder 2-1."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  500,
+        "detail":  {
+                       "internalGameId":  587,
+                       "externalGameId":  "2023020442",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020442: unmatched score remainder 3-2."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  500,
+        "detail":  {
+                       "internalGameId":  609,
+                       "externalGameId":  "2023020944",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020944: unmatched score remainder 0-1."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  500,
+        "detail":  {
+                       "internalGameId":  686,
+                       "externalGameId":  "2023020169",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020169: unmatched score remainder 2-0."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  500,
+        "detail":  {
+                       "internalGameId":  720,
+                       "externalGameId":  "2023020964",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020964: unmatched score remainder 3-2."
+                   }
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  750,
+        "internalGameId":  765,
+        "externalGameId":  "2023020910",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  7,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  750,
+        "internalGameId":  795,
+        "externalGameId":  "2023020363",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  7,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  750,
+        "internalGameId":  804,
+        "externalGameId":  "2023020592",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  5,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  750,
+        "internalGameId":  819,
+        "externalGameId":  "2023020977",
+        "goalsFound":  2,
+        "rawPbpGoalEvents":  5,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  750,
+        "internalGameId":  865,
+        "externalGameId":  "2023021171",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  9,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  750,
+        "internalGameId":  872,
+        "externalGameId":  "2023020030",
+        "goalsFound":  2,
+        "rawPbpGoalEvents":  3,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  750,
+        "internalGameId":  915,
+        "externalGameId":  "2023020028",
+        "goalsFound":  2,
+        "rawPbpGoalEvents":  3,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  750,
+        "internalGameId":  953,
+        "externalGameId":  "2023021235",
+        "goalsFound":  10,
+        "rawPbpGoalEvents":  11,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  750,
+        "internalGameId":  964,
+        "externalGameId":  "2023020329",
+        "goalsFound":  2,
+        "rawPbpGoalEvents":  5,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "error",
+        "offset":  750,
+        "detail":  {
+                       "internalGameId":  773,
+                       "externalGameId":  "2023021047",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023021047: unmatched score remainder 1-2."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  750,
+        "detail":  {
+                       "internalGameId":  782,
+                       "externalGameId":  "2023021259",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023021259: unmatched score remainder 1-0."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  750,
+        "detail":  {
+                       "internalGameId":  799,
+                       "externalGameId":  "2023020448",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020448: unmatched score remainder 0-1."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  750,
+        "detail":  {
+                       "internalGameId":  851,
+                       "externalGameId":  "2023020756",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020756: unmatched score remainder 1-2."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  750,
+        "detail":  {
+                       "internalGameId":  885,
+                       "externalGameId":  "2023020366",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020366: unmatched score remainder 3-2."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  750,
+        "detail":  {
+                       "internalGameId":  946,
+                       "externalGameId":  "2023021069",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023021069: unmatched score remainder 2-1."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  750,
+        "detail":  {
+                       "internalGameId":  965,
+                       "externalGameId":  "2023020346",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020346: unmatched score remainder 3-2."
+                   }
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  1000,
+        "internalGameId":  1005,
+        "externalGameId":  "2023020461",
+        "goalsFound":  2,
+        "rawPbpGoalEvents":  3,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  1000,
+        "internalGameId":  1009,
+        "externalGameId":  "2023020673",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  7,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  1000,
+        "internalGameId":  1028,
+        "externalGameId":  "2023020114",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  5,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  1000,
+        "internalGameId":  1041,
+        "externalGameId":  "2023020521",
+        "goalsFound":  2,
+        "rawPbpGoalEvents":  5,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  1000,
+        "internalGameId":  1042,
+        "externalGameId":  "2023020562",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  6,
+        "rejectedPbpGoalEvents":  2
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  1000,
+        "internalGameId":  1075,
+        "externalGameId":  "2023020915",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  7,
+        "rejectedPbpGoalEvents":  3
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  1000,
+        "internalGameId":  1135,
+        "externalGameId":  "2023021233",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  5,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  1000,
+        "internalGameId":  1195,
+        "externalGameId":  "2023020125",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  7,
+        "rejectedPbpGoalEvents":  1
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  1000,
+        "internalGameId":  1212,
+        "externalGameId":  "2023020473",
+        "goalsFound":  4,
+        "rawPbpGoalEvents":  11,
+        "rejectedPbpGoalEvents":  7
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  1000,
+        "internalGameId":  1920,
+        "externalGameId":  "2023020017",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  8,
+        "rejectedPbpGoalEvents":  2
+    },
+    {
+        "type":  "error",
+        "offset":  1000,
+        "detail":  {
+                       "internalGameId":  1198,
+                       "externalGameId":  "2023020427",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020427: unmatched score remainder 4-3."
+                   }
+    },
+    {
+        "type":  "error",
+        "offset":  1000,
+        "detail":  {
+                       "internalGameId":  1775,
+                       "externalGameId":  "2023020729",
+                       "error":  "Could not reconcile official PBP goal sequence for game 2023020729: unmatched score remainder 2-3."
+                   }
+    },
+    {
+        "type":  "rejected_goals",
+        "offset":  1250,
+        "internalGameId":  2528,
+        "externalGameId":  "2023020185",
+        "goalsFound":  6,
+        "rawPbpGoalEvents":  7,
+        "rejectedPbpGoalEvents":  1
+    }
+]

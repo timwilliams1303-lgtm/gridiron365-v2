@@ -1,0 +1,1283 @@
+{
+    "success":  true,
+    "importerVersion":  "nhl-historical-player-stats-v9-stored-row-comparison",
+    "season":  2024,
+    "seasonCode":  "20242025",
+    "requestedLimit":  250,
+    "maxBatchSize":  250,
+    "requestedOffset":  1250,
+    "force":  true,
+    "diagnosticOnly":  false,
+    "compareStored":  false,
+    "requestedGameId":  null,
+    "playersLoadedAtStart":  1659,
+    "teamsLoaded":  34,
+    "seasonGamesFound":  1312,
+    "gamesAlreadyPopulated":  0,
+    "gamesRemainingBeforeBatch":  62,
+    "firstSelectedGameId":  4341,
+    "lastSelectedGameId":  5072,
+    "gamesSelected":  62,
+    "gamesProcessed":  62,
+    "gamesFailed":  0,
+    "historicalPlayersCreated":  [
+
+                                 ],
+    "unresolvedPlayerIds":  [
+
+                            ],
+    "rowsPrepared":  2361,
+    "rowsUpserted":  2361,
+    "comparison":  {
+                       "gamesCompared":  0,
+                       "rowsCompared":  0,
+                       "rowsMatching":  0,
+                       "rowsDifferent":  0,
+                       "gamesWithDifferences":  0,
+                       "differenceCount":  0,
+                       "differences":  [
+
+                                       ]
+                   },
+    "nonPlayingGoaliesRemoved":  119,
+    "gameResults":  [
+                        {
+                            "internalGameId":  4341,
+                            "externalGameId":  "2024021202",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  6,
+                            "rawPbpGoalEvents":  6,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8479496",
+                                                             "8480191"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4361,
+                            "externalGameId":  "2024020395",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  3,
+                            "rawPbpGoalEvents":  3,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8479979",
+                                                             "8483530"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4368,
+                            "externalGameId":  "2024020556",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  5,
+                            "rawPbpGoalEvents":  5,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8479979",
+                                                             "8483530"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4371,
+                            "externalGameId":  "2024020628",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  5,
+                            "rawPbpGoalEvents":  5,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8483530",
+                                                             "8479193"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4405,
+                            "externalGameId":  "2024021272",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  8,
+                            "rawPbpGoalEvents":  8,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8480191",
+                                                             "8479979"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4422,
+                            "externalGameId":  "2024020346",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  5,
+                            "rawPbpGoalEvents":  5,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8483530",
+                                                             "8480051"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4438,
+                            "externalGameId":  "2024020704",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  8,
+                            "rawPbpGoalEvents":  8,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8482487",
+                                                             "8478971"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4467,
+                            "externalGameId":  "2024020044",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  3,
+                            "rawPbpGoalEvents":  3,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478971",
+                                                             "8474593"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4506,
+                            "externalGameId":  "2024020958",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  4,
+                            "rawPbpGoalEvents":  4,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8474596",
+                                                             "8478971"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4521,
+                            "externalGameId":  "2024020016",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  9,
+                            "rawPbpGoalEvents":  9,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478872",
+                                                             "8478009"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4542,
+                            "externalGameId":  "2024020680",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  3,
+                            "rawPbpGoalEvents":  3,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8480819",
+                                                             "8478872"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4575,
+                            "externalGameId":  "2024020030",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  11,
+                            "rawPbpGoalEvents":  11,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478872",
+                                                             "8471734"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4596,
+                            "externalGameId":  "2024020717",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  8,
+                            "rawPbpGoalEvents":  8,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8471734",
+                                                             "8478971"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4624,
+                            "externalGameId":  "2024020104",
+                            "referencedPlayers":  40,
+                            "playersWritten":  39,
+                            "goalsFound":  4,
+                            "rawPbpGoalEvents":  4,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8482447"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4646,
+                            "externalGameId":  "2024020790",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  4,
+                            "rawPbpGoalEvents":  4,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478971",
+                                                             "8476341"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4681,
+                            "externalGameId":  "2024020441",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  6,
+                            "rawPbpGoalEvents":  6,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478872",
+                                                             "8482783"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4695,
+                            "externalGameId":  "2024020854",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  5,
+                            "rawPbpGoalEvents":  5,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478905",
+                                                             "8478971"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4719,
+                            "externalGameId":  "2024020326",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  7,
+                            "rawPbpGoalEvents":  7,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8483530",
+                                                             "8477465"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4733,
+                            "externalGameId":  "2024020811",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  5,
+                            "rawPbpGoalEvents":  5,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8482446",
+                                                             "8478872"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4752,
+                            "externalGameId":  "2024020115",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  6,
+                            "rawPbpGoalEvents":  6,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8480382",
+                                                             "8478971"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4763,
+                            "externalGameId":  "2024020469",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  5,
+                            "rawPbpGoalEvents":  5,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8483530",
+                                                             "8478406"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4769,
+                            "externalGameId":  "2024020564",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  5,
+                            "rawPbpGoalEvents":  5,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8475809",
+                                                             "8483530"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4796,
+                            "externalGameId":  "2024020145",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  9,
+                            "rawPbpGoalEvents":  9,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8477970",
+                                                             "8478872"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4807,
+                            "externalGameId":  "2024020487",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  7,
+                            "rawPbpGoalEvents":  7,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8483530",
+                                                             "8480382"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4813,
+                            "externalGameId":  "2024020668",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  3,
+                            "rawPbpGoalEvents":  3,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8482137",
+                                                             "8478971"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4837,
+                            "externalGameId":  "2024020215",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  6,
+                            "rawPbpGoalEvents":  6,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478872",
+                                                             "8476412"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4849,
+                            "externalGameId":  "2024020734",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  6,
+                            "rawPbpGoalEvents":  6,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8480981",
+                                                             "8478872"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4853,
+                            "externalGameId":  "2024020841",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  3,
+                            "rawPbpGoalEvents":  3,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8480981",
+                                                             "8478872"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4867,
+                            "externalGameId":  "2024021297",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  7,
+                            "rawPbpGoalEvents":  7,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8480191",
+                                                             "8480981"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4893,
+                            "externalGameId":  "2024021111",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  10,
+                            "rawPbpGoalEvents":  10,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8476883",
+                                                             "8483530"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4895,
+                            "externalGameId":  "2024021145",
+                            "referencedPlayers":  40,
+                            "playersWritten":  39,
+                            "goalsFound":  8,
+                            "rawPbpGoalEvents":  8,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8477992"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4904,
+                            "externalGameId":  "2024020333",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  5,
+                            "rawPbpGoalEvents":  5,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8483530",
+                                                             "8476932"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4917,
+                            "externalGameId":  "2024021024",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  6,
+                            "rawPbpGoalEvents":  6,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8476932",
+                                                             "8483530"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4930,
+                            "externalGameId":  "2024020510",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  5,
+                            "rawPbpGoalEvents":  5,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8480947",
+                                                             "8483530"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4940,
+                            "externalGameId":  "2024020915",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  3,
+                            "rawPbpGoalEvents":  3,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8480947",
+                                                             "8478971"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4945,
+                            "externalGameId":  "2024021071",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  4,
+                            "rawPbpGoalEvents":  4,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8483530",
+                                                             "8481668"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4958,
+                            "externalGameId":  "2024020292",
+                            "referencedPlayers":  40,
+                            "playersWritten":  39,
+                            "goalsFound":  8,
+                            "rawPbpGoalEvents":  8,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8480313"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4967,
+                            "externalGameId":  "2024020890",
+                            "referencedPlayers":  40,
+                            "playersWritten":  39,
+                            "goalsFound":  8,
+                            "rawPbpGoalEvents":  8,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8479292"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4976,
+                            "externalGameId":  "2024020060",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  9,
+                            "rawPbpGoalEvents":  9,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478872",
+                                                             "8473503"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4986,
+                            "externalGameId":  "2024020542",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  8,
+                            "rawPbpGoalEvents":  8,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8476434",
+                                                             "8478872"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  4993,
+                            "externalGameId":  "2024021038",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  5,
+                            "rawPbpGoalEvents":  5,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8480843",
+                                                             "8483530"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5006,
+                            "externalGameId":  "2024020652",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  5,
+                            "rawPbpGoalEvents":  5,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8481519",
+                                                             "8483530"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5012,
+                            "externalGameId":  "2024021153",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  3,
+                            "rawPbpGoalEvents":  3,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8480191",
+                                                             "8477970"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5015,
+                            "externalGameId":  "2024020232",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  4,
+                            "rawPbpGoalEvents":  4,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478872",
+                                                             "8475809"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5028,
+                            "externalGameId":  "2024021257",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  6,
+                            "rawPbpGoalEvents":  6,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8481020",
+                                                             "8480191"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5030,
+                            "externalGameId":  "2024021288",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  10,
+                            "rawPbpGoalEvents":  10,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478872",
+                                                             "8481020"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5034,
+                            "externalGameId":  "2024020201",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  3,
+                            "rawPbpGoalEvents":  3,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478971",
+                                                             "8477480"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5041,
+                            "externalGameId":  "2024020747",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  7,
+                            "rawPbpGoalEvents":  7,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8477480",
+                                                             "8478872"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5042,
+                            "externalGameId":  "2024020775",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  7,
+                            "rawPbpGoalEvents":  7,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478872",
+                                                             "8477480"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5045,
+                            "externalGameId":  "2024021219",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  5,
+                            "rawPbpGoalEvents":  5,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8477480",
+                                                             "8480191"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5051,
+                            "externalGameId":  "2024020825",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  5,
+                            "rawPbpGoalEvents":  5,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478007",
+                                                             "8478971"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5052,
+                            "externalGameId":  "2024020865",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  5,
+                            "rawPbpGoalEvents":  5,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478872",
+                                                             "8480193"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5055,
+                            "externalGameId":  "2024020454",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  8,
+                            "rawPbpGoalEvents":  8,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8470594",
+                                                             "8483530"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5057,
+                            "externalGameId":  "2024020526",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  3,
+                            "rawPbpGoalEvents":  3,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8483530",
+                                                             "8482661"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5059,
+                            "externalGameId":  "2024020766",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  4,
+                            "rawPbpGoalEvents":  4,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478971",
+                                                             "8470594"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5060,
+                            "externalGameId":  "2024020942",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  7,
+                            "rawPbpGoalEvents":  7,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8479406",
+                                                             "8478971"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5064,
+                            "externalGameId":  "2024020183",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  7,
+                            "rawPbpGoalEvents":  7,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478872",
+                                                             "8481033"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5066,
+                            "externalGameId":  "2024020270",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  6,
+                            "rawPbpGoalEvents":  6,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478492",
+                                                             "8478971"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5067,
+                            "externalGameId":  "2024020386",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  6,
+                            "rawPbpGoalEvents":  6,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8478872",
+                                                             "8478499"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5070,
+                            "externalGameId":  "2024020588",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  7,
+                            "rawPbpGoalEvents":  7,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8483530",
+                                                             "8478848"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5071,
+                            "externalGameId":  "2024021054",
+                            "referencedPlayers":  40,
+                            "playersWritten":  38,
+                            "goalsFound":  6,
+                            "rawPbpGoalEvents":  6,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8483530",
+                                                             "8478916"
+                                                         ]
+                        },
+                        {
+                            "internalGameId":  5072,
+                            "externalGameId":  "2024021243",
+                            "referencedPlayers":  40,
+                            "playersWritten":  39,
+                            "goalsFound":  8,
+                            "rawPbpGoalEvents":  8,
+                            "rejectedPbpGoalEvents":  0,
+                            "comparison":  null,
+                            "historicalPlayersCreated":  [
+
+                                                         ],
+                            "unresolvedPlayers":  [
+
+                                                  ],
+                            "nonPlayingGoaliesRemoved":  [
+                                                             "8480191"
+                                                         ]
+                        }
+                    ],
+    "errors":  [
+
+               ]
+}
