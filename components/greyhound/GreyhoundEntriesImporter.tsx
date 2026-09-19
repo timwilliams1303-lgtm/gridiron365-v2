@@ -333,6 +333,8 @@ export default function GreyhoundEntriesImporter({
       const nativeTextChunks: string[] = [];
       const embeddedNameFields: EmbeddedNameField[] = [];
       const embeddedVacantBoxes: VacantBox[] = [];
+      const noGreyhound1Races = new Set<number>();
+      const wheelingRaceOcrText = new Map<number, string>();
 
       // The Entries header is native PDF text. Read it directly before OCRing
       // the graphical runner rows.
@@ -783,6 +785,23 @@ export default function GreyhoundEntriesImporter({
               }
             }
 
+            // Some Wheeling cards literally render a vacant runner cell as
+            // NO GREYHOUND1. Keep that signal attached to this race while we
+            // still know the crop's race ownership. Later, if normal parsing
+            // leaves exactly one box unaccounted for in this race, that box is
+            // the vacancy. This avoids guessing from global OCR text.
+            if (isWheeling) {
+              wheelingRaceOcrText.set(region.raceNumber, raceText);
+
+              if (
+                /NO\s*GREY\s*HOUND\s*1\b/i.test(
+                  normalizeVacancyText(raceText),
+                )
+              ) {
+                noGreyhound1Races.add(region.raceNumber);
+              }
+            }
+
             chunks.push(`${region.raceNumber}TH Grade\n${raceText}`);
 
             raceCanvas.width = 1;
@@ -836,9 +855,17 @@ export default function GreyhoundEntriesImporter({
       );
       const parsedEntries = parsedEntriesFromRows.map((entry) => ({
         ...entry,
+        // Wheeling's full-row OCR already preserves all actual dog Race + Box
+        // positions on this layout. Do NOT replace those names with the
+        // sequential embedded-image pass: vacancies mean a race does not
+        // necessarily contribute eight dog-name images, which can shift later
+        // races (for example Race 7). Keep embedded-name replacement only for
+        // Tri-State, where that recovery path is still needed.
         dogName:
-          embeddedNameByKey.get(`${entry.raceNumber}:${entry.trapNumber}`) ??
-          entry.dogName,
+          detectedTrack === "GTS"
+            ? embeddedNameByKey.get(`${entry.raceNumber}:${entry.trapNumber}`) ??
+              entry.dogName
+            : entry.dogName,
       }));
 
       /*
@@ -853,24 +880,98 @@ export default function GreyhoundEntriesImporter({
        * "NO GREYHOUND1" when the broad OCR loses the leading box number.
        * No race number, date, dog name, or vacancy count is hard-coded.
        */
-      const vacancies =
-        detectedTrack === "GWD"
-          ? Array.from(
-              new Map(
-                [
-                  ...parseVacantBoxes(fullOcrText),
-                  ...embeddedVacantBoxes,
-                ].map((vacancy) => [
-                  `${vacancy.raceNumber}:${vacancy.trapNumber}`,
-                  vacancy,
-                ]),
-              ).values(),
-            ).sort(
-              (a, b) =>
-                a.raceNumber - b.raceNumber ||
-                a.trapNumber - b.trapNumber,
-            )
-          : [];
+      let vacancies: VacantBox[] = [];
+
+      if (detectedTrack === "GWD") {
+        /*
+         * WHEELING VACANCY OWNERSHIP
+         *
+         * Wheeling race-band crops deliberately overlap so Box 1/Box 8 are not
+         * clipped. Therefore vacancy labels must NEVER be assigned from the
+         * concatenated fullOcrText: a NO GREYHOUND from one crop can also be
+         * visible in its neighbor and become a false vacancy.
+         *
+         * Parse each race's OCR independently, prepend only that race marker,
+         * and keep only vacancies that parse back to that exact race.
+         */
+        for (let raceNumber = 1; raceNumber <= expectedRaces; raceNumber += 1) {
+          const raceText = wheelingRaceOcrText.get(raceNumber) ?? "";
+          if (!raceText) continue;
+
+          const raceVacancies = parseVacantBoxes(
+            `${raceNumber}TH Grade\n${raceText}`,
+          ).filter((vacancy) => vacancy.raceNumber === raceNumber);
+
+          vacancies.push(...raceVacancies);
+        }
+
+        vacancies = Array.from(
+          new Map(
+            vacancies.map((vacancy) => [
+              `${vacancy.raceNumber}:${vacancy.trapNumber}`,
+              vacancy,
+            ]),
+          ).values(),
+        ).sort(
+          (a, b) =>
+            a.raceNumber - b.raceNumber ||
+            a.trapNumber - b.trapNumber,
+        );
+      }
+
+      /*
+       * NO GREYHOUND1 RECOVERY
+       *
+       * On current Wheeling sheets a vacant runner can literally appear as
+       * "NO GREYHOUND1". The broad OCR can read that text while dropping the
+       * leading box number, which is why parseVacantBoxes sees the other
+       * vacancy in the race but misses this one.
+       *
+       * Recover only when ALL of these are true:
+       *   - this race's own crop contains NO GREYHOUND1;
+       *   - after normal dog + vacancy parsing, exactly one of boxes 1-8 is
+       *     still unaccounted for.
+       *
+       * Therefore we never hard-code R5/B6, R6/B6, a date, or a vacancy count,
+       * and we never choose between multiple possible missing boxes.
+       */
+      if (detectedTrack === "GWD") {
+        for (const raceNumber of noGreyhound1Races) {
+          const accounted = new Set<number>([
+            ...parsedEntries
+              .filter((entry) => entry.raceNumber === raceNumber)
+              .map((entry) => entry.trapNumber),
+            ...vacancies
+              .filter((vacancy) => vacancy.raceNumber === raceNumber)
+              .map((vacancy) => vacancy.trapNumber),
+          ]);
+
+          const missingBoxes = Array.from(
+            { length: 8 },
+            (_, index) => index + 1,
+          ).filter((box) => !accounted.has(box));
+
+          if (missingBoxes.length === 1) {
+            vacancies.push({
+              raceNumber,
+              trapNumber: missingBoxes[0],
+            });
+          }
+        }
+
+        vacancies = Array.from(
+          new Map(
+            vacancies.map((vacancy) => [
+              `${vacancy.raceNumber}:${vacancy.trapNumber}`,
+              vacancy,
+            ]),
+          ).values(),
+        ).sort(
+          (a, b) =>
+            a.raceNumber - b.raceNumber ||
+            a.trapNumber - b.trapNumber,
+        );
+      }
 
       // A legitimate vacancy owns its Race + Box. OCR retries can hallucinate
       // nearby text as a dog at that same position, so remove every overlap
@@ -900,19 +1001,21 @@ export default function GreyhoundEntriesImporter({
       );
 
       const embeddedRecoveredEntries: EntryRow[] =
-        embeddedNameFields
-          .filter((field) => {
-            const key = `${field.raceNumber}:${field.trapNumber}`;
-            return !parsedKeys.has(key) && !vacancyKeys.has(key);
-          })
-          .map((field) => ({
-            raceNumber: field.raceNumber,
-            trapNumber: field.trapNumber,
-            dogName: field.dogName,
-            odds: null,
-            kennel: null,
-            weight: null,
-          }));
+        detectedTrack === "GTS"
+          ? embeddedNameFields
+              .filter((field) => {
+                const key = `${field.raceNumber}:${field.trapNumber}`;
+                return !parsedKeys.has(key) && !vacancyKeys.has(key);
+              })
+              .map((field) => ({
+                raceNumber: field.raceNumber,
+                trapNumber: field.trapNumber,
+                dogName: field.dogName,
+                odds: null,
+                kennel: null,
+                weight: null,
+              }))
+          : [];
 
       const entriesWithEmbeddedRecovery = [
         ...parsedEntries,
