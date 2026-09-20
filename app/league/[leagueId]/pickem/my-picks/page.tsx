@@ -1,18 +1,11 @@
-import {
-  redirect,
-} from "next/navigation";
+import { redirect } from "next/navigation";
 
 import PickemMyPicks from "@/components/pickem/PickemMyPicks";
-import NhlPickemMyPicks from "@/components/nhl-pickem/NhlPickemMyPicks";
 import MixedPickemMyPicks from "@/components/pickem/MixedPickemMyPicks";
+import NhlPickemMyPicks from "@/components/nhl-pickem/NhlPickemMyPicks";
 
-import {
-  requireLeagueMember,
-} from "@/lib/leagues/requireLeagueMember";
-
-import {
-  createSupabaseServerClient,
-} from "@/lib/supabase/server";
+import { requireLeagueMember } from "@/lib/leagues/requireLeagueMember";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type PageProps = {
   params: Promise<{
@@ -26,27 +19,31 @@ type PickemSport =
   | "ncaamb"
   | "nhl";
 
+type PickemSettingsRow = {
+  enabled_sports: string[] | null;
+  football_scope: string | null;
+};
+
 function normalizeEnabledSports(
   enabledSports: unknown,
   footballScope: string | null
 ): PickemSport[] {
   if (Array.isArray(enabledSports)) {
-    const normalized =
-      enabledSports
-        .map((value) =>
-          String(value)
-            .trim()
-            .toLowerCase()
-        )
-        .filter(
-          (
-            value
-          ): value is PickemSport =>
-            value === "cfb" ||
-            value === "nfl" ||
-            value === "ncaamb" ||
-            value === "nhl"
-        );
+    const normalized = enabledSports
+      .map((value) =>
+        String(value)
+          .trim()
+          .toLowerCase()
+      )
+      .filter(
+        (
+          value
+        ): value is PickemSport =>
+          value === "cfb" ||
+          value === "nfl" ||
+          value === "ncaamb" ||
+          value === "nhl"
+      );
 
     if (normalized.length > 0) {
       return Array.from(
@@ -75,9 +72,7 @@ function normalizeEnabledSports(
 export default async function PickemMyPicksPage({
   params,
 }: PageProps) {
-  const {
-    leagueId,
-  } =
+  const { leagueId } =
     await params;
 
   const access =
@@ -86,8 +81,9 @@ export default async function PickemMyPicksPage({
     );
 
   if (
-    access.league.leagueType !==
-    "pickem"
+    String(
+      access.league.leagueType
+    ) !== "pickem"
   ) {
     redirect(
       `/league/${leagueId}`
@@ -104,8 +100,8 @@ export default async function PickemMyPicksPage({
     await createSupabaseServerClient();
 
   const {
-    data:
-      settingsData,
+    data: settingsData,
+    error: settingsError,
   } =
     await supabase
       .from(
@@ -120,20 +116,27 @@ export default async function PickemMyPicksPage({
       )
       .maybeSingle();
 
+  if (settingsError) {
+    throw new Error(
+      `Unable to load Pick'em settings: ${settingsError.message}`
+    );
+  }
+
+  const settings =
+    settingsData as
+      | PickemSettingsRow
+      | null;
+
   const enabledSports =
     normalizeEnabledSports(
-      settingsData
-        ?.enabled_sports,
-      settingsData
-        ?.football_scope ??
+      settings?.enabled_sports,
+      settings?.football_scope ??
         null
     );
 
   const nhlOnly =
-    enabledSports.length ===
-      1 &&
-    enabledSports[0] ===
-      "nhl";
+    enabledSports.length === 1 &&
+    enabledSports[0] === "nhl";
 
   const sharedSports =
     enabledSports.filter(
@@ -160,6 +163,9 @@ export default async function PickemMyPicksPage({
     includesNhl &&
     includesShared;
 
+  /*
+   * NHL-only Pick'em
+   */
   if (nhlOnly) {
     return (
       <NhlPickemMyPicks
@@ -179,6 +185,13 @@ export default async function PickemMyPicksPage({
     );
   }
 
+  /*
+   * Mixed Pick'em
+   *
+   * Example:
+   * CFB + NFL + NHL
+   * CFB + NFL + NCAAMB + NHL
+   */
   if (mixed) {
     return (
       <MixedPickemMyPicks
@@ -201,6 +214,14 @@ export default async function PickemMyPicksPage({
     );
   }
 
+  /*
+   * Shared Pick'em
+   *
+   * CFB
+   * NFL
+   * NCAAMB
+   * or any combination of those.
+   */
   return (
     <PickemMyPicks
       leagueId={
