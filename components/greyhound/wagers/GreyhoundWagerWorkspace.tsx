@@ -28,7 +28,8 @@ type WagerType =
   | BaseWagerType
   | "win_place"
   | "win_show"
-  | "place_show";
+  | "place_show"
+  | "win_place_show";
 
 
 type WagerStructure =
@@ -162,6 +163,7 @@ const WAGER_LABELS: Record<WagerType, string> = {
   win_place: "Win + Place",
   win_show: "Win + Show",
   place_show: "Place + Show",
+  win_place_show: "Win + Place + Show",
   exacta: "Exacta",
   quinella: "Quinella",
   trifecta: "Trifecta",
@@ -176,6 +178,7 @@ const LEG_COUNTS: Record<WagerType, number> = {
   win_place: 1,
   win_show: 1,
   place_show: 1,
+  win_place_show: 1,
   exacta: 2,
   quinella: 2,
   trifecta: 3,
@@ -190,6 +193,7 @@ const DENOMINATIONS: Record<WagerType, number[]> = {
   win_place: [2, 5, 10, 20],
   win_show: [2, 5, 10, 20],
   place_show: [2, 5, 10, 20],
+  win_place_show: [2, 5, 10, 20],
   exacta: [1, 2, 3, 6, 10, 20],
   quinella: [1, 2, 3, 6, 10, 20],
   trifecta: [0.5, 1, 2, 5, 10],
@@ -204,6 +208,7 @@ const MIN_DENOMINATION: Record<WagerType, number> = {
   win_place: 2,
   win_show: 2,
   place_show: 2,
+  win_place_show: 2,
   exacta: 1,
   quinella: 1,
   trifecta: 0.5,
@@ -215,6 +220,7 @@ const COMBINED_WAGER_PARTS: Partial<Record<WagerType, BaseWagerType[]>> = {
   win_place: ["win", "place"],
   win_show: ["win", "show"],
   place_show: ["place", "show"],
+  win_place_show: ["win", "place", "show"],
 };
 
 
@@ -225,6 +231,7 @@ const STRAIGHT_WAGERS: WagerType[] = [
   "win_place",
   "win_show",
   "place_show",
+  "win_place_show",
 ];
 
 
@@ -4065,4 +4072,3 @@ export default function GreyhoundWagerWorkspace({
     </section>
   );
 }
-

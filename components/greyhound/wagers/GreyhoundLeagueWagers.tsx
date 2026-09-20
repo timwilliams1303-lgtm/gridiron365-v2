@@ -50,6 +50,7 @@ type Wager = {
   lastRegradedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  picksRevealed: boolean;
 };
 
 type LeaderboardEntry = {
@@ -80,6 +81,7 @@ type ApiResponse = {
     gameFormat: string;
     leaderboardMode: string;
     leaderboardLabel: string;
+    wageringStyle?: "whole_card" | "live_bankroll";
   };
   summary?: {
     totalWagers: number;
@@ -240,7 +242,9 @@ function entrySearchText(entry: LeaderboardEntry) {
       wager.wagerType,
       wager.wagerStructure,
       `race ${wager.raceNumber}`,
-      ...selectedDogLabels(wager.selectedDogs),
+      ...(wager.picksRevealed
+        ? selectedDogLabels(wager.selectedDogs)
+        : []),
     ]),
   ]
     .filter(Boolean)
@@ -358,7 +362,15 @@ export default function GreyhoundLeagueWagers({ leagueId }: Props) {
           return true;
         });
 
-        return { ...entry, wagers };
+        return {
+          ...entry,
+          wagers: [...wagers].sort((a, b) => {
+            if (a.raceNumber !== b.raceNumber) {
+              return a.raceNumber - b.raceNumber;
+            }
+            return a.id - b.id;
+          }),
+        };
       })
       .filter((entry) => {
         if (
@@ -843,22 +855,29 @@ export default function GreyhoundLeagueWagers({ leagueId }: Props) {
                                   </div>
                                 </div>
 
-                                {dogNames.length > 0 ? (
-                                  <div className={styles.runners}>
-                                    <span>Selected Dogs</span>
-                                    <div>
-                                      {dogNames.map(
-                                        (dog, index) => (
+                                {wager.picksRevealed ? (
+                                  dogNames.length > 0 ? (
+                                    <div className={styles.runners}>
+                                      <span>Selected Dogs</span>
+                                      <div>
+                                        {dogNames.map((dog, index) => (
                                           <strong
                                             key={`${wager.id}-${dog}-${index}`}
                                           >
                                             {dog}
                                           </strong>
-                                        ),
-                                      )}
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : null
+                                ) : (
+                                  <div className={styles.runners}>
+                                    <span>Selections</span>
+                                    <div>
+                                      <strong>🔒 Picks hidden until reveal</strong>
                                     </div>
                                   </div>
-                                ) : null}
+                                )}
 
                                 <div className={styles.cardFooter}>
                                   <div className={styles.timestamps}>
@@ -921,7 +940,21 @@ export default function GreyhoundLeagueWagers({ leagueId }: Props) {
                                       </div>
                                     </div>
 
-                                    {combos.length > 0 ? (
+                                    {!wager.picksRevealed ? (
+                                      <div className={styles.comboBlock}>
+                                        <span>Selections Locked</span>
+                                        <div>
+                                          <code>
+                                            {data?.competition?.wageringStyle ===
+                                            "live_bankroll"
+                                              ? "Picks reveal when this race is live/locked."
+                                              : "Picks reveal when the race card locks."}
+                                          </code>
+                                        </div>
+                                      </div>
+                                    ) : null}
+
+                                    {wager.picksRevealed && combos.length > 0 ? (
                                       <div
                                         className={styles.comboBlock}
                                       >

@@ -57,6 +57,7 @@ type TrackRow = {
 
 type SettingsRow = {
   game_format: string | null;
+  wagering_style: string | null;
 };
 
 type IdentityRow = Record<string, unknown>;
@@ -169,7 +170,7 @@ export async function GET(request: NextRequest) {
 
     const { data: settingsRaw, error: settingsError } = await supabase
       .from("greyhound_league_settings")
-      .select("game_format")
+      .select("game_format, wagering_style")
       .eq("league_id", leagueId)
       .maybeSingle();
 
@@ -181,6 +182,11 @@ export async function GET(request: NextRequest) {
 
     const settings = settingsRaw as SettingsRow | null;
     const gameFormat = String(settings?.game_format ?? "bankroll");
+    const wageringStyle =
+      String(settings?.wagering_style ?? "whole_card").toLowerCase() ===
+      "live_bankroll"
+        ? "live_bankroll"
+        : "whole_card";
 
     const isSharedTeamFormat =
       gameFormat === "team_total_winnings" ||
@@ -408,6 +414,27 @@ export async function GET(request: NextRequest) {
       trackRows.map((row) => [Number(row.id), row] as const),
     );
 
+    const nowMs = Date.now();
+
+    function shouldRevealWager(row: DisplayRow, card: CardRow | undefined) {
+      if (wageringStyle === "whole_card") {
+        if (!card?.lock_at) return false;
+        const lockMs = new Date(card.lock_at).getTime();
+        return Number.isFinite(lockMs) && lockMs <= nowMs;
+      }
+
+      const raceStatus = String(row.race_status ?? "").toLowerCase();
+      return [
+        "locked",
+        "in_progress",
+        "live",
+        "official",
+        "final",
+        "completed",
+        "cancelled",
+      ].includes(raceStatus);
+    }
+
     const wagers = wagerRows.map((row) => {
       const sourceFantasyTeamId = Number(row.fantasy_team_id);
       const rosterKey =
@@ -424,6 +451,7 @@ export async function GET(request: NextRequest) {
 
       const totalCost = numberValue(row.total_cost);
       const officialReturn = numberValue(row.official_return);
+      const picksRevealed = shouldRevealWager(row, card);
 
       return {
         id: Number(row.wager_id),
@@ -476,13 +504,15 @@ export async function GET(request: NextRequest) {
         officialReturn,
         bankrollImpact: officialReturn - totalCost,
 
-        selectedEntryIds: Array.isArray(row.selected_entry_ids)
-          ? row.selected_entry_ids.map((value) => Number(value))
-          : [],
-        selectedDogs: row.selected_dogs,
-        alternate1: row.alternate_1,
-        alternate2: row.alternate_2,
-        combinationJson: row.combination_json,
+        picksRevealed,
+        selectedEntryIds:
+          picksRevealed && Array.isArray(row.selected_entry_ids)
+            ? row.selected_entry_ids.map((value) => Number(value))
+            : [],
+        selectedDogs: picksRevealed ? row.selected_dogs : null,
+        alternate1: picksRevealed ? row.alternate_1 : null,
+        alternate2: picksRevealed ? row.alternate_2 : null,
+        combinationJson: picksRevealed ? row.combination_json : null,
 
         refundReason: row.refund_reason,
         gradedAt: row.graded_at,
@@ -668,7 +698,7 @@ export async function GET(request: NextRequest) {
         racesCompleted: entry.racesCompleted.size,
         wagers: entry.wagers.sort((a, b) => {
           if (a.raceNumber !== b.raceNumber) {
-            return b.raceNumber - a.raceNumber;
+            return a.raceNumber - b.raceNumber;
           }
           return b.id - a.id;
         }),
@@ -709,6 +739,7 @@ export async function GET(request: NextRequest) {
           gameFormat,
           leaderboardMode,
           leaderboardLabel,
+          wageringStyle,
         },
         summary: {
           totalWagers: wagers.length,
