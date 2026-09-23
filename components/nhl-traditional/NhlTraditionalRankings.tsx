@@ -584,6 +584,18 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
           .my-rank-gp { display:none !important; }
         }
         @media (max-width:760px) {
+          .my-rank-page,
+          .my-rank-shell {
+            width:100% !important;
+            max-width:100% !important;
+            min-width:0 !important;
+            overflow-x:hidden !important;
+          }
+          .my-rank-page *,
+          .my-rank-shell > * {
+            min-width:0;
+            max-width:100%;
+          }
           .my-rank-header { flex-direction:column !important; align-items:stretch !important; }
           .my-rank-controls { grid-template-columns:1fr !important; }
           .my-rank-posrank { display:none !important; }

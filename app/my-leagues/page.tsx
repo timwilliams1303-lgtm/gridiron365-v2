@@ -327,16 +327,173 @@ export default async function MyLeaguesPage() {
 
   return (
     <main
+      className="g365-my-leagues-page"
       style={
         styles.page
       }
     >
+      <style>{`
+        .g365-my-leagues-mobile-picker {
+          display: none;
+        }
+
+        @media (max-width: 760px) {
+          .g365-my-leagues-page {
+            padding: 12px 10px 32px !important;
+          }
+
+          .g365-my-leagues-shell {
+            gap: 18px !important;
+          }
+
+          .g365-my-leagues-topbar {
+            gap: 12px !important;
+            padding-bottom: 12px !important;
+          }
+
+          .g365-my-leagues-logo {
+            width: min(230px, 68vw) !important;
+          }
+
+          .g365-my-leagues-top-actions {
+            width: 100%;
+            gap: 8px !important;
+            justify-content: space-between;
+          }
+
+          .g365-my-leagues-heading-row {
+            align-items: stretch !important;
+            gap: 12px !important;
+          }
+
+          .g365-my-leagues-heading-row h1 {
+            font-size: 28px !important;
+          }
+
+          .g365-my-leagues-heading-row > a {
+            width: 100%;
+          }
+
+          .g365-my-leagues-mobile-picker {
+            display: grid;
+            gap: 6px;
+            padding: 12px;
+            border: 1px solid rgba(255,255,255,.09);
+            border-radius: 12px;
+            background:
+              linear-gradient(
+                180deg,
+                rgba(18,18,20,.98),
+                rgba(8,8,10,.98)
+              );
+          }
+
+          .g365-my-leagues-mobile-picker-label {
+            margin: 0;
+            color: #ff6b24;
+            font-size: 9px;
+            font-weight: 950;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+          }
+
+          .g365-my-leagues-mobile-select {
+            width: 100%;
+          }
+
+          .g365-my-leagues-mobile-select > summary {
+            min-height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 12px;
+            border: 1px solid rgba(255,255,255,.12);
+            border-radius: 10px;
+            color: #fff;
+            background: #111318;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 900;
+            list-style: none;
+          }
+
+          .g365-my-leagues-mobile-select > summary::-webkit-details-marker {
+            display: none;
+          }
+
+          .g365-my-leagues-mobile-select > summary::after {
+            content: "▼";
+            color: #ff742d;
+            font-size: 10px;
+          }
+
+          .g365-my-leagues-mobile-select[open] > summary::after {
+            content: "▲";
+          }
+
+          .g365-my-leagues-mobile-options {
+            display: grid;
+            gap: 6px;
+            margin-top: 7px;
+          }
+
+          .g365-my-leagues-mobile-option {
+            min-width: 0;
+            min-height: 54px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 9px 11px;
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 9px;
+            color: #fff;
+            background: rgba(255,255,255,.025);
+            text-decoration: none;
+          }
+
+          .g365-my-leagues-mobile-option > span {
+            min-width: 0;
+            display: grid;
+            gap: 3px;
+          }
+
+          .g365-my-leagues-mobile-option strong {
+            overflow: hidden;
+            font-size: 12px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .g365-my-leagues-mobile-option small {
+            color: #8f96a3;
+            font-size: 9px;
+            font-weight: 800;
+          }
+
+          .g365-my-leagues-mobile-option b {
+            flex: 0 0 auto;
+            color: #ff8c32;
+            font-size: 11px;
+          }
+
+          .g365-my-leagues-grid {
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+          }
+
+        }
+      `}</style>
+
+
       <section
+        className="g365-my-leagues-shell"
         style={
           styles.shell
         }
       >
         <header
+          className="g365-my-leagues-topbar"
           style={
             styles.topBar
           }
@@ -347,6 +504,7 @@ export default async function MyLeaguesPage() {
             width={320}
             height={90}
             priority
+            className="g365-my-leagues-logo"
             style={
               styles.logo
             }
@@ -354,6 +512,7 @@ export default async function MyLeaguesPage() {
 
 
           <div
+            className="g365-my-leagues-top-actions"
             style={
               styles.topActions
             }
@@ -391,6 +550,7 @@ export default async function MyLeaguesPage() {
 
 
         <div
+          className="g365-my-leagues-heading-row"
           style={
             styles.headingRow
           }
@@ -433,6 +593,45 @@ export default async function MyLeaguesPage() {
             + Create League
           </Link>
         </div>
+
+
+        {sortedLeagues.length > 0 ? (
+          <section className="g365-my-leagues-mobile-picker">
+            <p className="g365-my-leagues-mobile-picker-label">
+              Select League
+            </p>
+
+            <details className="g365-my-leagues-mobile-select">
+              <summary>Choose a league</summary>
+
+              <div className="g365-my-leagues-mobile-options">
+                {sortedLeagues.map((league) => (
+                  <Link
+                    key={league.id}
+                    href={getLeagueParticipantHomePath(
+                      league.leagueType,
+                      league.id
+                    )}
+                    className="g365-my-leagues-mobile-option"
+                  >
+                    <span>
+                      <strong>{league.name}</strong>
+                      <small>
+                        {formatLeagueType(
+                          league.leagueType,
+                          league.playerSelectionMode,
+                          nhlLeagueFormats.get(league.id)
+                        )}
+                      </small>
+                    </span>
+
+                    <b>{league.season}</b>
+                  </Link>
+                ))}
+              </div>
+            </details>
+          </section>
+        ) : null}
 
 
         {sortedLeagues.length ===
@@ -480,6 +679,7 @@ export default async function MyLeaguesPage() {
           </Card>
         ) : (
           <section
+            className="g365-my-leagues-grid"
             style={
               styles.grid
             }

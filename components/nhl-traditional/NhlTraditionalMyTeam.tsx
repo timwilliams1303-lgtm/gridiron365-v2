@@ -388,7 +388,7 @@ export default async function NhlTraditionalMyTeam({
 
               <Link
                 href={`/league/${leagueId}/nhl`}
-                className="g365-nhl-button g365-nhl-button-secondary"
+                className="g365-nhl-button g365-nhl-button-secondary g365-nhl-mobile-redundant-nav"
               >
                 ← League Home
               </Link>
@@ -2097,8 +2097,22 @@ const baseStyles = `
 
   @media (max-width: 760px) {
     .g365-nhl-my-team-page {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
       padding: 18px 10px 44px;
       overflow-x: hidden;
+    }
+
+    .g365-nhl-mobile-redundant-nav {
+      display: none !important;
+    }
+
+    .g365-nhl-my-team-page *,
+    .g365-nhl-my-team-shell,
+    .g365-nhl-my-team-shell > * {
+      min-width: 0;
+      max-width: 100%;
     }
 
     .g365-nhl-my-team-shell {

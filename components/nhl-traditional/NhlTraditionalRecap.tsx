@@ -381,7 +381,21 @@ export default function NhlTraditionalRecap({
 
         @media (max-width: 650px) {
           .g365-nhl-recap-page {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
             padding: 8px 5px 40px !important;
+            overflow-x: hidden !important;
+          }
+
+          .g365-nhl-recap-page *,
+          .g365-nhl-recap-page > * {
+            min-width: 0;
+            max-width: 100%;
+          }
+
+          .g365-recap-mobile-redundant-nav {
+            display: none !important;
           }
 
           .g365-recap-hero {
@@ -459,6 +473,7 @@ export default function NhlTraditionalRecap({
 
         <Link
           href={`/league/${leagueId}/nhl`}
+          className="g365-recap-mobile-redundant-nav"
           style={S.back}
         >
           ← LEAGUE HOME

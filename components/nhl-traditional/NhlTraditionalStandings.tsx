@@ -488,11 +488,33 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
 
         @media (max-width: 650px) {
           .g365-standings-page {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
             padding: 8px 5px 40px !important;
+            overflow-x: hidden !important;
+          }
+
+          .g365-standings-page > *,
+          .g365-standings-page section,
+          .g365-standings-page div {
+            min-width: 0;
+            max-width: 100%;
           }
 
           .g365-standings-hero {
             padding: 14px 12px !important;
+          }
+
+          .g365-standings-mobile-redundant-nav {
+            display: none !important;
+          }
+
+          .g365-standings-scroll {
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            overscroll-behavior-x: contain;
           }
         }
       `}</style>
@@ -540,6 +562,7 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
 
         <Link
           href={`/league/${leagueId}/nhl`}
+          className="g365-standings-mobile-redundant-nav"
           style={S.back}
         >
           ← LEAGUE HOME

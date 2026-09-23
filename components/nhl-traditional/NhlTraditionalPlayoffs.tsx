@@ -938,7 +938,7 @@ export default function NhlTraditionalPlayoffs({
           <div className="g365-hero-actions">
             <button
               type="button"
-              className="g365-button g365-button-secondary"
+              className="g365-button g365-button-secondary g365-playoffs-mobile-redundant-nav"
               onClick={() =>
                 router.push(`/league/${leagueId}`)
               }
@@ -2024,8 +2024,21 @@ const pageCss = `
 
   @media (max-width: 760px) {
     .g365-playoffs-page {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
       padding: 12px 9px 44px;
       overflow-x: hidden;
+    }
+
+    .g365-playoffs-page *,
+    .g365-playoffs-page > * {
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .g365-playoffs-mobile-redundant-nav {
+      display: none !important;
     }
 
     .g365-playoffs-hero {

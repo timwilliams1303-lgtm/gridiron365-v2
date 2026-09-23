@@ -1618,7 +1618,23 @@ const styles = `
   }
 
   @media (max-width: 820px) {
-    .g365-trades-page { padding: 22px 12px 46px; }
+    .g365-trades-page {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      padding: 22px 12px 46px;
+      overflow-x: hidden;
+    }
+    .g365-trades-page *,
+    .g365-trades-page > * {
+      min-width: 0;
+      max-width: 100%;
+    }
+    .asset-row,
+    .summary-box,
+    .offer-message {
+      overflow-wrap: anywhere;
+    }
     .page-header, .trade-hero { align-items: stretch; flex-direction: column; }
     .format-pill { align-self: flex-start; }
     .partner-select { min-width: 0; width: 100%; }

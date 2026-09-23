@@ -1055,7 +1055,18 @@ export default function NhlTraditionalMatchups({
           .g365-matchups-grid { grid-template-columns: minmax(0,1fr) !important; }
         }
         @media (max-width: 640px) {
-          .g365-nhl-matchups { padding: 10px 8px 40px !important; }
+          .g365-nhl-matchups {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            padding: 10px 8px 40px !important;
+            overflow-x: hidden !important;
+          }
+          .g365-nhl-matchups *,
+          .g365-matchups-shell > * {
+            min-width: 0;
+            max-width: 100%;
+          }
           .g365-matchups-hero { padding: 16px 14px !important; border-radius: 13px !important; }
           .g365-matchups-title { font-size: 34px !important; line-height: .98 !important; }
           .g365-matchups-week-panel { padding: 12px 10px !important; }

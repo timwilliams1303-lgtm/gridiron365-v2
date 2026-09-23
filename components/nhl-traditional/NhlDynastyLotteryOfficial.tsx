@@ -1398,6 +1398,19 @@ export default function NhlDynastyLotteryOfficial({
         }
 
         @media (max-width:680px) {
+          .g365-official-lottery {
+            width:100%;
+            max-width:100%;
+            min-width:0;
+            overflow-x:hidden;
+          }
+
+          .g365-official-lottery *,
+          .g365-official-layout > * {
+            min-width:0;
+            max-width:100%;
+          }
+
           .g365-official-head {
             align-items:flex-start;
             flex-direction:column;

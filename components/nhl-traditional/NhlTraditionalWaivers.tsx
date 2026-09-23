@@ -650,7 +650,47 @@ export default function NhlTraditionalWaivers({ leagueId }: Props) {
     }
   };
 
-  if (loading) return <main style={S.page}><div style={S.loading}>Loading NHL player pool...</div></main>;
+  if (loading) return <main className="g365-nhl-waivers-page" style={S.page}>
+      <style>{`
+        @media (max-width: 760px) {
+          .g365-nhl-waivers-page {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            padding: 10px 8px 40px !important;
+            overflow-x: hidden !important;
+          }
+
+          .g365-nhl-waivers-page *,
+          .g365-nhl-waivers-page > * {
+            min-width: 0;
+            max-width: 100%;
+          }
+
+          .g365-nhl-waivers-mobile-redundant-nav {
+            display: none !important;
+          }
+
+          .g365-nhl-waivers-page nav {
+            width: 100%;
+            max-width: 100%;
+            overscroll-behavior-x: contain;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .g365-nhl-waivers-page input,
+          .g365-nhl-waivers-page select,
+          .g365-nhl-waivers-page textarea {
+            max-width: 100%;
+          }
+        }
+
+        @media (max-width: 560px) {
+          .g365-nhl-waivers-page {
+            padding-inline: 6px !important;
+          }
+        }
+      `}</style><div style={S.loading}>Loading NHL player pool...</div></main>;
 
   const skaterHeaders: Array<[string, SortKey]> = [
     ["FP", "fp"],
@@ -711,7 +751,183 @@ export default function NhlTraditionalWaivers({ leagueId }: Props) {
       : skaterHeaders;
 
   return (
-    <main style={S.page}>
+    <main className="g365-nhl-waivers-page" style={S.page}>
+      <style>{`
+        .g365-waivers-mobile-player-list {
+          display: none;
+        }
+
+        @media (max-width: 760px) {
+          .g365-nhl-waivers-page {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            padding: 10px 8px 40px !important;
+            overflow-x: hidden !important;
+          }
+
+          .g365-nhl-waivers-page *,
+          .g365-nhl-waivers-page > * {
+            min-width: 0;
+            max-width: 100%;
+          }
+
+          .g365-nhl-waivers-mobile-redundant-nav {
+            display: none !important;
+          }
+
+          .g365-waivers-desktop-category-bar,
+          .g365-waivers-desktop-player-table {
+            display: none !important;
+          }
+
+          .g365-waivers-mobile-player-list {
+            display: grid !important;
+            gap: 8px;
+            padding: 10px;
+          }
+
+          .g365-waivers-mobile-sort {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: end;
+            padding: 10px 12px 12px;
+            border-top: 1px solid #1f1f22;
+          }
+
+          .g365-waivers-mobile-sort label {
+            display: grid;
+            gap: 5px;
+          }
+
+          .g365-waivers-mobile-sort select {
+            width: 100%;
+            min-height: 44px;
+            border: 1px solid #343438;
+            border-radius: 6px;
+            background: #0d0d0f;
+            color: #fff;
+            padding: 0 10px;
+            font-size: 16px;
+          }
+
+          .g365-waivers-mobile-sort button {
+            min-width: 48px;
+            min-height: 44px;
+            border: 1px solid #493025;
+            border-radius: 6px;
+            background: #17110e;
+            color: #ff7b31;
+            font-size: 16px;
+            font-weight: 1000;
+          }
+
+          .g365-waivers-mobile-player {
+            width: 100%;
+            border: 1px solid #29292d;
+            border-radius: 9px;
+            background: #111113;
+            overflow: hidden;
+          }
+
+          .g365-waivers-mobile-player-main {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: center;
+            padding: 9px;
+          }
+
+          .g365-waivers-mobile-player-name {
+            width: 100%;
+            min-height: 48px;
+            border: 0;
+            background: transparent;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 0;
+            text-align: left;
+            cursor: pointer;
+          }
+
+          .g365-waivers-mobile-player-name strong {
+            display: block;
+            font-size: 13px;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+          }
+
+          .g365-waivers-mobile-player-name small {
+            display: block;
+            margin-top: 3px;
+            color: #85858b;
+            font-size: 10px;
+            line-height: 1.25;
+            overflow-wrap: anywhere;
+          }
+
+          .g365-waivers-mobile-player-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            padding: 0 9px 9px;
+          }
+
+          .g365-waivers-mobile-chip {
+            border: 1px solid #303034;
+            border-radius: 999px;
+            background: #151517;
+            color: #b6b6bb;
+            padding: 4px 7px;
+            font-size: 9px;
+            font-weight: 900;
+          }
+
+          .g365-waivers-mobile-fp {
+            color: #ff7b31;
+            border-color: #66351f;
+            background: #21140f;
+          }
+
+          .g365-waivers-mobile-action button {
+            min-height: 44px !important;
+            min-width: 66px;
+            padding-inline: 10px !important;
+            font-size: 9px !important;
+          }
+
+          .g365-nhl-waivers-page nav {
+            width: 100%;
+            max-width: 100%;
+            overscroll-behavior-x: contain;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .g365-nhl-waivers-page input,
+          .g365-nhl-waivers-page select,
+          .g365-nhl-waivers-page textarea {
+            max-width: 100%;
+          }
+        }
+
+        @media (max-width: 420px) {
+          .g365-nhl-waivers-page {
+            padding-inline: 6px !important;
+          }
+
+          .g365-waivers-mobile-player-main {
+            grid-template-columns: minmax(0, 1fr);
+          }
+
+          .g365-waivers-mobile-action,
+          .g365-waivers-mobile-action button {
+            width: 100%;
+          }
+        }
+      `}</style>
       <div style={S.shell}>
         <section style={S.hero}>
           <div>
@@ -729,7 +945,7 @@ export default function NhlTraditionalWaivers({ leagueId }: Props) {
           </div>
         </section>
 
-        <Link href={`/league/${leagueId}/nhl`} style={S.back}>← LEAGUE HOME</Link>
+        <Link className="g365-nhl-waivers-mobile-redundant-nav" href={`/league/${leagueId}/nhl`} style={S.back}>← LEAGUE HOME</Link>
 
         {error && <div style={S.error}><strong>WAIVERS ERROR</strong><span>{error}</span></div>}
         {message && <div style={S.success}>{message}</div>}
@@ -789,7 +1005,7 @@ export default function NhlTraditionalWaivers({ leagueId }: Props) {
                 ))}
               </div>
 
-              <div style={S.categoryBar}>
+              <div className="g365-waivers-desktop-category-bar" style={S.categoryBar}>
                 <strong style={S.categoryTitle}>
                   {showingAllPositions ? "ALL STAT CATEGORIES" : showingGoalies ? "GOALIE STATS" : "SKATER STATS"}
                 </strong>
@@ -797,10 +1013,110 @@ export default function NhlTraditionalWaivers({ leagueId }: Props) {
                   {headers.map(([label]) => <span key={label} style={S.categoryChip}>{label}</span>)}
                 </div>
               </div>
+
+              <div className="g365-waivers-mobile-sort">
+                <label>
+                  <span style={S.categoryTitle}>SORT PLAYERS BY</span>
+                  <select
+                    value={sortKey}
+                    onChange={e => {
+                      const next = e.target.value as SortKey;
+                      setSortKey(next);
+                      setSortDirection(next === "gaa" ? "asc" : "desc");
+                    }}
+                  >
+                    {headers.map(([label, key]) => (
+                      <option key={key} value={key}>{label}</option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  aria-label={sortDirection === "desc" ? "Sort descending" : "Sort ascending"}
+                  title={sortDirection === "desc" ? "Descending" : "Ascending"}
+                  onClick={() => setSortDirection(d => d === "desc" ? "asc" : "desc")}
+                >
+                  {sortDirection === "desc" ? "↓" : "↑"}
+                </button>
+              </div>
             </section>
 
             <section style={S.panel}>
-              <div style={S.tableWrap}>
+              <div className="g365-waivers-mobile-player-list">
+                {filteredPlayers.map(player => (
+                  <article key={player.id} className="g365-waivers-mobile-player">
+                    <div className="g365-waivers-mobile-player-main">
+                      <button
+                        type="button"
+                        className="g365-waivers-mobile-player-name"
+                        onClick={() => setSelectedPlayer(player)}
+                        aria-label={`View ${player.display_name} stats`}
+                      >
+                        <span style={S.avatar}>
+                          {player.headshot_url
+                            ? <img src={player.headshot_url} alt="" style={S.headshot} />
+                            : initials(player.display_name)}
+                        </span>
+                        <span>
+                          <strong>{player.display_name}</strong>
+                          <small>
+                            {normalizePosition(player, positionMode)} • {player.teamAbbr}
+                            {player.injury_status ? ` • ${player.injury_status}` : ""}
+                          </small>
+                        </span>
+                      </button>
+
+                      <div className="g365-waivers-mobile-action">
+                        {player.waiverStatus === "available" ? (
+                          <button
+                            type="button"
+                            disabled={!myTeam || actionId === player.id}
+                            onClick={() => void addPlayer(player)}
+                            style={S.addButton}
+                          >
+                            {actionId === player.id ? "ADDING..." : "+ ADD"}
+                          </button>
+                        ) : player.waiverStatus === "waivers" ? (
+                          <button
+                            type="button"
+                            disabled={!myTeam}
+                            onClick={() => openClaim(player)}
+                            style={S.claimButton}
+                          >
+                            + CLAIM
+                          </button>
+                        ) : (
+                          <button type="button" disabled style={S.disabledButton}>WAIT</button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="g365-waivers-mobile-player-meta">
+                      <span className="g365-waivers-mobile-chip g365-waivers-mobile-fp">
+                        {seasonHasStarted ? "FP" : "PROJ FP"} {fmt(seasonHasStarted ? player.fp : player.projectedFp, 1)}
+                      </span>
+                      <span className="g365-waivers-mobile-chip">
+                        {seasonHasStarted ? "FPPG" : "PROJ/G"} {fmt(seasonHasStarted ? player.fppg : player.projectedFppg, 1)}
+                      </span>
+                      {seasonHasStarted ? (
+                        <span className="g365-waivers-mobile-chip">GP {fmt(player.gp)}</span>
+                      ) : null}
+                      <span className="g365-waivers-mobile-chip">
+                        {player.waiverStatus === "available"
+                          ? "AVAILABLE"
+                          : player.waiverStatus === "processing"
+                            ? "PROCESSING"
+                            : `WAIVERS • ${formatDate(player.clearsAt)}`}
+                      </span>
+                    </div>
+                  </article>
+                ))}
+                {filteredPlayers.length === 0 && (
+                  <div style={S.empty}>No unrostered players match these filters.</div>
+                )}
+              </div>
+
+              <div className="g365-waivers-desktop-player-table" style={S.tableWrap}>
                 <table style={{ ...S.table, minWidth: showingAllPositions ? 1240 : 940 }}>
                   <thead>
                     <tr>
@@ -1188,4 +1504,3 @@ const S: Record<string, React.CSSProperties> = {
   modalActions: { padding: 18, display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" },
   secondaryButton: { minHeight: 40, padding: "0 14px", border: "1px solid #38383d", borderRadius: 6, background: "#18181b", color: "#aaaab0", fontSize: 9, fontWeight: 1000, cursor: "pointer" },
 };
-

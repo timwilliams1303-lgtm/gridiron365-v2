@@ -464,6 +464,16 @@ export default async function NhlTraditionalLeagueHome({
             min-height: 86px !important;
             padding: 15px 13px !important;
           }
+
+          /*
+           * The universal mobile league header already provides
+           * My Leagues + Navigate To. Keep these desktop shortcuts,
+           * but do not duplicate navigation on phones.
+           */
+          .g365-nhl-home-back-link,
+          .g365-nhl-home-league-center {
+            display: none !important;
+          }
         }
 
         @media (max-width: 430px) {
@@ -1013,7 +1023,7 @@ export default async function NhlTraditionalLeagueHome({
           </Card>
         </section>
 
-        <section>
+        <section className="g365-nhl-home-league-center">
           <p style={styles.sectionLabel}>
             NHL LEAGUE CENTER
           </p>

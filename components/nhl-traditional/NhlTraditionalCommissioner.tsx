@@ -1988,58 +1988,276 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
   return (
     <main className="g365-nhl-commissioner" style={styles.page}>
       <style>{`
+        .g365-nhl-mobile-section-picker {
+          display: none;
+        }
+
         @media (max-width: 900px) {
-          .g365-nhl-invite-grid { grid-template-columns: 1fr 1fr !important; }
-          .g365-nhl-inline-invite { margin-left: 12px !important; }
+          .g365-nhl-invite-grid {
+            grid-template-columns: 1fr 1fr !important;
+          }
+
+          .g365-nhl-inline-invite {
+            margin-left: 12px !important;
+          }
         }
+
         @media (max-width: 760px) {
-          .g365-nhl-commissioner { padding: 12px 10px 48px !important; overflow-x: hidden !important; }
-          .g365-nhl-shell { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
-          .g365-nhl-hero { flex-direction: column !important; align-items: stretch !important; padding: 14px !important; }
-          .g365-nhl-hero-actions { width: 100% !important; display: grid !important; grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
-          .g365-nhl-hero-actions button { width: 100% !important; }
-          .g365-nhl-tabs { width: 100% !important; overflow-x: auto !important; flex-wrap: nowrap !important; -webkit-overflow-scrolling: touch; }
-          .g365-nhl-tabs button { flex: 0 0 auto !important; white-space: nowrap !important; }
-          .g365-nhl-grid { grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 9px !important; }
-          .g365-nhl-setup-grid { grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 10px !important; }
-          .g365-nhl-stats { grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 8px !important; }
-          .g365-nhl-actions { display: grid !important; grid-template-columns: minmax(0,1fr) !important; }
-          .g365-nhl-actions button { width: 100% !important; }
-          .g365-nhl-category-row { grid-template-columns: minmax(0,1fr) 150px 120px !important; }
-          .g365-nhl-team-header { display: none !important; }
-          .g365-nhl-team-row { grid-template-columns: 42px minmax(0,1fr) minmax(0,1fr) !important; }
-          .g365-nhl-team-status, .g365-nhl-team-type, .g365-nhl-team-row-actions { grid-column: span 1; }
-          .g365-nhl-team-row-actions { grid-column: 2 / -1; }
-          .g365-nhl-mobile-label { display: block !important; }
-          .g365-nhl-draft-order-row { grid-template-columns: 42px minmax(0,1fr) !important; }
-          .g365-nhl-draft-order-row > *:nth-child(n+3) { grid-column: 2 !important; }
-          .g365-nhl-matchup-editor-row { grid-template-columns: 38px minmax(0,1fr) !important; }
-          .g365-nhl-matchup-editor-row > *:nth-child(n+3) { grid-column: 2 !important; }
-          .g365-nhl-trade-sides { grid-template-columns: minmax(0,1fr) !important; }
-          .g365-nhl-trade-actions { grid-template-columns: minmax(0,1fr) !important; }
-          .g365-nhl-trade-actions button { width: 100% !important; }
-          .g365-nhl-commissioner section { max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
-          .g365-nhl-division-grid { grid-template-columns: minmax(0,1fr) !important; }
-          .g365-nhl-division-team { grid-template-columns: minmax(0,1fr) !important; align-items: stretch !important; }
-          .g365-nhl-division-team select { width: 100% !important; }
-        }
-          .g365-nhl-correction-grid { grid-template-columns: minmax(0,1fr) !important; }
-          .g365-nhl-correction-history-row { grid-template-columns: minmax(0,1fr) !important; }
-        @media (max-width: 430px) {
-          .g365-nhl-grid, .g365-nhl-setup-grid, .g365-nhl-stats, .g365-nhl-hero-actions { grid-template-columns: minmax(0,1fr) !important; }
-          .g365-nhl-team-row { grid-template-columns: 34px minmax(0,1fr) !important; }
-          .g365-nhl-team-name, .g365-nhl-team-owner, .g365-nhl-team-status, .g365-nhl-team-type, .g365-nhl-team-row-actions { grid-column: 2 !important; }
-          .g365-nhl-team-row-actions { display: grid !important; grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
-          .g365-nhl-team-row-actions button { width: 100% !important; }
-          .g365-nhl-commissioner { padding-left: 8px !important; padding-right: 8px !important; }
-          .g365-nhl-category-header { display: none !important; }
-          .g365-nhl-category-row { grid-template-columns: minmax(0,1fr) !important; gap: 8px !important; align-items: stretch !important; }
-          .g365-nhl-category-row select, .g365-nhl-category-row button { width: 100% !important; }
-        }
-        @media (max-width:680px) {
+          .g365-nhl-commissioner {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            padding: 12px 10px 48px !important;
+            overflow-x: hidden !important;
+          }
+
+          .g365-nhl-shell,
+          .g365-nhl-commissioner section {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            box-sizing: border-box !important;
+          }
+
+          .g365-nhl-commissioner section > *,
+          .g365-nhl-shell > * {
+            min-width: 0 !important;
+            max-width: 100%;
+          }
+
+          .g365-nhl-hero {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            padding: 14px !important;
+          }
+
+          .g365-nhl-hero-actions {
+            width: 100% !important;
+            display: grid !important;
+            grid-template-columns: minmax(0,1fr) !important;
+          }
+
+          .g365-nhl-hero-actions button {
+            width: 100% !important;
+            min-height: 44px !important;
+          }
+
+          .g365-nhl-commissioner-home-action {
+            display: none !important;
+          }
+
+          .g365-nhl-tabs {
+            display: none !important;
+          }
+
+          .g365-nhl-mobile-section-picker {
+            display: block !important;
+            width: 100%;
+            margin: 0 0 12px;
+            padding: 11px;
+            border: 1px solid rgba(255,95,30,.28);
+            border-radius: 10px;
+            background: linear-gradient(135deg,rgba(150,30,15,.12),rgba(255,105,25,.035));
+          }
+
+          .g365-nhl-mobile-section-picker label {
+            display: grid;
+            gap: 6px;
+          }
+
+          .g365-nhl-mobile-section-picker span {
+            color: #ff6a2a;
+            font-size: 9px;
+            font-weight: 950;
+            letter-spacing: .10em;
+          }
+
+          .g365-nhl-mobile-section-picker select {
+            width: 100%;
+            min-height: 46px;
+            border: 1px solid rgba(255,255,255,.14);
+            border-radius: 8px;
+            padding: 0 11px;
+            background: #0b0d12;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 850;
+            outline: none;
+          }
+
+          .g365-nhl-grid,
+          .g365-nhl-setup-grid,
+          .g365-nhl-stats,
+          .g365-nhl-team-summary {
+            grid-template-columns: repeat(2,minmax(0,1fr)) !important;
+            gap: 9px !important;
+          }
+
+          .g365-nhl-actions {
+            display: grid !important;
+            grid-template-columns: minmax(0,1fr) !important;
+          }
+
+          .g365-nhl-actions button {
+            width: 100% !important;
+            min-height: 44px !important;
+          }
+
+          .g365-nhl-team-header {
+            display: none !important;
+          }
+
+          .g365-nhl-team-table {
+            overflow: visible !important;
+          }
+
+          .g365-nhl-team-row {
+            grid-template-columns: 42px minmax(0,1fr) minmax(0,1fr) !important;
+          }
+
+          .g365-nhl-team-status,
+          .g365-nhl-team-type {
+            grid-column: span 1;
+          }
+
+          .g365-nhl-team-row-actions {
+            grid-column: 2 / -1;
+          }
+
+          .g365-nhl-mobile-label {
+            display: block !important;
+          }
+
+          .g365-nhl-inline-invite {
+            width: auto !important;
+            max-width: none !important;
+            margin: 0 10px 12px 52px !important;
+          }
+
+          .g365-nhl-invite-grid {
+            grid-template-columns: minmax(0,1fr) !important;
+          }
+
+          .g365-nhl-draft-order-row {
+            grid-template-columns: 42px minmax(0,1fr) !important;
+          }
+
+          .g365-nhl-draft-order-row > *:nth-child(n+3) {
+            grid-column: 2 !important;
+          }
+
+          .g365-nhl-matchup-editor-row {
+            grid-template-columns: 38px minmax(0,1fr) !important;
+          }
+
+          .g365-nhl-matchup-editor-row > *:nth-child(n+3) {
+            grid-column: 2 !important;
+          }
+
+          .g365-nhl-trade-sides,
+          .g365-nhl-trade-actions,
+          .g365-nhl-division-grid,
+          .g365-nhl-correction-grid,
+          .g365-nhl-correction-history-row {
+            grid-template-columns: minmax(0,1fr) !important;
+          }
+
+          .g365-nhl-trade-actions button {
+            width: 100% !important;
+            min-height: 44px !important;
+          }
+
+          .g365-nhl-division-team {
+            grid-template-columns: minmax(0,1fr) !important;
+            align-items: stretch !important;
+          }
+
+          .g365-nhl-division-team select {
+            width: 100% !important;
+          }
+
+          .g365-nhl-category-row {
+            grid-template-columns: minmax(0,1fr) 140px 112px !important;
+          }
+
           .g365-nhl-dynasty-choice-grid,
           .g365-nhl-rookie-choice-stack {
-            grid-template-columns:1fr !important;
+            grid-template-columns: minmax(0,1fr) !important;
+          }
+
+          .g365-nhl-commissioner input,
+          .g365-nhl-commissioner select,
+          .g365-nhl-commissioner textarea {
+            max-width: 100% !important;
+            min-width: 0 !important;
+          }
+
+          .g365-nhl-commissioner button,
+          .g365-nhl-commissioner select,
+          .g365-nhl-commissioner input:not([type="checkbox"]):not([type="radio"]) {
+            min-height: 44px;
+          }
+
+          .g365-nhl-commissioner p,
+          .g365-nhl-commissioner label,
+          .g365-nhl-commissioner strong,
+          .g365-nhl-commissioner span {
+            overflow-wrap: anywhere;
+          }
+        }
+
+        @media (max-width: 430px) {
+          .g365-nhl-commissioner {
+            padding-left: 7px !important;
+            padding-right: 7px !important;
+          }
+
+          .g365-nhl-grid,
+          .g365-nhl-setup-grid,
+          .g365-nhl-stats,
+          .g365-nhl-team-summary,
+          .g365-nhl-hero-actions {
+            grid-template-columns: minmax(0,1fr) !important;
+          }
+
+          .g365-nhl-team-row {
+            grid-template-columns: 34px minmax(0,1fr) !important;
+          }
+
+          .g365-nhl-team-name,
+          .g365-nhl-team-owner,
+          .g365-nhl-team-status,
+          .g365-nhl-team-type,
+          .g365-nhl-team-row-actions {
+            grid-column: 2 !important;
+          }
+
+          .g365-nhl-team-row-actions {
+            display: grid !important;
+            grid-template-columns: minmax(0,1fr) !important;
+          }
+
+          .g365-nhl-team-row-actions button {
+            width: 100% !important;
+          }
+
+          .g365-nhl-inline-invite {
+            margin: 0 8px 12px !important;
+          }
+
+          .g365-nhl-category-header {
+            display: none !important;
+          }
+
+          .g365-nhl-category-row {
+            grid-template-columns: minmax(0,1fr) !important;
+            gap: 8px !important;
+            align-items: stretch !important;
+          }
+
+          .g365-nhl-category-row select,
+          .g365-nhl-category-row button {
+            width: 100% !important;
           }
         }
       `}</style>
@@ -2057,9 +2275,11 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
           </div>
 
           <div className="g365-nhl-hero-actions" style={styles.row}>
-            <Button secondary onClick={() => router.push(`/league/${leagueId}`)}>
-              LEAGUE HOME
-            </Button>
+            <div className="g365-nhl-commissioner-home-action">
+              <Button secondary onClick={() => router.push(`/league/${leagueId}`)}>
+                LEAGUE HOME
+              </Button>
+            </div>
             <Button onClick={() => void load()} disabled={saving}>
               REFRESH
             </Button>
@@ -2068,6 +2288,21 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
 
         {error ? <div style={styles.error}>{error}</div> : null}
         {success ? <div style={styles.success}>{success}</div> : null}
+
+        <div className="g365-nhl-mobile-section-picker">
+          <label>
+            <span>COMMISSIONER SECTION</span>
+            <select
+              value={tab}
+              onChange={(event) => setTab(event.target.value as Tab)}
+              aria-label="Commissioner section"
+            >
+              {tabs.map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
 
         <div className="g365-nhl-tabs" style={styles.tabs}>
           {tabs.map(([key, label]) => (

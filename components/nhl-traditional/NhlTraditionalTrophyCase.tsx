@@ -2049,7 +2049,24 @@ const styles = `
 
   @media (max-width: 780px) {
     .page-shell {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
       padding: 10px;
+      overflow-x: hidden;
+    }
+
+    .page-shell *,
+    .page-shell > * {
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .badge-card,
+    .dynasty-season-row,
+    .trophy-row,
+    .section-card {
+      overflow-wrap: anywhere;
     }
 
     .hero-content,

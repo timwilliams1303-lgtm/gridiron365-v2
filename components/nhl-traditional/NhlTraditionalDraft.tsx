@@ -1833,6 +1833,22 @@ export default function NhlTraditionalDraft({
           .g365-nhl-draft-left, .g365-nhl-draft-right { display: block !important; }
         }
         @media (max-width: 720px) {
+          .g365-nhl-draft-page,
+          .g365-nhl-draft-shell,
+          .g365-nhl-draft-room,
+          .g365-nhl-draft-left,
+          .g365-nhl-draft-right {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+          }
+          .g365-nhl-draft-page { overflow-x: hidden !important; }
+          .g365-nhl-draft-room > *,
+          .g365-nhl-draft-left > *,
+          .g365-nhl-draft-right > * {
+            min-width: 0 !important;
+            max-width: 100% !important;
+          }
           .g365-nhl-trade-layout { grid-template-columns: 1fr !important; }
           .g365-nhl-player-head { grid-template-columns: 30px minmax(0,1fr) 36px 58px 54px 54px !important; gap: 4px !important; padding-left: 5px !important; padding-right: 5px !important; }
           .g365-nhl-player-row { grid-template-columns: 30px minmax(0,1fr) 36px 58px 54px 54px !important; gap: 4px !important; padding-left: 5px !important; padding-right: 5px !important; }

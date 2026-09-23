@@ -1129,346 +1129,200 @@
 }
 
 /* ============================================================
-   MOBILE LEAGUE NAVIGATION ACCESSIBILITY FIX
-   Applies across Traditional, Season-Long, NFL Playoffs,
-   Pick'em, Greyhound/universal league navigation, and future
-   league types using the shared league shell.
+   UNIVERSAL MOBILE APP SHELL
+   The shared LeagueNav owns phone navigation.
+   Older page-level league navs are hidden on mobile.
    ============================================================ */
 
 @media (max-width: 760px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   .g365-league-shell {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 100dvh;
+    overflow-x: clip;
+  }
+
+  .g365-league-shell,
+  .g365-league-shell * {
     min-width: 0;
   }
 
   /*
-   * Give the shared league header more room below the
-   * phone's top safe area / browser chrome.
+   * LeagueNav is the single mobile navigation system.
+   * Its component already hides the desktop tab strip and
+   * shows Switch League + Navigate To.
    */
-  .g365-league-header {
+  .g365-universal-league-nav {
     position: relative !important;
-    z-index: 30 !important;
+    z-index: 40 !important;
 
-    padding-top:
-      max(
-        18px,
-        calc(env(safe-area-inset-top) + 10px)
-      ) !important;
+    width: 100% !important;
+    max-width: 100% !important;
 
-    padding-bottom: 12px !important;
+    margin: 0 !important;
+
+    overflow: visible !important;
   }
 
   /*
-   * Keep every known league navigation below the header
-   * instead of crowding the top edge of the screen.
+   * Hide legacy/page-level league navigation on phones.
+   * Do NOT hide .g365-universal-league-nav.
    */
   .g365-league-nav,
   .g365-season-long-nav,
-  .g365-pickem-nav,
-  .g365-universal-league-nav {
-    position: relative !important;
-    top: auto !important;
-
-    width: 100% !important;
-    max-width: 100% !important;
-
-    margin-top: 10px !important;
-
-    z-index: 25 !important;
-
-    touch-action: manipulation;
-
-    isolation: isolate;
-  }
-
-  /*
-   * Shared / universal horizontal navigation.
-   */
-  .g365-league-nav-inner,
-  .g365-universal-league-nav-inner {
-    width: 100% !important;
-    max-width: 100% !important;
-
-    min-height: 48px !important;
-
-    justify-content: flex-start !important;
-
-    padding:
-      10px
-      max(12px, env(safe-area-inset-right))
-      12px
-      max(12px, env(safe-area-inset-left)) !important;
-
-    overflow-x: auto !important;
-    overflow-y: visible !important;
-
-    -webkit-overflow-scrolling: touch;
-
-    overscroll-behavior-x: contain;
-
-    scroll-snap-type: x proximity;
-
-    scrollbar-width: thin;
-
-    touch-action: pan-x;
-  }
-
-  /*
-   * Shared / universal tab buttons.
-   */
-  .g365-league-nav-link,
-  .g365-universal-league-nav-link {
-    position: relative !important;
-    z-index: 26 !important;
-
-    min-width: 88px !important;
-    min-height: 48px !important;
-
-    display: inline-flex !important;
-
-    align-items: center !important;
-    justify-content: center !important;
-
-    flex: 0 0 auto !important;
-
-    padding: 9px 11px !important;
-
-    border-radius: 9px;
-
-    pointer-events: auto !important;
-
-    touch-action: manipulation !important;
-
-    scroll-snap-align: start;
-
-    cursor: pointer;
-
-    -webkit-tap-highlight-color:
-      rgba(
-        255,
-        95,
-        20,
-        0.22
-      );
-  }
-
-  /*
-   * Season-Long uses its own two-column mobile grid.
-   */
-  .g365-season-long-nav > div {
-    width: 100% !important;
-
-    padding:
-      10px
-      max(12px, env(safe-area-inset-right))
-      12px
-      max(12px, env(safe-area-inset-left)) !important;
-
-    gap: 8px !important;
-
-    overflow: visible !important;
-  }
-
-  .g365-season-long-nav a {
-    position: relative !important;
-    z-index: 26 !important;
-
-    min-width: 0 !important;
-    min-height: 48px !important;
-
-    display: flex !important;
-
-    align-items: center !important;
-    justify-content: center !important;
-
-    padding: 9px 8px !important;
-
-    pointer-events: auto !important;
-
-    touch-action: manipulation !important;
-
-    -webkit-tap-highlight-color:
-      rgba(
-        255,
-        95,
-        20,
-        0.22
-      );
-  }
-
-  /*
-   * Pick'em also has its own mobile grid.
-   */
   .g365-pickem-nav {
-    padding:
-      10px
-      max(12px, env(safe-area-inset-right))
-      12px
-      max(12px, env(safe-area-inset-left)) !important;
-
-    gap: 8px !important;
-
-    overflow: visible !important;
-  }
-
-  .g365-pickem-nav a {
-    position: relative !important;
-    z-index: 26 !important;
-
-    min-width: 0 !important;
-    min-height: 48px !important;
-
-    display: flex !important;
-
-    align-items: center !important;
-    justify-content: center !important;
-
-    padding: 9px 8px !important;
-
-    pointer-events: auto !important;
-
-    touch-action: manipulation !important;
-
-    -webkit-tap-highlight-color:
-      rgba(
-        255,
-        95,
-        20,
-        0.22
-      );
+    display: none !important;
   }
 
   /*
-   * Keep content visually below the navigation and prevent
-   * content layers from sitting over the tabs.
+   * Shared page content must never make the whole phone
+   * horizontally scroll.
    */
   .g365-league-content {
     position: relative;
-
     z-index: 1;
 
-    padding-top: 10px !important;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+
+    padding-top: 0 !important;
+
+    overflow-x: clip;
+  }
+
+  .g365-page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+
+    padding:
+      10px
+      max(10px, env(safe-area-inset-right))
+      max(22px, env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left));
+  }
+
+  .g365-page-container {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0 auto;
+  }
+
+  /*
+   * Common flex/grid children are allowed to shrink instead
+   * of forcing their parent wider than the viewport.
+   */
+  .g365-league-content main,
+  .g365-league-content section,
+  .g365-league-content article,
+  .g365-league-content aside,
+  .g365-league-content header,
+  .g365-league-content footer,
+  .g365-league-content nav,
+  .g365-league-content form,
+  .g365-league-content fieldset,
+  .g365-league-content div {
+    max-width: 100%;
+  }
+
+  /*
+   * Media should never escape a card/page on a phone.
+   */
+  .g365-league-content img,
+  .g365-league-content svg,
+  .g365-league-content video,
+  .g365-league-content canvas {
+    max-width: 100%;
+  }
+
+  /*
+   * Form controls stay inside their parent and remain
+   * comfortable touch targets.
+   */
+  .g365-league-content input,
+  .g365-league-content select,
+  .g365-league-content textarea {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .g365-league-content button,
+  .g365-league-content input:not([type="checkbox"]):not([type="radio"]),
+  .g365-league-content select {
+    min-height: 44px;
+  }
+
+  /*
+   * Long text/IDs must wrap instead of widening cards.
+   */
+  .g365-league-content p,
+  .g365-league-content li,
+  .g365-league-content td,
+  .g365-league-content th,
+  .g365-league-content label {
+    overflow-wrap: anywhere;
+  }
+
+  /*
+   * Tables are allowed to remain intrinsically wide, but
+   * their immediate containers stay constrained. Existing
+   * page-level overflow wrappers can scroll the table.
+   */
+  .g365-league-content table {
+    max-width: 100%;
+  }
+
+  /*
+   * Dialogs/modals remain inside the visible phone area.
+   */
+  .g365-league-content dialog,
+  .g365-league-content [role="dialog"] {
+    max-width:
+      calc(
+        100vw -
+        max(20px, env(safe-area-inset-left)) -
+        max(20px, env(safe-area-inset-right))
+      );
+
+    max-height:
+      calc(
+        100dvh -
+        max(24px, env(safe-area-inset-top)) -
+        max(24px, env(safe-area-inset-bottom))
+      );
+
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 }
 
 
 /* ============================================================
-   EXTRA-SMALL PHONES
+   VERY SMALL PHONES
    ============================================================ */
 
 @media (max-width: 430px) {
-  .g365-league-header {
-    padding-top:
-      max(
-        20px,
-        calc(env(safe-area-inset-top) + 12px)
-      ) !important;
-
+  .g365-page {
     padding-right:
       max(
-        10px,
+        8px,
         env(safe-area-inset-right)
-      ) !important;
-
-    padding-bottom: 12px !important;
+      );
 
     padding-left:
       max(
-        10px,
+        8px,
         env(safe-area-inset-left)
-      ) !important;
-  }
-
-  .g365-league-nav,
-  .g365-season-long-nav,
-  .g365-pickem-nav,
-  .g365-universal-league-nav {
-    margin-top: 12px !important;
-  }
-
-  .g365-league-nav-link,
-  .g365-universal-league-nav-link,
-  .g365-season-long-nav a,
-  .g365-pickem-nav a {
-    min-height: 50px !important;
-  }
-}
-
-/* ============================================================
-   FINAL MOBILE SAFE-AREA / CAMERA CLEARANCE FIX
-   Keep league navigation below iPhone camera / Dynamic Island
-   and increase touch target height on phones.
-   ============================================================ */
-
-@media (max-width: 760px) {
-  .g365-league-shell {
-    padding-top:
-      max(
-        18px,
-        calc(env(safe-area-inset-top) + 18px)
-      ) !important;
-  }
-
-  .g365-league-header {
-    padding-top:
-      max(
-        22px,
-        calc(env(safe-area-inset-top) + 18px)
-      ) !important;
-
-    padding-bottom: 14px !important;
-  }
-
-  .g365-league-nav,
-  .g365-season-long-nav,
-  .g365-pickem-nav,
-  .g365-universal-league-nav {
-    margin-top: 14px !important;
-  }
-
-  .g365-league-nav-inner,
-  .g365-universal-league-nav-inner {
-    min-height: 52px !important;
-  }
-
-  .g365-league-nav-link,
-  .g365-universal-league-nav-link,
-  .g365-season-long-nav a,
-  .g365-pickem-nav a {
-    min-height: 52px !important;
-  }
-}
-
-@media (max-width: 430px) {
-  .g365-league-shell {
-    padding-top:
-      max(
-        22px,
-        calc(env(safe-area-inset-top) + 22px)
-      ) !important;
-  }
-
-  .g365-league-header {
-    padding-top:
-      max(
-        26px,
-        calc(env(safe-area-inset-top) + 22px)
-      ) !important;
-
-    padding-bottom: 16px !important;
-  }
-
-  .g365-league-nav,
-  .g365-season-long-nav,
-  .g365-pickem-nav,
-  .g365-universal-league-nav {
-    margin-top: 16px !important;
-  }
-
-  .g365-league-nav-link,
-  .g365-universal-league-nav-link,
-  .g365-season-long-nav a,
-  .g365-pickem-nav a {
-    min-height: 54px !important;
+      );
   }
 }
