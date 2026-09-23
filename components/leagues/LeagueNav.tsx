@@ -1,10 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import {
+  usePathname,
+  useRouter,
+} from "next/navigation";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import {
+  createSupabaseBrowserClient,
+} from "@/lib/supabase/browser";
 
 import {
   getLeagueCapabilities,
@@ -17,9 +26,19 @@ import {
   type LeagueNavItem,
 } from "@/lib/leagues/leagueRoutes";
 
+
 type Props = {
   leagueId: string;
-  leagueName: string;
+
+  /*
+   * Optional for compatibility with the older
+   * league-specific navigation wrappers.
+   *
+   * The shared league layout passes the real
+   * league name.
+   */
+  leagueName?: string;
+
   leagueSeason?: number | null;
   leagueType: G365LeagueType;
   isCommissioner?: boolean;
@@ -28,6 +47,7 @@ type Props = {
   ariaLabel?: string;
 };
 
+
 type LeagueChoice = {
   id: string;
   name: string;
@@ -35,36 +55,63 @@ type LeagueChoice = {
   season: number | null;
 };
 
-function itemIsActive(pathname: string, item: LeagueNavItem) {
+
+function itemIsActive(
+  pathname: string,
+  item: LeagueNavItem
+) {
   if (item.exact) {
     return pathname === item.href;
   }
 
-  return pathname === item.href || pathname.startsWith(`${item.href}/`);
+  return (
+    pathname === item.href ||
+    pathname.startsWith(
+      `${item.href}/`
+    )
+  );
 }
 
-function leagueTypeLabel(leagueType: G365LeagueType) {
+
+function leagueTypeLabel(
+  leagueType: G365LeagueType
+) {
   switch (leagueType) {
     case "traditional":
       return "NFL Traditional";
+
     case "season_long":
       return "NFL Season-Long";
+
     case "nfl_playoffs":
       return "NFL Playoffs";
+
     case "pickem":
       return "G365 Pick'em";
+
     case "nhl_traditional":
       return "NHL Traditional";
+
     case "greyhound":
       return "Greyhound Racing";
+
     default:
       return "G365 League";
   }
 }
 
+
 export default function LeagueNav({
   leagueId,
-  leagueName,
+
+  /*
+   * Legacy wrapper components do not currently
+   * pass leagueName. The shared league layout
+   * does, so normal league pages still show the
+   * actual league name.
+   */
+  leagueName = "League",
+
   leagueSeason = null,
   leagueType,
   isCommissioner = false,
@@ -72,193 +119,483 @@ export default function LeagueNav({
   playoffsEnabled = false,
   ariaLabel = "League navigation",
 }: Props) {
-  const pathname = usePathname();
-  const router = useRouter();
+  const pathname =
+    usePathname();
 
-  const [rankingsLocked, setRankingsLocked] = useState(false);
-  const [leagueChoices, setLeagueChoices] = useState<LeagueChoice[]>([]);
-  const [leagueChoicesLoading, setLeagueChoicesLoading] = useState(true);
+  const router =
+    useRouter();
 
+
+  const [
+    rankingsLocked,
+    setRankingsLocked,
+  ] =
+    useState(false);
+
+
+  const [
+    leagueChoices,
+    setLeagueChoices,
+  ] =
+    useState<LeagueChoice[]>(
+      []
+    );
+
+
+  const [
+    leagueChoicesLoading,
+    setLeagueChoicesLoading,
+  ] =
+    useState(true);
+
+
+  /*
+   * ============================================================
+   * NHL RANKINGS AVAILABILITY
+   * ============================================================
+   *
+   * Rankings remain disabled after the current
+   * NHL Traditional draft has completed.
+   */
   useEffect(() => {
-    if (leagueType !== "nhl_traditional") {
-      setRankingsLocked(false);
+    if (
+      leagueType !==
+      "nhl_traditional"
+    ) {
+      setRankingsLocked(
+        false
+      );
+
       return;
     }
 
-    let cancelled = false;
-    const supabase = createSupabaseBrowserClient();
+
+    let cancelled =
+      false;
+
+
+    const supabase =
+      createSupabaseBrowserClient();
+
 
     async function loadRankingsAvailability() {
-      const { data, error } = await supabase.rpc(
-        "get_nhl_traditional_draft_state",
-        {
-          p_league_id: leagueId,
-        }
-      );
+      const {
+        data,
+        error,
+      } =
+        await supabase.rpc(
+          "get_nhl_traditional_draft_state",
+          {
+            p_league_id:
+              leagueId,
+          }
+        );
 
-      if (cancelled || error) {
+
+      if (
+        cancelled ||
+        error
+      ) {
         return;
       }
 
+
       const state =
-        data && typeof data === "object"
-          ? (data as Record<string, unknown>)
+        data &&
+        typeof data ===
+          "object"
+          ? (
+              data as Record<
+                string,
+                unknown
+              >
+            )
           : null;
 
-      const draftExists = state?.exists === true;
-      const draftStatus = String(state?.status ?? "")
-        .trim()
-        .toLowerCase();
 
-      setRankingsLocked(draftExists && draftStatus === "completed");
+      const draftExists =
+        state?.exists === true;
+
+
+      const draftStatus =
+        String(
+          state?.status ?? ""
+        )
+          .trim()
+          .toLowerCase();
+
+
+      setRankingsLocked(
+        draftExists &&
+        draftStatus ===
+          "completed"
+      );
     }
+
 
     void loadRankingsAvailability();
 
-    const timer = window.setInterval(() => {
-      void loadRankingsAvailability();
-    }, 15000);
+
+    const timer =
+      window.setInterval(
+        () => {
+          void loadRankingsAvailability();
+        },
+        15000
+      );
+
 
     return () => {
-      cancelled = true;
-      window.clearInterval(timer);
+      cancelled =
+        true;
+
+      window.clearInterval(
+        timer
+      );
     };
-  }, [leagueId, leagueType]);
+  }, [
+    leagueId,
+    leagueType,
+  ]);
+
 
   /*
-   * Mobile league switcher.
+   * ============================================================
+   * MOBILE LEAGUE SWITCHER
+   * ============================================================
    *
-   * The leagues SELECT is intentionally performed with the signed-in browser
-   * client. Existing league RLS remains the authority for which leagues this
-   * member may see; the navigation does not create a second membership system.
+   * Uses the signed-in browser client.
+   *
+   * Existing Supabase RLS remains responsible
+   * for determining which leagues the member
+   * can see.
    */
   useEffect(() => {
-    let cancelled = false;
-    const supabase = createSupabaseBrowserClient();
+    let cancelled =
+      false;
+
+
+    const supabase =
+      createSupabaseBrowserClient();
+
 
     async function loadLeagueChoices() {
-      setLeagueChoicesLoading(true);
+      setLeagueChoicesLoading(
+        true
+      );
 
-      const { data, error } = await supabase
-        .from("leagues")
-        .select("id,name,league_type,season")
-        .order("name", { ascending: true });
 
-      if (cancelled) {
+      const {
+        data,
+        error,
+      } =
+        await supabase
+          .from(
+            "leagues"
+          )
+          .select(
+            "id,name,league_type,season"
+          )
+          .order(
+            "name",
+            {
+              ascending: true,
+            }
+          );
+
+
+      if (
+        cancelled
+      ) {
         return;
       }
 
-      if (error) {
-        // Keep the current league available even if the optional switcher
-        // query is blocked by an unexpected RLS/configuration issue.
+
+      /*
+       * If the optional league-switcher query
+       * is blocked for any reason, preserve
+       * the current league so navigation still
+       * works normally.
+       */
+      if (
+        error
+      ) {
         setLeagueChoices([
           {
             id: leagueId,
             name: leagueName,
-            league_type: leagueType,
-            season: leagueSeason,
+            league_type:
+              leagueType,
+            season:
+              leagueSeason,
           },
         ]);
-        setLeagueChoicesLoading(false);
+
+
+        setLeagueChoicesLoading(
+          false
+        );
+
+
         return;
       }
 
-      const rows = (data ?? [])
-        .map((row) => ({
-          id: String(row.id),
-          name: String(row.name ?? "League"),
-          league_type: String(row.league_type ?? "") as G365LeagueType,
-          season:
-            typeof row.season === "number"
-              ? row.season
-              : row.season != null
-                ? Number(row.season)
-                : null,
-        }))
-        .filter((row) => Boolean(row.id));
 
-      if (!rows.some((row) => row.id === leagueId)) {
+      const rows:
+        LeagueChoice[] =
+          (
+            data ?? []
+          )
+            .map(
+              (
+                row
+              ): LeagueChoice => ({
+                id:
+                  String(
+                    row.id
+                  ),
+
+                name:
+                  String(
+                    row.name ??
+                      "League"
+                  ),
+
+                league_type:
+                  String(
+                    row.league_type ??
+                      ""
+                  ) as G365LeagueType,
+
+                season:
+                  typeof row.season ===
+                  "number"
+                    ? row.season
+                    : row.season !=
+                        null
+                      ? Number(
+                          row.season
+                        )
+                      : null,
+              })
+            )
+            .filter(
+              (
+                row
+              ) =>
+                Boolean(
+                  row.id
+                )
+            );
+
+
+      /*
+       * Always guarantee that the league the
+       * member is currently viewing exists in
+       * the selector.
+       */
+      if (
+        !rows.some(
+          (
+            row
+          ) =>
+            row.id ===
+            leagueId
+        )
+      ) {
         rows.unshift({
           id: leagueId,
           name: leagueName,
-          league_type: leagueType,
-          season: leagueSeason,
+          league_type:
+            leagueType,
+          season:
+            leagueSeason,
         });
       }
 
-      setLeagueChoices(rows);
-      setLeagueChoicesLoading(false);
+
+      setLeagueChoices(
+        rows
+      );
+
+
+      setLeagueChoicesLoading(
+        false
+      );
     }
+
 
     void loadLeagueChoices();
 
+
     return () => {
-      cancelled = true;
+      cancelled =
+        true;
     };
-  }, [leagueId, leagueName, leagueSeason, leagueType]);
-
-  const capabilities = getLeagueCapabilities({
-    leagueType,
-    competitionFormat,
-    playoffsEnabled,
-    isCommissioner,
-  });
-
-  const items = getLeagueNavItems({
+  }, [
     leagueId,
+    leagueName,
+    leagueSeason,
     leagueType,
-    competitionFormat,
-    playoffsEnabled,
-    isCommissioner,
-  }).filter((item) => capabilities[item.key]);
+  ]);
 
-  const activeItem = useMemo(
-    () => items.find((item) => itemIsActive(pathname, item)) ?? items[0] ?? null,
-    [items, pathname]
-  );
 
-  function itemIsDisabled(item: LeagueNavItem) {
+  /*
+   * ============================================================
+   * LEAGUE CAPABILITIES + ROUTES
+   * ============================================================
+   */
+  const capabilities =
+    getLeagueCapabilities({
+      leagueType,
+      competitionFormat,
+      playoffsEnabled,
+      isCommissioner,
+    });
+
+
+  const items =
+    getLeagueNavItems({
+      leagueId,
+      leagueType,
+      competitionFormat,
+      playoffsEnabled,
+      isCommissioner,
+    }).filter(
+      (
+        item
+      ) =>
+        capabilities[
+          item.key
+        ]
+    );
+
+
+  const activeItem =
+    useMemo(
+      () =>
+        items.find(
+          (
+            item
+          ) =>
+            itemIsActive(
+              pathname,
+              item
+            )
+        ) ??
+        items[0] ??
+        null,
+      [
+        items,
+        pathname,
+      ]
+    );
+
+
+  function itemIsDisabled(
+    item: LeagueNavItem
+  ) {
     return (
-      leagueType === "nhl_traditional" &&
-      item.key === "rankings" &&
+      leagueType ===
+        "nhl_traditional" &&
+      item.key ===
+        "rankings" &&
       rankingsLocked
     );
   }
 
-  function handleLeagueChange(value: string) {
-    if (!value || value === leagueId) {
+
+  /*
+   * ============================================================
+   * MOBILE NAVIGATION
+   * ============================================================
+   */
+  function handleLeagueChange(
+    value: string
+  ) {
+    if (
+      !value ||
+      value === leagueId
+    ) {
       return;
     }
 
-    // Every league switch starts at that league's shared League Home.
-    router.push(`/league/${value}`);
+
+    /*
+     * Switching leagues always returns the
+     * member to the selected league's shared
+     * League Home.
+     */
+    router.push(
+      `/league/${value}`
+    );
   }
 
-  function handlePageChange(value: string) {
-    if (!value || value === pathname) {
+
+  function handlePageChange(
+    value: string
+  ) {
+    if (
+      !value ||
+      value === pathname
+    ) {
       return;
     }
 
-    const target = items.find((item) => item.href === value);
-    if (!target || itemIsDisabled(target)) {
+
+    const target =
+      items.find(
+        (
+          item
+        ) =>
+          item.href ===
+          value
+      );
+
+
+    if (
+      !target ||
+      itemIsDisabled(
+        target
+      )
+    ) {
       return;
     }
 
-    router.push(value);
+
+    router.push(
+      value
+    );
   }
+
 
   return (
-    <nav aria-label={ariaLabel} className="g365-universal-league-nav">
+    <nav
+      aria-label={
+        ariaLabel
+      }
+      className="g365-universal-league-nav"
+    >
       <style>{`
         .g365-universal-league-nav,
         .g365-universal-league-nav * {
           box-sizing: border-box;
         }
 
+
+        /*
+         * ======================================================
+         * SHARED NAV SHELL
+         * ======================================================
+         */
         .g365-universal-league-nav {
           width: 100%;
-          border-top: 1px solid rgba(255,255,255,.06);
-          border-bottom: 1px solid rgba(255,255,255,.08);
+          border-top:
+            1px solid
+            rgba(255,255,255,.06);
+          border-bottom:
+            1px solid
+            rgba(255,255,255,.08);
           background:
             linear-gradient(
               180deg,
@@ -267,38 +604,103 @@ export default function LeagueNav({
             );
         }
 
+
+        /*
+         * ======================================================
+         * DESKTOP NAVIGATION
+         * ======================================================
+         */
         .g365-universal-league-nav-inner {
-          width: min(1420px,100%);
-          margin: 0 auto;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          padding: 0 18px;
-          overflow-x: auto;
-          overflow-y: hidden;
-          -webkit-overflow-scrolling: touch;
-          overscroll-behavior-x: contain;
-          scrollbar-width: thin;
+          width:
+            min(
+              1420px,
+              100%
+            );
+          margin:
+            0 auto;
+
+          display:
+            flex;
+
+          align-items:
+            center;
+
+          gap:
+            4px;
+
+          padding:
+            0 18px;
+
+          overflow-x:
+            auto;
+
+          overflow-y:
+            hidden;
+
+          -webkit-overflow-scrolling:
+            touch;
+
+          overscroll-behavior-x:
+            contain;
+
+          scrollbar-width:
+            thin;
         }
 
+
         .g365-universal-league-nav-link {
-          position: relative;
-          flex: 0 0 auto;
-          min-height: 48px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          padding: 0 15px;
-          border: 0;
-          border-bottom: 2px solid transparent;
-          color: #b4b7bd;
-          background: transparent;
-          text-decoration: none;
-          font-size: 11px;
-          font-weight: 900;
-          letter-spacing: .045em;
-          text-transform: uppercase;
-          white-space: nowrap;
+          position:
+            relative;
+
+          flex:
+            0 0 auto;
+
+          min-height:
+            48px;
+
+          display:
+            inline-flex;
+
+          align-items:
+            center;
+
+          justify-content:
+            center;
+
+          padding:
+            0 15px;
+
+          border:
+            0;
+
+          border-bottom:
+            2px solid
+            transparent;
+
+          color:
+            #b4b7bd;
+
+          background:
+            transparent;
+
+          text-decoration:
+            none;
+
+          font-size:
+            11px;
+
+          font-weight:
+            900;
+
+          letter-spacing:
+            .045em;
+
+          text-transform:
+            uppercase;
+
+          white-space:
+            nowrap;
+
           transition:
             color .15s ease,
             background .15s ease,
@@ -306,289 +708,786 @@ export default function LeagueNav({
             opacity .15s ease;
         }
 
-        .g365-universal-league-nav-link:hover {
-          color: #fff;
-          background: rgba(255,255,255,.035);
-        }
 
-        .g365-universal-league-nav-link-active {
-          color: #fff;
-          border-bottom-color: #ff6427;
+        .g365-universal-league-nav-link:hover {
+          color:
+            #fff;
+
           background:
-            linear-gradient(
-              180deg,
-              rgba(160,20,20,.14),
-              rgba(255,95,31,.08)
+            rgba(
+              255,
+              255,
+              255,
+              .035
             );
         }
 
+
+        .g365-universal-league-nav-link-active {
+          color:
+            #fff;
+
+          border-bottom-color:
+            #ff6427;
+
+          background:
+            linear-gradient(
+              180deg,
+              rgba(
+                160,
+                20,
+                20,
+                .14
+              ),
+              rgba(
+                255,
+                95,
+                31,
+                .08
+              )
+            );
+        }
+
+
+        /*
+         * NHL Rankings are disabled after
+         * the current draft has completed.
+         */
         .g365-universal-league-nav-link-disabled,
         .g365-universal-league-nav-link-disabled:hover {
-          color: #555a63;
-          background: rgba(255,255,255,.012);
-          border-bottom-color: transparent;
-          cursor: not-allowed;
-          opacity: .52;
-          filter: grayscale(1);
+          color:
+            #555a63;
+
+          background:
+            rgba(
+              255,
+              255,
+              255,
+              .012
+            );
+
+          border-bottom-color:
+            transparent;
+
+          cursor:
+            not-allowed;
+
+          opacity:
+            .52;
+
+          filter:
+            grayscale(1);
         }
 
+
+        /*
+         * Mobile UI is hidden on desktop.
+         */
         .g365-universal-league-nav-mobile {
-          display: none;
+          display:
+            none;
         }
 
-        @media (max-width: 760px) {
+
+        /*
+         * ======================================================
+         * MOBILE NAVIGATION
+         * ======================================================
+         */
+        @media (
+          max-width:
+            760px
+        ) {
           .g365-universal-league-nav {
-            border-top: 0;
+            border-top:
+              0;
+
             background:
               linear-gradient(
                 180deg,
-                rgba(18,18,20,.99),
-                rgba(7,7,9,.99)
+                rgba(
+                  18,
+                  18,
+                  20,
+                  .99
+                ),
+                rgba(
+                  7,
+                  7,
+                  9,
+                  .99
+                )
               );
           }
 
+
+          /*
+           * Hide the desktop tab strip.
+           */
           .g365-universal-league-nav-inner {
-            display: none;
+            display:
+              none;
           }
 
+
+          /*
+           * Show the compact mobile
+           * navigation controls.
+           */
           .g365-universal-league-nav-mobile {
-            width: 100%;
-            display: grid;
-            gap: 10px;
-            padding: 12px;
+            width:
+              100%;
+
+            display:
+              grid;
+
+            gap:
+              10px;
+
+            padding:
+              12px;
           }
 
+
+          /*
+           * Current league identity.
+           */
           .g365-mobile-league-context {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 10px;
-            padding: 0 2px;
+            display:
+              flex;
+
+            align-items:
+              flex-start;
+
+            justify-content:
+              space-between;
+
+            gap:
+              10px;
+
+            padding:
+              0 2px;
           }
+
 
           .g365-mobile-league-context-copy {
-            min-width: 0;
+            min-width:
+              0;
           }
+
 
           .g365-mobile-league-kicker {
-            margin: 0 0 3px;
-            color: #ff6b24;
-            font-size: 9px;
-            font-weight: 950;
-            letter-spacing: .12em;
-            text-transform: uppercase;
+            margin:
+              0 0 3px;
+
+            color:
+              #ff6b24;
+
+            font-size:
+              9px;
+
+            font-weight:
+              950;
+
+            letter-spacing:
+              .12em;
+
+            text-transform:
+              uppercase;
           }
+
 
           .g365-mobile-league-name {
-            margin: 0;
-            overflow: hidden;
-            color: #fff;
-            font-size: 16px;
-            font-weight: 950;
-            line-height: 1.15;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            margin:
+              0;
+
+            overflow:
+              hidden;
+
+            color:
+              #fff;
+
+            font-size:
+              16px;
+
+            font-weight:
+              950;
+
+            line-height:
+              1.15;
+
+            text-overflow:
+              ellipsis;
+
+            white-space:
+              nowrap;
           }
+
 
           .g365-mobile-league-meta {
-            margin-top: 4px;
-            color: #8f96a1;
-            font-size: 10px;
-            font-weight: 800;
+            margin-top:
+              4px;
+
+            color:
+              #8f96a1;
+
+            font-size:
+              10px;
+
+            font-weight:
+              800;
           }
 
+
+          /*
+           * Back to the master league list.
+           */
           .g365-mobile-my-leagues {
-            flex: 0 0 auto;
-            min-height: 34px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 10px;
-            border: 1px solid rgba(255,102,31,.42);
-            border-radius: 8px;
-            color: #ff9a55;
-            background: rgba(255,91,26,.06);
-            text-decoration: none;
-            font-size: 9px;
-            font-weight: 950;
-            letter-spacing: .04em;
-            text-transform: uppercase;
+            flex:
+              0 0 auto;
+
+            min-height:
+              34px;
+
+            display:
+              inline-flex;
+
+            align-items:
+              center;
+
+            justify-content:
+              center;
+
+            padding:
+              0 10px;
+
+            border:
+              1px solid
+              rgba(
+                255,
+                102,
+                31,
+                .42
+              );
+
+            border-radius:
+              8px;
+
+            color:
+              #ff9a55;
+
+            background:
+              rgba(
+                255,
+                91,
+                26,
+                .06
+              );
+
+            text-decoration:
+              none;
+
+            font-size:
+              9px;
+
+            font-weight:
+              950;
+
+            letter-spacing:
+              .04em;
+
+            text-transform:
+              uppercase;
           }
 
+
+          /*
+           * League and page selectors.
+           */
           .g365-mobile-nav-grid {
-            display: grid;
-            grid-template-columns: minmax(0,1fr) minmax(0,1fr);
-            gap: 8px;
+            display:
+              grid;
+
+            grid-template-columns:
+              minmax(
+                0,
+                1fr
+              )
+              minmax(
+                0,
+                1fr
+              );
+
+            gap:
+              8px;
           }
+
 
           .g365-mobile-nav-field {
-            min-width: 0;
-            display: grid;
-            gap: 5px;
+            min-width:
+              0;
+
+            display:
+              grid;
+
+            gap:
+              5px;
           }
+
 
           .g365-mobile-nav-field label {
-            color: #8e949e;
-            font-size: 8px;
-            font-weight: 950;
-            letter-spacing: .1em;
-            text-transform: uppercase;
+            color:
+              #8e949e;
+
+            font-size:
+              8px;
+
+            font-weight:
+              950;
+
+            letter-spacing:
+              .1em;
+
+            text-transform:
+              uppercase;
           }
+
 
           .g365-mobile-nav-field select {
-            width: 100%;
-            min-width: 0;
-            min-height: 46px;
-            padding: 0 34px 0 11px;
-            border: 1px solid rgba(255,255,255,.12);
-            border-radius: 10px;
-            outline: none;
-            color: #fff;
-            background: #111318;
-            font-size: 12px;
-            font-weight: 850;
+            width:
+              100%;
+
+            min-width:
+              0;
+
+            min-height:
+              46px;
+
+            padding:
+              0 34px
+              0 11px;
+
+            border:
+              1px solid
+              rgba(
+                255,
+                255,
+                255,
+                .12
+              );
+
+            border-radius:
+              10px;
+
+            outline:
+              none;
+
+            color:
+              #fff;
+
+            background:
+              #111318;
+
+            font-size:
+              12px;
+
+            font-weight:
+              850;
           }
+
 
           .g365-mobile-nav-field select:focus {
-            border-color: rgba(255,98,35,.85);
-            box-shadow: 0 0 0 2px rgba(255,98,35,.12);
+            border-color:
+              rgba(
+                255,
+                98,
+                35,
+                .85
+              );
+
+            box-shadow:
+              0 0 0 2px
+              rgba(
+                255,
+                98,
+                35,
+                .12
+              );
           }
+
 
           .g365-mobile-nav-field select option {
-            color: #fff;
-            background: #111318;
+            color:
+              #fff;
+
+            background:
+              #111318;
           }
 
+
+          /*
+           * Current page indicator.
+           */
           .g365-mobile-current-page {
-            min-height: 30px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 0 2px;
-            color: #747b86;
-            font-size: 9px;
-            font-weight: 800;
+            min-height:
+              30px;
+
+            display:
+              flex;
+
+            align-items:
+              center;
+
+            gap:
+              6px;
+
+            padding:
+              0 2px;
+
+            color:
+              #747b86;
+
+            font-size:
+              9px;
+
+            font-weight:
+              800;
           }
+
 
           .g365-mobile-current-page strong {
-            color: #d7d9de;
+            color:
+              #d7d9de;
           }
         }
 
-        @media (max-width: 470px) {
+
+        /*
+         * On narrow phones stack the two
+         * selectors so neither becomes cramped.
+         */
+        @media (
+          max-width:
+            470px
+        ) {
           .g365-mobile-nav-grid {
-            grid-template-columns: 1fr;
+            grid-template-columns:
+              1fr;
           }
 
+
           .g365-mobile-league-name {
-            font-size: 15px;
+            font-size:
+              15px;
           }
         }
       `}</style>
 
-      {/* Desktop keeps the existing navigation exactly as a tab row. */}
-      <div className="g365-universal-league-nav-inner">
-        {items.map((item) => {
-          const active = itemIsActive(pathname, item);
-          const disabled = itemIsDisabled(item);
 
-          if (disabled) {
+      {/*
+       * ========================================================
+       * DESKTOP
+       * ========================================================
+       *
+       * Existing desktop tab navigation stays intact.
+       */}
+      <div
+        className="g365-universal-league-nav-inner"
+      >
+        {items.map(
+          (
+            item
+          ) => {
+            const active =
+              itemIsActive(
+                pathname,
+                item
+              );
+
+
+            const disabled =
+              itemIsDisabled(
+                item
+              );
+
+
+            if (
+              disabled
+            ) {
+              return (
+                <span
+                  key={
+                    item.href
+                  }
+                  aria-disabled="true"
+                  title="Rankings reopen when the next draft is created."
+                  className={[
+                    "g365-universal-league-nav-link",
+                    "g365-universal-league-nav-link-disabled",
+                  ].join(
+                    " "
+                  )}
+                >
+                  {
+                    item.label
+                  }
+                </span>
+              );
+            }
+
+
             return (
-              <span
-                key={item.href}
-                aria-disabled="true"
-                title="Rankings reopen when the next draft is created."
+              <Link
+                key={
+                  item.href
+                }
+                href={
+                  item.href
+                }
+                aria-current={
+                  active
+                    ? "page"
+                    : undefined
+                }
                 className={[
                   "g365-universal-league-nav-link",
-                  "g365-universal-league-nav-link-disabled",
-                ].join(" ")}
+                  active
+                    ? "g365-universal-league-nav-link-active"
+                    : "",
+                ]
+                  .filter(
+                    Boolean
+                  )
+                  .join(
+                    " "
+                  )}
               >
-                {item.label}
-              </span>
+                {
+                  item.label
+                }
+              </Link>
             );
           }
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={active ? "page" : undefined}
-              className={[
-                "g365-universal-league-nav-link",
-                active ? "g365-universal-league-nav-link-active" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
+        )}
       </div>
 
-      {/* Phone navigation: switch league first, then choose a page in it. */}
-      <div className="g365-universal-league-nav-mobile">
-        <div className="g365-mobile-league-context">
-          <div className="g365-mobile-league-context-copy">
-            <p className="g365-mobile-league-kicker">Current League</p>
-            <p className="g365-mobile-league-name">{leagueName}</p>
-            <div className="g365-mobile-league-meta">
-              {leagueSeason ? `${leagueSeason} • ` : ""}
-              {leagueTypeLabel(leagueType)}
+
+      {/*
+       * ========================================================
+       * MOBILE
+       * ========================================================
+       *
+       * Mobile navigation is intentionally reduced to:
+       *
+       * 1. Current league identity
+       * 2. Switch League
+       * 3. Navigate To
+       *
+       * This prevents the horizontal league navigation from
+       * consuming the phone screen.
+       */}
+      <div
+        className="g365-universal-league-nav-mobile"
+      >
+        <div
+          className="g365-mobile-league-context"
+        >
+          <div
+            className="g365-mobile-league-context-copy"
+          >
+            <p
+              className="g365-mobile-league-kicker"
+            >
+              Current League
+            </p>
+
+
+            <p
+              className="g365-mobile-league-name"
+            >
+              {
+                leagueName
+              }
+            </p>
+
+
+            <div
+              className="g365-mobile-league-meta"
+            >
+              {leagueSeason
+                ? `${leagueSeason} • `
+                : ""}
+
+              {
+                leagueTypeLabel(
+                  leagueType
+                )
+              }
             </div>
           </div>
 
-          <Link href="/my-leagues" className="g365-mobile-my-leagues">
+
+          <Link
+            href="/my-leagues"
+            className="g365-mobile-my-leagues"
+          >
             My Leagues
           </Link>
         </div>
 
-        <div className="g365-mobile-nav-grid">
-          <div className="g365-mobile-nav-field">
-            <label htmlFor={`g365-league-switcher-${leagueId}`}>
+
+        <div
+          className="g365-mobile-nav-grid"
+        >
+          {/*
+           * ====================================================
+           * LEAGUE SELECTOR
+           * ====================================================
+           */}
+          <div
+            className="g365-mobile-nav-field"
+          >
+            <label
+              htmlFor={
+                `g365-league-switcher-${leagueId}`
+              }
+            >
               Switch League
             </label>
+
+
             <select
-              id={`g365-league-switcher-${leagueId}`}
-              value={leagueId}
-              disabled={leagueChoicesLoading}
-              onChange={(event) => handleLeagueChange(event.target.value)}
+              id={
+                `g365-league-switcher-${leagueId}`
+              }
+              value={
+                leagueId
+              }
+              disabled={
+                leagueChoicesLoading
+              }
+              onChange={
+                (
+                  event
+                ) =>
+                  handleLeagueChange(
+                    event.target
+                      .value
+                  )
+              }
             >
-              {leagueChoices.map((choice) => (
-                <option key={choice.id} value={choice.id}>
-                  {choice.name}
-                  {choice.season ? ` • ${choice.season}` : ""}
-                </option>
-              ))}
+              {leagueChoices.map(
+                (
+                  choice
+                ) => (
+                  <option
+                    key={
+                      choice.id
+                    }
+                    value={
+                      choice.id
+                    }
+                  >
+                    {
+                      choice.name
+                    }
+
+                    {choice.season
+                      ? ` • ${choice.season}`
+                      : ""}
+                  </option>
+                )
+              )}
             </select>
           </div>
 
-          <div className="g365-mobile-nav-field">
-            <label htmlFor={`g365-page-switcher-${leagueId}`}>
+
+          {/*
+           * ====================================================
+           * PAGE SELECTOR
+           * ====================================================
+           */}
+          <div
+            className="g365-mobile-nav-field"
+          >
+            <label
+              htmlFor={
+                `g365-page-switcher-${leagueId}`
+              }
+            >
               Navigate To
             </label>
+
+
             <select
-              id={`g365-page-switcher-${leagueId}`}
-              value={activeItem?.href ?? ""}
-              onChange={(event) => handlePageChange(event.target.value)}
+              id={
+                `g365-page-switcher-${leagueId}`
+              }
+              value={
+                activeItem
+                  ?.href ??
+                ""
+              }
+              onChange={
+                (
+                  event
+                ) =>
+                  handlePageChange(
+                    event.target
+                      .value
+                  )
+              }
             >
-              {items.map((item) => (
-                <option
-                  key={item.href}
-                  value={item.href}
-                  disabled={itemIsDisabled(item)}
-                >
-                  {item.label}
-                  {itemIsDisabled(item) ? " • Locked" : ""}
-                </option>
-              ))}
+              {items.map(
+                (
+                  item
+                ) => {
+                  const disabled =
+                    itemIsDisabled(
+                      item
+                    );
+
+
+                  return (
+                    <option
+                      key={
+                        item.href
+                      }
+                      value={
+                        item.href
+                      }
+                      disabled={
+                        disabled
+                      }
+                    >
+                      {
+                        item.label
+                      }
+
+                      {disabled
+                        ? " • Locked"
+                        : ""}
+                    </option>
+                  );
+                }
+              )}
             </select>
           </div>
         </div>
 
-        <div className="g365-mobile-current-page">
+
+        <div
+          className="g365-mobile-current-page"
+        >
           Page:
-          <strong>{activeItem?.label ?? "League Home"}</strong>
+
+          <strong>
+            {
+              activeItem
+                ?.label ??
+              "League Home"
+            }
+          </strong>
         </div>
       </div>
     </nav>
