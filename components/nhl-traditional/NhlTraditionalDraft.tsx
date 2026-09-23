@@ -1849,6 +1849,12 @@ export default function NhlTraditionalDraft({
             min-width: 0 !important;
           }
           .g365-nhl-draft-page { overflow-x: hidden !important; }
+
+          /* Mobile order: Draft History -> Rosters -> Draft workspace. */
+          .g365-nhl-draft-left { order: 1 !important; }
+          .g365-nhl-draft-right { order: 2 !important; }
+          .g365-nhl-draft-room > section { order: 3 !important; }
+
           .g365-nhl-draft-room > *,
           .g365-nhl-draft-left > *,
           .g365-nhl-draft-right > * {
