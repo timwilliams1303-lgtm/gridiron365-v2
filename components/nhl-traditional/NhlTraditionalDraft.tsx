@@ -1826,8 +1826,9 @@ export default function NhlTraditionalDraft({
   }
 
   return (
-    <main style={styles.page}>
+    <main className="g365-nhl-draft-page" style={styles.page}>
       <style>{`
+        .g365-draft-mobile-tab-select, .g365-trade-mobile-tab-select { display:none; }
         @media (max-width: 1050px) {
           .g365-nhl-draft-room { grid-template-columns: 1fr !important; }
           .g365-nhl-draft-left, .g365-nhl-draft-right { display: block !important; }
@@ -1852,16 +1853,39 @@ export default function NhlTraditionalDraft({
           .g365-nhl-trade-layout { grid-template-columns: 1fr !important; }
           .g365-nhl-player-head { grid-template-columns: 30px minmax(0,1fr) 36px 58px 54px 54px !important; gap: 4px !important; padding-left: 5px !important; padding-right: 5px !important; }
           .g365-nhl-player-row { grid-template-columns: 30px minmax(0,1fr) 36px 58px 54px 54px !important; gap: 4px !important; padding-left: 5px !important; padding-right: 5px !important; }
-          .g365-nhl-player-head span:nth-child(4),
-          .g365-nhl-player-row > div:nth-child(4) { display: none !important; }
+          .g365-nhl-player-head { display:none !important; }
+          .g365-nhl-player-row {
+            grid-template-columns:42px minmax(0,1fr) auto !important;
+            grid-template-areas:"rank player fp" "rank actions actions" !important;
+            gap:8px 10px !important; padding:12px 10px !important; align-items:center !important;
+          }
+          .g365-player-rank { grid-area:rank; }
+          .g365-player-identity { grid-area:player; }
+          .g365-player-pos, .g365-player-team { display:none !important; }
+          .g365-player-fp { grid-area:fp; font-size:15px !important; }
+          .g365-player-queue { grid-area:actions; justify-self:start; min-height:44px !important; min-width:92px; }
+          .g365-player-draft { grid-area:actions; justify-self:end; min-height:44px !important; min-width:82px; }
+          .g365-player-name { white-space:normal !important; overflow:visible !important; text-overflow:clip !important; font-size:14px !important; line-height:1.15; }
+          .g365-draft-desktop-tabs { display:none !important; }
+          .g365-draft-mobile-tab-select { display:block !important; width:100%; min-height:48px; margin:0 0 10px; padding:0 12px; border:1px solid #3a3a40; border-radius:10px; background:#121214; color:#fff; font-size:16px; font-weight:900; }
+          .g365-trade-desktop-tabs { display:none !important; }
+          .g365-trade-mobile-tab-select { display:block !important; width:100%; min-height:48px; margin-bottom:10px; padding:0 12px; border:1px solid #4b2a1f; border-radius:10px; background:#151113; color:#fff; font-size:16px; font-weight:900; }
+          .g365-nhl-trade-layout { min-height:0 !important; }
+          .g365-draft-workspace { overflow:visible !important; }
+          .g365-draft-topbar { padding:18px 16px !important; }
+          .g365-draft-title { font-size:34px !important; }
+        }
+        @media (max-width: 430px) {
+          .g365-nhl-player-row { grid-template-columns:38px minmax(0,1fr) auto !important; padding:11px 8px !important; }
+          .g365-draft-title { font-size:30px !important; }
         }
       `}</style>
       <div style={styles.container}>
-        <section style={styles.topBar}>
+        <section className="g365-draft-topbar" style={styles.topBar}>
           <div style={styles.brandBlock}>
             <div style={styles.eyebrow}>GRIDIRON365 • NHL TRADITIONAL</div>
             <div style={styles.draftTitleRow}>
-              <h1 style={styles.title}>Live Draft</h1>
+              <h1 className="g365-draft-title" style={styles.title}>Live Draft</h1>
               <span style={styles.formatPill}>{leagueFormat}</span>
             </div>
             <div style={styles.subtitle}>
@@ -2190,7 +2214,10 @@ export default function NhlTraditionalDraft({
               </aside>
 
               <section style={styles.centerColumn}>
-                <nav style={styles.workspaceTabs} aria-label="NHL draft workspace">
+                <select className="g365-draft-mobile-tab-select" value={activeTab} onChange={(e) => setActiveTab(e.target.value as typeof activeTab)} aria-label="Draft section">
+                  <option value="players">Players</option><option value="queue">Queue</option><option value="rankings">My Rankings</option><option value="board">Draft Board</option><option value="trade">Trade Center</option><option value="summary">Trade Summary</option>
+                </select>
+                <nav className="g365-draft-desktop-tabs" style={styles.workspaceTabs} aria-label="NHL draft workspace">
                   {(
                     [
                       ["players", "Players"],
@@ -2231,7 +2258,7 @@ export default function NhlTraditionalDraft({
                   ))}
                 </nav>
 
-                <section style={styles.workspace}>
+                <section className="g365-draft-workspace" style={styles.workspace}>
                   <div style={styles.cardHead}>
                     <div>
                       <div style={styles.cardTitle}>
@@ -2329,11 +2356,11 @@ export default function NhlTraditionalDraft({
                               className="g365-nhl-player-row"
                               style={styles.playerRow}
                             >
-                              <div style={styles.draftRank}>
+                              <div className="g365-player-rank" style={styles.draftRank}>
                                 {ranking?.overall_rank ?? "—"}
                               </div>
 
-                              <div style={styles.playerIdentity}>
+                              <div className="g365-player-identity" style={styles.playerIdentity}>
                                 {player.headshot_url ? (
                                   <img
                                     src={player.headshot_url}
@@ -2349,6 +2376,7 @@ export default function NhlTraditionalDraft({
                                   <button
                                     type="button"
                                     onClick={() => void openPlayerDetail(player.id)}
+                                    className="g365-player-name"
                                     style={styles.playerNameButton}
                                     title={`View ${playerName(player)} projections and last-season stats`}
                                   >
@@ -2371,21 +2399,22 @@ export default function NhlTraditionalDraft({
                                 </div>
                               </div>
 
-                              <div style={styles.positionBadge}>{pos}</div>
+                              <div className="g365-player-pos" style={styles.positionBadge}>{pos}</div>
 
-                              <div style={styles.teamBadge}>
+                              <div className="g365-player-team" style={styles.teamBadge}>
                                 {player.team_id != null
                                   ? nhlTeamLabel(nhlTeamById.get(player.team_id))
                                   : "FA"}
                               </div>
 
-                              <div style={styles.projectionValue}>
+                              <div className="g365-player-fp" style={styles.projectionValue}>
                                 {ranking?.projected_fantasy_points != null
                                   ? Number(ranking.projected_fantasy_points).toFixed(2)
                                   : "—"}
                               </div>
 
                               <button
+                                className="g365-player-queue"
                                 type="button"
                                 onClick={() => toggleQueue(player.id)}
                                 style={{
@@ -2397,6 +2426,7 @@ export default function NhlTraditionalDraft({
                               </button>
 
                               <button
+                                className="g365-player-draft"
                                 type="button"
                                 disabled={!canMakePick || draftingPlayerId !== null}
                                 onClick={() => void draftPlayer(player)}
@@ -2603,7 +2633,10 @@ export default function NhlTraditionalDraft({
 
                   {activeTab === "trade" ? (
                     <section style={styles.tradePanel}>
-                      <div style={styles.tradeSubtabs}>
+                      <select className="g365-trade-mobile-tab-select" value={tradeSection} onChange={(e) => setTradeSection(e.target.value as typeof tradeSection)} aria-label="Trade Center section">
+                        <option value="teams">Teams / Private Chats</option><option value="pending">Pending Offers</option><option value="block">Trade Block</option>
+                      </select>
+                      <div className="g365-trade-desktop-tabs" style={styles.tradeSubtabs}>
                         {(
                           [
                             ["teams", "Teams / Private Chats"],

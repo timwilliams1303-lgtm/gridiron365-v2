@@ -2144,6 +2144,63 @@ const baseStyles = `
   }
 
   @media (max-width: 760px) {
+    /* Mobile lineup navigation: keep the full week inside the phone viewport. */
+    .g365-nhl-week-tabs-shell {
+      overflow-x: visible;
+      padding-bottom: 0;
+    }
+
+    .g365-nhl-week-tabs {
+      width: 100%;
+      min-width: 0;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      grid-template-rows: auto auto auto;
+      gap: 5px;
+    }
+
+    .g365-nhl-week-tab {
+      min-width: 0;
+      min-height: 48px;
+      padding: 6px 2px;
+      gap: 4px;
+      border-radius: 7px;
+    }
+
+    .g365-nhl-week-tab span {
+      font-size: 7px;
+      letter-spacing: .04em;
+    }
+
+    .g365-nhl-week-tab strong {
+      font-size: 11px;
+    }
+
+    .g365-nhl-week-tab-panel {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      width: 100%;
+      min-width: 0;
+      padding-top: 3px;
+    }
+
+    .g365-nhl-start-weekly-form {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      width: 100%;
+      margin-top: 3px;
+    }
+
+    .g365-nhl-start-weekly-button {
+      min-height: 46px;
+      height: auto;
+      font-size: 9px;
+    }
+
+    .g365-nhl-selected-day-bar {
+      min-width: 0;
+      padding: 8px 10px;
+    }
+
     .g365-nhl-lineup-table-wrap { overflow-x:visible; border:0; background:transparent; }
     .g365-nhl-lineup-table { min-width:0; display:block; }
     .g365-nhl-lineup-table thead { display:none; }
@@ -2261,7 +2318,21 @@ const baseStyles = `
   @media (max-width: 640px) {
     .g365-nhl-team-name-bar {
       padding: 14px;
-      align-items: flex-start;
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .g365-nhl-team-name-copy {
+      width: 100%;
+      text-align: center;
+    }
+
+    .g365-nhl-team-name-editor {
+      width: 100%;
+    }
+
+    .g365-nhl-team-name-editor > summary {
+      width: 100%;
     }
 
     .g365-nhl-team-name-copy h1 {

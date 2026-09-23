@@ -556,7 +556,7 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
   }
 
   return (
-    <main style={styles.page}>
+    <main className="my-rank-page" style={styles.page}>
       <style>{`
         .my-rank-row:hover { background:#17171a; }
         .my-rank-name:hover { color:#ff8a3d !important; text-decoration:underline; }
@@ -572,6 +572,7 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
           background:#18181b;
           border:1px solid #34343a;
         }
+        .my-rank-mobile-list { display:none; }
         .my-rank-headshot-fallback {
           display:grid;
           place-items:center;
@@ -602,7 +603,21 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
           .my-rank-fppg { display:none !important; }
           .my-rank-table th, .my-rank-table td { padding:6px 3px !important; }
           .my-rank-player { min-width:0 !important; }
-          .my-rank-headshot { width:26px; height:26px; flex-basis:26px; }
+          .my-rank-headshot { width:42px; height:42px; flex-basis:42px; }
+          .my-rank-table-wrap { display:none !important; }
+          .my-rank-mobile-list { display:grid !important; gap:10px; padding:10px; }
+          .my-rank-mobile-card { border:1px solid #2b2b30; border-radius:12px; background:#101012; padding:12px; display:grid; gap:10px; }
+          .my-rank-mobile-top { display:grid; grid-template-columns:44px minmax(0,1fr) auto; gap:10px; align-items:center; }
+          .my-rank-mobile-rank { color:#ff6500; font-size:22px; font-weight:950; text-align:center; }
+          .my-rank-mobile-name { min-width:0; }
+          .my-rank-mobile-name .my-rank-name { white-space:normal !important; overflow:visible !important; text-overflow:clip !important; font-size:16px !important; line-height:1.15; }
+          .my-rank-mobile-meta { margin-top:4px; color:#8f939c; font-size:11px; font-weight:800; }
+          .my-rank-mobile-fp { color:#ff8a3d; font-size:18px; font-weight:950; text-align:right; white-space:nowrap; }
+          .my-rank-mobile-fp small { display:block; color:#777b84; font-size:8px; letter-spacing:.7px; }
+          .my-rank-mobile-actions { display:grid; grid-template-columns:44px 44px minmax(58px,1fr) 48px; gap:7px; align-items:center; }
+          .my-rank-mobile-actions button, .my-rank-mobile-actions input { min-height:44px !important; height:44px !important; }
+          .my-rank-mobile-actions input { width:100% !important; font-size:16px !important; }
+          .my-rank-table-card-head { align-items:flex-start !important; }
         }
       `}</style>
 
@@ -706,7 +721,7 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
         </section>
 
         <section style={styles.tableCard}>
-          <div style={styles.tableHeader}>
+          <div className="my-rank-table-card-head" style={styles.tableHeader}>
             <div>
               <strong>MY DRAFT BOARD</strong>
               <div style={styles.tableSub}>
@@ -715,6 +730,34 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
               </div>
             </div>
             <span style={styles.g365}>G365 BASELINE</span>
+          </div>
+
+          <div className="my-rank-mobile-list">
+            {shownPlayers.map((player) => {
+              const myRank = myRankById.get(player.nhl_player_id) ?? player.overall_rank;
+              const maxRank = myRankings.length || rankings.length;
+              return (
+                <article key={`mobile-${player.nhl_player_id}`} className="my-rank-mobile-card">
+                  <div className="my-rank-mobile-top">
+                    <div className="my-rank-mobile-rank">#{myRank}</div>
+                    <div className="my-rank-player-wrap">
+                      {player.headshot_url ? <img className="my-rank-headshot" src={player.headshot_url} alt="" loading="lazy" /> : <span className="my-rank-headshot my-rank-headshot-fallback" aria-hidden="true">NHL</span>}
+                      <div className="my-rank-mobile-name">
+                        <button type="button" className="my-rank-name" onClick={() => void openDetail(player.nhl_player_id)} style={styles.playerButton}>{player.display_name}</button>
+                        <div className="my-rank-mobile-meta">{player.team_abbreviation ?? "FA"} • {pos(player)} • G365 #{player.overall_rank} • {positionRank(player, mode)}</div>
+                      </div>
+                    </div>
+                    <div className="my-rank-mobile-fp"><small>PROJ FP</small>{player.projected_fantasy_points.toFixed(2)}</div>
+                  </div>
+                  <div className="my-rank-mobile-actions">
+                    <button type="button" aria-label={`Move ${player.display_name} up`} disabled={working || myRank <= 1} onClick={() => void movePlayer(player.nhl_player_id, myRank - 1)} style={styles.arrowButton}>↑</button>
+                    <button type="button" aria-label={`Move ${player.display_name} down`} disabled={working || myRank >= maxRank} onClick={() => void movePlayer(player.nhl_player_id, myRank + 1)} style={styles.arrowButton}>↓</button>
+                    <input inputMode="numeric" aria-label={`Move ${player.display_name} to rank`} value={moveValues[player.nhl_player_id] ?? ""} onChange={(e) => setMoveValues((current) => ({ ...current, [player.nhl_player_id]: e.target.value.replace(/\D/g, "") }))} placeholder="Move to #" style={styles.rankInput} />
+                    <button type="button" disabled={working || !Number(moveValues[player.nhl_player_id] ?? 0)} onClick={() => void movePlayer(player.nhl_player_id, Number(moveValues[player.nhl_player_id]))} style={styles.goButton}>GO</button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
 
           <div className="my-rank-table-wrap">
