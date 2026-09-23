@@ -833,6 +833,11 @@ export default function LeagueNav({
           /*
            * Show the compact mobile
            * navigation controls.
+           *
+           * Keep the entire mobile league shell below the
+           * phone status bar / Dynamic Island. The 44px
+           * minimum also protects browser/PWA cases where
+           * safe-area-inset-top is reported as zero.
            */
           .g365-universal-league-nav-mobile {
             width:
@@ -844,8 +849,28 @@ export default function LeagueNav({
             gap:
               10px;
 
-            padding:
+            padding-top:
+              max(
+                44px,
+                calc(
+                  env(safe-area-inset-top) + 12px
+                )
+              );
+
+            padding-right:
+              max(
+                12px,
+                env(safe-area-inset-right)
+              );
+
+            padding-bottom:
               12px;
+
+            padding-left:
+              max(
+                12px,
+                env(safe-area-inset-left)
+              );
           }
 
 
@@ -853,17 +878,11 @@ export default function LeagueNav({
            * Current league identity.
            */
           .g365-mobile-league-context {
+            width:
+              100%;
+
             display:
-              flex;
-
-            align-items:
-              flex-start;
-
-            justify-content:
-              space-between;
-
-            gap:
-              10px;
+              block;
 
             padding:
               0 2px;
@@ -936,68 +955,6 @@ export default function LeagueNav({
 
             font-weight:
               800;
-          }
-
-
-          /*
-           * Back to the master league list.
-           */
-          .g365-mobile-my-leagues {
-            flex:
-              0 0 auto;
-
-            min-height:
-              34px;
-
-            display:
-              inline-flex;
-
-            align-items:
-              center;
-
-            justify-content:
-              center;
-
-            padding:
-              0 10px;
-
-            border:
-              1px solid
-              rgba(
-                255,
-                102,
-                31,
-                .42
-              );
-
-            border-radius:
-              8px;
-
-            color:
-              #ff9a55;
-
-            background:
-              rgba(
-                255,
-                91,
-                26,
-                .06
-              );
-
-            text-decoration:
-              none;
-
-            font-size:
-              9px;
-
-            font-weight:
-              950;
-
-            letter-spacing:
-              .04em;
-
-            text-transform:
-              uppercase;
           }
 
 
@@ -1326,13 +1283,6 @@ export default function LeagueNav({
             </div>
           </div>
 
-
-          <Link
-            href="/my-leagues"
-            className="g365-mobile-my-leagues"
-          >
-            My Leagues
-          </Link>
         </div>
 
 
@@ -1388,10 +1338,11 @@ export default function LeagueNav({
                       choice.id
                     }
                   >
-                    {
-                      choice.name
-                    }
-
+                    {leagueTypeLabel(
+                      choice.league_type
+                    )}
+                    {" • "}
+                    {choice.name}
                     {choice.season
                       ? ` • ${choice.season}`
                       : ""}
