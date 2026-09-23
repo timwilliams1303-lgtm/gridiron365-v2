@@ -516,6 +516,78 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
             overflow-x: auto;
             overscroll-behavior-x: contain;
           }
+
+          /* Mobile standings: keep playoff status visible instead of pushing it off-screen. */
+          .g365-main-standings-grid {
+            grid-template-columns:
+              34px minmax(108px, 1fr) 30px 30px 30px 48px minmax(82px, 96px) !important;
+            width: 100% !important;
+            min-width: 0 !important;
+          }
+
+          .g365-main-standings-grid > :nth-child(7),
+          .g365-main-standings-grid > :nth-child(8),
+          .g365-main-standings-grid > :nth-child(9) {
+            display: none !important;
+          }
+
+          .g365-main-standings-grid > :nth-child(10) {
+            grid-column: 7;
+          }
+
+          .g365-main-standings-grid > div {
+            padding-left: 4px !important;
+            padding-right: 4px !important;
+            font-size: 9px !important;
+          }
+
+          .g365-main-standings-grid a {
+            font-size: 10px !important;
+            overflow-wrap: anywhere;
+          }
+
+          .g365-main-standings-grid > :nth-child(10) span {
+            min-width: 0 !important;
+            width: 100%;
+            max-width: 94px;
+            padding: 5px 4px !important;
+            font-size: 7px !important;
+            white-space: normal !important;
+            line-height: 1.05;
+            text-align: center;
+          }
+
+          .g365-division-mini-grid {
+            grid-template-columns:
+              28px minmax(92px, 1fr) 27px 27px 27px 42px minmax(76px, 90px) !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            padding-left: 4px !important;
+            padding-right: 4px !important;
+          }
+
+          .g365-division-mini-grid > * {
+            min-width: 0 !important;
+          }
+
+          .g365-division-mini-grid > :last-child {
+            min-width: 0 !important;
+            width: 100%;
+            max-width: 88px;
+            padding: 4px 3px !important;
+            font-size: 6px !important;
+            white-space: normal !important;
+            line-height: 1.05;
+            text-align: center;
+          }
+
+          .g365-division-mini-grid a {
+            overflow-wrap: anywhere;
+          }
+
+          .g365-standings-scroll {
+            overflow-x: hidden !important;
+          }
         }
       `}</style>
 
@@ -610,7 +682,7 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
                         <span>{groupRows.length} TEAMS</span>
                       </div>
 
-                      <div style={S.divisionMiniHeader}>
+                      <div className="g365-division-mini-grid g365-division-mini-header" style={S.divisionMiniHeader}>
                         <span>RK</span>
                         <span>TEAM</span>
                         <span>W</span>
@@ -627,6 +699,7 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
                         return (
                           <div
                             key={row.team.id}
+                            className="g365-division-mini-grid g365-division-mini-row"
                             style={{
                               ...S.divisionMiniRow,
                               ...(mine ? S.divisionMiniMine : {}),
@@ -718,6 +791,7 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
             <div className="g365-standings-scroll">
               <div style={S.table}>
                 <div
+                  className="g365-main-standings-grid g365-main-standings-header"
                   style={{
                     ...S.grid,
                     ...S.headerRow,
@@ -778,7 +852,7 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
                   return (
                     <div key={row.team.id}>
                       <div
-                        className="g365-standing-row"
+                        className="g365-standing-row g365-main-standings-grid"
                         style={{
                           ...S.grid,
                           ...(mine ? S.myRow : {}),

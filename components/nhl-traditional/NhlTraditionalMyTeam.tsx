@@ -856,6 +856,16 @@ export default async function NhlTraditionalMyTeam({
             leaving locked players in place.
           </p>
 
+          <form action={startActivePlayersAction} className="g365-nhl-start-weekly-form g365-nhl-start-weekly-form-mobile">
+            <input type="hidden" name="leagueId" value={leagueId} />
+            <input type="hidden" name="fantasyTeamId" value={fantasyTeamId} />
+            <input type="hidden" name="season" value={season} />
+            <input type="hidden" name="week" value={activeWeek} />
+            <button type="submit" className="g365-nhl-start-weekly-button">
+              START WEEKLY LINEUP
+            </button>
+          </form>
+
           <div className="g365-nhl-week-tabs-shell">
             <div className="g365-nhl-week-tabs" role="tablist" aria-label={`Week ${activeWeek} lineup days`}>
               {weekDates.map((date, dateIndex) => {
@@ -959,7 +969,7 @@ export default async function NhlTraditionalMyTeam({
                 );
               })}
 
-              <form action={startActivePlayersAction} className="g365-nhl-start-weekly-form">
+              <form action={startActivePlayersAction} className="g365-nhl-start-weekly-form g365-nhl-start-weekly-form-desktop">
                 <input type="hidden" name="leagueId" value={leagueId} />
                 <input type="hidden" name="fantasyTeamId" value={fantasyTeamId} />
                 <input type="hidden" name="season" value={season} />
@@ -2095,7 +2105,26 @@ const baseStyles = `
     }
   }
 
-  @media (max-width: 760px) {
+    .g365-nhl-start-weekly-form-mobile {
+    display: none;
+  }
+
+@media (max-width: 760px) {
+    .g365-nhl-start-weekly-form-mobile {
+      display: block !important;
+      width: 100%;
+      margin: 0 0 10px;
+    }
+
+    .g365-nhl-start-weekly-form-mobile .g365-nhl-start-weekly-button {
+      width: 100%;
+      min-height: 46px;
+    }
+
+    .g365-nhl-start-weekly-form-desktop {
+      display: none !important;
+    }
+
     .g365-nhl-my-team-page {
       width: 100%;
       max-width: 100%;

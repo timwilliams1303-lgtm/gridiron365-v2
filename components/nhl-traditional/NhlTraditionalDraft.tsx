@@ -1829,6 +1829,11 @@ export default function NhlTraditionalDraft({
     <main className="g365-nhl-draft-page" style={styles.page}>
       <style>{`
         .g365-draft-mobile-tab-select, .g365-trade-mobile-tab-select { display:none; }
+        @media (min-width: 721px) {
+          .g365-mobile-collapse:not([open]) > .g365-mobile-collapse-body { display:block !important; }
+          .g365-mobile-collapse-chevron { display:none !important; }
+          .g365-mobile-collapse-summary { cursor:default !important; }
+        }
         @media (max-width: 1050px) {
           .g365-nhl-draft-room { grid-template-columns: 1fr !important; }
           .g365-nhl-draft-left, .g365-nhl-draft-right { display: block !important; }
@@ -1872,6 +1877,153 @@ export default function NhlTraditionalDraft({
           .g365-trade-mobile-tab-select { display:block !important; width:100%; min-height:48px; margin-bottom:10px; padding:0 12px; border:1px solid #4b2a1f; border-radius:10px; background:#151113; color:#fff; font-size:16px; font-weight:900; }
           .g365-nhl-trade-layout { min-height:0 !important; }
           .g365-draft-workspace { overflow:visible !important; }
+
+          /* Compact mobile draft ticker: show several picks at once. */
+          .g365-draft-ticker-shell {
+            display:block !important;
+            overflow:hidden !important;
+          }
+          .g365-draft-ticker-label {
+            min-height:32px !important;
+            width:100% !important;
+            flex:none !important;
+            padding:6px 10px !important;
+            border-right:0 !important;
+            border-bottom:1px solid #2b2b30 !important;
+            justify-content:flex-start !important;
+            font-size:10px !important;
+          }
+          .g365-draft-ticker-scroller {
+            display:grid !important;
+            grid-auto-flow:column !important;
+            grid-auto-columns:72px !important;
+            gap:6px !important;
+            overflow-x:auto !important;
+            padding:7px !important;
+            scroll-snap-type:x proximity;
+          }
+          .g365-draft-ticker-pick {
+            width:72px !important;
+            min-width:72px !important;
+            max-width:72px !important;
+            min-height:72px !important;
+            padding:6px 4px !important;
+            gap:3px !important;
+            border:1px solid #29292d !important;
+            border-radius:8px !important;
+            display:flex !important;
+            flex-direction:column !important;
+            justify-content:center !important;
+            align-items:center !important;
+            text-align:center !important;
+            scroll-snap-align:start;
+          }
+          .g365-draft-ticker-number {
+            width:24px !important;
+            height:24px !important;
+            flex:0 0 24px !important;
+            font-size:10px !important;
+          }
+          .g365-draft-ticker-info {
+            width:100% !important;
+            align-items:center !important;
+            gap:1px !important;
+          }
+          .g365-draft-ticker-primary,
+          .g365-draft-ticker-secondary {
+            display:block !important;
+            width:100% !important;
+            overflow:hidden !important;
+            text-overflow:ellipsis !important;
+            white-space:nowrap !important;
+            text-align:center !important;
+          }
+          .g365-draft-ticker-primary { font-size:8px !important; }
+          .g365-draft-ticker-secondary { font-size:7px !important; }
+
+          /* Draft History and Rosters are collapsed mobile sections. */
+          .g365-mobile-collapse { width:100% !important; }
+          .g365-mobile-collapse-summary {
+            cursor:pointer !important;
+            list-style:none !important;
+            user-select:none;
+          }
+          .g365-mobile-collapse-summary::-webkit-details-marker { display:none; }
+          .g365-mobile-collapse-meta {
+            display:flex;
+            align-items:center;
+            gap:8px;
+          }
+          .g365-mobile-collapse-chevron {
+            display:inline-grid;
+            place-items:center;
+            width:28px;
+            height:28px;
+            border-radius:7px;
+            border:1px solid #34343a;
+            color:#ff7a28;
+            font-size:18px;
+            line-height:1;
+            transition:transform .18s ease;
+          }
+          .g365-mobile-collapse[open] .g365-mobile-collapse-chevron {
+            transform:rotate(180deg);
+          }
+
+          /* My Rankings becomes a mobile card grid instead of a clipped desktop table. */
+          .g365-my-rankings-scroll {
+            overflow:visible !important;
+            width:100% !important;
+          }
+          .g365-my-rankings-table {
+            min-width:0 !important;
+            width:100% !important;
+          }
+          .g365-my-rankings-head { display:none !important; }
+          .g365-my-ranking-row {
+            display:grid !important;
+            grid-template-columns:36px minmax(0,1fr) auto auto !important;
+            grid-template-areas:
+              "rank player player player"
+              "rank team pos fp"
+              "rank fppg actions actions" !important;
+            gap:8px 10px !important;
+            width:100% !important;
+            min-width:0 !important;
+            padding:12px 10px !important;
+            border-top:1px solid #29292d !important;
+            align-items:center !important;
+          }
+          .g365-my-ranking-number {
+            grid-area:rank;
+            align-self:stretch;
+            display:grid !important;
+            place-items:center !important;
+            font-size:20px !important;
+          }
+          .g365-my-ranking-player { grid-area:player; min-width:0 !important; }
+          .g365-my-ranking-team { grid-area:team; text-align:left !important; }
+          .g365-my-ranking-pos { grid-area:pos; text-align:left !important; }
+          .g365-my-ranking-fp { grid-area:fp; text-align:right !important; }
+          .g365-my-ranking-fppg {
+            grid-area:fppg;
+            text-align:left !important;
+          }
+          .g365-my-ranking-fp::before { content:"FP "; color:#7d818a; font-size:9px; }
+          .g365-my-ranking-fppg::before { content:"FPPG "; color:#7d818a; font-size:9px; }
+          .g365-my-ranking-actions {
+            grid-area:actions;
+            justify-self:end;
+            display:flex !important;
+            flex-wrap:wrap !important;
+            justify-content:flex-end !important;
+            gap:5px !important;
+            min-width:0 !important;
+          }
+          .g365-my-ranking-actions button {
+            min-height:38px !important;
+          }
+
           .g365-draft-topbar { padding:18px 16px !important; }
           .g365-draft-title { font-size:34px !important; }
         }
@@ -2038,9 +2190,9 @@ export default function NhlTraditionalDraft({
               </div>
             </section>
 
-            <section style={styles.draftTickerShell}>
-              <div style={styles.draftTickerLabel}>DRAFT TICKER</div>
-              <div style={styles.draftTickerScroller}>
+            <section className="g365-draft-ticker-shell" style={styles.draftTickerShell}>
+              <div className="g365-draft-ticker-label" style={styles.draftTickerLabel}>DRAFT TICKER</div>
+              <div className="g365-draft-ticker-scroller" style={styles.draftTickerScroller}>
                 {(() => {
                   const currentIndex = Math.max(
                     0,
@@ -2065,22 +2217,23 @@ export default function NhlTraditionalDraft({
                     return (
                       <div
                         key={cell.overallPick}
+                        className="g365-draft-ticker-pick"
                         style={{
                           ...styles.draftTickerPick,
                           ...(isOnClock ? styles.draftTickerCurrent : {}),
                           ...(isMine && !isOnClock ? styles.draftTickerMine : {}),
                         }}
                       >
-                        <div style={styles.draftTickerNumber}>
+                        <div className="g365-draft-ticker-number" style={styles.draftTickerNumber}>
                           {cell.overallPick}
                         </div>
-                        <div style={styles.draftTickerInfo}>
+                        <div className="g365-draft-ticker-info" style={styles.draftTickerInfo}>
                           {pickedPlayer ? (
                             <>
-                              <strong style={styles.draftTickerPrimary}>
+                              <strong className="g365-draft-ticker-primary" style={styles.draftTickerPrimary}>
                                 {playerName(pickedPlayer)}
                               </strong>
-                              <span style={styles.draftTickerSecondary}>
+                              <span className="g365-draft-ticker-secondary" style={styles.draftTickerSecondary}>
                                 {normalizePosition(
                                   pickedPlayer.position,
                                   pickedPlayer.position_group
@@ -2089,19 +2242,19 @@ export default function NhlTraditionalDraft({
                             </>
                           ) : isOnClock ? (
                             <>
-                              <strong style={styles.draftTickerPrimary}>
+                              <strong className="g365-draft-ticker-primary" style={styles.draftTickerPrimary}>
                                 ON THE CLOCK
                               </strong>
-                              <span style={styles.draftTickerSecondary}>
+                              <span className="g365-draft-ticker-secondary" style={styles.draftTickerSecondary}>
                                 {cell.teamName}
                               </span>
                             </>
                           ) : (
                             <>
-                              <strong style={styles.draftTickerPrimary}>
+                              <strong className="g365-draft-ticker-primary" style={styles.draftTickerPrimary}>
                                 {cell.teamName}
                               </strong>
-                              <span style={styles.draftTickerSecondary}>
+                              <span className="g365-draft-ticker-secondary" style={styles.draftTickerSecondary}>
                                 Upcoming Pick
                               </span>
                             </>
@@ -2185,12 +2338,15 @@ export default function NhlTraditionalDraft({
 
             <section className="g365-nhl-draft-room" style={styles.roomGrid}>
               <aside className="g365-nhl-draft-left" style={styles.leftRail}>
-                <section style={styles.sideCard}>
-                  <div style={styles.cardHead}>
+                <details className="g365-mobile-collapse g365-draft-history-card" style={styles.sideCard}>
+                  <summary className="g365-mobile-collapse-summary" style={styles.cardHead}>
                     <span style={styles.cardTitle}>DRAFT HISTORY</span>
-                    <span style={styles.cardMeta}>{draftPicks.length} PICKS</span>
-                  </div>
-                  <div style={styles.historyRailList}>
+                    <span className="g365-mobile-collapse-meta">
+                      <span style={styles.cardMeta}>{draftPicks.length} PICKS</span>
+                      <span className="g365-mobile-collapse-chevron" aria-hidden="true">⌄</span>
+                    </span>
+                  </summary>
+                  <div className="g365-mobile-collapse-body" style={styles.historyRailList}>
                     {draftPicks.length === 0 ? (
                       <div style={styles.noPlayers}>No picks have been made yet.</div>
                     ) : (
@@ -2210,7 +2366,7 @@ export default function NhlTraditionalDraft({
                       })
                     )}
                   </div>
-                </section>
+                </details>
               </aside>
 
               <section style={styles.centerColumn}>
@@ -2491,12 +2647,12 @@ export default function NhlTraditionalDraft({
                   ) : null}
 
                   {activeTab === "rankings" ? (
-                    <div style={styles.rankingsTableScroll}>
+                    <div className="g365-my-rankings-scroll" style={styles.rankingsTableScroll}>
                       {rankingPlayers.length === 0 ? (
                         <div style={styles.noPlayers}>Initializing your rankings for this draft…</div>
                       ) : (
-                        <div style={styles.rankingsTable}>
-                          <div style={styles.rankingsTableHead}>
+                        <div className="g365-my-rankings-table" style={styles.rankingsTable}>
+                          <div className="g365-my-rankings-head" style={styles.rankingsTableHead}>
                             <span>MY</span><span>PLAYER</span><span>TEAM</span><span>POS</span><span>FP</span><span>FPPG</span><span>MOVE</span>
                           </div>
                           {rankingPlayers.map((player, index) => {
@@ -2504,20 +2660,20 @@ export default function NhlTraditionalDraft({
                             const pos = normalizePosition(player.position, player.position_group);
                             const team = player.team_id != null ? nhlTeamLabel(nhlTeamById.get(player.team_id)) : "FA";
                             return (
-                              <div key={player.id} style={styles.rankingsTableRow}>
-                                <span style={styles.myRankValue}>{index + 1}</span>
-                                <div style={styles.rankingPlayerIdentity}>
+                              <div key={player.id} className="g365-my-ranking-row" style={styles.rankingsTableRow}>
+                                <span className="g365-my-ranking-number" style={styles.myRankValue}>{index + 1}</span>
+                                <div className="g365-my-ranking-player" style={styles.rankingPlayerIdentity}>
                                   {player.headshot_url ? <img src={player.headshot_url} alt="" style={styles.rankingHeadshot} /> : <span style={styles.rankingHeadshotFallback}>{playerName(player).slice(0,1).toUpperCase()}</span>}
                                   <div style={styles.rankingPlayerText}>
                                     <button type="button" onClick={() => void openPlayerDetail(player.id)} style={styles.rankingPlayerButton}>{playerName(player)}</button>
                                     <span style={styles.rankingPlayerMeta}>G365 {ranking?.overall_rank != null ? `#${ranking.overall_rank}` : "—"}{ranking?.position_rank != null ? ` • ${pos}${ranking.position_rank}` : ""}</span>
                                   </div>
                                 </div>
-                                <span style={styles.rankCenter}>{team}</span>
-                                <span style={styles.rankCenter}>{pos}</span>
-                                <span style={styles.rankNumber}>{ranking?.projected_fantasy_points != null ? ranking.projected_fantasy_points.toFixed(2) : "—"}</span>
-                                <span style={styles.rankNumber}>{ranking?.projected_fantasy_points_per_game != null ? ranking.projected_fantasy_points_per_game.toFixed(2) : "—"}</span>
-                                <div style={styles.rankingActions}>
+                                <span className="g365-my-ranking-team" style={styles.rankCenter}>{team}</span>
+                                <span className="g365-my-ranking-pos" style={styles.rankCenter}>{pos}</span>
+                                <span className="g365-my-ranking-fp" style={styles.rankNumber}>{ranking?.projected_fantasy_points != null ? ranking.projected_fantasy_points.toFixed(2) : "—"}</span>
+                                <span className="g365-my-ranking-fppg" style={styles.rankNumber}>{ranking?.projected_fantasy_points_per_game != null ? ranking.projected_fantasy_points_per_game.toFixed(2) : "—"}</span>
+                                <div className="g365-my-ranking-actions" style={styles.rankingActions}>
                                   <button type="button" title="Move up" disabled={rankingBusy || index === 0} style={styles.rankMoveButton} onClick={() => moveMyRanking(player.id, -1)}>↑</button>
                                   <button type="button" title="Move down" disabled={rankingBusy || index === rankingPlayers.length - 1} style={styles.rankMoveButton} onClick={() => moveMyRanking(player.id, 1)}>↓</button>
                                   <button type="button" style={{ ...styles.queueButton, ...(queueIds.includes(player.id) ? styles.queueButtonActive : {}) }} onClick={() => toggleQueue(player.id)}>{queueIds.includes(player.id) ? "Queued" : "+ Queue"}</button>
@@ -3076,11 +3232,15 @@ export default function NhlTraditionalDraft({
               </section>
 
               <aside className="g365-nhl-draft-right" style={styles.rightRail}>
-                <section style={styles.sideCard}>
-                  <div style={styles.cardHead}>
+                <details className="g365-mobile-collapse g365-draft-rosters-card" style={styles.sideCard}>
+                  <summary className="g365-mobile-collapse-summary" style={styles.cardHead}>
                     <span style={styles.cardTitle}>ROSTERS</span>
-                    <span style={styles.cardMeta}>{rosterPicks.length}/{draft.rounds}</span>
-                  </div>
+                    <span className="g365-mobile-collapse-meta">
+                      <span style={styles.cardMeta}>{rosterPicks.length}/{draft.rounds}</span>
+                      <span className="g365-mobile-collapse-chevron" aria-hidden="true">⌄</span>
+                    </span>
+                  </summary>
+                  <div className="g365-mobile-collapse-body">
                   <div style={styles.rosterSelectorWrap}>
                     <select
                       value={rosterTeamId ?? ""}
@@ -3127,7 +3287,8 @@ export default function NhlTraditionalDraft({
                     <span>TOTAL DRAFTED</span>
                     <strong>{rosterPicks.length}/{draft.rounds}</strong>
                   </div>
-                </section>
+                  </div>
+                </details>
               </aside>
             </section>
           </>
@@ -3183,7 +3344,7 @@ export default function NhlTraditionalDraft({
                   style={styles.modalClose}
                   aria-label="Close player profile"
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
 
