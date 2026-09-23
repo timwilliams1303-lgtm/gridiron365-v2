@@ -1080,6 +1080,14 @@ export default async function NhlTraditionalLeagueHome({
               }
             />
 
+            {leagueFormat === "dynasty" ? (
+              <QuickLink
+                href={`/league/${leagueId}/nhl/draft-lottery`}
+                title="Draft Lottery"
+                subtitle="Live lottery & official draft order"
+              />
+            ) : null}
+
             {leagueFormat ===
             "dynasty" ? (
               <QuickLink

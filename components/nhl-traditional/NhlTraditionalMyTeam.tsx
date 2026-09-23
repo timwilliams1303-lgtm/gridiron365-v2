@@ -1,8 +1,10 @@
+import { revalidatePath } from "next/cache";
 import Link from "next/link";
 
 import Card from "@/components/ui/Card";
 import { requireLeagueMember } from "@/lib/leagues/requireLeagueMember";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import NhlTraditionalTeamNameEditor from "./NhlTraditionalTeamNameEditor";
 
 type NhlTraditionalMyTeamProps = {
   leagueId: string;
@@ -44,6 +46,30 @@ type RosterRow = {
   acquired_at: string | null;
 };
 
+type NhlPlayerStatusRow = {
+  id: number;
+  display_name: string | null;
+  position: string | null;
+  position_group: string | null;
+  team_id: number | null;
+  jersey_number: string | null;
+  injury_status: string | null;
+};
+
+type ProjectionRow = {
+  nhl_player_id: number;
+  projected_games_played: number | string | null;
+  projected_points: number | string | null;
+  projected_goals: number | string | null;
+  projected_assists: number | string | null;
+};
+
+type PlayerGameScoreRow = {
+  nhl_game_id: number;
+  nhl_player_id: number;
+  fantasy_points: number | string | null;
+};
+
 type StandingRow = {
   fantasy_team_id: number;
   wins: number | null;
@@ -62,6 +88,12 @@ type SeasonStateRow = {
   season_complete: boolean | null;
 };
 
+type WeekCalendarRow = {
+  week: number;
+  starts_at: string;
+  ends_at: string;
+};
+
 type LineupRow = {
   id: number;
   nhl_player_id: number;
@@ -72,6 +104,214 @@ type LineupRow = {
   game_start_at: string | null;
   is_locked: boolean | null;
 };
+
+
+async function renameNhlFantasyTeamAction(formData: FormData) {
+  "use server";
+
+  const leagueId = String(formData.get("leagueId") ?? "");
+  const fantasyTeamId = Number(formData.get("fantasyTeamId"));
+  const teamName = String(formData.get("teamName") ?? "").trim();
+
+  if (
+    !leagueId ||
+    !Number.isFinite(fantasyTeamId) ||
+    teamName.length < 1 ||
+    teamName.length > 40
+  ) {
+    throw new Error("Team name must be between 1 and 40 characters.");
+  }
+
+  const access = await requireLeagueMember(leagueId);
+
+  if (Number(access.fantasyTeam?.id ?? 0) !== fantasyTeamId) {
+    throw new Error("You can only rename your own fantasy team.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { error } = await supabase.rpc(
+    "rename_nhl_traditional_fantasy_team",
+    {
+      p_league_id: leagueId,
+      p_fantasy_team_id: fantasyTeamId,
+      p_team_name: teamName,
+    }
+  );
+
+  if (error) {
+    throw new Error(`Unable to update team name: ${error.message}`);
+  }
+
+  revalidatePath(`/league/${leagueId}`, "layout");
+  revalidatePath(`/league/${leagueId}/nhl`);
+  revalidatePath(`/league/${leagueId}/nhl/my-team`);
+  revalidatePath(`/league/${leagueId}/nhl/teams`);
+  revalidatePath(`/league/${leagueId}/nhl/matchups`);
+  revalidatePath(`/league/${leagueId}/nhl/standings`);
+  revalidatePath(`/league/${leagueId}/nhl/draft`);
+  revalidatePath(`/league/${leagueId}/nhl/trades`);
+  revalidatePath(`/league/${leagueId}/nhl/playoffs`);
+  revalidatePath(`/league/${leagueId}/nhl/recap`);
+  revalidatePath(`/league/${leagueId}/nhl/trophy-case`);
+  revalidatePath(`/league/${leagueId}/nhl/commissioner`);
+
+  return {
+    success: true,
+    teamName,
+  };
+}
+
+async function movePlayerToIrAction(formData: FormData) {
+  "use server";
+
+  const leagueId = String(formData.get("leagueId") ?? "");
+  const fantasyTeamId = Number(formData.get("fantasyTeamId"));
+  const nhlPlayerId = Number(formData.get("nhlPlayerId"));
+
+  if (!leagueId || !Number.isFinite(fantasyTeamId) || !Number.isFinite(nhlPlayerId)) {
+    throw new Error("Invalid IR request.");
+  }
+
+  const access = await requireLeagueMember(leagueId);
+
+  if (Number(access.fantasyTeam?.id ?? 0) !== fantasyTeamId) {
+    throw new Error("You can only manage IR for your own fantasy team.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("move_nhl_traditional_player_to_ir", {
+    p_league_id: leagueId,
+    p_fantasy_team_id: fantasyTeamId,
+    p_nhl_player_id: nhlPlayerId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/league/${leagueId}/nhl/my-team`);
+}
+
+async function activatePlayerFromIrAction(formData: FormData) {
+  "use server";
+
+  const leagueId = String(formData.get("leagueId") ?? "");
+  const fantasyTeamId = Number(formData.get("fantasyTeamId"));
+  const nhlPlayerId = Number(formData.get("nhlPlayerId"));
+
+  if (!leagueId || !Number.isFinite(fantasyTeamId) || !Number.isFinite(nhlPlayerId)) {
+    throw new Error("Invalid IR activation request.");
+  }
+
+  const access = await requireLeagueMember(leagueId);
+
+  if (Number(access.fantasyTeam?.id ?? 0) !== fantasyTeamId) {
+    throw new Error("You can only manage IR for your own fantasy team.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("activate_nhl_traditional_player_from_ir", {
+    p_league_id: leagueId,
+    p_fantasy_team_id: fantasyTeamId,
+    p_nhl_player_id: nhlPlayerId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/league/${leagueId}/nhl/my-team`);
+}
+
+async function startActivePlayersAction(formData: FormData) {
+  "use server";
+
+  const leagueId = String(formData.get("leagueId") ?? "");
+  const fantasyTeamId = Number(formData.get("fantasyTeamId"));
+  const season = Number(formData.get("season"));
+  const week = Number(formData.get("week"));
+
+  if (
+    !leagueId ||
+    !Number.isFinite(fantasyTeamId) ||
+    !Number.isFinite(season) ||
+    !Number.isFinite(week)
+  ) {
+    throw new Error("Invalid Start Weekly Lineup request.");
+  }
+
+  const access = await requireLeagueMember(leagueId);
+
+  if (Number(access.fantasyTeam?.id ?? 0) !== fantasyTeamId) {
+    throw new Error("You can only manage your own NHL lineup.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("start_nhl_traditional_active_players", {
+    p_league_id: leagueId,
+    p_fantasy_team_id: fantasyTeamId,
+    p_season: season,
+    p_week: week,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/league/${leagueId}/nhl/my-team`);
+}
+
+async function moveLineupPlayerAction(formData: FormData) {
+  "use server";
+
+  const leagueId = String(formData.get("leagueId") ?? "");
+  const fantasyTeamId = Number(formData.get("fantasyTeamId"));
+  const nhlPlayerId = Number(formData.get("nhlPlayerId"));
+  const target = String(formData.get("target") ?? "");
+  const [targetSlotRaw, targetSlotIndexRaw] = target.split("|");
+  const targetSlot = String(targetSlotRaw ?? "").toUpperCase();
+  const targetSlotIndex = Number(targetSlotIndexRaw);
+  const lineupDate = String(formData.get("lineupDate") ?? "");
+
+  if (
+    !leagueId ||
+    !Number.isFinite(fantasyTeamId) ||
+    !Number.isFinite(nhlPlayerId) ||
+    !targetSlot ||
+    !Number.isFinite(targetSlotIndex) ||
+    !lineupDate
+  ) {
+    throw new Error("Invalid lineup move request.");
+  }
+
+  const access = await requireLeagueMember(leagueId);
+
+  if (Number(access.fantasyTeam?.id ?? 0) !== fantasyTeamId) {
+    throw new Error("You can only manage your own NHL lineup.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("move_nhl_traditional_lineup_player", {
+    p_league_id: leagueId,
+    p_fantasy_team_id: fantasyTeamId,
+    p_nhl_player_id: nhlPlayerId,
+    p_target_slot: targetSlot,
+    p_target_slot_index: targetSlotIndex,
+    p_lineup_date: lineupDate,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/league/${leagueId}/nhl/my-team`);
+}
+
+function isIrEligibleStatus(value: string | null | undefined) {
+  const status = String(value ?? "").trim().toUpperCase();
+  return status === "INJURY_RESERVE" || status === "OUT" || status === "SUSPENSION";
+}
 
 function asNumber(value: number | string | null | undefined) {
   const parsed = Number(value ?? 0);
@@ -170,6 +410,7 @@ export default async function NhlTraditionalMyTeam({
     standingResult,
     seasonStateResult,
     lineupResult,
+    weekCalendarResult,
   ] = await Promise.all([
     supabase
       .from("nhl_traditional_settings")
@@ -234,12 +475,20 @@ export default async function NhlTraditionalMyTeam({
       .eq("league_id", leagueId)
       .eq("fantasy_team_id", fantasyTeamId)
       .eq("season", season)
+      .order("lineup_date", { ascending: true })
       .order("lineup_slot", {
         ascending: true,
       })
       .order("slot_index", {
         ascending: true,
       }),
+
+    supabase
+      .from("nhl_traditional_week_calendar")
+      .select("week, starts_at, ends_at")
+      .eq("league_id", leagueId)
+      .eq("season", season)
+      .order("week", { ascending: true }),
   ]);
 
   if (settingsResult.error) {
@@ -284,6 +533,12 @@ export default async function NhlTraditionalMyTeam({
     );
   }
 
+  if (weekCalendarResult.error) {
+    throw new Error(
+      `Unable to load NHL week calendar: ${weekCalendarResult.error.message}`
+    );
+  }
+
   const settings = settingsResult.data as NhlSettingsRow | null;
 
   const rosterSettings =
@@ -299,6 +554,26 @@ export default async function NhlTraditionalMyTeam({
     seasonStateResult.data as SeasonStateRow | null;
 
   const lineupRows = (lineupResult.data ?? []) as LineupRow[];
+
+  const weekCalendar = (weekCalendarResult.data ?? []) as WeekCalendarRow[];
+
+  const rosterPlayerIds = roster.map((row) => Number(row.nhl_player_id));
+  let playerStatuses: NhlPlayerStatusRow[] = [];
+
+  if (rosterPlayerIds.length > 0) {
+    const playerStatusResult = await supabase
+      .from("nhl_players")
+      .select("id, display_name, position, position_group, team_id, jersey_number, injury_status")
+      .in("id", rosterPlayerIds);
+
+    if (playerStatusResult.error) {
+      throw new Error(
+        `Unable to load NHL injury statuses: ${playerStatusResult.error.message}`
+      );
+    }
+
+    playerStatuses = (playerStatusResult.data ?? []) as NhlPlayerStatusRow[];
+  }
 
   if (!settings) {
     throw new Error(
@@ -366,478 +641,517 @@ export default async function NhlTraditionalMyTeam({
       ).toLowerCase() === "ir"
   );
 
-  const lineupByPlayer =
-    new Map<number, LineupRow>();
+  const playerById = new Map<number, NhlPlayerStatusRow>();
 
-  for (const row of lineupRows) {
-    lineupByPlayer.set(
-      Number(row.nhl_player_id),
-      row
+  for (const player of playerStatuses) {
+    playerById.set(Number(player.id), player);
+  }
+
+  const projectedFantasyPpgByPlayer = new Map<number, number>();
+
+  if (rosterPlayerIds.length > 0) {
+    const projectedValues = await Promise.all(
+      rosterPlayerIds.map(async (playerId) => {
+        const { data, error } = await supabase.rpc(
+          "get_nhl_traditional_projected_fantasy_ppg",
+          {
+            p_league_id: leagueId,
+            p_season: season,
+            p_nhl_player_id: playerId,
+          }
+        );
+
+        if (error) {
+          return [playerId, 0] as const;
+        }
+
+        return [playerId, asNumber(data as number | string | null)] as const;
+      })
+    );
+
+    for (const [playerId, value] of projectedValues) {
+      projectedFantasyPpgByPlayer.set(playerId, value);
+    }
+  }
+
+  const lineupGameIds = Array.from(
+    new Set(
+      lineupRows
+        .map((row) => row.nhl_game_id)
+        .filter((value): value is number => value != null)
+    )
+  );
+
+  let playerGameScores: PlayerGameScoreRow[] = [];
+
+  if (lineupGameIds.length > 0 && rosterPlayerIds.length > 0) {
+    const scoreResult = await supabase
+      .from("nhl_traditional_player_game_scores")
+      .select("nhl_game_id, nhl_player_id, fantasy_points")
+      .eq("league_id", leagueId)
+      .in("nhl_game_id", lineupGameIds)
+      .in("nhl_player_id", rosterPlayerIds);
+
+    if (scoreResult.error) {
+      throw new Error(
+        `Unable to load NHL fantasy scores: ${scoreResult.error.message}`
+      );
+    }
+
+    playerGameScores = (scoreResult.data ?? []) as PlayerGameScoreRow[];
+  }
+
+  const fantasyPointsByGamePlayer = new Map<string, number>();
+
+  for (const score of playerGameScores) {
+    fantasyPointsByGamePlayer.set(
+      `${Number(score.nhl_game_id)}-${Number(score.nhl_player_id)}`,
+      asNumber(score.fantasy_points)
     );
   }
 
   const starterSlots =
     positionMode === "fdg"
       ? [
-          {
-            label: "F",
-            count: Number(
-              rosterSettings.starting_f ?? 0
-            ),
-          },
-          {
-            label: "D",
-            count: Number(
-              rosterSettings.starting_d ?? 0
-            ),
-          },
-          {
-            label: "G",
-            count: Number(
-              rosterSettings.starting_g ?? 0
-            ),
-          },
-          {
-            label: "UTIL",
-            count: Number(
-              rosterSettings.starting_util ?? 0
-            ),
-          },
+          { label: "F", count: Number(rosterSettings.starting_f ?? 0) },
+          { label: "D", count: Number(rosterSettings.starting_d ?? 0) },
+          { label: "G", count: Number(rosterSettings.starting_g ?? 0) },
+          { label: "UTIL", count: Number(rosterSettings.starting_util ?? 0) },
         ]
       : [
-          {
-            label: "C",
-            count: Number(
-              rosterSettings.starting_c ?? 0
-            ),
-          },
-          {
-            label: "LW",
-            count: Number(
-              rosterSettings.starting_lw ?? 0
-            ),
-          },
-          {
-            label: "RW",
-            count: Number(
-              rosterSettings.starting_rw ?? 0
-            ),
-          },
-          {
-            label: "D",
-            count: Number(
-              rosterSettings.starting_d ?? 0
-            ),
-          },
-          {
-            label: "G",
-            count: Number(
-              rosterSettings.starting_g ?? 0
-            ),
-          },
-          {
-            label: "UTIL",
-            count: Number(
-              rosterSettings.starting_util ?? 0
-            ),
-          },
+          { label: "C", count: Number(rosterSettings.starting_c ?? 0) },
+          { label: "LW", count: Number(rosterSettings.starting_lw ?? 0) },
+          { label: "RW", count: Number(rosterSettings.starting_rw ?? 0) },
+          { label: "D", count: Number(rosterSettings.starting_d ?? 0) },
+          { label: "G", count: Number(rosterSettings.starting_g ?? 0) },
+          { label: "UTIL", count: Number(rosterSettings.starting_util ?? 0) },
         ];
 
-  const totalStartingSlots =
-    starterSlots.reduce(
-      (total, slot) =>
-        total + slot.count,
-      0
-    );
+  const totalStartingSlots = starterSlots.reduce(
+    (total, slot) => total + slot.count,
+    0
+  );
 
-  const lockedPlayers =
-    lineupRows.filter(
-      (row) => row.is_locked
-    ).length;
+  const benchSlots = Number(rosterSettings.bench_slots ?? 0);
+  const irSlots = Number(rosterSettings.ir_slots ?? 0);
+
+  const starterSpotDefinitions = starterSlots.flatMap((slot) =>
+    Array.from({ length: slot.count }, (_, index) => ({
+      label: slot.label,
+      slotIndex: index + 1,
+    }))
+  );
+
+  const allMoveTargets = [
+    ...starterSpotDefinitions,
+    ...Array.from({ length: benchSlots }, (_, index) => ({
+      label: "BN",
+      slotIndex: index + 1,
+    })),
+  ];
+
+  const activeWeekCalendar = weekCalendar.find(
+    (row) => Number(row.week) === activeWeek
+  );
+
+  const weekDates: string[] = [];
+
+  if (activeWeekCalendar?.starts_at && activeWeekCalendar?.ends_at) {
+    const cursor = new Date(activeWeekCalendar.starts_at);
+    const end = new Date(activeWeekCalendar.ends_at);
+
+    while (cursor.getTime() < end.getTime()) {
+      weekDates.push(cursor.toISOString().slice(0, 10));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  } else {
+    weekDates.push(
+      ...Array.from(
+        new Set(
+          lineupRows
+            .map((row) => row.lineup_date)
+            .filter((value): value is string => Boolean(value))
+        )
+      ).sort()
+    );
+  }
+
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const defaultDate =
+    weekDates.find((date) => date >= todayKey) ?? weekDates[weekDates.length - 1] ?? null;
+
+  const lockedPlayers = lineupRows.filter(
+    (row) =>
+      row.is_locked ||
+      (row.game_start_at != null && new Date(row.game_start_at).getTime() <= Date.now())
+  ).length;
+
+  function playerName(playerId: number | null | undefined) {
+    if (playerId == null) return "Empty";
+    return playerById.get(Number(playerId))?.display_name ?? `Player #${playerId}`;
+  }
+
+  function projectedFantasyPpg(playerId: number) {
+    return projectedFantasyPpgByPlayer.get(playerId) ?? null;
+  }
+
+  function fantasyPointsForRow(row: LineupRow | undefined) {
+    if (!row?.nhl_game_id) return null;
+    return (
+      fantasyPointsByGamePlayer.get(
+        `${Number(row.nhl_game_id)}-${Number(row.nhl_player_id)}`
+      ) ?? null
+    );
+  }
+
+  function dateLabel(date: string) {
+    const parsed = new Date(`${date}T12:00:00`);
+    return new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    }).format(parsed);
+  }
+
+  function gameTime(value: string | null | undefined) {
+    if (!value) return "Off Day";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "Game Scheduled";
+    return new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(parsed);
+  }
 
   return (
     <main className="g365-nhl-my-team-page">
       <style>{baseStyles}</style>
 
       <section className="g365-nhl-my-team-shell">
-        <header className="g365-nhl-my-team-header">
-          <div>
-            <p className="g365-nhl-eyebrow">
-              {formatLabel}
-            </p>
-
-            <h1 className="g365-nhl-page-title">
-              My Team
-            </h1>
-
-            <p className="g365-nhl-page-subtitle">
-              {access.league.name}
-              {" • "}
-              {season}
-              {" • "}
-              {positionLabel}
-            </p>
+        <section className="g365-nhl-team-name-bar">
+          <div className="g365-nhl-team-name-copy">
+            <p className="g365-nhl-small-label">YOUR NHL TEAM</p>
+            <h1>{team.team_name ?? "My NHL Team"}</h1>
           </div>
 
-          <div className="g365-nhl-header-actions">
-            <Link
-              href={`/league/${leagueId}/nhl`}
-              className="g365-nhl-button g365-nhl-button-secondary"
-            >
-              ← League Home
-            </Link>
-
-            <Link
-              href={`/league/${leagueId}/nhl/teams`}
-              className="g365-nhl-button g365-nhl-button-secondary"
-            >
-              Teams
-            </Link>
-
-            {access.isCommissioner ? (
-              <Link
-                href={`/league/${leagueId}/nhl/commissioner`}
-                className="g365-nhl-button g365-nhl-button-primary"
-              >
-                Commissioner
-              </Link>
-            ) : null}
-          </div>
-        </header>
-
-        <section className="g365-nhl-team-hero">
-          <div className="g365-nhl-team-hero-content">
-            <p className="g365-nhl-small-label">
-              YOUR NHL TEAM
-            </p>
-
-            <h2>
-              {team.team_name ?? "My NHL Team"}
-            </h2>
-
-            <p>
-              {leagueFormat === "dynasty"
-                ? "Dynasty"
-                : "Redraft"}
-              {" • "}
-              {titleCase(settings.lineup_period)}
-              {" Lineups • Week "}
-              {activeWeek}
-            </p>
-          </div>
-
-          <div className="g365-nhl-rank">
-            <span>RANK</span>
-
-            <strong>
-              {standing?.rank != null
-                ? `#${standing.rank}`
-                : "—"}
-            </strong>
-          </div>
-        </section>
-
-        <section className="g365-nhl-summary-grid">
-          <SummaryCard
-            label="RECORD"
-            value={`${wins}-${losses}-${ties}`}
-            detail={`Week ${activeWeek}`}
-          />
-
-          <SummaryCard
-            label="POINTS FOR"
-            value={formatPoints(
-              standing?.points_for
-            )}
-            detail="Season total"
-          />
-
-          <SummaryCard
-            label="ROSTER"
-            value={String(roster.length)}
-            detail={`${activeRoster.length} active • ${irRoster.length} IR`}
-          />
-
-          <SummaryCard
-            label="STARTING SLOTS"
-            value={String(
-              totalStartingSlots
-            )}
-            detail={`${Number(
-              rosterSettings.bench_slots ?? 0
-            )} bench • ${Number(
-              rosterSettings.ir_slots ?? 0
-            )} IR`}
+          <NhlTraditionalTeamNameEditor
+            leagueId={leagueId}
+            fantasyTeamId={fantasyTeamId}
+            currentTeamName={team.team_name ?? ""}
+            renameAction={renameNhlFantasyTeamAction}
           />
         </section>
 
-        <section className="g365-nhl-content-grid">
-          <Card>
-            <div className="g365-nhl-card-content">
-              <div className="g365-nhl-section-header">
-                <div className="g365-nhl-section-title-block">
-                  <p className="g365-nhl-small-label">
-                    LINEUP STRUCTURE
-                  </p>
-
-                  <h2>
-                    Starting Lineup
-                  </h2>
-                </div>
-
-                <span className="g365-nhl-pill">
-                  {positionMode === "fdg"
-                    ? "F / D / G"
-                    : "Detailed"}
-                </span>
-              </div>
-
-              <div className="g365-nhl-slot-grid">
-                {starterSlots
-                  .filter(
-                    (slot) =>
-                      slot.count > 0
-                  )
-                  .map((slot) => (
-                    <div
-                      key={slot.label}
-                      className="g365-nhl-slot"
-                    >
-                      <span>
-                        {slot.label}
-                      </span>
-
-                      <strong>
-                        {slot.count}
-                      </strong>
-                    </div>
-                  ))}
-              </div>
-
-              <div className="g365-nhl-info-list">
-                <InfoRow
-                  label="Lineup Period"
-                  value={titleCase(
-                    settings.lineup_period
-                  )}
-                />
-
-                <InfoRow
-                  label="Daily Changes"
-                  value={
-                    settings.allow_daily_lineup_changes
-                      ? "Allowed"
-                      : "Disabled"
-                  }
-                />
-
-                <InfoRow
-                  label="Player Lock"
-                  value={titleCase(
-                    settings.player_lock_mode
-                  )}
-                />
-
-                <InfoRow
-                  label="Locked Players"
-                  value={String(
-                    lockedPlayers
-                  )}
-                />
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <div className="g365-nhl-card-content">
-              <div className="g365-nhl-section-header g365-nhl-section-header-centered">
-                <div className="g365-nhl-section-title-block">
-                  <p className="g365-nhl-small-label">
-                    SEASON STATUS
-                  </p>
-
-                  <h2>
-                    Team Snapshot
-                  </h2>
-                </div>
-              </div>
-
-              <div className="g365-nhl-info-list">
-                <InfoRow
-                  label="Phase"
-                  value={titleCase(
-                    seasonState?.phase
-                  )}
-                />
-
-                <InfoRow
-                  label="Active Week"
-                  value={String(
-                    activeWeek
-                  )}
-                />
-
-                <InfoRow
-                  label="Points Against"
-                  value={formatPoints(
-                    standing?.points_against
-                  )}
-                />
-
-                <InfoRow
-                  label="Playoffs Started"
-                  value={
-                    seasonState?.playoffs_started
-                      ? "Yes"
-                      : "No"
-                  }
-                />
-
-                <InfoRow
-                  label="Season Complete"
-                  value={
-                    seasonState?.season_complete
-                      ? "Yes"
-                      : "No"
-                  }
-                />
-              </div>
-            </div>
-          </Card>
-        </section>
-
-        <section>
-          <div className="g365-nhl-section-heading">
+        <section className="g365-nhl-lineup-manager">
+          <div className="g365-nhl-section-heading g365-nhl-lineup-heading">
             <div className="g365-nhl-section-title-block">
-              <p className="g365-nhl-small-label">
-                CURRENT OWNERSHIP
-              </p>
-
-              <h2>
-                My Roster
-              </h2>
+              <p className="g365-nhl-small-label">WEEK {activeWeek} LINEUP</p>
+              <h2>My Lineup</h2>
             </div>
-
-            <span className="g365-nhl-pill">
-              {roster.length} PLAYER
-              {roster.length === 1
-                ? ""
-                : "S"}
-            </span>
           </div>
 
-          {roster.length === 0 ? (
-            <Card>
-              <div className="g365-nhl-empty">
-                <strong>
-                  Your roster is empty
-                </strong>
+          <p className="g365-nhl-lineup-help">
+            Choose a day to view or edit that day's lineup. Start Weekly Lineup sets all seven
+            days at once, prioritizing players with games and projected fantasy points while
+            leaving locked players in place.
+          </p>
 
-                <p>
-                  Players will appear here after the NHL draft or after
-                  they are added through league transactions.
-                </p>
-              </div>
-            </Card>
-          ) : (
-            <div className="g365-nhl-roster-grid">
-              {roster.map(
-                (row) => {
-                  const lineup =
-                    lineupByPlayer.get(
-                      Number(
-                        row.nhl_player_id
-                      )
-                    );
+          <div className="g365-nhl-week-tabs-shell">
+            <div className="g365-nhl-week-tabs" role="tablist" aria-label={`Week ${activeWeek} lineup days`}>
+              {weekDates.map((date, dateIndex) => {
+                const dayRows = lineupRows.filter((row) => row.lineup_date === date);
+                const dayBySpot = new Map(
+                  dayRows.map((row) => [
+                    `${String(row.lineup_slot ?? "").toUpperCase()}-${Number(row.slot_index ?? 1)}`,
+                    row,
+                  ])
+                );
 
-                  const isIr =
-                    String(
-                      row.roster_status ?? ""
-                    ).toLowerCase() === "ir";
+                const tableSpots = [
+                  ...starterSpotDefinitions,
+                  ...Array.from({ length: benchSlots }, (_, index) => ({
+                    label: "BN",
+                    slotIndex: index + 1,
+                  })),
+                ];
 
-                  return (
-                    <Card key={row.id}>
-                      <div className="g365-nhl-player-card">
-                        <div className="g365-nhl-player-top">
-                          <div className="g365-nhl-player-heading">
-                            <span
-                              className={
-                                isIr
-                                  ? "g365-nhl-status g365-nhl-status-ir"
-                                  : "g365-nhl-status"
-                              }
-                            >
-                              {isIr
-                                ? "IR"
-                                : lineup?.lineup_slot
-                                  ? String(
-                                      lineup.lineup_slot
-                                    ).toUpperCase()
-                                  : "ROSTER"}
-                            </span>
+                return (
+                  <div className="g365-nhl-week-tab-item" key={date}>
+                    <input
+                      className="g365-nhl-week-tab-radio"
+                      type="radio"
+                      name={`nhl-week-${activeWeek}-day`}
+                      id={`nhl-week-${activeWeek}-day-${dateIndex}`}
+                      defaultChecked={date === defaultDate}
+                    />
+                    <label
+                      className="g365-nhl-week-tab"
+                      htmlFor={`nhl-week-${activeWeek}-day-${dateIndex}`}
+                      role="tab"
+                    >
+                      <span>{new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`)).toUpperCase()}</span>
+                      <strong>{new Intl.DateTimeFormat("en-US", { month: "numeric", day: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`))}</strong>
+                    </label>
 
-                            <h3>
-                              Player #{row.nhl_player_id}
-                            </h3>
-                          </div>
-
-                          {lineup?.is_locked ? (
-                            <span className="g365-nhl-lock">
-                              LOCKED
-                            </span>
-                          ) : null}
-                        </div>
-
-                        <div className="g365-nhl-info-list">
-                          <InfoRow
-                            label="NHL Player ID"
-                            value={String(
-                              row.nhl_player_id
-                            )}
-                          />
-
-                          <InfoRow
-                            label="Roster Status"
-                            value={titleCase(
-                              row.roster_status
-                            )}
-                          />
-
-                          <InfoRow
-                            label="Acquired Via"
-                            value={titleCase(
-                              row.acquired_via
-                            )}
-                          />
-
-                          <InfoRow
-                            label="Acquired"
-                            value={formatDate(
-                              row.acquired_at
-                            )}
-                          />
-
-                          <InfoRow
-                            label="Lineup Slot"
-                            value={
-                              lineup?.lineup_slot
-                                ? String(
-                                    lineup.lineup_slot
-                                  ).toUpperCase()
-                                : "Not Assigned"
-                            }
-                          />
-                        </div>
+                    <div className="g365-nhl-week-tab-panel" role="tabpanel">
+                      <div className="g365-nhl-selected-day-bar">
+                        <strong>{dateLabel(date)}</strong>
+                        <span>{dayRows.filter((row) => row.nhl_game_id != null).length} playing</span>
                       </div>
-                    </Card>
-                  );
-                }
-              )}
+
+                      <div className="g365-nhl-lineup-table-wrap">
+                        <table className="g365-nhl-lineup-table">
+                          <thead>
+                            <tr>
+                              <th>POS</th>
+                              <th>PLAYER</th>
+                              <th>OPP / GAME</th>
+                              <th>STATUS</th>
+                              <th className="numeric">PROJ</th>
+                              <th className="numeric">FPTS</th>
+                              <th>ACTION</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {tableSpots.map((spot) => {
+                              const row = dayBySpot.get(`${spot.label}-${spot.slotIndex}`);
+                              return (
+                                <NhlLineupTableRow
+                                  key={`${date}-${spot.label}-${spot.slotIndex}`}
+                                  label={spot.label}
+                                  slotIndex={spot.slotIndex}
+                                  row={row}
+                                  player={row ? playerById.get(Number(row.nhl_player_id)) : undefined}
+                                  projectionPpg={row ? projectedFantasyPpg(Number(row.nhl_player_id)) : null}
+                                  fantasyPoints={fantasyPointsForRow(row)}
+                                  leagueId={leagueId}
+                                  fantasyTeamId={Number(fantasyTeamId)}
+                                  lineupDate={date}
+                                  targets={allMoveTargets}
+                                  gameTimeLabel={gameTime(row?.game_start_at)}
+                                />
+                              );
+                            })}
+
+                            {Array.from({ length: irSlots }, (_, index) => {
+                              const rosterRow = irRoster[index];
+                              const player = rosterRow
+                                ? playerById.get(Number(rosterRow.nhl_player_id))
+                                : undefined;
+
+                              return (
+                                <NhlIrTableRow
+                                  key={`${date}-IR-${index + 1}`}
+                                  label="IR"
+                                  slotIndex={index + 1}
+                                  rosterRow={rosterRow}
+                                  player={player}
+                                  leagueId={leagueId}
+                                  fantasyTeamId={Number(fantasyTeamId)}
+                                />
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <form action={startActivePlayersAction} className="g365-nhl-start-weekly-form">
+                <input type="hidden" name="leagueId" value={leagueId} />
+                <input type="hidden" name="fantasyTeamId" value={fantasyTeamId} />
+                <input type="hidden" name="season" value={season} />
+                <input type="hidden" name="week" value={activeWeek} />
+                <button type="submit" className="g365-nhl-start-weekly-button">
+                  START WEEKLY LINEUP
+                </button>
+              </form>
             </div>
-          )}
+          </div>
         </section>
       </section>
     </main>
+  );
+}
+
+function NhlLineupTableRow({
+  label,
+  slotIndex,
+  row,
+  player,
+  projectionPpg,
+  fantasyPoints,
+  leagueId,
+  fantasyTeamId,
+  lineupDate,
+  targets,
+  gameTimeLabel,
+}: {
+  label: string;
+  slotIndex: number;
+  row: LineupRow | undefined;
+  player: NhlPlayerStatusRow | undefined;
+  projectionPpg: number | null;
+  fantasyPoints: number | null;
+  leagueId: string;
+  fantasyTeamId: number;
+  lineupDate: string;
+  targets: Array<{ label: string; slotIndex: number }>;
+  gameTimeLabel: string;
+}) {
+  const started =
+    row?.game_start_at != null && new Date(row.game_start_at).getTime() <= Date.now();
+  const locked = Boolean(row?.is_locked || started);
+  const hasGame = row?.nhl_game_id != null;
+  const positionText = player?.position ?? player?.position_group ?? "—";
+  const jerseyText = player?.jersey_number ? `#${player.jersey_number}` : null;
+  const injuryStatus = String(player?.injury_status ?? "").trim();
+
+  return (
+    <tr className={locked ? "g365-nhl-lineup-row locked" : "g365-nhl-lineup-row"}>
+      <td className="pos-cell">
+        <span className="g365-nhl-table-pos">{label}</span>
+        <small>{slotIndex}</small>
+      </td>
+
+      <td className="player-cell">
+        {row ? (
+          <>
+            <strong>{player?.display_name ?? `Player #${row.nhl_player_id}`}</strong>
+            <small>
+              {positionText}
+              {jerseyText ? ` • ${jerseyText}` : ""}
+            </small>
+          </>
+        ) : (
+          <strong className="muted">Empty</strong>
+        )}
+      </td>
+
+      <td className="game-cell">
+        {row ? (
+          <>
+            <strong>{hasGame ? gameTimeLabel : "Off Day"}</strong>
+            <small>{hasGame ? "NHL game scheduled" : "No game today"}</small>
+          </>
+        ) : (
+          <span>—</span>
+        )}
+      </td>
+
+      <td className="status-cell">
+        {row ? (
+          <span
+            className={
+              locked
+                ? "g365-nhl-table-status locked"
+                : hasGame
+                  ? "g365-nhl-table-status playing"
+                  : "g365-nhl-table-status"
+            }
+          >
+            {locked ? "LOCKED" : hasGame ? "PLAYING" : injuryStatus || "OFF DAY"}
+          </span>
+        ) : (
+          <span className="g365-nhl-table-status">EMPTY</span>
+        )}
+      </td>
+
+      <td className="numeric proj-cell">
+        {row && projectionPpg != null ? projectionPpg.toFixed(2) : "—"}
+      </td>
+
+      <td className="numeric fpts-cell">
+        {row && fantasyPoints != null ? fantasyPoints.toFixed(2) : "—"}
+      </td>
+
+      <td className="action-cell">
+        {row && !locked ? (
+          <form action={moveLineupPlayerAction} className="g365-nhl-table-move-form">
+            <input type="hidden" name="leagueId" value={leagueId} />
+            <input type="hidden" name="fantasyTeamId" value={fantasyTeamId} />
+            <input type="hidden" name="nhlPlayerId" value={row.nhl_player_id} />
+            <input type="hidden" name="lineupDate" value={lineupDate} />
+            <select
+              name="target"
+              defaultValue={`${String(row.lineup_slot ?? "BN").toUpperCase()}|${Number(row.slot_index ?? 1)}`}
+              aria-label={`Move ${player?.display_name ?? "player"}`}
+            >
+              {targets.map((target) => (
+                <option
+                  key={`${target.label}-${target.slotIndex}`}
+                  value={`${target.label}|${target.slotIndex}`}
+                >
+                  {target.label} {target.slotIndex}
+                </option>
+              ))}
+            </select>
+            <button type="submit">MOVE</button>
+          </form>
+        ) : row ? (
+          <span className="g365-nhl-action-locked">LOCKED</span>
+        ) : (
+          <span>—</span>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function NhlIrTableRow({
+  label,
+  slotIndex,
+  rosterRow,
+  player,
+  leagueId,
+  fantasyTeamId,
+}: {
+  label: string;
+  slotIndex: number;
+  rosterRow: RosterRow | undefined;
+  player: NhlPlayerStatusRow | undefined;
+  leagueId: string;
+  fantasyTeamId: number;
+}) {
+  return (
+    <tr className="g365-nhl-lineup-row ir-row">
+      <td className="pos-cell">
+        <span className="g365-nhl-table-pos ir">{label}</span>
+        <small>{slotIndex}</small>
+      </td>
+      <td className="player-cell">
+        {rosterRow ? (
+          <>
+            <strong>{player?.display_name ?? `Player #${rosterRow.nhl_player_id}`}</strong>
+            <small>{player?.position ?? player?.position_group ?? "—"}</small>
+          </>
+        ) : (
+          <strong className="muted">Empty</strong>
+        )}
+      </td>
+      <td className="game-cell"><span>—</span></td>
+      <td className="status-cell">
+        <span className="g365-nhl-table-status ir">
+          {rosterRow ? player?.injury_status ?? "IR" : "EMPTY"}
+        </span>
+      </td>
+      <td className="numeric">—</td>
+      <td className="numeric">—</td>
+      <td className="action-cell">
+        {rosterRow ? (
+          <form action={activatePlayerFromIrAction}>
+            <input type="hidden" name="leagueId" value={leagueId} />
+            <input type="hidden" name="fantasyTeamId" value={fantasyTeamId} />
+            <input type="hidden" name="nhlPlayerId" value={rosterRow.nhl_player_id} />
+            <button type="submit" className="g365-nhl-ir-activate">ACTIVATE</button>
+          </form>
+        ) : (
+          <span>—</span>
+        )}
+      </td>
+    </tr>
   );
 }
 
@@ -1299,6 +1613,75 @@ const baseStyles = `
     text-align: right;
   }
 
+  .g365-nhl-roster-spots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+    gap: 10px;
+  }
+
+  .g365-nhl-roster-spot {
+    min-height: 86px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    border: 1px solid rgba(255, 119, 0, 0.18);
+    border-radius: 10px;
+    background: rgba(255, 92, 0, 0.045);
+    text-align: center;
+  }
+
+  .g365-nhl-roster-spot-ir {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.025);
+  }
+
+  .g365-nhl-roster-spot span {
+    color: #ff7a18;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+  }
+
+  .g365-nhl-roster-spot strong {
+    color: #ffffff;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  .g365-nhl-player-actions {
+    margin-top: 14px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .g365-nhl-player-actions form {
+    width: 100%;
+  }
+
+  .g365-nhl-roster-action {
+    width: 100%;
+    min-height: 42px;
+    padding: 0 14px;
+    border: 1px solid rgba(255, 92, 0, 0.55);
+    border-radius: 9px;
+    background: linear-gradient(135deg, #d91d1d, #ff4b00, #ff7900);
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .g365-nhl-roster-action-activate {
+    border-color: rgba(255, 122, 24, 0.28);
+    background: rgba(255, 90, 20, 0.08);
+    color: #ff8a3d;
+  }
+
   .g365-nhl-roster-grid {
     display: grid;
     grid-template-columns:
@@ -1400,6 +1783,307 @@ const baseStyles = `
     text-align: center;
   }
 
+
+  .g365-nhl-team-name-bar {
+    width: 100%;
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border: 1px solid rgba(255, 101, 0, 0.18);
+    border-radius: 12px;
+    background:
+      linear-gradient(
+        135deg,
+        rgba(207, 24, 24, 0.10),
+        rgba(255, 76, 0, 0.04) 48%,
+        rgba(8, 8, 8, 0.96)
+      );
+  }
+
+  .g365-nhl-team-name-copy {
+    min-width: 0;
+  }
+
+  .g365-nhl-team-name-copy h1 {
+    margin: 5px 0 0;
+    color: #ffffff;
+    font-size: clamp(24px, 4vw, 34px);
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+
+  .g365-nhl-team-name-editor {
+    position: relative;
+    flex: 0 0 auto;
+  }
+
+  .g365-nhl-team-name-editor > summary {
+    min-height: 38px;
+    padding: 0 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 119, 0, 0.35);
+    border-radius: 8px;
+    background: rgba(255, 92, 0, 0.07);
+    color: #ff8a20;
+    cursor: pointer;
+    list-style: none;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .g365-nhl-team-name-editor > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .g365-nhl-team-name-editor[open] > summary {
+    border-color: rgba(255, 119, 0, 0.7);
+    color: #ffffff;
+  }
+
+  .g365-nhl-team-name-editor form {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 8px);
+    right: 0;
+    width: min(330px, calc(100vw - 56px));
+    padding: 10px;
+    display: flex;
+    gap: 8px;
+    border: 1px solid rgba(255, 119, 0, 0.28);
+    border-radius: 10px;
+    background: #111214;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.48);
+  }
+
+  .g365-nhl-team-name-editor input {
+    min-width: 0;
+    flex: 1;
+    height: 38px;
+    padding: 0 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 7px;
+    outline: none;
+    background: #090a0b;
+    color: #ffffff;
+    font: inherit;
+    font-size: 12px;
+  }
+
+  .g365-nhl-team-name-editor input:focus {
+    border-color: rgba(255, 119, 0, 0.65);
+  }
+
+  .g365-nhl-team-name-editor button {
+    min-height: 38px;
+    padding: 0 13px;
+    border: 1px solid rgba(255, 92, 0, 0.55);
+    border-radius: 7px;
+    background: linear-gradient(135deg, #d91d1d, #ff4b00, #ff7900);
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 9px;
+    font-weight: 900;
+  }
+
+  .g365-nhl-lineup-manager {
+    min-width: 0;
+  }
+
+  .g365-nhl-start-active-form {
+    grid-column: 3;
+    justify-self: end;
+  }
+
+  .g365-nhl-start-active-button {
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid rgba(255, 92, 0, 0.7);
+    border-radius: 9px;
+    background: linear-gradient(135deg, #d91d1d, #ff4b00, #ff7900);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .05em;
+    cursor: pointer;
+  }
+
+  .g365-nhl-lineup-help {
+    margin: -4px auto 14px;
+    max-width: 760px;
+    color: #8d939d;
+    font-size: 11px;
+    line-height: 1.55;
+    text-align: center;
+  }
+
+  .g365-nhl-lineup-heading {
+    display: flex;
+    justify-content: center;
+  }
+
+  .g365-nhl-week-tabs-shell {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 3px;
+    scrollbar-width: thin;
+  }
+
+  .g365-nhl-week-tabs {
+    min-width: 840px;
+    display: grid;
+    grid-template-columns: repeat(7, minmax(86px, 1fr)) minmax(160px, 1.45fr);
+    grid-template-rows: auto auto;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .g365-nhl-week-tab-item {
+    display: contents;
+  }
+
+  .g365-nhl-week-tab-radio {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .g365-nhl-week-tab {
+    min-height: 54px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    border: 1px solid rgba(255, 119, 0, .18);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, .025);
+    color: #9298a3;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color .15s ease, background .15s ease, color .15s ease;
+  }
+
+  .g365-nhl-week-tab span {
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: .08em;
+  }
+
+  .g365-nhl-week-tab strong {
+    color: #fff;
+    font-size: 13px;
+    line-height: 1;
+  }
+
+  .g365-nhl-week-tab-radio:focus-visible + .g365-nhl-week-tab {
+    outline: 2px solid #ff7a18;
+    outline-offset: 2px;
+  }
+
+  .g365-nhl-week-tab-radio:checked + .g365-nhl-week-tab {
+    border-color: rgba(255, 92, 0, .7);
+    background: linear-gradient(135deg, rgba(217, 29, 29, .26), rgba(255, 75, 0, .18));
+    color: #ff8a3d;
+  }
+
+  .g365-nhl-start-weekly-form {
+    grid-column: 8;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  .g365-nhl-start-weekly-button {
+    width: 100%;
+    min-height: 54px;
+    height: 100%;
+    padding: 8px 14px;
+    border: 1px solid rgba(255, 92, 0, .62);
+    border-radius: 9px;
+    background: linear-gradient(135deg, #d91d1d, #ff4b00, #ff7900);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 1.2;
+    letter-spacing: .045em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .g365-nhl-week-tab-panel {
+    display: none;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0;
+    padding-top: 4px;
+  }
+
+  .g365-nhl-week-tab-radio:checked ~ .g365-nhl-week-tab-panel {
+    display: block;
+  }
+
+  .g365-nhl-selected-day-bar {
+    min-height: 42px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: 1px solid rgba(255, 119, 0, .14);
+    border-bottom: 0;
+    border-radius: 10px 10px 0 0;
+    background: rgba(255, 92, 0, .04);
+  }
+
+  .g365-nhl-selected-day-bar strong {
+    color: #fff;
+    font-size: 11px;
+  }
+
+  .g365-nhl-selected-day-bar span {
+    color: #ff8a3d;
+    font-size: 9px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .g365-nhl-lineup-table-wrap { width:100%; overflow-x:auto; border:1px solid rgba(255,119,0,.14); border-radius:10px; background:rgba(0,0,0,.22); }
+  .g365-nhl-lineup-table { width:100%; min-width:900px; border-collapse:collapse; }
+  .g365-nhl-lineup-table th { padding:11px 10px; border-bottom:1px solid rgba(255,119,0,.18); color:#ff8a3d; font-size:8px; font-weight:900; letter-spacing:.08em; text-align:left; white-space:nowrap; }
+  .g365-nhl-lineup-table th.numeric, .g365-nhl-lineup-table td.numeric { text-align:right; }
+  .g365-nhl-lineup-row td { padding:11px 10px; border-bottom:1px solid rgba(255,255,255,.055); vertical-align:middle; }
+  .g365-nhl-lineup-row:last-child td { border-bottom:0; }
+  .g365-nhl-lineup-row.locked { background:rgba(255,255,255,.018); }
+  .g365-nhl-lineup-row.ir-row { background:rgba(255,255,255,.012); }
+  .pos-cell { width:64px; }
+  .g365-nhl-table-pos { min-width:38px; min-height:26px; padding:0 7px; display:inline-flex; align-items:center; justify-content:center; border:1px solid rgba(255,92,0,.35); border-radius:6px; background:rgba(255,92,0,.08); color:#ff7a18; font-size:9px; font-weight:900; }
+  .g365-nhl-table-pos.ir { border-color:rgba(255,255,255,.1); background:rgba(255,255,255,.04); color:#a7adb6; }
+  .pos-cell small { margin-left:5px; color:#737983; font-size:8px; }
+  .player-cell { min-width:180px; }
+  .player-cell strong, .game-cell strong { display:block; color:#fff; font-size:11px; line-height:1.25; }
+  .player-cell strong.muted { color:#6f747c; }
+  .player-cell small, .game-cell small { display:block; margin-top:4px; color:#858b95; font-size:8px; line-height:1.25; }
+  .game-cell { min-width:145px; }
+  .game-cell > span { color:#858b95; font-size:9px; }
+  .g365-nhl-table-status { min-height:25px; padding:0 7px; display:inline-flex; align-items:center; justify-content:center; border-radius:5px; background:rgba(255,255,255,.05); color:#9ba1aa; font-size:7px; font-weight:900; letter-spacing:.05em; white-space:nowrap; }
+  .g365-nhl-table-status.playing { background:rgba(255,92,0,.1); color:#ff8a3d; }
+  .g365-nhl-table-status.locked { background:rgba(255,255,255,.07); color:#c0c4ca; }
+  .g365-nhl-table-status.ir { background:rgba(255,255,255,.05); color:#a7adb6; }
+  .proj-cell, .fpts-cell { width:72px; color:#fff; font-size:11px; font-weight:900; }
+  .fpts-cell { color:#ff9a50; }
+  .action-cell { min-width:190px; }
+  .g365-nhl-table-move-form { display:flex; align-items:center; justify-content:flex-end; gap:6px; }
+  .g365-nhl-table-move-form select { min-height:34px; max-width:92px; padding:0 7px; border:1px solid rgba(255,119,0,.18); border-radius:6px; background:#111; color:#fff; font-size:8px; font-weight:800; }
+  .g365-nhl-table-move-form button, .g365-nhl-ir-activate { min-height:34px; padding:0 10px; border:1px solid rgba(255,92,0,.5); border-radius:6px; background:linear-gradient(135deg,#d91d1d,#ff4b00,#ff7900); color:#fff; font-size:8px; font-weight:900; cursor:pointer; }
+  .g365-nhl-action-locked { color:#858b95; font-size:8px; font-weight:900; }
   @media (max-width: 900px) {
     .g365-nhl-summary-grid {
       grid-template-columns:
@@ -1443,6 +2127,27 @@ const baseStyles = `
     .g365-nhl-roster-grid {
       grid-template-columns: 1fr;
     }
+  }
+
+  @media (max-width: 760px) {
+    .g365-nhl-lineup-table-wrap { overflow-x:visible; border:0; background:transparent; }
+    .g365-nhl-lineup-table { min-width:0; display:block; }
+    .g365-nhl-lineup-table thead { display:none; }
+    .g365-nhl-lineup-table tbody { display:grid; gap:8px; }
+    .g365-nhl-lineup-row { display:grid; grid-template-columns:54px minmax(0,1fr) auto; gap:8px 10px; padding:11px; border:1px solid rgba(255,255,255,.07); border-radius:9px; background:rgba(0,0,0,.28); }
+    .g365-nhl-lineup-row td { padding:0; border:0; min-width:0; width:auto; }
+    .g365-nhl-lineup-row .pos-cell { grid-row:1 / span 3; align-self:start; }
+    .g365-nhl-lineup-row .player-cell { grid-column:2; grid-row:1; }
+    .g365-nhl-lineup-row .status-cell { grid-column:3; grid-row:1; text-align:right; }
+    .g365-nhl-lineup-row .game-cell { grid-column:2 / 4; grid-row:2; }
+    .g365-nhl-lineup-row .proj-cell { grid-column:2; grid-row:3; text-align:left; }
+    .g365-nhl-lineup-row .proj-cell::before { content:'PROJ '; color:#858b95; font-size:7px; margin-right:4px; }
+    .g365-nhl-lineup-row .fpts-cell { grid-column:3; grid-row:3; text-align:right; }
+    .g365-nhl-lineup-row .fpts-cell::before { content:'FPTS '; color:#858b95; font-size:7px; margin-right:4px; }
+    .g365-nhl-lineup-row .action-cell { grid-column:2 / 4; grid-row:4; }
+    .g365-nhl-table-move-form { justify-content:stretch; }
+    .g365-nhl-table-move-form select { flex:1; max-width:none; }
+    .g365-nhl-table-move-form button, .g365-nhl-ir-activate { min-height:38px; }
   }
 
   @media (max-width: 520px) {
@@ -1494,8 +2199,18 @@ const baseStyles = `
     }
 
     .g365-nhl-section-header > .g365-nhl-pill,
-    .g365-nhl-section-heading > .g365-nhl-pill {
+    .g365-nhl-section-heading > .g365-nhl-pill,
+    .g365-nhl-start-active-form {
       align-self: center;
+    }
+
+    .g365-nhl-start-active-form,
+    .g365-nhl-start-active-button {
+      width: 100%;
+    }
+
+    .g365-nhl-day-starters {
+      grid-template-columns: 1fr;
     }
 
     .g365-nhl-slot-grid {
@@ -1526,6 +2241,32 @@ const baseStyles = `
   @media (max-width: 360px) {
     .g365-nhl-slot-grid {
       grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .g365-nhl-team-name-bar {
+      padding: 14px;
+      align-items: flex-start;
+    }
+
+    .g365-nhl-team-name-copy h1 {
+      font-size: 24px;
+    }
+
+    .g365-nhl-team-name-editor > summary {
+      min-height: 36px;
+      padding: 0 10px;
+    }
+
+    .g365-nhl-team-name-editor form {
+      right: 0;
+      width: min(310px, calc(100vw - 46px));
+      flex-direction: column;
+    }
+
+    .g365-nhl-team-name-editor button {
+      width: 100%;
     }
   }
 `;

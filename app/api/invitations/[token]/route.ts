@@ -627,6 +627,48 @@ export async function POST(
     const isGreyhound =
       league.league_type === "greyhound";
 
+    let isNhlDynasty =
+      false;
+
+    if (
+      league.league_type ===
+      "nhl_traditional"
+    ) {
+      const {
+        data: nhlSettings,
+        error: nhlSettingsError,
+      } =
+        await admin
+          .from(
+            "nhl_traditional_settings"
+          )
+          .select(
+            "league_format"
+          )
+          .eq(
+            "league_id",
+            invitation.league_id
+          )
+          .maybeSingle();
+
+      if (nhlSettingsError) {
+        return jsonError(
+          nhlSettingsError.message,
+          500
+        );
+      }
+
+      isNhlDynasty =
+        String(
+          nhlSettings
+            ?.league_format ??
+            ""
+        )
+          .trim()
+          .toLowerCase() ===
+        "dynasty";
+    }
+
     let teamId:
       number | null =
       null;
@@ -1028,31 +1070,42 @@ export async function POST(
         const {
           data: claimedTeam,
           error: teamUpdateError,
-        } =
-          await admin
-            .from("fantasy_teams")
-            .update({
-              owner_id:
-                user.id,
-              updated_at:
-                new Date().toISOString(),
-            })
-            .eq(
-              "id",
-              team.id
+        } = isNhlDynasty
+          ? await admin.rpc(
+              "accept_nhl_dynasty_franchise_owner",
+              {
+                p_league_id:
+                  invitation.league_id,
+                p_fantasy_team_id:
+                  Number(team.id),
+                p_user_id:
+                  user.id,
+              }
             )
-            .eq(
-              "league_id",
-              invitation.league_id
-            )
-            .is(
-              "owner_id",
-              null
-            )
-            .select(
-              "id,team_name"
-            )
-            .maybeSingle();
+          : await admin
+              .from("fantasy_teams")
+              .update({
+                owner_id:
+                  user.id,
+                updated_at:
+                  new Date().toISOString(),
+              })
+              .eq(
+                "id",
+                team.id
+              )
+              .eq(
+                "league_id",
+                invitation.league_id
+              )
+              .is(
+                "owner_id",
+                null
+              )
+              .select(
+                "id,team_name"
+              )
+              .maybeSingle();
 
         if (teamUpdateError) {
           if (membershipCreated) {
@@ -1120,11 +1173,23 @@ export async function POST(
           teamName =
             alreadyOwnedTeam.team_name;
         } else {
-          teamId =
-            Number(claimedTeam.id);
+          teamId = isNhlDynasty
+            ? Number(
+                claimedTeam
+                  .fantasyTeamId
+              )
+            : Number(
+                claimedTeam.id
+              );
 
-          teamName =
-            claimedTeam.team_name;
+          teamName = isNhlDynasty
+            ? String(
+                claimedTeam
+                  .teamName ??
+                  team.team_name
+              )
+            : claimedTeam
+                .team_name;
 
           teamOwnershipClaimed =
             true;
@@ -1312,13 +1377,17 @@ export async function POST(
         teamOwnershipClaimed &&
         teamId !== null
       ) {
+        const rollbackAt =
+          new Date()
+            .toISOString();
+
         await admin
           .from("fantasy_teams")
           .update({
             owner_id:
               null,
             updated_at:
-              new Date().toISOString(),
+              rollbackAt,
           })
           .eq(
             "id",
@@ -1328,6 +1397,37 @@ export async function POST(
             "owner_id",
             user.id
           );
+
+        if (isNhlDynasty) {
+          await admin
+            .from(
+              "nhl_dynasty_franchise_owner_history"
+            )
+            .update({
+              ended_at:
+                rollbackAt,
+              updated_at:
+                rollbackAt,
+              change_reason:
+                "invitation_acceptance_rolled_back",
+            })
+            .eq(
+              "league_id",
+              invitation.league_id
+            )
+            .eq(
+              "fantasy_team_id",
+              teamId
+            )
+            .eq(
+              "owner_user_id",
+              user.id
+            )
+            .is(
+              "ended_at",
+              null
+            );
+        }
       }
 
       return jsonError(

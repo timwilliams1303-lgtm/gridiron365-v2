@@ -13,6 +13,22 @@ type Settings = {
   scoring_system: string | null;
   regular_season_weeks: number | null;
   playoff_team_count: number | null;
+  divisions_enabled: boolean;
+  division_playoff_mode:
+    | "overall"
+    | "division_winners_qualify"
+    | "division_winners_top_seeds";
+};
+
+type Division = {
+  id: number;
+  name: string;
+  sort_order: number;
+};
+
+type TeamDivision = {
+  fantasy_team_id: number;
+  division_id: number;
 };
 
 type Team = {
@@ -73,6 +89,8 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [standings, setStandings] = useState<Standing[]>([]);
   const [matchups, setMatchups] = useState<Matchup[]>([]);
+  const [divisions, setDivisions] = useState<Division[]>([]);
+  const [teamDivisions, setTeamDivisions] = useState<TeamDivision[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -91,7 +109,7 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
       const { data: settingData, error: settingError } = await supabase
         .from("nhl_traditional_settings")
         .select(
-          "season,league_format,competition_format,scoring_system,regular_season_weeks,playoff_team_count"
+          "season,league_format,competition_format,scoring_system,regular_season_weeks,playoff_team_count,divisions_enabled,division_playoff_mode"
         )
         .eq("league_id", leagueId)
         .maybeSingle();
@@ -107,11 +125,21 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
         scoring_system: settingData.scoring_system,
         regular_season_weeks: settingData.regular_season_weeks,
         playoff_team_count: settingData.playoff_team_count,
+        divisions_enabled: Boolean(settingData.divisions_enabled),
+        division_playoff_mode:
+          (settingData.division_playoff_mode as Settings["division_playoff_mode"]) ??
+          "overall",
       };
 
       setSettings(nextSettings);
 
-      const [teamResult, standingResult, matchupResult] = await Promise.all([
+      const [
+        teamResult,
+        standingResult,
+        matchupResult,
+        divisionResult,
+        teamDivisionResult,
+      ] = await Promise.all([
         supabase
           .from("fantasy_teams")
           .select("id,team_name,owner_id,active,is_cpu")
@@ -134,11 +162,26 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
           .eq("league_id", leagueId)
           .eq("season", nextSettings.season)
           .lte("week", nextSettings.regular_season_weeks ?? 999),
+
+        supabase
+          .from("nhl_traditional_divisions")
+          .select("id,name,sort_order")
+          .eq("league_id", leagueId)
+          .eq("season", nextSettings.season)
+          .order("sort_order", { ascending: true }),
+
+        supabase
+          .from("nhl_traditional_team_divisions")
+          .select("fantasy_team_id,division_id")
+          .eq("league_id", leagueId)
+          .eq("season", nextSettings.season),
       ]);
 
       if (teamResult.error) throw teamResult.error;
       if (standingResult.error) throw standingResult.error;
       if (matchupResult.error) throw matchupResult.error;
+      if (divisionResult.error) throw divisionResult.error;
+      if (teamDivisionResult.error) throw teamDivisionResult.error;
 
       setTeams(
         (teamResult.data ?? []).map((x) => ({
@@ -159,6 +202,21 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
           points_for: n(x.points_for),
           points_against: n(x.points_against),
           rank: x.rank == null ? null : n(x.rank),
+        }))
+      );
+
+      setDivisions(
+        (divisionResult.data ?? []).map((x) => ({
+          id: n(x.id),
+          name: x.name ?? "Division",
+          sort_order: n(x.sort_order),
+        }))
+      );
+
+      setTeamDivisions(
+        (teamDivisionResult.data ?? []).map((x) => ({
+          fantasy_team_id: n(x.fantasy_team_id),
+          division_id: n(x.division_id),
         }))
       );
 
@@ -240,6 +298,44 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
         return a.team.team_name.localeCompare(b.team.team_name);
       });
   }, [teams, standings]);
+
+  const divisionRows = useMemo(() => {
+    if (!settings?.divisions_enabled || divisions.length === 0) return [];
+
+    const assignmentByTeam = new Map(
+      teamDivisions.map((assignment) => [
+        assignment.fantasy_team_id,
+        assignment.division_id,
+      ])
+    );
+
+    return [...divisions]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((division) => ({
+        division,
+        rows: rows
+          .filter(
+            (row) => assignmentByTeam.get(row.team.id) === division.id
+          )
+          .sort((a, b) => {
+            if (b.percentage !== a.percentage) {
+              return b.percentage - a.percentage;
+            }
+            if (b.points_for !== a.points_for) {
+              return b.points_for - a.points_for;
+            }
+            return a.team.team_name.localeCompare(b.team.team_name);
+          }),
+      }));
+  }, [settings?.divisions_enabled, divisions, teamDivisions, rows]);
+
+  const unassignedDivisionRows = useMemo(() => {
+    if (!settings?.divisions_enabled) return [];
+    const assigned = new Set(
+      teamDivisions.map((assignment) => assignment.fantasy_team_id)
+    );
+    return rows.filter((row) => !assigned.has(row.team.id));
+  }, [settings?.divisions_enabled, teamDivisions, rows]);
 
   const playoffCount = Math.max(
     0,
@@ -433,6 +529,12 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
             <span style={S.badge}>
               {playoffCount || "—"} PLAYOFF TEAMS
             </span>
+
+            {settings?.divisions_enabled ? (
+              <span style={S.divisionBadge}>
+                {divisions.length} DIVISIONS
+              </span>
+            ) : null}
           </div>
         </section>
 
@@ -460,7 +562,112 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
             </button>
           </section>
         ) : (
-          <section style={S.panel}>
+          <>
+            {settings?.divisions_enabled && divisions.length > 0 ? (
+              <section style={S.divisionsPanel}>
+                <div style={S.divisionsHeader}>
+                  <div>
+                    <strong>DIVISION STANDINGS</strong>
+                    <small style={S.divisionsSub}>
+                      {settings.division_playoff_mode === "division_winners_top_seeds"
+                        ? "Division winners receive the top playoff seeds."
+                        : settings.division_playoff_mode === "division_winners_qualify"
+                          ? "Division winners automatically qualify for the playoffs."
+                          : "Divisions are displayed below; playoff qualification uses overall standings."}
+                    </small>
+                  </div>
+                  <span>{divisions.length} DIVISIONS</span>
+                </div>
+
+                <div style={S.divisionGrid}>
+                  {divisionRows.map(({ division, rows: groupRows }) => (
+                    <div key={division.id} style={S.divisionCard}>
+                      <div style={S.divisionTitle}>
+                        <strong>{division.name.toUpperCase()}</strong>
+                        <span>{groupRows.length} TEAMS</span>
+                      </div>
+
+                      <div style={S.divisionMiniHeader}>
+                        <span>RK</span>
+                        <span>TEAM</span>
+                        <span>W</span>
+                        <span>L</span>
+                        <span>T</span>
+                        <span>PCT</span>
+                        <span>STATUS</span>
+                      </div>
+
+                      {groupRows.map((row, index) => {
+                        const mine = Boolean(
+                          userId && row.team.owner_id === userId
+                        );
+                        return (
+                          <div
+                            key={row.team.id}
+                            style={{
+                              ...S.divisionMiniRow,
+                              ...(mine ? S.divisionMiniMine : {}),
+                            }}
+                          >
+                            <span style={index === 0 ? S.divisionLeader : S.rank}>
+                              {index + 1}
+                            </span>
+                            <Link
+                              href={`/league/${leagueId}/nhl/teams/${row.team.id}`}
+                              style={S.divisionTeamLink}
+                            >
+                              {row.team.team_name}
+                              {mine ? <small style={S.divisionYou}>YOU</small> : null}
+                            </Link>
+                            <span>{row.wins}</span>
+                            <span>{row.losses}</span>
+                            <span>{row.ties}</span>
+                            <strong>
+                              {row.percentage.toFixed(3).replace(/^0/, "") || ".000"}
+                            </strong>
+                            <span
+                              style={{
+                                ...S.divisionStatus,
+                                ...(playoffStatusByTeam.get(row.team.id) === "CLINCHED"
+                                  ? S.statusClinched
+                                  : playoffStatusByTeam.get(row.team.id) === "IN THE HUNT"
+                                    ? S.statusHunt
+                                    : playoffStatusByTeam.get(row.team.id) === "ELIMINATED"
+                                      ? S.statusEliminated
+                                      : S.statusNeutral),
+                              }}
+                            >
+                              {playoffStatusByTeam.get(row.team.id) ?? "—"}
+                            </span>
+                          </div>
+                        );
+                      })}
+
+                      {!groupRows.length ? (
+                        <div style={S.divisionEmpty}>No teams assigned.</div>
+                      ) : null}
+                    </div>
+                  ))}
+
+                  {unassignedDivisionRows.length > 0 ? (
+                    <div style={S.divisionCard}>
+                      <div style={S.divisionTitle}>
+                        <strong>UNASSIGNED</strong>
+                        <span>{unassignedDivisionRows.length} TEAMS</span>
+                      </div>
+                      <div style={S.divisionEmpty}>
+                        {unassignedDivisionRows
+                          .map((row) => row.team.team_name)
+                          .join(" • ")}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
+
+            {!settings?.divisions_enabled ? (
+              <section style={S.panel}>
             <div style={S.panelHead}>
               <div
                 style={{
@@ -710,6 +917,8 @@ export default function NhlTraditionalStandings({ leagueId }: Props) {
               </span>
             </div>
           </section>
+            ) : null}
+          </>
         )}
       </div>
     </main>
@@ -785,6 +994,153 @@ const S: Record<string, React.CSSProperties> = {
     color: "#ff8a45",
     fontSize: 8,
     fontWeight: 1000,
+  },
+
+  divisionBadge: {
+    padding: "6px 9px",
+    border: "1px solid #6a351e",
+    borderRadius: 5,
+    background: "#26150d",
+    color: "#ff7b31",
+    fontSize: 8,
+    fontWeight: 1000,
+  },
+
+  divisionsPanel: {
+    border: "1px solid #3b2a22",
+    borderRadius: 9,
+    overflow: "hidden",
+    background: "#111113",
+  },
+
+  divisionsHeader: {
+    padding: "12px 14px",
+    background: "linear-gradient(90deg, #171719 0%, #21110b 100%)",
+    borderBottom: "1px solid #3b2a22",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    color: "#f5f5f5",
+    fontSize: 10,
+  },
+
+  divisionsSub: {
+    display: "block",
+    marginTop: 4,
+    color: "#8d8d93",
+    fontSize: 8,
+    fontWeight: 700,
+  },
+
+  divisionGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 390px), 1fr))",
+    gap: 10,
+    padding: 10,
+  },
+
+  divisionCard: {
+    minWidth: 0,
+    border: "1px solid #29292d",
+    borderRadius: 8,
+    overflow: "hidden",
+    background: "#0d0d0f",
+  },
+
+  divisionTitle: {
+    padding: "10px 11px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+    background: "#18110e",
+    borderBottom: "1px solid #4d2a1d",
+    color: "#ff7b31",
+    fontSize: 9,
+    fontWeight: 1000,
+  },
+
+  divisionMiniHeader: {
+    display: "grid",
+    gridTemplateColumns: "34px minmax(120px, 1fr) 34px 34px 34px 52px 104px",
+    alignItems: "center",
+    minWidth: 410,
+    padding: "7px 8px",
+    color: "#777a80",
+    background: "#121214",
+    borderBottom: "1px solid #242428",
+    fontSize: 7,
+    fontWeight: 1000,
+    textAlign: "center",
+  },
+
+  divisionMiniRow: {
+    display: "grid",
+    gridTemplateColumns: "34px minmax(120px, 1fr) 34px 34px 34px 52px 104px",
+    alignItems: "center",
+    minWidth: 410,
+    padding: "8px",
+    borderBottom: "1px solid #202024",
+    color: "#d7d7da",
+    fontSize: 10,
+    textAlign: "center",
+  },
+
+  divisionMiniMine: {
+    background: "#17120f",
+    boxShadow: "inset 3px 0 0 #ff5a1f",
+  },
+
+  divisionLeader: {
+    width: 22,
+    height: 22,
+    margin: "0 auto",
+    borderRadius: "50%",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#ff5a1f",
+    color: "#fff",
+    fontWeight: 1000,
+  },
+
+  divisionTeamLink: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    minWidth: 0,
+    color: "#f5f5f5",
+    textDecoration: "none",
+    fontWeight: 1000,
+    textAlign: "left",
+  },
+
+  divisionYou: {
+    color: "#ff7b31",
+    fontSize: 6,
+    fontWeight: 1000,
+  },
+
+  divisionStatus: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    justifySelf: "center",
+    minWidth: 82,
+    padding: "4px 6px",
+    borderRadius: 999,
+    fontSize: 7,
+    fontWeight: 1000,
+    letterSpacing: 0.3,
+    whiteSpace: "nowrap",
+  },
+
+  divisionEmpty: {
+    padding: 16,
+    color: "#777a80",
+    fontSize: 9,
+    textAlign: "center",
   },
 
   back: {

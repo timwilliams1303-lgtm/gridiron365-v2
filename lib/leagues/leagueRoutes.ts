@@ -199,9 +199,12 @@ export function getLeagueNavItems({
    * - Redraft
    * - Dynasty
    *
-   * Individual pages can add dynasty-specific
-   * behavior without requiring a second league
-   * type or separate navigation system.
+   * Players and Teams are intentionally
+   * removed from NHL navigation.
+   *
+   * Waivers now serves as the complete
+   * Add Players / Free Agents / Waiver
+   * acquisition page.
    * =========================================
    */
   if (leagueType === "nhl_traditional") {
@@ -220,18 +223,6 @@ export function getLeagueNavItems({
         label: "My Team",
         mobileLabel: "My Team",
         href: `${nhlBase}/team`,
-      },
-      {
-        key: "leagueTeams",
-        label: "Teams",
-        mobileLabel: "Teams",
-        href: `${nhlBase}/teams`,
-      },
-      {
-        key: "players",
-        label: "Players",
-        mobileLabel: "Players",
-        href: `${nhlBase}/players`,
       },
       {
         key: "rankings",
@@ -268,6 +259,12 @@ export function getLeagueNavItems({
         label: "Draft",
         mobileLabel: "Draft",
         href: `${nhlBase}/draft`,
+      },
+      {
+        key: "draftLottery",
+        label: "Draft Lottery",
+        mobileLabel: "Lottery",
+        href: `${nhlBase}/draft-lottery`,
       },
       {
         key: "playoffs",

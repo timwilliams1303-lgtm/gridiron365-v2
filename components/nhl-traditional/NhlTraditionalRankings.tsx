@@ -36,7 +36,6 @@ type RankingRow = {
   position_rank: number;
   nhl_player_id: number;
   display_name: string;
-  headshot_url: string | null;
   team_abbreviation: string | null;
   player_position: string | null;
   player_position_group: string | null;
@@ -64,6 +63,7 @@ type RankingRow = {
   projected_save_percentage: number | null;
   projected_goals_against_average: number | null;
   projection_method: string | null;
+  headshot_url: string | null;
 };
 
 type UserRankingRow = {
@@ -100,8 +100,6 @@ function normalizeRanking(row: Record<string, unknown>): RankingRow {
       typeof row.display_name === "string"
         ? row.display_name
         : `Player #${num(row.nhl_player_id)}`,
-    headshot_url:
-      typeof row.headshot_url === "string" ? row.headshot_url : null,
     team_abbreviation:
       typeof row.team_abbreviation === "string" ? row.team_abbreviation : null,
     player_position:
@@ -139,6 +137,10 @@ function normalizeRanking(row: Record<string, unknown>): RankingRow {
     ),
     projection_method:
       typeof row.projection_method === "string" ? row.projection_method : null,
+    headshot_url:
+      typeof row.headshot_url === "string" && row.headshot_url.trim()
+        ? row.headshot_url
+        : null,
   };
 }
 
@@ -179,37 +181,6 @@ function recordNumber(row: SeasonTotalsRow | null, ...keys: string[]) {
 
 function stat(v: number | null | undefined, digits = 0) {
   return v == null ? "—" : Number(v).toFixed(digits);
-}
-
-function errorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  if (error && typeof error === "object") {
-    const value = error as Record<string, unknown>;
-    const message =
-      typeof value.message === "string" ? value.message : "";
-    const details =
-      typeof value.details === "string" ? value.details : "";
-    const hint =
-      typeof value.hint === "string" ? value.hint : "";
-    const code =
-      typeof value.code === "string" ? value.code : "";
-
-    const parts = [
-      message,
-      details && details !== message ? details : "",
-      hint,
-      code ? `Code: ${code}` : "",
-    ].filter(Boolean);
-
-    if (parts.length > 0) {
-      return parts.join(" • ");
-    }
-  }
-
-  return fallback;
 }
 
 export default function NhlTraditionalRankings({ leagueId }: Props) {
@@ -318,42 +289,12 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
       );
       if (masterError) throw masterError;
 
-      const normalizedMaster = Array.isArray(master)
-        ? master.map((row) =>
-            normalizeRanking(row as Record<string, unknown>)
-          )
-        : [];
-
-      const playerIds = normalizedMaster.map((player) => player.nhl_player_id);
-      const headshots = new Map<number, string | null>();
-
-      for (let index = 0; index < playerIds.length; index += 500) {
-        const chunk = playerIds.slice(index, index + 500);
-        if (chunk.length === 0) continue;
-
-        const { data: playerRows, error: playerError } = await supabase
-          .from("nhl_players")
-          .select("id,headshot_url")
-          .in("id", chunk);
-
-        if (playerError) throw playerError;
-
-        for (const row of playerRows ?? []) {
-          headshots.set(
-            Number(row.id),
-            typeof row.headshot_url === "string" && row.headshot_url.trim()
-              ? row.headshot_url
-              : null
-          );
-        }
-      }
-
       setRankings(
-        normalizedMaster.map((player) => ({
-          ...player,
-          headshot_url:
-            headshots.get(player.nhl_player_id) ?? player.headshot_url,
-        }))
+        Array.isArray(master)
+          ? master.map((row) =>
+              normalizeRanking(row as Record<string, unknown>)
+            )
+          : []
       );
 
       const { error: initializeError } = await supabase.rpc(
@@ -364,8 +305,8 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
 
       await Promise.all([loadMyRankings(), loadDraft()]);
     } catch (e) {
-      console.error("Unable to load My Rankings:", e);
-      setError(errorMessage(e, "Unable to load My Rankings."));
+      console.error(e);
+      setError(e instanceof Error ? e.message : "Unable to load My Rankings.");
     } finally {
       setLoading(false);
     }
@@ -399,6 +340,8 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
     () => new Set(draftPicks.map((pick) => pick.nhl_player_id)),
     [draftPicks]
   );
+
+  const rankingsLocked = draft?.status === "completed";
 
   const hideDrafted =
     draft?.status === "drafting" || draft?.status === "paused";
@@ -472,8 +415,8 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
       await loadMyRankings();
       setMoveValues((current) => ({ ...current, [playerId]: "" }));
     } catch (e) {
-      console.error("Unable to move player:", e);
-      setError(errorMessage(e, "Unable to move player."));
+      console.error(e);
+      setError(e instanceof Error ? e.message : "Unable to move player.");
     } finally {
       setWorking(false);
     }
@@ -495,8 +438,8 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
       if (resetError) throw resetError;
       await loadMyRankings();
     } catch (e) {
-      console.error("Unable to reset rankings:", e);
-      setError(errorMessage(e, "Unable to reset rankings."));
+      console.error(e);
+      setError(e instanceof Error ? e.message : "Unable to reset rankings.");
     } finally {
       setWorking(false);
     }
@@ -528,9 +471,9 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
         ) ?? null
       );
     } catch (e) {
-      console.error("Unable to load previous season:", e);
+      console.error(e);
       setDetailError(
-        errorMessage(e, "Unable to load previous season.")
+        e instanceof Error ? e.message : "Unable to load previous season."
       );
     } finally {
       setDetailLoading(false);
@@ -559,20 +502,95 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
     );
   }
 
+  if (rankingsLocked) {
+    return (
+      <main style={styles.page}>
+        <style>{`
+          @media (max-width:760px) {
+            .my-rank-locked-card { padding:28px 18px !important; }
+          }
+        `}</style>
+        <div style={styles.container}>
+          <section
+            className="my-rank-locked-card"
+            style={{
+              ...styles.card,
+              minHeight: 320,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 12,
+              textAlign: "center",
+              opacity: 0.72,
+              filter: "grayscale(0.72)",
+            }}
+          >
+            <div style={styles.eyebrow}>GRIDIRON365 • NHL TRADITIONAL</div>
+            <h1 style={{ ...styles.title, margin: 0 }}>My Rankings</h1>
+            <span
+              style={{
+                ...styles.badge,
+                color: "#8d929a",
+                borderColor: "rgba(255,255,255,.12)",
+                background: "rgba(255,255,255,.035)",
+              }}
+            >
+              LOCKED • DRAFT COMPLETE
+            </span>
+            <div
+              style={{
+                ...styles.description,
+                maxWidth: 560,
+                color: "#7f858e",
+              }}
+            >
+              Rankings are closed because this draft is complete. They will
+              automatically reopen when the next NHL draft is created for the
+              league.
+            </div>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main style={styles.page}>
       <style>{`
         .my-rank-row:hover { background:#17171a; }
         .my-rank-name:hover { color:#ff8a3d !important; text-decoration:underline; }
+        .my-rank-table-wrap { width:100%; overflow-x:hidden; }
+        .my-rank-player-wrap { display:flex; align-items:center; gap:7px; min-width:0; }
+        .my-rank-headshot {
+          width:30px;
+          height:30px;
+          flex:0 0 30px;
+          border-radius:50%;
+          object-fit:cover;
+          object-position:center top;
+          background:#18181b;
+          border:1px solid #34343a;
+        }
+        .my-rank-headshot-fallback {
+          display:grid;
+          place-items:center;
+          color:#737780;
+          font-size:8px;
+          font-weight:950;
+        }
+        @media (max-width:900px) {
+          .my-rank-team { display:none !important; }
+          .my-rank-gp { display:none !important; }
+        }
         @media (max-width:760px) {
           .my-rank-header { flex-direction:column !important; align-items:stretch !important; }
           .my-rank-controls { grid-template-columns:1fr !important; }
-          .my-rank-team { display:none !important; }
           .my-rank-posrank { display:none !important; }
           .my-rank-fppg { display:none !important; }
-          .my-rank-gp { display:none !important; }
-          .my-rank-table th, .my-rank-table td { padding:7px 4px !important; }
-          .my-rank-player { min-width:120px !important; }
+          .my-rank-table th, .my-rank-table td { padding:6px 3px !important; }
+          .my-rank-player { min-width:0 !important; }
+          .my-rank-headshot { width:26px; height:26px; flex-basis:26px; }
         }
       `}</style>
 
@@ -687,7 +705,7 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
             <span style={styles.g365}>G365 BASELINE</span>
           </div>
 
-          <div style={{ overflowX: "auto" }}>
+          <div className="my-rank-table-wrap">
             <table className="my-rank-table" style={styles.table}>
               <thead>
                 <tr>
@@ -729,20 +747,22 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
                         {positionRank(player, mode)}
                       </td>
                       <td className="my-rank-player" style={styles.playerCell}>
-                        <div style={styles.playerIdentity}>
-                          <div style={styles.headshotWrap}>
-                            {player.headshot_url ? (
-                              <img
-                                src={player.headshot_url}
-                                alt=""
-                                style={styles.headshot}
-                              />
-                            ) : (
-                              <span style={styles.headshotFallback}>
-                                {player.display_name.slice(0, 1).toUpperCase()}
-                              </span>
-                            )}
-                          </div>
+                        <div className="my-rank-player-wrap">
+                          {player.headshot_url ? (
+                            <img
+                              className="my-rank-headshot"
+                              src={player.headshot_url}
+                              alt=""
+                              loading="lazy"
+                            />
+                          ) : (
+                            <span
+                              className="my-rank-headshot my-rank-headshot-fallback"
+                              aria-hidden="true"
+                            >
+                              NHL
+                            </span>
+                          )}
                           <button
                             type="button"
                             className="my-rank-name"
@@ -842,28 +862,13 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
           >
             <section style={styles.modal} role="dialog" aria-modal="true">
               <div style={styles.modalHeader}>
-                <div style={styles.modalIdentity}>
-                  <div style={styles.modalHeadshotWrap}>
-                    {detail.headshot_url ? (
-                      <img
-                        src={detail.headshot_url}
-                        alt=""
-                        style={styles.modalHeadshot}
-                      />
-                    ) : (
-                      <span style={styles.modalHeadshotFallback}>
-                        {detail.display_name.slice(0, 1).toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                  <div>
-                    <div style={styles.eyebrow}>G365 DRAFT PROFILE</div>
-                    <h2 style={styles.modalTitle}>{detail.display_name}</h2>
-                    <div style={styles.modalMeta}>
-                      {pos(detail)} • {detail.team_abbreviation ?? "NHL FA"} • MY
-                      RK #{myRankById.get(detail.nhl_player_id) ?? detail.overall_rank} •
-                      G365 #{detail.overall_rank}
-                    </div>
+                <div>
+                  <div style={styles.eyebrow}>G365 DRAFT PROFILE</div>
+                  <h2 style={styles.modalTitle}>{detail.display_name}</h2>
+                  <div style={styles.modalMeta}>
+                    {pos(detail)} • {detail.team_abbreviation ?? "NHL FA"} • MY
+                    RK #{myRankById.get(detail.nhl_player_id) ?? detail.overall_rank} •
+                    G365 #{detail.overall_rank}
                   </div>
                 </div>
                 <button
@@ -1182,25 +1187,28 @@ const styles: Record<string, CSSProperties> = {
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    tableLayout: "auto",
+    tableLayout: "fixed",
     fontSize: 10,
   },
   centerHead: {
-    padding: "7px 5px",
+    width: 64,
+    padding: "6px 4px",
     borderBottom: "1px solid #29292d",
     color: "#888b92",
     textAlign: "center",
     fontSize: 8,
   },
   playerHead: {
-    padding: "7px 6px",
+    width: "32%",
+    padding: "6px 6px",
     borderBottom: "1px solid #29292d",
     color: "#888b92",
     textAlign: "left",
     fontSize: 8,
   },
   numberHead: {
-    padding: "7px 5px",
+    width: 72,
+    padding: "6px 4px",
     borderBottom: "1px solid #29292d",
     color: "#888b92",
     textAlign: "right",
@@ -1208,48 +1216,22 @@ const styles: Record<string, CSSProperties> = {
   },
   row: { borderBottom: "1px solid #202024" },
   myRank: {
-    padding: "7px 5px",
+    width: 58,
+    padding: "6px 4px",
     textAlign: "center",
     color: "#fff",
     fontSize: 13,
     fontWeight: 950,
   },
   g365Rank: {
-    padding: "7px 5px",
+    width: 58,
+    padding: "6px 4px",
     textAlign: "center",
     color: "#ff6a00",
     fontWeight: 900,
   },
-  centerCell: { padding: "7px 5px", textAlign: "center", color: "#c7c9cf" },
-  playerCell: { padding: "5px 6px", minWidth: 170 },
-  playerIdentity: {
-    display: "flex",
-    alignItems: "center",
-    gap: 7,
-    minWidth: 0,
-  },
-  headshotWrap: {
-    width: 34,
-    height: 34,
-    flex: "0 0 34px",
-    overflow: "hidden",
-    display: "grid",
-    placeItems: "center",
-    border: "1px solid #34343a",
-    borderRadius: "50%",
-    background: "#171719",
-  },
-  headshot: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    objectPosition: "center top",
-  },
-  headshotFallback: {
-    color: "#ff6a00",
-    fontSize: 12,
-    fontWeight: 950,
-  },
+  centerCell: { padding: "6px 4px", textAlign: "center", color: "#c7c9cf", overflow: "hidden", textOverflow: "ellipsis" },
+  playerCell: { padding: "6px", width: "32%", minWidth: 0, overflow: "hidden" },
   playerButton: {
     padding: 0,
     border: 0,
@@ -1259,19 +1241,24 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 950,
     cursor: "pointer",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: "100%",
   },
   fpCell: {
-    padding: "7px 5px",
+    width: 72,
+    padding: "6px 4px",
     textAlign: "right",
     color: "#ff8a3d",
     fontWeight: 950,
   },
-  numberCell: { padding: "7px 5px", textAlign: "right", color: "#d0d1d5" },
-  moveCell: { padding: "5px", minWidth: 122 },
+  numberCell: { width: 68, padding: "6px 4px", textAlign: "right", color: "#d0d1d5" },
+  moveCell: { width: 84, padding: "4px 3px" },
   moveTop: { display: "flex", gap: 4, justifyContent: "center" },
   arrowButton: {
-    width: 34,
-    height: 28,
+    width: 30,
+    height: 25,
     border: "1px solid #4a4a50",
     borderRadius: 6,
     background: "#1a1a1d",
@@ -1287,8 +1274,8 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 3,
   },
   rankInput: {
-    width: 42,
-    height: 25,
+    width: 34,
+    height: 23,
     border: "1px solid #3b3b40",
     borderRadius: 5,
     background: "#09090b",
@@ -1297,8 +1284,8 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 9,
   },
   goButton: {
-    height: 25,
-    padding: "0 7px",
+    height: 23,
+    padding: "0 5px",
     border: "1px solid #9f2a16",
     borderRadius: 5,
     background: "#3a120a",
@@ -1335,34 +1322,6 @@ const styles: Record<string, CSSProperties> = {
     padding: 14,
     borderBottom: "1px solid #29292d",
     background: "linear-gradient(135deg,#1b0c08,#101012 65%)",
-  },
-  modalIdentity: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    minWidth: 0,
-  },
-  modalHeadshotWrap: {
-    width: 64,
-    height: 64,
-    flex: "0 0 64px",
-    overflow: "hidden",
-    display: "grid",
-    placeItems: "center",
-    border: "1px solid #5a2a1a",
-    borderRadius: "50%",
-    background: "#171719",
-  },
-  modalHeadshot: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    objectPosition: "center top",
-  },
-  modalHeadshotFallback: {
-    color: "#ff6a00",
-    fontSize: 22,
-    fontWeight: 950,
   },
   modalTitle: { margin: "2px 0 0", fontSize: 25, lineHeight: 1 },
   modalMeta: { marginTop: 5, color: "#999ca4", fontSize: 10 },

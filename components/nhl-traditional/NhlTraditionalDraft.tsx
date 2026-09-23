@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 
 type NhlTraditionalDraftProps = {
@@ -45,8 +46,11 @@ type DraftRow = {
   current_pick_in_round: number;
   current_fantasy_team_id: number | null;
   started_at: string | null;
+  current_pick_started_at: string | null;
+  current_pick_expires_at: string | null;
   paused_at: string | null;
   completed_at: string | null;
+  updated_at: string | null;
 };
 
 type DraftTeamRow = {
@@ -141,9 +145,43 @@ type DraftBoardCell = {
   teamName: string;
   player: NhlPlayerRow | null;
   isCurrent: boolean;
+  originalFantasyTeamId?: number;
+  originalTeamName?: string;
+  isTraded?: boolean;
 };
 
+type LivePickAsset = {
+  draftPickAssetId: number;
+  overallPick: number | null;
+  roundNumber: number;
+  originalFantasyTeamId: number;
+  originalTeamName: string;
+  currentFantasyTeamId: number;
+  currentTeamName: string;
+  isTraded: boolean;
+  used: boolean;
+};
+
+type TradeAssetPlayer = { nhlPlayerId: number; playerName: string; position: string; fantasyTeamId: number; fantasyTeamName: string };
+type TradeAssetPick = { draftPickAssetId: number; draftSeason: number; roundNumber: number; overallPick: number | null; originalFantasyTeamId: number; originalTeamName: string; currentFantasyTeamId: number; currentTeamName: string; isTraded: boolean; used: boolean };
+type TradeAssets = { players: TradeAssetPlayer[]; draftPicks: TradeAssetPick[] };
+
 type RpcJson = Record<string, unknown>;
+
+type MyDraftRankingRow = {
+  nhl_player_id: number;
+  rank: number;
+};
+
+type AutoDraftCandidate = {
+  exists?: boolean;
+  nhlPlayerId?: number;
+  playerName?: string;
+  position?: string;
+  source?: string;
+  reason?: string;
+  forceNeed?: boolean;
+};
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -305,10 +343,44 @@ export default function NhlTraditionalDraft({
   const [positionFilter, setPositionFilter] = useState("ALL");
   const [teamFilter, setTeamFilter] = useState("ALL");
   const [activeTab, setActiveTab] = useState<
-    "players" | "queue" | "rankings" | "board"
+    "players" | "queue" | "rankings" | "board" | "trade" | "summary"
   >("players");
   const [queueIds, setQueueIds] = useState<number[]>([]);
+  const [myRankingIds, setMyRankingIds] = useState<number[]>([]);
+  const [rankingBusy, setRankingBusy] = useState(false);
+  const [autoDraftEnabled, setAutoDraftEnabled] = useState(false);
+  const [autoCandidate, setAutoCandidate] = useState<AutoDraftCandidate | null>(null);
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const autoAttemptRef = useRef<string | null>(null);
+  const previousDraftStatusRef = useRef<string | null>(null);
+  const previousPickIdsRef = useRef<Set<number>>(new Set());
+  const countdownSoundRef = useRef<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [livePickAssets, setLivePickAssets] = useState<LivePickAsset[]>([]);
+  const [tradeBusy, setTradeBusy] = useState(false);
+  const [tradeSection, setTradeSection] = useState<"teams" | "pending" | "block">("teams");
+  const [conversations, setConversations] = useState<RpcJson[]>([]);
+  const [pendingOffers, setPendingOffers] = useState<RpcJson[]>([]);
+  const [pendingOfferAssets, setPendingOfferAssets] = useState<RpcJson[]>([]);
+  const [tradeBlock, setTradeBlock] = useState<RpcJson[]>([]);
+  const [myTradeNeeds, setMyTradeNeeds] = useState<string[]>([]);
+  const [tradeNeedsBusy, setTradeNeedsBusy] = useState(false);
+  const [tradeSummary, setTradeSummary] = useState<RpcJson[]>([]);
+  const [chatUnread, setChatUnread] = useState(0);
+  const [selectedTradeTeamId, setSelectedTradeTeamId] = useState<number | null>(null);
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [chatMessages, setChatMessages] = useState<RpcJson[]>([]);
+  const [chatBody, setChatBody] = useState("");
+  const [myTradeAssets, setMyTradeAssets] = useState<TradeAssets>({ players: [], draftPicks: [] });
+  const [theirTradeAssets, setTheirTradeAssets] = useState<TradeAssets>({ players: [], draftPicks: [] });
+  const [offerMinePlayers, setOfferMinePlayers] = useState<number[]>([]);
+  const [offerTheirPlayers, setOfferTheirPlayers] = useState<number[]>([]);
+  const [offerMinePicks, setOfferMinePicks] = useState<number[]>([]);
+  const [offerTheirPicks, setOfferTheirPicks] = useState<number[]>([]);
+  const [counteringOfferId, setCounteringOfferId] = useState<number | null>(null);
+  const chatListRef = useRef<HTMLDivElement | null>(null);
 
   const loadDraft = useCallback(
     async (showLoader = true) => {
@@ -441,7 +513,7 @@ export default function NhlTraditionalDraft({
           "get_nhl_traditional_draft_rankings",
           {
             p_league_id: leagueId,
-            p_season: loadedLeague.season,
+            p_season: Number((draftResult.data as RpcJson | null)?.season ?? loadedLeague.season),
           }
         );
 
@@ -479,6 +551,14 @@ export default function NhlTraditionalDraft({
                 typeof draftState?.startedAt === "string"
                   ? draftState.startedAt
                   : null,
+              current_pick_started_at:
+                typeof draftState?.currentPickStartedAt === "string"
+                  ? draftState.currentPickStartedAt
+                  : null,
+              current_pick_expires_at:
+                typeof draftState?.currentPickExpiresAt === "string"
+                  ? draftState.currentPickExpiresAt
+                  : null,
               paused_at:
                 typeof draftState?.pausedAt === "string"
                   ? draftState.pausedAt
@@ -486,6 +566,10 @@ export default function NhlTraditionalDraft({
               completed_at:
                 typeof draftState?.completedAt === "string"
                   ? draftState.completedAt
+                  : null,
+              updated_at:
+                typeof draftState?.updatedAt === "string"
+                  ? draftState.updatedAt
                   : null,
             }
           : null;
@@ -539,13 +623,133 @@ export default function NhlTraditionalDraft({
           throw draftPicksResult.error;
         }
 
-        setDraftTeams(
-          (draftTeamsResult.data as DraftTeamRow[] | null) ?? []
-        );
+        let loadedDraftTeams =
+          (draftTeamsResult.data as DraftTeamRow[] | null) ?? [];
+        let loadedDraftPicks =
+          (draftPicksResult.data as DraftPickRow[] | null) ?? [];
 
-        setDraftPicks(
-          (draftPicksResult.data as DraftPickRow[] | null) ?? []
-        );
+        // Browser RLS can legitimately hide these two draft tables.
+        // The member-safe RPC is the authoritative Draft Room fallback.
+        if (loadedDraftTeams.length === 0) {
+          const { data: roomData, error: roomError } = await supabase.rpc(
+            "get_nhl_traditional_draft_room_data",
+            { p_league_id: leagueId }
+          );
+          if (roomError) throw roomError;
+          const room = roomData && typeof roomData === "object" ? (roomData as RpcJson) : null;
+          loadedDraftTeams = Array.isArray(room?.draftTeams)
+            ? (room?.draftTeams as DraftTeamRow[])
+            : loadedDraftTeams;
+          loadedDraftPicks = Array.isArray(room?.draftPicks)
+            ? (room?.draftPicks as DraftPickRow[])
+            : loadedDraftPicks;
+        }
+
+        setDraftTeams(loadedDraftTeams);
+        setDraftPicks(loadedDraftPicks);
+
+        const ownedTeam = loadedFantasyTeams.find((team) => team.owner_id === user.id) ?? null;
+        if (ownedTeam) {
+          const { data: liveBoardData, error: liveBoardError } = await supabase.rpc(
+            "get_nhl_live_draft_board_state",
+            { p_league_id: leagueId, p_fantasy_team_id: ownedTeam.id }
+          );
+          if (liveBoardError) throw liveBoardError;
+          const liveState = liveBoardData && typeof liveBoardData === "object" ? (liveBoardData as RpcJson) : null;
+          const rawAssets = Array.isArray(liveState?.draftPickAssets) ? liveState?.draftPickAssets : [];
+          setLivePickAssets(rawAssets as LivePickAsset[]);
+
+          await supabase.rpc("initialize_nhl_traditional_my_draft_rankings", {
+            p_league_id: leagueId,
+            p_fantasy_team_id: ownedTeam.id,
+          });
+
+          const [myRanksResult, rankingsPageResult, autoPrefResult] = await Promise.all([
+            supabase
+              .from("nhl_traditional_draft_player_rankings")
+              .select("nhl_player_id,rank")
+              .eq("draft_id", loadedDraft.id)
+              .eq("fantasy_team_id", ownedTeam.id)
+              .order("rank", { ascending: true }),
+            supabase
+              .from("nhl_traditional_user_rankings")
+              .select("nhl_player_id,rank_order")
+              .eq("league_id", leagueId)
+              .order("rank_order", { ascending: true }),
+            supabase.rpc("get_nhl_traditional_auto_draft_preferences", {
+              p_league_id: leagueId,
+              p_fantasy_team_id: ownedTeam.id,
+            }),
+          ]);
+
+          if (myRanksResult.error) throw myRanksResult.error;
+          if (rankingsPageResult.error) throw rankingsPageResult.error;
+          if (autoPrefResult.error) throw autoPrefResult.error;
+
+          const draftedIds = new Set(loadedDraftPicks.map((pick) => pick.nhl_player_id));
+          const rankingsPageIds = ((rankingsPageResult.data as Array<{ nhl_player_id: number; rank_order: number }> | null) ?? [])
+            .map((row) => Number(row.nhl_player_id))
+            .filter((id) => Number.isFinite(id) && !draftedIds.has(id));
+          const draftSpecificIds = ((myRanksResult.data as MyDraftRankingRow[] | null) ?? [])
+            .map((row) => row.nhl_player_id)
+            .filter((id) => !draftedIds.has(id));
+
+          // The standalone My Rankings page is the source of truth for the user's order.
+          // Mirror it into this draft's saved rankings so the Draft Room and Auto Draft use the same list.
+          const effectiveRankingIds = rankingsPageIds.length > 0 ? rankingsPageIds : draftSpecificIds;
+          setMyRankingIds(effectiveRankingIds);
+
+          if (rankingsPageIds.length > 0 && rankingsPageIds.join(",") !== draftSpecificIds.join(",")) {
+            const { error: syncRankingsError } = await supabase.rpc(
+              "save_nhl_traditional_my_draft_rankings",
+              {
+                p_league_id: leagueId,
+                p_fantasy_team_id: ownedTeam.id,
+                p_rankings: rankingsPageIds.map((nhlPlayerId, index) => ({
+                  nhlPlayerId,
+                  rank: index + 1,
+                })),
+              },
+            );
+            if (syncRankingsError) throw syncRankingsError;
+          }
+
+          const pref =
+            autoPrefResult.data && typeof autoPrefResult.data === "object"
+              ? (autoPrefResult.data as RpcJson)
+              : null;
+          setAutoDraftEnabled(
+            pref?.autoDraftEnabled === true || pref?.auto_draft_enabled === true
+          );
+
+          const updatedAt =
+            typeof liveState?.updatedAt === "string"
+              ? liveState.updatedAt
+              : null;
+
+          const currentPickStartedAt =
+            typeof liveState?.currentPickStartedAt === "string"
+              ? liveState.currentPickStartedAt
+              : null;
+
+          const currentPickExpiresAt =
+            typeof liveState?.currentPickExpiresAt === "string"
+              ? liveState.currentPickExpiresAt
+              : null;
+
+          setDraft((current) =>
+            current
+              ? {
+                  ...current,
+                  updated_at: updatedAt ?? current.updated_at,
+                  current_pick_started_at: currentPickStartedAt,
+                  current_pick_expires_at: currentPickExpiresAt,
+                }
+              : current
+          );
+        } else {
+          setLivePickAssets([]);
+        }
       } catch (caughtError) {
         console.error(caughtError);
 
@@ -630,9 +834,10 @@ export default function NhlTraditionalDraft({
       if (!league) throw new Error("League season is unavailable.");
 
       const { data, error: totalsError } = await supabase.rpc(
-        "get_nhl_traditional_player_season_totals",
+        "get_nhl_traditional_single_player_season_totals",
         {
           p_league_id: leagueId,
+          p_nhl_player_id: playerId,
           p_season: league.season - 1,
           p_season_type: "regular",
         }
@@ -641,13 +846,7 @@ export default function NhlTraditionalDraft({
       if (totalsError) throw totalsError;
 
       const rows = Array.isArray(data) ? (data as SeasonTotalsRow[]) : [];
-      const match =
-        rows.find(
-          (row) =>
-            Number(row.nhl_player_id ?? row.player_id ?? row.id) === playerId
-        ) ?? null;
-
-      setDetailLastSeason(match);
+      setDetailLastSeason(rows[0] ?? null);
     } catch (caughtError) {
       console.error(caughtError);
       setDetailError(
@@ -794,78 +993,42 @@ export default function NhlTraditionalDraft({
   ]);
 
   const boardCells = useMemo<DraftBoardCell[]>(() => {
-    if (!draft || draftTeams.length === 0) {
-      return [];
-    }
-
+    if (!draft || draftTeams.length === 0) return [];
     const teamCount = draftTeams.length;
-
-    const picksByOverall = new Map(
-      draftPicks.map((pick) => [
-        pick.overall_pick,
-        pick,
-      ])
+    const picksByOverall = new Map(draftPicks.map((pick) => [pick.overall_pick, pick]));
+    const liveAssetByOverall = new Map(
+      livePickAssets.filter((asset) => asset.overallPick != null).map((asset) => [Number(asset.overallPick), asset])
     );
-
     const cells: DraftBoardCell[] = [];
 
-    for (
-      let round = 1;
-      round <= draft.rounds;
-      round += 1
-    ) {
-      for (
-        let pickInRound = 1;
-        pickInRound <= teamCount;
-        pickInRound += 1
-      ) {
-        const overallPick =
-          (round - 1) * teamCount + pickInRound;
+    for (let round = 1; round <= draft.rounds; round += 1) {
+      for (let pickInRound = 1; pickInRound <= teamCount; pickInRound += 1) {
+        const overallPick = (round - 1) * teamCount + pickInRound;
+        const originalSlot = draft.draft_type === "dynasty"
+          ? pickInRound
+          : round % 2 === 1 ? pickInRound : teamCount - pickInRound + 1;
+        const originalDraftTeam = draftTeams.find((team) => team.draft_slot === originalSlot);
+        if (!originalDraftTeam) continue;
 
-        const snakeSlot =
-          round % 2 === 1
-            ? pickInRound
-            : teamCount - pickInRound + 1;
-
-        const draftTeam = draftTeams.find(
-          (team) => team.draft_slot === snakeSlot
-        );
-
-        if (!draftTeam) {
-          continue;
-        }
-
+        const asset = ["redraft", "startup", "dynasty"].includes(draft.draft_type) ? liveAssetByOverall.get(overallPick) : undefined;
+        const ownerId = asset?.currentFantasyTeamId ?? originalDraftTeam.fantasy_team_id;
+        const originalId = asset?.originalFantasyTeamId ?? originalDraftTeam.fantasy_team_id;
+        const ownerName = asset?.currentTeamName ?? fantasyTeamById.get(ownerId)?.team_name ?? `Team ${ownerId}`;
+        const originalName = asset?.originalTeamName ?? fantasyTeamById.get(originalId)?.team_name ?? `Team ${originalId}`;
         const pick = picksByOverall.get(overallPick);
 
         cells.push({
-          overallPick,
-          round,
-          pickInRound,
-          draftSlot: snakeSlot,
-          fantasyTeamId: draftTeam.fantasy_team_id,
-          teamName:
-            fantasyTeamById.get(
-              draftTeam.fantasy_team_id
-            )?.team_name ??
-            `Team ${draftTeam.fantasy_team_id}`,
-          player: pick
-            ? playerById.get(pick.nhl_player_id) ?? null
-            : null,
-          isCurrent:
-            draft.status === "drafting" &&
-            draft.current_overall_pick === overallPick,
+          overallPick, round, pickInRound, draftSlot: originalSlot, fantasyTeamId: ownerId,
+          teamName: asset?.isTraded ? `${ownerName} (via ${originalName})` : ownerName,
+          originalFantasyTeamId: originalId, originalTeamName: originalName, isTraded: Boolean(asset?.isTraded),
+          player: pick ? playerById.get(pick.nhl_player_id) ?? null : null,
+          isCurrent: draft.status === "drafting" && draft.current_overall_pick === overallPick,
         });
       }
     }
-
     return cells;
-  }, [
-    draft,
-    draftPicks,
-    draftTeams,
-    fantasyTeamById,
-    playerById,
-  ]);
+  }, [draft, draftPicks, draftTeams, fantasyTeamById, playerById, livePickAssets]);
+
 
   async function runCommissionerAction(
     action:
@@ -1029,20 +1192,89 @@ export default function NhlTraditionalDraft({
     }
   }
 
-  if (loading) {
-    return (
-      <main style={styles.page}>
-        <div style={styles.loadingCard}>Loading NHL Draft...</div>
-      </main>
-    );
+  async function saveMyRankings(nextIds: number[]) {
+    if (!myFantasyTeam || !draft || rankingBusy) return;
+    setRankingBusy(true);
+    setError(null);
+    try {
+      const payload = nextIds.map((nhlPlayerId, index) => ({
+        nhlPlayerId,
+        rank: index + 1,
+      }));
+      const { error: saveError } = await supabase.rpc(
+        "save_nhl_traditional_my_draft_rankings",
+        {
+          p_league_id: leagueId,
+          p_fantasy_team_id: myFantasyTeam.id,
+          p_rankings: payload,
+        }
+      );
+      if (saveError) throw saveError;
+      setMyRankingIds(nextIds);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Unable to save My Rankings.");
+    } finally {
+      setRankingBusy(false);
+    }
   }
 
-  if (!league) {
-    return (
-      <main style={styles.page}>
-        <div style={styles.errorBox}>NHL Traditional league was not found.</div>
-      </main>
-    );
+  function moveMyRanking(playerId: number, direction: -1 | 1) {
+    const currentIndex = myRankingIds.indexOf(playerId);
+    if (currentIndex < 0) return;
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= myRankingIds.length) return;
+    const next = [...myRankingIds];
+    [next[currentIndex], next[nextIndex]] = [next[nextIndex], next[currentIndex]];
+    void saveMyRankings(next);
+  }
+
+  async function toggleAutoDraft() {
+    if (!myFantasyTeam || !draft) return;
+    setAutoBusy(true);
+    setError(null);
+    try {
+      const next = !autoDraftEnabled;
+      const { error: prefError } = await supabase.rpc("set_nhl_traditional_auto_draft", {
+        p_league_id: leagueId,
+        p_fantasy_team_id: myFantasyTeam.id,
+        p_enabled: next,
+      });
+      if (prefError) throw prefError;
+      setAutoDraftEnabled(next);
+      autoAttemptRef.current = null;
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Unable to change Auto Draft.");
+    } finally {
+      setAutoBusy(false);
+    }
+  }
+
+  function playDraftSound(kind: "start" | "turn" | "countdown" | "queue") {
+    if (!soundEnabled || typeof window === "undefined") return;
+    try {
+      const AudioCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtor) return;
+      const ctx = audioContextRef.current ?? new AudioCtor();
+      audioContextRef.current = ctx;
+      if (ctx.state === "suspended") void ctx.resume();
+      const now = ctx.currentTime;
+      const notes = kind === "start" ? [523, 659, 784] : kind === "turn" ? [784, 988] : kind === "queue" ? [440, 330] : [880];
+      notes.forEach((frequency, index) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = kind === "countdown" ? "square" : "sine";
+        osc.frequency.value = frequency;
+        gain.gain.setValueAtTime(0.0001, now + index * 0.09);
+        gain.gain.exponentialRampToValueAtTime(0.12, now + index * 0.09 + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.09 + 0.13);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + index * 0.09);
+        osc.stop(now + index * 0.09 + 0.14);
+      });
+    } catch {
+      // Audio is optional; browser autoplay rules may block it until a user gesture.
+    }
   }
 
   const leagueFormat =
@@ -1058,23 +1290,25 @@ export default function NhlTraditionalDraft({
 
   const totalPicks = draft ? draft.rounds * draftTeams.length : 0;
 
-  const currentPickStartedAt = (() => {
+  const currentPickExpiresAt = (() => {
     if (!draft || draft.status !== "drafting") return null;
-    const lastPick = draftPicks[draftPicks.length - 1];
-    const raw = lastPick?.picked_at ?? draft.started_at;
-    if (!raw) return null;
-    const parsed = Date.parse(raw);
+    if (!draft.current_pick_expires_at) return null;
+
+    const parsed = Date.parse(draft.current_pick_expires_at);
+
     return Number.isFinite(parsed) ? parsed : null;
   })();
 
   const timerEnabled = Boolean(draft && draft.seconds_per_pick > 0);
 
   const remainingSeconds =
-    draft && timerEnabled && currentPickStartedAt != null
+    draft &&
+    draft.status === "drafting" &&
+    timerEnabled &&
+    currentPickExpiresAt != null
       ? Math.max(
           0,
-          draft.seconds_per_pick -
-            Math.floor((nowMs - currentPickStartedAt) / 1000)
+          Math.ceil((currentPickExpiresAt - nowMs) / 1000)
         )
       : draft?.seconds_per_pick ?? 0;
 
@@ -1083,6 +1317,89 @@ export default function NhlTraditionalDraft({
         remainingSeconds % 60
       ).padStart(2, "0")}`
     : "NO TIMER";
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("g365-nhl-draft-sound");
+    if (saved === "off") setSoundEnabled(false);
+  }, []);
+
+  useEffect(() => {
+    if (!draft) return;
+    const previous = previousDraftStatusRef.current;
+    if (previous && previous !== "drafting" && draft.status === "drafting") playDraftSound("start");
+    previousDraftStatusRef.current = draft.status;
+  }, [draft?.status]);
+
+  useEffect(() => {
+    if (isMyTurn) playDraftSound("turn");
+  }, [isMyTurn, draft?.current_overall_pick]);
+
+  useEffect(() => {
+    if (!draft || draft.status !== "drafting" || remainingSeconds < 1 || remainingSeconds > 10) return;
+    const key = `${draft.id}:${draft.current_overall_pick}:${remainingSeconds}`;
+    if (countdownSoundRef.current === key) return;
+    countdownSoundRef.current = key;
+    playDraftSound("countdown");
+  }, [draft?.id, draft?.status, draft?.current_overall_pick, remainingSeconds]);
+
+  useEffect(() => {
+    const previous = previousPickIdsRef.current;
+    const newPicks = draftPicks.filter((pick) => !previous.has(pick.id));
+    if (previous.size > 0 && newPicks.some((pick) => queueIds.includes(pick.nhl_player_id) && pick.fantasy_team_id !== myFantasyTeam?.id)) {
+      playDraftSound("queue");
+    }
+    previousPickIdsRef.current = new Set(draftPicks.map((pick) => pick.id));
+  }, [draftPicks]);
+
+  useEffect(() => {
+    if (!draft || draft.status !== "drafting" || !myFantasyTeam) {
+      setAutoCandidate(null);
+      return;
+    }
+    if (draft.current_fantasy_team_id !== myFantasyTeam.id) {
+      setAutoCandidate(null);
+      return;
+    }
+    let cancelled = false;
+    void supabase.rpc("get_nhl_traditional_auto_draft_candidate", {
+      p_league_id: leagueId,
+      p_fantasy_team_id: myFantasyTeam.id,
+    }).then(({ data, error: candidateError }) => {
+      if (!cancelled && !candidateError && data && typeof data === "object") {
+        setAutoCandidate(data as AutoDraftCandidate);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [draft?.id, draft?.status, draft?.current_overall_pick, draft?.current_fantasy_team_id, myFantasyTeam?.id, leagueId]);
+
+  useEffect(() => {
+    if (!draft || draft.status !== "drafting" || autoBusy) return;
+    const currentDraftTeam = draftTeams.find((team) => team.fantasy_team_id === draft.current_fantasy_team_id);
+    const shouldRun = remainingSeconds === 0 || Boolean(currentDraftTeam?.is_cpu) || (isMyTurn && autoDraftEnabled);
+    if (!shouldRun) return;
+    const key = `${draft.id}:${draft.current_overall_pick}`;
+    if (autoAttemptRef.current === key) return;
+    autoAttemptRef.current = key;
+    setAutoBusy(true);
+    void supabase.rpc("run_nhl_traditional_auto_draft_pick", {
+      p_league_id: leagueId,
+      p_expected_overall_pick: draft.current_overall_pick,
+    }).then(async ({ data, error: autoError }) => {
+      if (autoError) {
+        setError(autoError.message);
+        autoAttemptRef.current = null;
+      } else {
+        const result = data && typeof data === "object" ? (data as RpcJson) : null;
+        if (result?.picked === true) {
+          setMessage(`${String(result.playerName ?? "Player")} was auto drafted.`);
+          await loadDraft(false);
+        } else if (remainingSeconds === 0) {
+          autoAttemptRef.current = null;
+        }
+      }
+      setAutoBusy(false);
+    });
+  }, [draft?.id, draft?.status, draft?.current_overall_pick, draft?.current_fantasy_team_id, remainingSeconds, autoDraftEnabled, isMyTurn, draftTeams, autoBusy, leagueId, loadDraft]);
 
   const myFuturePicks =
     draft && myFantasyTeam
@@ -1104,9 +1421,10 @@ export default function NhlTraditionalDraft({
     .map((id) => playerById.get(id))
     .filter((player): player is NhlPlayerRow => Boolean(player));
 
-  const rankingPlayers = [...players]
-    .filter((player) => !draftedPlayerIds.has(player.id))
-    .sort((a, b) => playerName(a).localeCompare(playerName(b)));
+  const rankingPlayers = myRankingIds
+    .filter((id) => !draftedPlayerIds.has(id))
+    .map((id) => playerById.get(id))
+    .filter((player): player is NhlPlayerRow => Boolean(player));
 
   const rosterTeamId =
     selectedRosterTeamId ?? myFantasyTeam?.id ?? draftTeams[0]?.fantasy_team_id ?? null;
@@ -1171,11 +1489,339 @@ export default function NhlTraditionalDraft({
     return assigned;
   })();
 
+  const rpcRows = (data: unknown): RpcJson[] => {
+    if (Array.isArray(data)) return data as RpcJson[];
+    if (!data || typeof data !== "object") return [];
+    const row = data as RpcJson;
+    for (const key of ["items", "conversations", "offers", "tradeBlock", "trade_block", "trades", "messages"]) {
+      if (Array.isArray(row[key])) return row[key] as RpcJson[];
+    }
+    return [];
+  };
+  const numField = (row: RpcJson, ...keys: string[]) => { for (const key of keys) { const n = Number(row[key]); if (Number.isFinite(n)) return n; } return null; };
+  const strField = (row: RpcJson, ...keys: string[]) => { for (const key of keys) { const v = row[key]; if (typeof v === "string") return v; } return ""; };
+
+
+  const numberArrayField = (row: RpcJson, ...keys: string[]) => {
+    for (const key of keys) {
+      const value = row[key];
+      if (!Array.isArray(value)) continue;
+      return value
+        .map((item) => {
+          if (typeof item === "number") return item;
+          if (typeof item === "string" && item.trim() !== "") {
+            const parsed = Number(item);
+            return Number.isFinite(parsed) ? parsed : null;
+          }
+          if (item && typeof item === "object") {
+            const objectItem = item as RpcJson;
+            return numField(
+              objectItem,
+              "nhl_player_id",
+              "nhlPlayerId",
+              "draft_pick_asset_id",
+              "draftPickAssetId",
+              "id",
+            );
+          }
+          return null;
+        })
+        .filter((id): id is number => id != null);
+    }
+    return [];
+  };
+
+  const offerPlayerIds = (offer: RpcJson, side: "offered" | "requested") =>
+    numberArrayField(
+      offer,
+      `${side}_player_ids`,
+      `${side}PlayerIds`,
+      `${side}_players`,
+      `${side}Players`,
+    );
+
+  const offerPickIds = (offer: RpcJson, side: "offered" | "requested") =>
+    numberArrayField(
+      offer,
+      `${side}_draft_pick_asset_ids`,
+      `${side}DraftPickAssetIds`,
+      `${side}_draft_picks`,
+      `${side}DraftPicks`,
+      `${side}_picks`,
+      `${side}Picks`,
+    );
+
+  const tradePlayerLabel = (playerId: number) => {
+    const player = playerById.get(playerId);
+    if (player) {
+      return `${playerName(player)} • ${normalizePosition(player.position, player.position_group)}`;
+    }
+    const asset = [...myTradeAssets.players, ...theirTradeAssets.players].find(
+      (row) => row.nhlPlayerId === playerId,
+    );
+    return asset ? `${asset.playerName} • ${asset.position}` : `Player #${playerId}`;
+  };
+
+  const tradePickLabel = (pickId: number) => {
+    const asset = [...myTradeAssets.draftPicks, ...theirTradeAssets.draftPicks].find(
+      (row) => row.draftPickAssetId === pickId,
+    );
+    if (asset) {
+      return `${asset.draftSeason} Round ${asset.roundNumber}${asset.overallPick ? ` • #${asset.overallPick}` : ""}${asset.isTraded ? ` • via ${asset.originalTeamName}` : ""}`;
+    }
+    const live = livePickAssets.find((row) => row.draftPickAssetId === pickId);
+    if (live) {
+      return `${draft?.season ?? league?.season ?? ""} Round ${live.roundNumber}${live.overallPick ? ` • #${live.overallPick}` : ""}${live.isTraded ? ` • via ${live.originalTeamName}` : ""}`;
+    }
+    return `Draft Pick #${pickId}`;
+  };
+
+  const pendingAssetsForOffer = (offerId: number) =>
+    pendingOfferAssets.filter(
+      (row) => numField(row, "trade_offer_id", "tradeOfferId") === offerId,
+    );
+
+  const pendingPlayerIds = (offerId: number, fromTeamId: number | null) =>
+    pendingAssetsForOffer(offerId)
+      .filter(
+        (row) =>
+          strField(row, "asset_type", "assetType") === "player" &&
+          (fromTeamId == null ||
+            numField(row, "from_fantasy_team_id", "fromFantasyTeamId") === fromTeamId),
+      )
+      .map((row) => numField(row, "nhl_player_id", "nhlPlayerId"))
+      .filter((id): id is number => id != null);
+
+  const pendingPickIds = (offerId: number, fromTeamId: number | null) =>
+    pendingAssetsForOffer(offerId)
+      .filter(
+        (row) =>
+          strField(row, "asset_type", "assetType") === "draft_pick" &&
+          (fromTeamId == null ||
+            numField(row, "from_fantasy_team_id", "fromFantasyTeamId") === fromTeamId),
+      )
+      .map((row) => numField(row, "draft_pick_asset_id", "draftPickAssetId"))
+      .filter((id): id is number => id != null);
+
+  const tradeNeedLabel = (need: string) => ({
+    C: "Center",
+    LW: "Left Wing",
+    RW: "Right Wing",
+    F: "Forward",
+    D: "Defense",
+    G: "Goalie",
+    PICKS: "Draft Picks",
+    PROSPECTS: "Prospects / Young Players",
+  }[need] ?? need);
+
+  const toggleTradeNeed = (need: string) =>
+    setMyTradeNeeds((current) =>
+      current.includes(need)
+        ? current.filter((value) => value !== need)
+        : [...current, need],
+    );
+
+  async function saveTradeNeeds() {
+    if (!myFantasyTeam) return;
+    setTradeNeedsBusy(true);
+    setError(null);
+    try {
+      const result = await supabase.rpc("set_nhl_trade_block_needs", {
+        p_league_id: leagueId,
+        p_fantasy_team_id: myFantasyTeam.id,
+        p_needs: myTradeNeeds,
+      });
+      if (result.error) throw result.error;
+      setMessage("Trade Block updated.");
+      await loadTradeHub();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to update the Trade Block.");
+    } finally {
+      setTradeNeedsBusy(false);
+    }
+  }
+
+  function beginCounterOffer(offer: RpcJson) {
+    if (!myFantasyTeam) return;
+    const id = numField(offer, "trade_offer_id", "id");
+    const proposer = numField(offer, "proposing_fantasy_team_id", "proposingFantasyTeamId");
+    const receiver = numField(offer, "receiving_fantasy_team_id", "receivingFantasyTeamId");
+    if (id == null || proposer == null || receiver == null) return;
+
+    const otherTeamId = proposer === myFantasyTeam.id ? receiver : proposer;
+    const offeredPlayers = pendingPlayerIds(id, proposer);
+    const requestedPlayers = pendingPlayerIds(id, receiver);
+    const offeredPicks = pendingPickIds(id, proposer);
+    const requestedPicks = pendingPickIds(id, receiver);
+
+    // A counter is from my perspective, so reverse the original proposal when I was the receiver.
+    const iWasReceiver = receiver === myFantasyTeam.id;
+    setOfferMinePlayers(iWasReceiver ? requestedPlayers : offeredPlayers);
+    setOfferTheirPlayers(iWasReceiver ? offeredPlayers : requestedPlayers);
+    setOfferMinePicks(iWasReceiver ? requestedPicks : offeredPicks);
+    setOfferTheirPicks(iWasReceiver ? offeredPicks : requestedPicks);
+    setCounteringOfferId(id);
+    setTradeSection("teams");
+    void openTradeTeam(otherTeamId);
+  }
+
+  const loadTradeHub = useCallback(async () => {
+    if (!myFantasyTeam) return;
+    const [c, p, pa, b, u, sm] = await Promise.all([
+      supabase.rpc("get_nhl_trade_conversations", { p_league_id: leagueId, p_fantasy_team_id: myFantasyTeam.id }),
+      supabase.rpc("get_nhl_pending_trade_offers", { p_league_id: leagueId, p_fantasy_team_id: myFantasyTeam.id }),
+      supabase.rpc("get_nhl_pending_trade_offer_assets", { p_league_id: leagueId, p_fantasy_team_id: myFantasyTeam.id }),
+      supabase.rpc("get_nhl_trade_block_needs", { p_league_id: leagueId, p_fantasy_team_id: myFantasyTeam.id }),
+      supabase.rpc("get_nhl_trade_chat_unread_count", { p_league_id: leagueId, p_fantasy_team_id: myFantasyTeam.id }),
+      supabase.rpc("get_nhl_completed_trade_summary", { p_league_id: leagueId, p_fantasy_team_id: myFantasyTeam.id }),
+    ]);
+    for (const result of [c,p,pa,b,u,sm]) if (result.error) throw result.error;
+    setConversations(rpcRows(c.data));
+    setPendingOffers(rpcRows(p.data));
+    setPendingOfferAssets(rpcRows(pa.data));
+    const blockRows = rpcRows(b.data);
+    setTradeBlock(blockRows);
+    const mine = blockRows.find((row) => numField(row, "fantasy_team_id", "fantasyTeamId") === myFantasyTeam.id);
+    const needs = mine?.needs;
+    setMyTradeNeeds(Array.isArray(needs) ? needs.map((value) => String(value)) : []);
+    setTradeSummary(rpcRows(sm.data));
+    const unreadValue = typeof u.data === "number" ? u.data : Number((u.data as RpcJson | null)?.unreadCount ?? (u.data as RpcJson | null)?.unread_count ?? 0);
+    setChatUnread(Number.isFinite(unreadValue) ? unreadValue : 0);
+  }, [leagueId, myFantasyTeam?.id]);
+
+  const incomingTradeOfferCount = pendingOffers.filter((offer) =>
+    numField(offer, "receiving_fantasy_team_id", "receivingFantasyTeamId") === myFantasyTeam?.id
+  ).length;
+
+  const tradeAttentionCount = chatUnread + incomingTradeOfferCount;
+
+  const unreadForTradeTeam = (teamId: number) => {
+    const row = conversations.find((conversation) => {
+      const otherId = numField(
+        conversation,
+        "other_fantasy_team_id",
+        "otherFantasyTeamId",
+        "other_team_id",
+        "otherTeamId",
+        "fantasy_team_id",
+        "fantasyTeamId",
+      );
+      return otherId === teamId;
+    });
+    if (!row) return 0;
+    const unread = numField(row, "unread_count", "unreadCount", "unread_messages", "unreadMessages") ?? 0;
+    return Math.max(0, unread);
+  };
+
+  useEffect(() => {
+    const node = chatListRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [chatMessages, selectedTradeTeamId]);
+
+  useEffect(() => {
+    if (!myFantasyTeam) return;
+    void loadTradeHub().catch((e) => console.error(e));
+    const interval = window.setInterval(() => void loadTradeHub().catch((e) => console.error(e)), 5000);
+    return () => window.clearInterval(interval);
+  }, [myFantasyTeam?.id, loadTradeHub]);
+
+  async function openTradeTeam(teamId: number) {
+    if (!myFantasyTeam || teamId === myFantasyTeam.id) return;
+    setTradeBusy(true); setError(null); setSelectedTradeTeamId(teamId);
+    try {
+      const [conv, mine, theirs] = await Promise.all([
+        supabase.rpc("get_or_create_nhl_trade_conversation", { p_league_id: leagueId, p_fantasy_team_id: myFantasyTeam.id, p_other_fantasy_team_id: teamId }),
+        supabase.rpc("get_nhl_trade_builder_assets", { p_league_id: leagueId, p_requesting_fantasy_team_id: myFantasyTeam.id, p_asset_fantasy_team_id: myFantasyTeam.id }),
+        supabase.rpc("get_nhl_trade_builder_assets", { p_league_id: leagueId, p_requesting_fantasy_team_id: myFantasyTeam.id, p_asset_fantasy_team_id: teamId }),
+      ]);
+      for (const result of [conv,mine,theirs]) if (result.error) throw result.error;
+      const cid = Number(conv.data);
+      setConversationId(cid);
+      const mineData = (mine.data ?? {}) as RpcJson, theirData = (theirs.data ?? {}) as RpcJson;
+      setMyTradeAssets({ players: (mineData.players as TradeAssetPlayer[]) ?? [], draftPicks: (mineData.draftPicks as TradeAssetPick[]) ?? [] });
+      setTheirTradeAssets({ players: (theirData.players as TradeAssetPlayer[]) ?? [], draftPicks: (theirData.draftPicks as TradeAssetPick[]) ?? [] });
+      const msgs = await supabase.rpc("get_nhl_trade_messages", { p_conversation_id: cid, p_limit: 100 });
+      if (msgs.error) throw msgs.error;
+      setChatMessages(rpcRows(msgs.data));
+      await supabase.rpc("mark_nhl_trade_conversation_read", { p_conversation_id: cid, p_fantasy_team_id: myFantasyTeam.id });
+      await loadTradeHub();
+    } catch (e) { setError(e instanceof Error ? e.message : "Unable to open trade conversation."); }
+    finally { setTradeBusy(false); }
+  }
+
+  async function sendTradeChat() {
+    if (!myFantasyTeam || !conversationId || !chatBody.trim()) return;
+    setTradeBusy(true); setError(null);
+    try {
+      const r = await supabase.rpc("send_nhl_trade_message", { p_conversation_id: conversationId, p_sender_fantasy_team_id: myFantasyTeam.id, p_body: chatBody.trim() });
+      if (r.error) throw r.error; setChatBody("");
+      const msgs = await supabase.rpc("get_nhl_trade_messages", { p_conversation_id: conversationId, p_limit: 100 });
+      if (msgs.error) throw msgs.error; setChatMessages(rpcRows(msgs.data)); await loadTradeHub();
+    } catch (e) { setError(e instanceof Error ? e.message : "Unable to send message."); }
+    finally { setTradeBusy(false); }
+  }
+
+  async function submitTradeOffer() {
+    if (!myFantasyTeam || !selectedTradeTeamId) return;
+    if (![offerMinePlayers.length, offerTheirPlayers.length, offerMinePicks.length, offerTheirPicks.length].some(Boolean)) { setError("Select at least one trade asset."); return; }
+    setTradeBusy(true); setError(null);
+    try {
+      const r = counteringOfferId == null
+        ? await supabase.rpc("submit_nhl_traditional_trade_offer", {
+            p_league_id: leagueId, p_proposing_fantasy_team_id: myFantasyTeam.id, p_receiving_fantasy_team_id: selectedTradeTeamId,
+            p_offered_player_ids: offerMinePlayers, p_requested_player_ids: offerTheirPlayers,
+            p_offered_draft_pick_asset_ids: offerMinePicks, p_requested_draft_pick_asset_ids: offerTheirPicks, p_message: null,
+          })
+        : await supabase.rpc("counter_nhl_traditional_trade_offer", {
+            p_trade_offer_id: counteringOfferId, p_countering_fantasy_team_id: myFantasyTeam.id,
+            p_offered_player_ids: offerMinePlayers, p_requested_player_ids: offerTheirPlayers,
+            p_offered_draft_pick_asset_ids: offerMinePicks, p_requested_draft_pick_asset_ids: offerTheirPicks, p_message: null,
+          });
+      if (r.error) throw r.error;
+      const wasCounter = counteringOfferId != null;
+      setOfferMinePlayers([]); setOfferTheirPlayers([]); setOfferMinePicks([]); setOfferTheirPicks([]); setCounteringOfferId(null); setMessage(wasCounter ? "Counter offer sent." : "Trade offer sent.");
+      await openTradeTeam(selectedTradeTeamId); await loadDraft(false);
+    } catch (e) { setError(e instanceof Error ? e.message : "Unable to send trade offer."); }
+    finally { setTradeBusy(false); }
+  }
+
+  async function actOnOffer(offerId: number, action: "accept" | "reject" | "cancel") {
+    if (!myFantasyTeam) return;
+    setTradeBusy(true); setError(null);
+    try {
+      const name = action === "accept" ? "accept_nhl_traditional_trade_offer" : action === "reject" ? "reject_nhl_traditional_trade_offer" : "cancel_nhl_traditional_trade_offer";
+      const args = action === "cancel" ? { p_trade_offer_id: offerId, p_proposing_fantasy_team_id: myFantasyTeam.id } : { p_trade_offer_id: offerId, p_receiving_fantasy_team_id: myFantasyTeam.id };
+      const r = await supabase.rpc(name, args); if (r.error) throw r.error;
+      setMessage(`Trade offer ${action === "accept" ? "accepted" : action === "reject" ? "rejected" : "cancelled"}.`);
+      await Promise.all([loadTradeHub(), loadDraft(false)]);
+    } catch (e) { setError(e instanceof Error ? e.message : `Unable to ${action} trade offer.`); }
+    finally { setTradeBusy(false); }
+  }
+
+  const toggleId = (setter: Dispatch<SetStateAction<number[]>>, id: number) => setter((xs) => xs.includes(id) ? xs.filter((x) => x !== id) : [...xs,id]);
+
   function toggleQueue(playerId: number) {
     setQueueIds((current) =>
       current.includes(playerId)
         ? current.filter((id) => id !== playerId)
         : [...current, playerId]
+    );
+  }
+
+  if (loading) {
+    return (
+      <main style={styles.page}>
+        <div style={styles.loadingCard}>Loading NHL Draft...</div>
+      </main>
+    );
+  }
+
+  if (!league) {
+    return (
+      <main style={styles.page}>
+        <div style={styles.errorBox}>NHL Traditional league was not found.</div>
+      </main>
     );
   }
 
@@ -1187,6 +1833,7 @@ export default function NhlTraditionalDraft({
           .g365-nhl-draft-left, .g365-nhl-draft-right { display: block !important; }
         }
         @media (max-width: 720px) {
+          .g365-nhl-trade-layout { grid-template-columns: 1fr !important; }
           .g365-nhl-player-head { grid-template-columns: 30px minmax(0,1fr) 36px 58px 54px 54px !important; gap: 4px !important; padding-left: 5px !important; padding-right: 5px !important; }
           .g365-nhl-player-row { grid-template-columns: 30px minmax(0,1fr) 36px 58px 54px 54px !important; gap: 4px !important; padding-left: 5px !important; padding-right: 5px !important; }
           .g365-nhl-player-head span:nth-child(4),
@@ -1269,12 +1916,25 @@ export default function NhlTraditionalDraft({
                 <div style={styles.nextPickValue}>
                   {nextMyPick ? `#${nextMyPick.overallPick}` : "—"}
                 </div>
-                <div style={styles.clockMeta}>
+                <div
+                  style={{
+                    ...styles.clockMeta,
+                    fontWeight: 950,
+                    color:
+                      picksUntilMine === 0
+                        ? "#22c55e"
+                        : picksUntilMine != null && picksUntilMine <= 3
+                          ? "#fb923c"
+                          : "#f8fafc",
+                  }}
+                >
                   {picksUntilMine == null
-                    ? "No upcoming pick"
+                    ? "NO UPCOMING PICK"
                     : picksUntilMine === 0
                       ? "YOU ARE ON THE CLOCK"
-                      : `${picksUntilMine} pick${picksUntilMine === 1 ? "" : "s"} away`}
+                      : picksUntilMine === 1
+                        ? "1 PICK UNTIL YOUR PICK"
+                        : `${picksUntilMine} PICKS UNTIL YOUR PICK`}
                 </div>
               </div>
 
@@ -1291,6 +1951,50 @@ export default function NhlTraditionalDraft({
                     }}
                   />
                 </div>
+              </div>
+            </section>
+
+            <section style={styles.autoDraftBar}>
+              <div style={styles.autoDraftInfo}>
+                <span style={styles.clockLabel}>AUTO PICK</span>
+                <strong style={styles.autoDraftPlayer}>
+                  {autoCandidate?.exists
+                    ? `${autoCandidate.playerName ?? "Player"} • ${autoCandidate.position ?? "—"}`
+                    : isMyTurn
+                      ? "Calculating best available player…"
+                      : "Shown when your team is on the clock"}
+                </strong>
+                {autoCandidate?.source ? (
+                  <span style={styles.clockMeta}>
+                    {autoCandidate.source === "my_rankings" ? "My Rankings" : "G365 Best Available"}
+                    {autoCandidate.forceNeed ? " • roster need" : ""}
+                  </span>
+                ) : null}
+              </div>
+              <div style={styles.autoDraftControls}>
+                <button
+                  type="button"
+                  disabled={!myFantasyTeam || autoBusy}
+                  onClick={() => void toggleAutoDraft()}
+                  style={{
+                    ...styles.autoToggle,
+                    ...(autoDraftEnabled ? styles.autoToggleOn : {}),
+                  }}
+                >
+                  AUTO DRAFT {autoDraftEnabled ? "ON" : "OFF"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !soundEnabled;
+                    setSoundEnabled(next);
+                    window.localStorage.setItem("g365-nhl-draft-sound", next ? "on" : "off");
+                    if (next) playDraftSound("turn");
+                  }}
+                  style={styles.soundButton}
+                >
+                  SOUND {soundEnabled ? "ON" : "OFF"}
+                </button>
               </div>
             </section>
 
@@ -1384,7 +2088,7 @@ export default function NhlTraditionalDraft({
                 <div>
                   <div style={styles.sectionTitle}>Commissioner Draft Controls</div>
                   <div style={styles.mutedText}>
-                    {draft.rounds} rounds • {draftTeams.length} teams • snake order
+                    {draft.rounds} rounds • {draftTeams.length} teams • {draft.draft_type === "dynasty" ? "linear order" : "snake order"}
                   </div>
                 </div>
 
@@ -1477,12 +2181,24 @@ export default function NhlTraditionalDraft({
                       ["queue", "Queue"],
                       ["rankings", "My Rankings"],
                       ["board", "Draft Board"],
+                      ["trade", "Trade Center"],
+                      ["summary", "Trade Summary"],
                     ] as const
                   ).map(([tab, label]) => (
                     <button
                       key={tab}
                       type="button"
-                      onClick={() => setActiveTab(tab)}
+                      onClick={() => {
+                        setActiveTab(tab);
+                        if (tab === "summary" && myFantasyTeam) {
+                          void supabase
+                            .rpc("mark_all_nhl_completed_trades_read", {
+                              p_league_id: leagueId,
+                              p_fantasy_team_id: myFantasyTeam.id,
+                            })
+                            .then(() => loadTradeHub());
+                        }
+                      }}
                       style={{
                         ...styles.workspaceTab,
                         ...(activeTab === tab ? styles.workspaceTabActive : {}),
@@ -1491,6 +2207,9 @@ export default function NhlTraditionalDraft({
                       {label}
                       {tab === "queue" && queuedPlayers.length > 0 ? (
                         <span style={styles.tabCount}>{queuedPlayers.length}</span>
+                      ) : null}
+                      {tab === "trade" && tradeAttentionCount > 0 ? (
+                        <span style={styles.tabCount}>{tradeAttentionCount}</span>
                       ) : null}
                     </button>
                   ))}
@@ -1514,7 +2233,7 @@ export default function NhlTraditionalDraft({
                           : activeTab === "queue"
                             ? "Your saved draft targets. Drafted players are removed automatically."
                             : activeTab === "rankings"
-                              ? "Current NHL player list for your ranking workspace. Persistent custom rankings are the next backend step."
+                              ? "Saved draft-specific rankings. Auto Draft uses this order first, then G365 best available and late-draft roster need."
                               : `${draftPicks.length} of ${totalPicks} selections completed.`}
                       </div>
                     </div>
@@ -1726,33 +2445,42 @@ export default function NhlTraditionalDraft({
                   ) : null}
 
                   {activeTab === "rankings" ? (
-                    <div style={styles.simpleList}>
-                      {rankingPlayers.map((player, index) => (
-                        <div key={player.id} style={styles.rankingRow}>
-                          <span style={styles.queueRank}>{index + 1}</span>
-                          <div style={styles.queuePlayerInfo}>
-                            <strong>{playerName(player)}</strong>
-                            <span style={styles.playerMeta}>
-                              {normalizePosition(
-                                player.position,
-                                player.position_group
-                              )}
-                            </span>
+                    <div style={styles.rankingsTableScroll}>
+                      {rankingPlayers.length === 0 ? (
+                        <div style={styles.noPlayers}>Initializing your rankings for this draft…</div>
+                      ) : (
+                        <div style={styles.rankingsTable}>
+                          <div style={styles.rankingsTableHead}>
+                            <span>MY</span><span>PLAYER</span><span>TEAM</span><span>POS</span><span>FP</span><span>FPPG</span><span>MOVE</span>
                           </div>
-                          <button
-                            type="button"
-                            style={{
-                              ...styles.queueButton,
-                              ...(queueIds.includes(player.id)
-                                ? styles.queueButtonActive
-                                : {}),
-                            }}
-                            onClick={() => toggleQueue(player.id)}
-                          >
-                            {queueIds.includes(player.id) ? "Queued" : "+ Queue"}
-                          </button>
+                          {rankingPlayers.map((player, index) => {
+                            const ranking = draftRankingByPlayerId.get(player.id);
+                            const pos = normalizePosition(player.position, player.position_group);
+                            const team = player.team_id != null ? nhlTeamLabel(nhlTeamById.get(player.team_id)) : "FA";
+                            return (
+                              <div key={player.id} style={styles.rankingsTableRow}>
+                                <span style={styles.myRankValue}>{index + 1}</span>
+                                <div style={styles.rankingPlayerIdentity}>
+                                  {player.headshot_url ? <img src={player.headshot_url} alt="" style={styles.rankingHeadshot} /> : <span style={styles.rankingHeadshotFallback}>{playerName(player).slice(0,1).toUpperCase()}</span>}
+                                  <div style={styles.rankingPlayerText}>
+                                    <button type="button" onClick={() => void openPlayerDetail(player.id)} style={styles.rankingPlayerButton}>{playerName(player)}</button>
+                                    <span style={styles.rankingPlayerMeta}>G365 {ranking?.overall_rank != null ? `#${ranking.overall_rank}` : "—"}{ranking?.position_rank != null ? ` • ${pos}${ranking.position_rank}` : ""}</span>
+                                  </div>
+                                </div>
+                                <span style={styles.rankCenter}>{team}</span>
+                                <span style={styles.rankCenter}>{pos}</span>
+                                <span style={styles.rankNumber}>{ranking?.projected_fantasy_points != null ? ranking.projected_fantasy_points.toFixed(2) : "—"}</span>
+                                <span style={styles.rankNumber}>{ranking?.projected_fantasy_points_per_game != null ? ranking.projected_fantasy_points_per_game.toFixed(2) : "—"}</span>
+                                <div style={styles.rankingActions}>
+                                  <button type="button" title="Move up" disabled={rankingBusy || index === 0} style={styles.rankMoveButton} onClick={() => moveMyRanking(player.id, -1)}>↑</button>
+                                  <button type="button" title="Move down" disabled={rankingBusy || index === rankingPlayers.length - 1} style={styles.rankMoveButton} onClick={() => moveMyRanking(player.id, 1)}>↓</button>
+                                  <button type="button" style={{ ...styles.queueButton, ...(queueIds.includes(player.id) ? styles.queueButtonActive : {}) }} onClick={() => toggleQueue(player.id)}>{queueIds.includes(player.id) ? "Queued" : "+ Queue"}</button>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      ))}
+                      )}
                     </div>
                   ) : null}
 
@@ -1797,8 +2525,14 @@ export default function NhlTraditionalDraft({
                             (cell) => cell.round === round
                           );
                           return (
-                            <div key={round} style={styles.boardRound}>
-                              <div style={styles.roundLabel}>ROUND {round}</div>
+                            <details
+                              key={round}
+                              style={styles.boardRound}
+                              open={round === draft.current_round}
+                            >
+                              <summary style={styles.roundLabel}>
+                                ROUND {round} • {roundCells.filter((cell) => Boolean(cell.player)).length}/{roundCells.length}
+                              </summary>
                               <div
                                 style={{
                                   ...styles.boardRow,
@@ -1844,12 +2578,451 @@ export default function NhlTraditionalDraft({
                                   </div>
                                 ))}
                               </div>
-                            </div>
+                            </details>
                           );
                         })}
                       </div>
                     </div>
                   ) : null}
+
+                  {activeTab === "trade" ? (
+                    <section style={styles.tradePanel}>
+                      <div style={styles.tradeSubtabs}>
+                        {(
+                          [
+                            ["teams", "Teams / Private Chats"],
+                            ["pending", "Pending Offers"],
+                            ["block", "Trade Block"],
+                          ] as const
+                        ).map(([k, l]) => (
+                          <button
+                            key={k}
+                            type="button"
+                            onClick={() => setTradeSection(k)}
+                            style={{
+                              ...styles.workspaceTab,
+                              ...(tradeSection === k ? styles.workspaceTabActive : {}),
+                            }}
+                          >
+                            {l}
+                            {k === "teams" && chatUnread > 0 ? (
+                              <span style={styles.tabCount}>{chatUnread}</span>
+                            ) : null}
+                            {k === "pending" && incomingTradeOfferCount > 0 ? (
+                              <span style={styles.tabCount}>{incomingTradeOfferCount}</span>
+                            ) : null}
+                          </button>
+                        ))}
+                      </div>
+
+                      {tradeSection === "teams" ? (
+                        <div className="g365-nhl-trade-layout" style={styles.tradeLayout}>
+                          <div style={styles.tradeTeams}>
+                            {fantasyTeams
+                              .filter((t) => t.id !== myFantasyTeam?.id)
+                              .map((t) => (
+                                <button
+                                  type="button"
+                                  key={t.id}
+                                  onClick={() => void openTradeTeam(t.id)}
+                                  style={{
+                                    ...styles.tradeTeamButton,
+                                    ...(selectedTradeTeamId === t.id
+                                      ? styles.tradeTeamButtonActive
+                                      : {}),
+                                  }}
+                                >
+                                  <span>{t.team_name}</span>
+                                  {unreadForTradeTeam(t.id) > 0 ? (
+                                    <span style={styles.notificationBadge}>{unreadForTradeTeam(t.id)}</span>
+                                  ) : null}
+                                </button>
+                              ))}
+                          </div>
+
+                          <div style={styles.tradeWorkspace}>
+                            {selectedTradeTeamId ? (
+                              <>
+                                <div style={styles.cardHead}>
+                                  <div>
+                                    <div style={styles.cardTitle}>
+                                      PRIVATE TRADE CHAT •{" "}
+                                      {fantasyTeamById.get(selectedTradeTeamId)?.team_name}
+                                    </div>
+                                    <div style={styles.workspaceSubhead}>
+                                      Only these two teams can view this negotiation.
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div ref={chatListRef} style={styles.chatList}>
+                                  {chatMessages.length ? (
+                                    chatMessages.map((m, i) => (
+                                      <div
+                                        key={numField(m, "message_id", "id") ?? i}
+                                        style={styles.chatMessage}
+                                      >
+                                        <strong>
+                                          {numField(
+                                            m,
+                                            "sender_fantasy_team_id",
+                                            "senderFantasyTeamId",
+                                          ) === myFantasyTeam?.id
+                                            ? "You"
+                                            : fantasyTeamById.get(
+                                                numField(
+                                                  m,
+                                                  "sender_fantasy_team_id",
+                                                  "senderFantasyTeamId",
+                                                ) ?? -1,
+                                              )?.team_name ?? "Trade"}
+                                        </strong>
+                                        <span>{strField(m, "body", "message_body")}</span>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div style={styles.noPlayers}>No messages yet.</div>
+                                  )}
+                                </div>
+
+                                <div style={styles.chatComposer}>
+                                  <input
+                                    value={chatBody}
+                                    onChange={(e) => setChatBody(e.target.value)}
+                                    placeholder="Private message..."
+                                    style={styles.searchInput}
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={tradeBusy || !chatBody.trim()}
+                                    onClick={() => void sendTradeChat()}
+                                    style={styles.primaryButton}
+                                  >
+                                    Send
+                                  </button>
+                                </div>
+
+                                <div style={styles.offerBuilder}>
+                                  <div style={styles.cardTitle}>BUILD OFFER</div>
+                                  <div style={styles.compactAssetGrid}>
+                                    <details style={styles.assetDetails}>
+                                      <summary style={styles.assetSummary}>
+                                        YOU SEND • {offerMinePlayers.length + offerMinePicks.length} SELECTED
+                                      </summary>
+                                      <details style={styles.assetSubDetails}>
+                                        <summary style={styles.assetSubSummary}>PLAYERS • {myTradeAssets.players.length}</summary>
+                                        <div style={styles.playerPositionGrid}>
+                                          {myTradeAssets.players.length ? Array.from(new Set(myTradeAssets.players.map((a) => a.position || "OTHER"))).sort().map((position) => {
+                                            const positionPlayers = myTradeAssets.players.filter((a) => (a.position || "OTHER") === position).sort((a,b) => a.playerName.localeCompare(b.playerName));
+                                            return <details key={`mp-pos-${position}`} style={styles.pickYearDetails}>
+                                              <summary style={styles.pickYearSummary}><strong>{position}</strong><span>{positionPlayers.length} PLAYER{positionPlayers.length === 1 ? "" : "S"} ▾</span></summary>
+                                              <div style={styles.pickYearList}>{positionPlayers.map((a) => <label key={`mp${a.nhlPlayerId}`} style={styles.pickAssetRow}>
+                                                <input type="checkbox" checked={offerMinePlayers.includes(a.nhlPlayerId)} onChange={() => toggleId(setOfferMinePlayers, a.nhlPlayerId)} />
+                                                <span><strong>{a.playerName}</strong> • {a.position}</span>
+                                              </label>)}</div>
+                                            </details>;
+                                          }) : <div style={styles.assetEmpty}>No players available.</div>}
+                                        </div>
+                                      </details>
+                                      <details style={styles.assetSubDetails}>
+                                        <summary style={styles.assetSubSummary}>DRAFT PICKS • {myTradeAssets.draftPicks.length}</summary>
+                                        <div style={styles.pickYearGrid}>
+                                          {myTradeAssets.draftPicks.length ? Array.from(new Set(myTradeAssets.draftPicks.map((a) => a.draftSeason))).sort((a,b) => a-b).map((year) => {
+                                            const yearPicks = myTradeAssets.draftPicks.filter((a) => a.draftSeason === year).sort((a,b) => a.roundNumber - b.roundNumber || (a.overallPick ?? 9999) - (b.overallPick ?? 9999));
+                                            return <details key={`my-year-${year}`} style={styles.pickYearDetails}>
+                                              <summary style={styles.pickYearSummary}><strong>{year}</strong><span>{yearPicks.length} PICK{yearPicks.length === 1 ? "" : "S"} ▾</span></summary>
+                                              <div style={styles.pickYearList}>{yearPicks.map((a) => <label key={`mk${a.draftPickAssetId}`} style={styles.pickAssetRow}>
+                                                <input type="checkbox" checked={offerMinePicks.includes(a.draftPickAssetId)} onChange={() => toggleId(setOfferMinePicks, a.draftPickAssetId)} />
+                                                <span><strong>Round {a.roundNumber}</strong>{a.overallPick ? ` • Pick #${a.overallPick}` : " • Pick TBD"}{a.isTraded ? ` • via ${a.originalTeamName}` : ""}</span>
+                                              </label>)}</div>
+                                            </details>;
+                                          }) : <div style={styles.assetEmpty}>No tradable picks.</div>}
+                                        </div>
+                                      </details>
+                                    </details>
+
+                                    <details style={styles.assetDetails}>
+                                      <summary style={styles.assetSummary}>
+                                        YOU RECEIVE • {offerTheirPlayers.length + offerTheirPicks.length} SELECTED
+                                      </summary>
+                                      <details style={styles.assetSubDetails}>
+                                        <summary style={styles.assetSubSummary}>PLAYERS • {theirTradeAssets.players.length}</summary>
+                                        <div style={styles.playerPositionGrid}>
+                                          {theirTradeAssets.players.length ? Array.from(new Set(theirTradeAssets.players.map((a) => a.position || "OTHER"))).sort().map((position) => {
+                                            const positionPlayers = theirTradeAssets.players.filter((a) => (a.position || "OTHER") === position).sort((a,b) => a.playerName.localeCompare(b.playerName));
+                                            return <details key={`tp-pos-${position}`} style={styles.pickYearDetails}>
+                                              <summary style={styles.pickYearSummary}><strong>{position}</strong><span>{positionPlayers.length} PLAYER{positionPlayers.length === 1 ? "" : "S"} ▾</span></summary>
+                                              <div style={styles.pickYearList}>{positionPlayers.map((a) => <label key={`tp${a.nhlPlayerId}`} style={styles.pickAssetRow}>
+                                                <input type="checkbox" checked={offerTheirPlayers.includes(a.nhlPlayerId)} onChange={() => toggleId(setOfferTheirPlayers, a.nhlPlayerId)} />
+                                                <span><strong>{a.playerName}</strong> • {a.position}</span>
+                                              </label>)}</div>
+                                            </details>;
+                                          }) : <div style={styles.assetEmpty}>No players available.</div>}
+                                        </div>
+                                      </details>
+                                      <details style={styles.assetSubDetails}>
+                                        <summary style={styles.assetSubSummary}>DRAFT PICKS • {theirTradeAssets.draftPicks.length}</summary>
+                                        <div style={styles.pickYearGrid}>
+                                          {theirTradeAssets.draftPicks.length ? Array.from(new Set(theirTradeAssets.draftPicks.map((a) => a.draftSeason))).sort((a,b) => a-b).map((year) => {
+                                            const yearPicks = theirTradeAssets.draftPicks.filter((a) => a.draftSeason === year).sort((a,b) => a.roundNumber - b.roundNumber || (a.overallPick ?? 9999) - (b.overallPick ?? 9999));
+                                            return <details key={`their-year-${year}`} style={styles.pickYearDetails}>
+                                              <summary style={styles.pickYearSummary}><strong>{year}</strong><span>{yearPicks.length} PICK{yearPicks.length === 1 ? "" : "S"} ▾</span></summary>
+                                              <div style={styles.pickYearList}>{yearPicks.map((a) => <label key={`tk${a.draftPickAssetId}`} style={styles.pickAssetRow}>
+                                                <input type="checkbox" checked={offerTheirPicks.includes(a.draftPickAssetId)} onChange={() => toggleId(setOfferTheirPicks, a.draftPickAssetId)} />
+                                                <span><strong>Round {a.roundNumber}</strong>{a.overallPick ? ` • Pick #${a.overallPick}` : " • Pick TBD"}{a.isTraded ? ` • via ${a.originalTeamName}` : ""}</span>
+                                              </label>)}</div>
+                                            </details>;
+                                          }) : <div style={styles.assetEmpty}>No tradable picks.</div>}
+                                        </div>
+                                      </details>
+                                    </details>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    disabled={tradeBusy}
+                                    onClick={() => void submitTradeOffer()}
+                                    style={styles.primaryButton}
+                                  >
+                                    {counteringOfferId == null
+                                      ? "Send Trade Offer"
+                                      : `Send Counter to Offer #${counteringOfferId}`}
+                                  </button>
+                                  {counteringOfferId != null ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setCounteringOfferId(null)}
+                                      style={styles.secondaryButton}
+                                    >
+                                      Cancel Counter
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </>
+                            ) : (
+                              <div style={styles.noPlayers}>
+                                Choose a team to open its private trade room.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {tradeSection === "pending" ? (
+                        <div style={styles.offerList}>
+                          {pendingOffers.length ? (
+                            pendingOffers.map((o, i) => {
+                              const id = numField(o, "trade_offer_id", "id") ?? i;
+                              const proposer = numField(o, "proposing_fantasy_team_id", "proposingFantasyTeamId");
+                              const receiver = numField(o, "receiving_fantasy_team_id", "receivingFantasyTeamId");
+                              const incoming = receiver === myFantasyTeam?.id;
+                              const offeredPlayers = pendingPlayerIds(Number(id), proposer);
+                              const requestedPlayers = pendingPlayerIds(Number(id), receiver);
+                              const offeredPicks = pendingPickIds(Number(id), proposer);
+                              const requestedPicks = pendingPickIds(Number(id), receiver);
+                              const receivePlayers = incoming ? offeredPlayers : requestedPlayers;
+                              const receivePicks = incoming ? offeredPicks : requestedPicks;
+                              const sendPlayers = incoming ? requestedPlayers : offeredPlayers;
+                              const sendPicks = incoming ? requestedPicks : offeredPicks;
+                              const otherTeamId = incoming ? proposer : receiver;
+                              const otherTeamName = fantasyTeamById.get(otherTeamId ?? -1)?.team_name ?? "Team";
+
+                              return (
+                                <details key={id} style={styles.offerCard} open={incoming}>
+                                  <summary style={styles.compactOfferSummary}>
+                                    <span>
+                                      <strong>{incoming ? `${otherTeamName} OFFERED YOU A TRADE` : `TRADE SENT TO ${otherTeamName}`}</strong>
+                                      <small style={styles.offerNumber}>Offer #{id} • {sendPlayers.length + sendPicks.length} out / {receivePlayers.length + receivePicks.length} in</small>
+                                    </span>
+                                    {incoming ? <span style={styles.notificationBadge}>NEW</span> : null}
+                                  </summary>
+
+                                  <div style={styles.pendingTradeGrid}>
+                                    <div style={styles.pendingTradeSide}>
+                                      <strong style={styles.pendingTradeHeading}>YOU RECEIVE</strong>
+                                      <div style={styles.pendingAssetLabel}>PLAYERS</div>
+                                      {receivePlayers.length ? receivePlayers.map((playerId) => (
+                                        <div key={`rp-${id}-${playerId}`} style={styles.pendingAssetRow}>{tradePlayerLabel(playerId)}</div>
+                                      )) : <div style={styles.pendingAssetEmpty}>No players</div>}
+                                      <div style={styles.pendingAssetLabel}>PICKS</div>
+                                      {receivePicks.length ? receivePicks.map((pickId) => (
+                                        <div key={`rk-${id}-${pickId}`} style={styles.pendingAssetRow}>{tradePickLabel(pickId)}</div>
+                                      )) : <div style={styles.pendingAssetEmpty}>No picks</div>}
+                                    </div>
+
+                                    <div style={styles.pendingTradeSide}>
+                                      <strong style={styles.pendingTradeHeading}>YOU SEND</strong>
+                                      <div style={styles.pendingAssetLabel}>PLAYERS</div>
+                                      {sendPlayers.length ? sendPlayers.map((playerId) => (
+                                        <div key={`sp-${id}-${playerId}`} style={styles.pendingAssetRow}>{tradePlayerLabel(playerId)}</div>
+                                      )) : <div style={styles.pendingAssetEmpty}>No players</div>}
+                                      <div style={styles.pendingAssetLabel}>PICKS</div>
+                                      {sendPicks.length ? sendPicks.map((pickId) => (
+                                        <div key={`sk-${id}-${pickId}`} style={styles.pendingAssetRow}>{tradePickLabel(pickId)}</div>
+                                      )) : <div style={styles.pendingAssetEmpty}>No picks</div>}
+                                    </div>
+                                  </div>
+
+                                  <div style={styles.buttonRow}>
+                                    {incoming ? (
+                                      <>
+                                        <button type="button" disabled={tradeBusy} onClick={() => void actOnOffer(id, "accept")} style={styles.primaryButton}>Accept Trade</button>
+                                        <button type="button" disabled={tradeBusy} onClick={() => beginCounterOffer(o)} style={styles.secondaryButton}>Counter Trade</button>
+                                        <button type="button" disabled={tradeBusy} onClick={() => void actOnOffer(id, "reject")} style={styles.secondaryButton}>Reject</button>
+                                      </>
+                                    ) : (
+                                      <button type="button" disabled={tradeBusy} onClick={() => void actOnOffer(id, "cancel")} style={styles.dangerButton}>Cancel Offer</button>
+                                    )}
+                                  </div>
+                                </details>
+                              );
+                            })
+                          ) : (
+                            <div style={styles.noPlayers}>No pending offers.</div>
+                          )}
+                        </div>
+                      ) : null}
+
+                      {tradeSection === "block" ? (
+                        <div style={styles.offerList}>
+                          <div style={styles.offerCard}>
+                            <div style={styles.offerCardHead}>
+                              <div>
+                                <strong style={styles.tradeBlockTitle}>WHAT YOUR TEAM IS LOOKING FOR</strong>
+                                <div style={styles.tradeBlockHelp}>Choose every position or asset type your team wants. Other owners will see these needs on the Trade Block.</div>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                              {["C", "LW", "RW", "F", "D", "G", "PICKS", "PROSPECTS"].map((need) => {
+                                const selected = myTradeNeeds.includes(need);
+                                return (
+                                  <button
+                                    key={need}
+                                    type="button"
+                                    onClick={() => toggleTradeNeed(need)}
+                                    style={{
+                                      ...styles.secondaryButton,
+                                      ...(selected ? styles.workspaceTabActive : {}),
+                                    }}
+                                  >
+                                    {selected ? "✓ " : ""}{tradeNeedLabel(need)}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div style={{ ...styles.buttonRow, marginTop: 14 }}>
+                              <button
+                                type="button"
+                                disabled={tradeNeedsBusy}
+                                onClick={() => void saveTradeNeeds()}
+                                style={styles.primaryButton}
+                              >
+                                {tradeNeedsBusy ? "Saving..." : "Save Trade Block"}
+                              </button>
+                            </div>
+                          </div>
+
+                          {tradeBlock
+                            .filter((row) => numField(row, "fantasy_team_id", "fantasyTeamId") !== myFantasyTeam?.id)
+                            .map((row, i) => {
+                              const teamId = numField(row, "fantasy_team_id", "fantasyTeamId");
+                              const teamName = strField(row, "team_name", "teamName") || `Team ${teamId ?? i + 1}`;
+                              const rawNeeds = row.needs;
+                              const needs = Array.isArray(rawNeeds) ? rawNeeds.map((value) => String(value)) : [];
+                              return (
+                                <details key={teamId ?? i} style={styles.offerCard}>
+                                  <summary style={styles.compactOfferSummary}>
+                                    <span>
+                                      <strong>{teamName}</strong>
+                                      <small style={styles.tradeBlockTeamNeeds}>{needs.length ? `LOOKING FOR • ${needs.length} NEED${needs.length === 1 ? "" : "S"}` : "NO NEEDS POSTED"}</small>
+                                    </span>
+                                  </summary>
+                                  {needs.length ? (
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                                      {needs.map((need) => (
+                                        <span key={need} style={styles.tradeNeedChip}>
+                                          {tradeNeedLabel(need)}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div style={styles.pendingAssetEmpty}>No needs posted yet.</div>
+                                  )}
+                                  {teamId != null ? (
+                                    <div style={{ ...styles.buttonRow, marginTop: 14 }}>
+                                      <button
+                                        type="button"
+                                        disabled={tradeBusy}
+                                        onClick={() => {
+                                          setTradeSection("teams");
+                                          void openTradeTeam(teamId);
+                                        }}
+                                        style={styles.primaryButton}
+                                      >
+                                        Start Trade
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </details>
+                              );
+                            })}
+                        </div>
+                      ) : null}
+                    </section>
+                  ) : null}
+
+                  {activeTab === "summary" ? (
+                    <section style={styles.tradePanel}>
+                      <div style={styles.cardHead}>
+                        <div>
+                          <div style={styles.cardTitle}>COMPLETED TRADE SUMMARY</div>
+                          <div style={styles.workspaceSubhead}>
+                            League-wide completed trades only. Private negotiations remain
+                            private.
+                          </div>
+                        </div>
+                      </div>
+                      <div style={styles.offerList}>
+                        {tradeSummary.length ? (
+                          tradeSummary.map((t, i) => {
+                            const id = numField(t, "trade_offer_id", "id") ?? i;
+                            return (
+                              <div key={id} style={styles.offerCard}>
+                                <strong>Trade #{id}</strong>
+                                <span>
+                                  {fantasyTeamById.get(
+                                    numField(
+                                      t,
+                                      "proposing_fantasy_team_id",
+                                      "proposingFantasyTeamId",
+                                    ) ?? -1,
+                                  )?.team_name ?? "Team"}{" "}
+                                  ↔{" "}
+                                  {fantasyTeamById.get(
+                                    numField(
+                                      t,
+                                      "receiving_fantasy_team_id",
+                                      "receivingFantasyTeamId",
+                                    ) ?? -1,
+                                  )?.team_name ?? "Team"}
+                                </span>
+                                <span style={styles.mutedText}>
+                                  {strField(t, "completed_at", "completedAt")
+                                    ? new Date(
+                                        strField(t, "completed_at", "completedAt"),
+                                      ).toLocaleString()
+                                    : "Completed"}
+                                </span>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div style={styles.noPlayers}>No completed trades yet.</div>
+                        )}
+                      </div>
+                    </section>
+                  ) : null}
+
                 </section>
               </section>
 
@@ -1911,6 +3084,7 @@ export default function NhlTraditionalDraft({
           </>
         )}
 
+
         {detailPlayer ? (
           <div
             style={styles.modalBackdrop}
@@ -1960,7 +3134,7 @@ export default function NhlTraditionalDraft({
                   style={styles.modalClose}
                   aria-label="Close player profile"
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
 
@@ -2354,4 +3528,76 @@ const styles: Record<string, React.CSSProperties> = {
   rookieNotice: { display: "flex", flexDirection: "column", gap: 5, padding: 18, color: "#c9cbd0", textAlign: "center", fontSize: 10 },
   modalNotice: { padding: 18, color: "#aeb1b7", textAlign: "center", fontSize: 10 },
   modalError: { padding: 18, color: "#fecaca", textAlign: "center", fontSize: 10 },
+  mainTabs: { display: "flex", gap: 5, overflowX: "auto", marginBottom: 10, padding: 4, border: "1px solid #29292d", borderRadius: 10, background: "#0d0d0f", WebkitOverflowScrolling: "touch" },
+  mainTab: { minHeight: 40, flex: "0 0 auto", padding: "8px 14px", border: "1px solid #333338", borderRadius: 8, background: "#151518", color: "#aeb1b7", fontSize: 10, fontWeight: 950, cursor: "pointer", textTransform: "uppercase" },
+  mainTabActive: { border: "1px solid #ff5a00", background: "linear-gradient(135deg,#4b1300,#1a0c08)", color: "#fff" },
+  tradePanel: { marginBottom: 10, border: "1px solid #29292d", borderRadius: 12, background: "#0e0e10", overflow: "hidden" },
+  tradeSubtabs: { display: "flex", gap: 4, overflowX: "auto", padding: 8, borderBottom: "1px solid #29292d" },
+  tradeLayout: { display: "grid", gridTemplateColumns: "minmax(180px,240px) minmax(0,1fr)", minHeight: 560 },
+  tradeTeams: { padding: 8, borderRight: "1px solid #29292d", overflowY: "auto" },
+  tradeTeamButton: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", minHeight: 42, marginBottom: 5, padding: "8px 10px", border: "1px solid #333338", borderRadius: 7, background: "#151518", color: "#ddd", textAlign: "left", fontWeight: 900, cursor: "pointer" },
+  tradeTeamButtonActive: { border: "1px solid #ff5a00", background: "#321006", color: "#fff" },
+  tradeWorkspace: { minWidth: 0, padding: 8 },
+  chatList: { height: 164, maxHeight: 164, overflowY: "auto", overscrollBehavior: "contain", padding: 8, border: "1px solid #252529", borderRadius: 8, background: "#09090b", scrollbarGutter: "stable" },
+  chatMessage: { display: "flex", flexDirection: "column", gap: 3, padding: "8px 6px", borderBottom: "1px solid #222226", fontSize: 10 },
+  chatComposer: { display: "flex", gap: 7, padding: "8px 0" },
+  offerBuilder: { marginTop: 6, padding: 10, border: "1px solid #33251f", borderRadius: 9, background: "#100e0d" },
+  assetGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 8, padding: 10 },
+  assetColumn: { minWidth: 0, border: "1px solid #29292d", borderRadius: 8, background: "#101012", overflow: "hidden" },
+  assetHeading: { display: "block", padding: "9px 10px", borderBottom: "1px solid #29292d", color: "#ff7a28", fontSize: 9, letterSpacing: .7 },
+  assetRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 38, padding: "7px 9px", borderBottom: "1px solid #222226", color: "#e5e7eb", fontSize: 10, cursor: "pointer" },
+  tradeTextarea: { width: "100%", minHeight: 72, margin: "8px 0", padding: 9, resize: "vertical", borderRadius: 7, border: "1px solid #34343a", background: "#08080a", color: "#fff", fontFamily: "inherit" },
+  offerList: { display: "grid", gap: 8, padding: 10 },
+  offerCard: { display: "flex", flexDirection: "column", gap: 7, padding: 11, border: "1px solid #2b2b30", borderRadius: 9, background: "#111113", fontSize: 11 },
+  assetGroupTitle: { padding: "8px 10px 6px", borderBottom: "1px solid #29292d", background: "#171719", color: "#9da0a7", fontSize: 8, fontWeight: 950, letterSpacing: .8 },
+  assetEmpty: { padding: "10px", color: "#666b74", fontSize: 9, fontStyle: "italic" },
+  offerCardHead: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, paddingBottom: 8, borderBottom: "1px solid #29292d" },
+  offerNumber: { marginTop: 3, color: "#ff7a28", fontSize: 9, fontWeight: 900 },
+  pendingTradeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 8 },
+  pendingTradeSide: { minWidth: 0, overflow: "hidden", border: "1px solid #29292d", borderRadius: 8, background: "#0d0d0f" },
+  pendingTradeHeading: { display: "block", padding: "9px 10px", background: "linear-gradient(135deg,#321006,#151518)", color: "#fff", fontSize: 10, letterSpacing: .6 },
+  pendingAssetLabel: { padding: "7px 9px 5px", borderTop: "1px solid #242428", borderBottom: "1px solid #242428", background: "#171719", color: "#ff7a28", fontSize: 8, fontWeight: 950, letterSpacing: .7 },
+  pendingAssetRow: { padding: "8px 9px", borderBottom: "1px solid #202024", color: "#e5e7eb", fontSize: 10, fontWeight: 800 },
+  pendingAssetEmpty: { padding: "8px 9px", color: "#646872", fontSize: 9, fontStyle: "italic" },
+  tradeNeedChip: { display: "inline-flex", alignItems: "center", minHeight: 32, padding: "7px 10px", borderRadius: 999, border: "1px solid #5b2517", background: "linear-gradient(180deg, #2a130d, #160d0a)", color: "#ffb36b", fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: ".04em" },
+  notificationBadge: { display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 22, height: 22, padding: "0 6px", borderRadius: 999, border: "1px solid #ff6a00", background: "linear-gradient(135deg,#8f1f00,#ff4d00)", color: "#fff", fontSize: 9, fontWeight: 950, lineHeight: 1, boxShadow: "0 0 14px rgba(255,77,0,.28)" },
+  compactAssetGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 8, margin: "9px 0" },
+  assetDetails: { minWidth: 0, overflow: "hidden", border: "1px solid #33251f", borderRadius: 9, background: "#101012" },
+  assetSummary: { padding: "11px 12px", cursor: "pointer", color: "#ff8a3d", fontSize: 10, fontWeight: 950, letterSpacing: .5, listStylePosition: "inside" },
+  assetSubDetails: { borderTop: "1px solid #29292d", background: "#0d0d0f" },
+  assetSubSummary: { padding: "9px 11px", cursor: "pointer", color: "#c9cbd0", fontSize: 9, fontWeight: 950, letterSpacing: .5, listStylePosition: "inside" },
+  assetScroll: { maxHeight: 230, overflowY: "auto", overscrollBehavior: "contain", scrollbarGutter: "stable" },
+  compactOfferSummary: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, cursor: "pointer", color: "#fff", listStylePosition: "inside" },
+  autoDraftBar: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 10, padding: 12, border: "1px solid rgba(255,90,0,.42)", borderRadius: 10, background: "linear-gradient(135deg,#1f0b05,#101012 62%)" },
+  autoDraftInfo: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: "1 1 260px" },
+  autoDraftPlayer: { color: "#fff", fontSize: 14, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  autoDraftControls: { display: "flex", gap: 7, flexWrap: "wrap" },
+  autoToggle: { minHeight: 40, padding: "8px 12px", border: "1px solid #4a4a50", borderRadius: 8, background: "#17171a", color: "#c7c9ce", fontSize: 10, fontWeight: 950, cursor: "pointer" },
+  autoToggleOn: { border: "1px solid #ff5a00", background: "linear-gradient(135deg,#641800,#2b0c04)", color: "#fff", boxShadow: "0 0 18px rgba(255,90,0,.16)" },
+  soundButton: { minHeight: 40, padding: "8px 12px", border: "1px solid #38383e", borderRadius: 8, background: "#121214", color: "#fff", fontSize: 10, fontWeight: 950, cursor: "pointer" },
+  rankingsTableScroll: { maxHeight: 650, overflowY: "auto", overflowX: "hidden", WebkitOverflowScrolling: "touch" },
+  rankingsTable: { width: "100%", minWidth: 0 },
+  rankingsTableHead: { display: "grid", gridTemplateColumns: "34px minmax(140px,1fr) 44px 36px 58px 52px 128px", gap: 6, alignItems: "center", minHeight: 38, padding: "7px 9px", position: "sticky", top: 0, zIndex: 2, borderBottom: "1px solid #34343a", background: "#171719", color: "#8f939c", fontSize: 8, fontWeight: 950, textAlign: "center", letterSpacing: .45 },
+  rankingsTableRow: { display: "grid", gridTemplateColumns: "34px minmax(140px,1fr) 44px 36px 58px 52px 128px", gap: 6, alignItems: "center", minHeight: 58, padding: "6px 9px", borderBottom: "1px solid #232327", background: "#101012" },
+  myRankValue: { color: "#ff6500", fontSize: 13, fontWeight: 950, textAlign: "center" },
+  g365RankValue: { color: "#fff", fontSize: 10, fontWeight: 900, textAlign: "center" },
+  rankCenter: { color: "#d4d6db", fontSize: 9, fontWeight: 850, textAlign: "center" },
+  rankNumber: { color: "#f1f2f4", fontSize: 10, fontWeight: 900, textAlign: "right", fontVariantNumeric: "tabular-nums" },
+  rankingPlayerIdentity: { display: "flex", alignItems: "center", gap: 7, minWidth: 0 },
+  rankingPlayerText: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
+  rankingPlayerMeta: { color: "#8f939c", fontSize: 7, fontWeight: 850, whiteSpace: "nowrap" },
+  rankingHeadshot: { width: 34, height: 34, flex: "0 0 34px", borderRadius: 7, objectFit: "cover", background: "#202024" },
+  rankingHeadshotFallback: { width: 34, height: 34, flex: "0 0 34px", display: "grid", placeItems: "center", borderRadius: 7, background: "#222227", color: "#ff7a28", fontSize: 12, fontWeight: 950 },
+  rankingPlayerButton: { minWidth: 0, padding: 0, border: 0, background: "transparent", color: "#fff", fontSize: 10, fontWeight: 950, textAlign: "left", cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: "underline", textDecorationColor: "rgba(255,106,0,.45)", textUnderlineOffset: 2 },
+  playerPositionGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 7, padding: 8, borderTop: "1px solid #29292d" },
+  pickYearGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 7, padding: 8, borderTop: "1px solid #29292d" },
+  pickYearDetails: { minWidth: 0, alignSelf: "start", overflow: "hidden", border: "1px solid #35353a", borderRadius: 8, background: "#111113" },
+  pickYearSummary: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 42, padding: "8px 10px", cursor: "pointer", listStyle: "none", background: "linear-gradient(180deg,#1b1b1f,#121214)", color: "#fff", fontSize: 10, fontWeight: 950 },
+  pickYearList: { maxHeight: 240, overflowY: "auto", scrollbarGutter: "stable" },
+  pickAssetRow: { display: "grid", gridTemplateColumns: "22px minmax(0,1fr)", alignItems: "center", gap: 7, minHeight: 43, padding: "7px 8px", borderTop: "1px solid #252529", color: "#e5e7eb", fontSize: 9, lineHeight: 1.35, cursor: "pointer" },
+  tradeBlockTitle: { display: "block", color: "#fff", fontSize: 12, fontWeight: 950, letterSpacing: .35 },
+  tradeBlockHelp: { maxWidth: 680, marginTop: 7, color: "#a4a7ae", fontSize: 10, lineHeight: 1.5, fontWeight: 700 },
+  tradeBlockTeamNeeds: { display: "block", marginTop: 6, color: "#ff7a28", fontSize: 9, fontWeight: 900, letterSpacing: .25 },
+  rankingActions: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 5, flexWrap: "wrap" },
+  rankMoveButton: { width: 34, height: 34, border: "1px solid #3a3a40", borderRadius: 7, background: "#17171a", color: "#fff", fontSize: 16, fontWeight: 950, cursor: "pointer" },
 };

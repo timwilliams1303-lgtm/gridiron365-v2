@@ -180,6 +180,16 @@ export default async function LeagueLayout({
         leagueId={
           leagueId
         }
+        leagueName={
+          league.name
+        }
+        leagueSeason={
+          typeof league.season === "number"
+            ? league.season
+            : league.season != null
+              ? Number(league.season)
+              : null
+        }
         leagueType={
           leagueType
         }

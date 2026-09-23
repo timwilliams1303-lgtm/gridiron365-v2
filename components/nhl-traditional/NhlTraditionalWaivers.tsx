@@ -1,21 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 
-type Props = {
-  leagueId: string;
-};
+type Props = { leagueId: string };
 
 type Settings = {
   season: number;
   league_format: string | null;
+  position_mode: string | null;
   waiver_mode: string | null;
   faab_budget: number | null;
 };
@@ -24,8 +18,13 @@ type FantasyTeam = {
   id: number;
   team_name: string;
   owner_id: string | null;
-  active: boolean | null;
-  is_cpu: boolean | null;
+};
+
+type NhlTeam = {
+  id: number;
+  display_name: string | null;
+  name: string | null;
+  abbreviation: string | null;
 };
 
 type Player = {
@@ -36,7 +35,6 @@ type Player = {
   position: string | null;
   position_group: string | null;
   jersey_number: string | null;
-  active: boolean | null;
   status: string | null;
   injury_status: string | null;
   headshot_url: string | null;
@@ -47,6 +45,42 @@ type RosterRow = {
   fantasy_team_id: number;
   nhl_player_id: number;
   roster_status: string;
+};
+
+type SeasonTotal = {
+  nhl_player_id: number;
+  games_played: number | string | null;
+  fantasy_points: number | string | null;
+  fantasy_points_per_game: number | string | null;
+  goals: number | string | null;
+  assists: number | string | null;
+  points: number | string | null;
+  shots_on_goal: number | string | null;
+  hits: number | string | null;
+  blocked_shots: number | string | null;
+  power_play_points: number | string | null;
+  short_handed_points: number | string | null;
+  goalie_starts: number | string | null;
+  goalie_wins: number | string | null;
+  saves: number | string | null;
+  shots_against: number | string | null;
+  goals_against: number | string | null;
+  shutouts: number | string | null;
+  save_percentage: number | string | null;
+  goals_against_average: number | string | null;
+};
+
+type PreseasonRanking = {
+  overall_rank: number | string | null;
+  nhl_player_id: number | string;
+  projected_fantasy_points: number | string | null;
+  projected_fantasy_points_per_game: number | string | null;
+};
+
+type PlayerWaiverState = {
+  nhl_player_id: number;
+  status: string;
+  clears_at: string | null;
 };
 
 type WaiverClaim = {
@@ -62,7 +96,7 @@ type WaiverClaim = {
   created_at: string;
 };
 
-type WaiverState = {
+type WaiverTeamState = {
   fantasy_team_id: number;
   waiver_priority: number;
   faab_spent: number;
@@ -78,9 +112,40 @@ type Transaction = {
   created_at: string;
 };
 
-type ClaimModalState = {
-  player: Player;
-} | null;
+type PlayerView = Player & {
+  teamName: string;
+  teamAbbr: string;
+  waiverStatus: "available" | "waivers" | "processing";
+  clearsAt: string | null;
+  gp: number;
+  fp: number;
+  fppg: number;
+  goals: number;
+  assists: number;
+  points: number;
+  sog: number;
+  hits: number;
+  blocks: number;
+  ppp: number;
+  shp: number;
+  goalieStarts: number;
+  goalieWins: number;
+  saves: number;
+  shotsAgainst: number;
+  goalsAgainst: number;
+  shutouts: number;
+  savePct: number | null;
+  gaa: number | null;
+  preseasonRank: number | null;
+  projectedFp: number;
+  projectedFppg: number;
+};
+
+type SortKey =
+  | "fp" | "fppg" | "gp" | "goals" | "assists" | "points"
+  | "sog" | "hits" | "blocks" | "ppp" | "shp"
+  | "goalieStarts" | "goalieWins" | "saves" | "shotsAgainst"
+  | "goalsAgainst" | "shutouts" | "savePct" | "gaa";
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -88,1178 +153,800 @@ const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-function n(value: unknown) {
-  const result = Number(value);
+const num = (value: unknown) => {
+  const result = Number(value ?? 0);
   return Number.isFinite(result) ? result : 0;
-}
+};
 
-function title(value: string | null | undefined) {
-  return (value ?? "—")
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
-}
+const nullableNum = (value: unknown) => {
+  if (value == null || value === "") return null;
+  const result = Number(value);
+  return Number.isFinite(result) ? result : null;
+};
 
-function formatDate(value: string | null | undefined) {
+const title = (value: string | null | undefined) =>
+  (value ?? "—").replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase());
+
+const formatDate = (value: string | null | undefined) => {
   if (!value) return "—";
-
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
-
+  if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
   });
-}
+};
 
-function initials(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.charAt(0))
-    .join("")
-    .toUpperCase();
-}
+const seasonLabel = (season: number) => `${season}-${String(season + 1).slice(-2)}`;
 
-export default function NhlTraditionalWaivers({
-  leagueId,
-}: Props) {
+const fmt = (value: number | null, decimals = 0) =>
+  value == null ? "—" : value.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+
+const initials = (name: string) =>
+  name.split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0]).join("").toUpperCase();
+
+const normalizePosition = (player: Player, mode: string) => {
+  const pos = String(player.position ?? player.position_group ?? "").toUpperCase();
+  if (mode === "fdg") {
+    if (pos === "G") return "G";
+    if (pos === "D") return "D";
+    if (["C", "LW", "RW", "F"].includes(pos)) return "F";
+  }
+  return pos || "—";
+};
+
+const sortValue = (p: PlayerView, key: SortKey) => {
+  const value = p[key];
+  return typeof value === "number" ? value : -1;
+};
+
+export default function NhlTraditionalWaivers({ leagueId }: Props) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [teams, setTeams] = useState<FantasyTeam[]>([]);
+  const [nhlTeams, setNhlTeams] = useState<NhlTeam[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [rosters, setRosters] = useState<RosterRow[]>([]);
+  const [totals, setTotals] = useState<SeasonTotal[]>([]);
+  const [preseasonRankings, setPreseasonRankings] = useState<PreseasonRanking[]>([]);
+  const [playerWaivers, setPlayerWaivers] = useState<PlayerWaiverState[]>([]);
   const [claims, setClaims] = useState<WaiverClaim[]>([]);
-  const [waiverState, setWaiverState] = useState<WaiverState[]>([]);
+  const [waiverOrder, setWaiverOrder] = useState<WaiverTeamState[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+
+  const [tab, setTab] = useState<"PLAYERS" | "CLAIMS" | "ORDER" | "HISTORY">("PLAYERS");
+  const [search, setSearch] = useState("");
+  const [teamFilter, setTeamFilter] = useState("ALL");
+  const [positionFilter, setPositionFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "AVAILABLE" | "WAIVERS">("ALL");
+  const [sortKey, setSortKey] = useState<SortKey>("fp");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const [selectedPlayer, setSelectedPlayer] = useState<PlayerView | null>(null);
+  const [claimPlayer, setClaimPlayer] = useState<PlayerView | null>(null);
+  const [dropPlayerId, setDropPlayerId] = useState<number | null>(null);
+  const [faabBid, setFaabBid] = useState("");
+  const [actionId, setActionId] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-
-  const [search, setSearch] = useState("");
-  const [positionFilter, setPositionFilter] = useState("ALL");
-
-  const [tab, setTab] = useState<
-    "AVAILABLE" | "CLAIMS" | "ORDER" | "HISTORY"
-  >("AVAILABLE");
-
-  const [claimModal, setClaimModal] = useState<ClaimModalState>(null);
-  const [dropPlayerId, setDropPlayerId] = useState<number | null>(null);
-  const [faabBid, setFaabBid] = useState("");
-
-  const [submitting, setSubmitting] = useState(false);
-  const [actionId, setActionId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const { data: authData, error: authError } =
-        await supabase.auth.getUser();
-
-      if (authError) {
-        throw authError;
-      }
-
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
       const currentUserId = authData.user?.id ?? null;
       setUserId(currentUserId);
 
-      const { data: settingsData, error: settingsError } =
-        await supabase
-          .from("nhl_traditional_settings")
-          .select(`
-            season,
-            league_format,
-            waiver_mode,
-            faab_budget
-          `)
-          .eq("league_id", leagueId)
-          .single();
+      const { data: settingsData, error: settingsError } = await supabase
+        .from("nhl_traditional_settings")
+        .select("season, league_format, position_mode, waiver_mode, faab_budget")
+        .eq("league_id", leagueId)
+        .single();
 
-      if (settingsError) {
-        throw settingsError;
-      }
+      if (settingsError) throw settingsError;
 
-      const normalizedSettings: Settings = {
-        season: n(settingsData.season),
-        league_format: settingsData.league_format ?? null,
+      const normalized: Settings = {
+        season: num(settingsData.season),
+        league_format: settingsData.league_format ?? "redraft",
+        position_mode: settingsData.position_mode ?? "detailed",
         waiver_mode: settingsData.waiver_mode ?? "rolling",
-        faab_budget:
-          settingsData.faab_budget == null
-            ? null
-            : n(settingsData.faab_budget),
+        faab_budget: settingsData.faab_budget == null ? null : num(settingsData.faab_budget),
       };
-
-      setSettings(normalizedSettings);
+      setSettings(normalized);
 
       const [
-        teamsResult,
+        fantasyTeamsResult,
+        nhlTeamsResult,
         playersResult,
         rostersResult,
+        totalsResult,
+        rankingsResult,
+        playerWaiversResult,
         claimsResult,
-        stateResult,
+        waiverOrderResult,
         transactionsResult,
       ] = await Promise.all([
-        supabase
-          .from("fantasy_teams")
-          .select(`
-            id,
-            team_name,
-            owner_id,
-            active,
-            is_cpu
-          `)
-          .eq("league_id", leagueId)
-          .eq("active", true)
-          .order("team_name"),
+        supabase.from("fantasy_teams")
+          .select("id, team_name, owner_id")
+          .eq("league_id", leagueId).eq("active", true).order("team_name"),
+
+        supabase.from("nhl_teams")
+          .select("id, display_name, name, abbreviation")
+          .eq("active", true).order("name"),
 
         (async () => {
+          const all: Player[] = [];
           const pageSize = 1000;
-          const allPlayers: Player[] = [];
-
           for (let from = 0; ; from += pageSize) {
-            const { data, error } = await supabase
-              .from("nhl_players")
-              .select(`
-                id,
-                display_name,
-                short_name,
-                team_id,
-                position,
-                position_group,
-                jersey_number,
-                active,
-                status,
-                injury_status,
-                headshot_url
-              `)
+            const { data, error } = await supabase.from("nhl_players")
+              .select("id, display_name, short_name, team_id, position, position_group, jersey_number, status, injury_status, headshot_url")
               .eq("active", true)
-              .order("display_name", { ascending: true })
-              .order("id", { ascending: true })
+              .order("display_name")
               .range(from, from + pageSize - 1);
-
-            if (error) {
-              return { data: null as Player[] | null, error };
-            }
-
-            const page = (data as Player[] | null) ?? [];
-            allPlayers.push(...page);
-
+            if (error) return { data: null as Player[] | null, error };
+            const page = (data ?? []) as Player[];
+            all.push(...page);
             if (page.length < pageSize) break;
           }
-
-          return { data: allPlayers, error: null };
+          return { data: all, error: null };
         })(),
 
-        supabase
-          .from("nhl_traditional_rosters")
-          .select(`
-            id,
-            fantasy_team_id,
-            nhl_player_id,
-            roster_status
-          `)
-          .eq("league_id", leagueId)
-          .eq("season", normalizedSettings.season),
+        supabase.from("nhl_traditional_rosters")
+          .select("id, fantasy_team_id, nhl_player_id, roster_status")
+          .eq("league_id", leagueId).eq("season", normalized.season),
 
-        supabase
-          .from("nhl_traditional_waiver_claims")
-          .select(`
-            id,
-            fantasy_team_id,
-            nhl_player_id,
-            drop_nhl_player_id,
-            claim_priority,
-            faab_bid,
-            status,
-            processed_at,
-            failure_reason,
-            created_at
-          `)
-          .eq("league_id", leagueId)
-          .eq("season", normalizedSettings.season)
-          .order("created_at", {
-            ascending: false,
-          }),
+        supabase.rpc("get_nhl_traditional_player_season_totals", {
+          p_league_id: leagueId,
+          p_season: normalized.season,
+          p_season_type: "regular",
+        }),
 
-        supabase
-          .from("nhl_traditional_waiver_team_state")
-          .select(`
-            fantasy_team_id,
-            waiver_priority,
-            faab_spent
-          `)
-          .eq("league_id", leagueId)
-          .eq("season", normalizedSettings.season)
+        supabase.rpc("get_nhl_traditional_draft_rankings", {
+          p_league_id: leagueId,
+          p_season: normalized.season,
+        }),
+
+        supabase.from("nhl_traditional_player_waiver_state")
+          .select("nhl_player_id, status, clears_at")
+          .eq("league_id", leagueId).eq("season", normalized.season),
+
+        supabase.from("nhl_traditional_waiver_claims")
+          .select("id, fantasy_team_id, nhl_player_id, drop_nhl_player_id, claim_priority, faab_bid, status, processed_at, failure_reason, created_at")
+          .eq("league_id", leagueId).eq("season", normalized.season)
+          .order("created_at", { ascending: false }),
+
+        supabase.from("nhl_traditional_waiver_team_state")
+          .select("fantasy_team_id, waiver_priority, faab_spent")
+          .eq("league_id", leagueId).eq("season", normalized.season)
           .order("waiver_priority"),
 
-        supabase
-          .from("nhl_traditional_transactions")
-          .select(`
-            id,
-            fantasy_team_id,
-            transaction_type,
-            nhl_player_id,
-            related_nhl_player_id,
-            notes,
-            created_at
-          `)
-          .eq("league_id", leagueId)
-          .eq("season", normalizedSettings.season)
-          .in("transaction_type", ["waiver_add", "drop"])
-          .order("created_at", {
-            ascending: false,
-          })
-          .limit(100),
+        supabase.from("nhl_traditional_transactions")
+          .select("id, fantasy_team_id, transaction_type, nhl_player_id, related_nhl_player_id, notes, created_at")
+          .eq("league_id", leagueId).eq("season", normalized.season)
+          .in("transaction_type", ["waiver_add", "free_agent_add", "drop"])
+          .order("created_at", { ascending: false }).limit(100),
       ]);
 
-      if (teamsResult.error) throw teamsResult.error;
-      if (playersResult.error) throw playersResult.error;
-      if (rostersResult.error) throw rostersResult.error;
-      if (claimsResult.error) throw claimsResult.error;
-      if (stateResult.error) throw stateResult.error;
-      if (transactionsResult.error) throw transactionsResult.error;
+      const results = [
+        fantasyTeamsResult, nhlTeamsResult, playersResult, rostersResult,
+        totalsResult, rankingsResult, playerWaiversResult, claimsResult, waiverOrderResult,
+        transactionsResult,
+      ];
+      const failed = results.find(result => result.error);
+      if (failed?.error) throw failed.error;
 
-      setTeams(
-        (teamsResult.data ?? []).map((row) => ({
-          id: n(row.id),
-          team_name: row.team_name ?? "Unnamed Team",
-          owner_id: row.owner_id ?? null,
-          active: row.active,
-          is_cpu: row.is_cpu,
-        }))
-      );
-
-      setPlayers(
-        (playersResult.data ?? []).map((row) => ({
-          id: n(row.id),
-          display_name:
-            row.display_name ??
-            row.short_name ??
-            `Player ${row.id}`,
-          short_name: row.short_name ?? null,
-          team_id: row.team_id == null ? null : n(row.team_id),
-          position: row.position ?? null,
-          position_group: row.position_group ?? null,
-          jersey_number: row.jersey_number ?? null,
-          active: row.active,
-          status: row.status ?? null,
-          injury_status: row.injury_status ?? null,
-          headshot_url: row.headshot_url ?? null,
-        }))
-      );
-
-      setRosters(
-        (rostersResult.data ?? []).map((row) => ({
-          id: n(row.id),
-          fantasy_team_id: n(row.fantasy_team_id),
-          nhl_player_id: n(row.nhl_player_id),
-          roster_status: row.roster_status ?? "bench",
-        }))
-      );
-
-      setClaims(
-        (claimsResult.data ?? []).map((row) => ({
-          id: n(row.id),
-          fantasy_team_id: n(row.fantasy_team_id),
-          nhl_player_id: n(row.nhl_player_id),
-          drop_nhl_player_id:
-            row.drop_nhl_player_id == null
-              ? null
-              : n(row.drop_nhl_player_id),
-          claim_priority: n(row.claim_priority),
-          faab_bid:
-            row.faab_bid == null
-              ? null
-              : n(row.faab_bid),
-          status: row.status ?? "pending",
-          processed_at: row.processed_at ?? null,
-          failure_reason: row.failure_reason ?? null,
-          created_at: row.created_at,
-        }))
-      );
-
-      setWaiverState(
-        (stateResult.data ?? []).map((row) => ({
-          fantasy_team_id: n(row.fantasy_team_id),
-          waiver_priority: n(row.waiver_priority),
-          faab_spent: n(row.faab_spent),
-        }))
-      );
-
-      setTransactions(
-        (transactionsResult.data ?? []).map((row) => ({
-          id: n(row.id),
-          fantasy_team_id: n(row.fantasy_team_id),
-          transaction_type: row.transaction_type ?? "",
-          nhl_player_id: n(row.nhl_player_id),
-          related_nhl_player_id:
-            row.related_nhl_player_id == null
-              ? null
-              : n(row.related_nhl_player_id),
-          notes: row.notes ?? null,
-          created_at: row.created_at,
-        }))
-      );
+      setTeams((fantasyTeamsResult.data ?? []).map(row => ({
+        id: num(row.id), team_name: row.team_name ?? "Unnamed Team", owner_id: row.owner_id ?? null,
+      })));
+      setNhlTeams((nhlTeamsResult.data ?? []) as NhlTeam[]);
+      setPlayers(((playersResult.data ?? []) as Player[]).map(row => ({
+        ...row,
+        id: num(row.id),
+        display_name: row.display_name ?? row.short_name ?? `Player ${row.id}`,
+      })));
+      setRosters((rostersResult.data ?? []).map(row => ({
+        id: num(row.id), fantasy_team_id: num(row.fantasy_team_id),
+        nhl_player_id: num(row.nhl_player_id), roster_status: row.roster_status ?? "bench",
+      })));
+      setTotals((totalsResult.data ?? []) as SeasonTotal[]);
+      setPreseasonRankings((rankingsResult.data ?? []) as PreseasonRanking[]);
+      setPlayerWaivers((playerWaiversResult.data ?? []).map(row => ({
+        nhl_player_id: num(row.nhl_player_id), status: row.status ?? "available",
+        clears_at: row.clears_at ?? null,
+      })));
+      setClaims((claimsResult.data ?? []).map(row => ({
+        ...row,
+        id: num(row.id), fantasy_team_id: num(row.fantasy_team_id),
+        nhl_player_id: num(row.nhl_player_id),
+        drop_nhl_player_id: row.drop_nhl_player_id == null ? null : num(row.drop_nhl_player_id),
+        claim_priority: num(row.claim_priority),
+        faab_bid: row.faab_bid == null ? null : num(row.faab_bid),
+        status: row.status ?? "pending",
+      })));
+      setWaiverOrder((waiverOrderResult.data ?? []).map(row => ({
+        fantasy_team_id: num(row.fantasy_team_id),
+        waiver_priority: num(row.waiver_priority),
+        faab_spent: num(row.faab_spent),
+      })));
+      setTransactions((transactionsResult.data ?? []).map(row => ({
+        ...row, id: num(row.id), fantasy_team_id: num(row.fantasy_team_id),
+        nhl_player_id: num(row.nhl_player_id),
+        related_nhl_player_id: row.related_nhl_player_id == null ? null : num(row.related_nhl_player_id),
+      })));
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load NHL waivers."
-      );
+      setError(err instanceof Error ? err.message : "Unable to load NHL waivers.");
     } finally {
       setLoading(false);
     }
   }, [leagueId]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   const myTeam = useMemo(
-    () =>
-      teams.find((team) => team.owner_id === userId) ?? null,
+    () => teams.find(team => team.owner_id === userId) ?? null,
     [teams, userId]
   );
 
-  const playerById = useMemo(
-    () =>
-      new Map(
-        players.map((player) => [
-          player.id,
-          player,
-        ])
-      ),
-    [players]
+  const teamMap = useMemo(() => new Map(teams.map(t => [t.id, t])), [teams]);
+  const nhlTeamMap = useMemo(() => new Map(nhlTeams.map(t => [t.id, t])), [nhlTeams]);
+  const playerMap = useMemo(() => new Map(players.map(p => [p.id, p])), [players]);
+  const rostered = useMemo(() => new Set(rosters.map(r => r.nhl_player_id)), [rosters]);
+  const totalMap = useMemo(
+    () => new Map(totals.map(t => [num(t.nhl_player_id), t])),
+    [totals]
+  );
+  const playerWaiverMap = useMemo(
+    () => new Map(playerWaivers.map(w => [w.nhl_player_id, w])),
+    [playerWaivers]
   );
 
-  const teamById = useMemo(
-    () =>
-      new Map(
-        teams.map((team) => [
-          team.id,
-          team,
-        ])
-      ),
-    [teams]
+  const preseasonRankingMap = useMemo(
+    () => new Map(
+      preseasonRankings.map(row => [
+        num(row.nhl_player_id),
+        {
+          rank: num(row.overall_rank),
+          projectedFp: num(row.projected_fantasy_points),
+          projectedFppg: num(row.projected_fantasy_points_per_game),
+        },
+      ])
+    ),
+    [preseasonRankings]
   );
 
-  const rosteredPlayerIds = useMemo(
-    () =>
-      new Set(
-        rosters.map((row) => row.nhl_player_id)
-      ),
-    [rosters]
+  // Before regular-season stats exist, Add Players is ordered by the same
+  // G365 league-specific projections/rankings used by the draft board.
+  // Once games have been played, actual fantasy production becomes authoritative.
+  const seasonHasStarted = useMemo(
+    () => totals.some(total => num(total.games_played) > 0),
+    [totals]
   );
 
   const myRoster = useMemo(() => {
     if (!myTeam) return [];
-
     return rosters
-      .filter(
-        (row) =>
-          row.fantasy_team_id === myTeam.id
-      )
-      .map((row) => ({
-        roster: row,
-        player:
-          playerById.get(row.nhl_player_id) ?? null,
-      }))
-      .filter(
-        (
-          item
-        ): item is {
-          roster: RosterRow;
-          player: Player;
-        } => item.player != null
-      )
-      .sort((a, b) =>
-        a.player.display_name.localeCompare(
-          b.player.display_name
-        )
-      );
-  }, [myTeam, rosters, playerById]);
+      .filter(r => r.fantasy_team_id === myTeam.id)
+      .map(r => ({ roster: r, player: playerMap.get(r.nhl_player_id) }))
+      .filter((x): x is { roster: RosterRow; player: Player } => Boolean(x.player))
+      .sort((a, b) => a.player.display_name.localeCompare(b.player.display_name));
+  }, [myTeam, rosters, playerMap]);
 
-  const availablePlayers = useMemo(() => {
-    const query = search.trim().toLowerCase();
+  const views = useMemo<PlayerView[]>(() => {
+    const now = Date.now();
+    return players.filter(p => !rostered.has(p.id)).map(player => {
+      const total = totalMap.get(player.id);
+      const ws = playerWaiverMap.get(player.id);
+      const preseason = preseasonRankingMap.get(player.id);
+      const clears = ws?.clears_at ? new Date(ws.clears_at).getTime() : null;
+      const hasPending = claims.some(c => c.nhl_player_id === player.id && c.status === "pending");
 
-    return players
-      .filter(
-        (player) =>
-          !rosteredPlayerIds.has(player.id)
-      )
-      .filter((player) => {
-        if (positionFilter === "ALL") {
-          return true;
+      let waiverStatus: PlayerView["waiverStatus"] = "available";
+      if (ws?.status === "waivers") {
+        if (clears != null && clears <= now && hasPending) waiverStatus = "processing";
+        else if (clears != null && clears <= now && !hasPending) waiverStatus = "available";
+        else waiverStatus = "waivers";
+      }
+
+      const team = player.team_id == null ? null : nhlTeamMap.get(player.team_id);
+      return {
+        ...player,
+        teamName: team?.display_name ?? team?.name ?? (player.team_id == null ? "NHL Free Agent" : "Unknown"),
+        teamAbbr: team?.abbreviation ?? (player.team_id == null ? "FA" : "—"),
+        waiverStatus,
+        clearsAt: ws?.clears_at ?? null,
+        gp: num(total?.games_played),
+        fp: num(total?.fantasy_points),
+        fppg: num(total?.fantasy_points_per_game),
+        goals: num(total?.goals),
+        assists: num(total?.assists),
+        points: num(total?.points),
+        sog: num(total?.shots_on_goal),
+        hits: num(total?.hits),
+        blocks: num(total?.blocked_shots),
+        ppp: num(total?.power_play_points),
+        shp: num(total?.short_handed_points),
+        goalieStarts: num(total?.goalie_starts),
+        goalieWins: num(total?.goalie_wins),
+        saves: num(total?.saves),
+        shotsAgainst: num(total?.shots_against),
+        goalsAgainst: num(total?.goals_against),
+        shutouts: num(total?.shutouts),
+        savePct: nullableNum(total?.save_percentage),
+        gaa: nullableNum(total?.goals_against_average),
+        preseasonRank: preseason?.rank ?? null,
+        projectedFp: preseason?.projectedFp ?? 0,
+        projectedFppg: preseason?.projectedFppg ?? 0,
+      };
+    });
+  }, [players, rostered, totalMap, playerWaiverMap, preseasonRankingMap, claims, nhlTeamMap]);
+
+  const positionMode = String(settings?.position_mode ?? "detailed").toLowerCase() === "fdg" ? "fdg" : "detailed";
+  const positions = positionMode === "fdg" ? ["ALL", "F", "D", "G"] : ["ALL", "C", "LW", "RW", "D", "G"];
+
+  const filteredPlayers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return [...views]
+      .filter(p => !q || p.display_name.toLowerCase().includes(q) || p.teamName.toLowerCase().includes(q) || p.teamAbbr.toLowerCase().includes(q))
+      .filter(p => teamFilter === "ALL" || String(p.team_id ?? "") === teamFilter)
+      .filter(p => positionFilter === "ALL" || normalizePosition(p, positionMode) === positionFilter)
+      .filter(p => statusFilter === "ALL" ||
+        (statusFilter === "AVAILABLE" && p.waiverStatus === "available") ||
+        (statusFilter === "WAIVERS" && p.waiverStatus !== "available"))
+      .sort((a, b) => {
+        if (!seasonHasStarted && sortKey === "fp") {
+          const aRank = a.preseasonRank ?? Number.MAX_SAFE_INTEGER;
+          const bRank = b.preseasonRank ?? Number.MAX_SAFE_INTEGER;
+
+          if (aRank !== bRank) return aRank - bRank;
+          if (a.projectedFp !== b.projectedFp) return b.projectedFp - a.projectedFp;
+          return a.display_name.localeCompare(b.display_name);
         }
 
-        const position = (
-          player.position ?? ""
-        ).toUpperCase();
-
-        const group = (
-          player.position_group ?? ""
-        ).toUpperCase();
-
-        if (positionFilter === "F") {
-          return (
-            ["C", "LW", "RW", "F"].includes(position) ||
-            group === "F"
-          );
-        }
-
-        return (
-          position === positionFilter ||
-          group === positionFilter
-        );
-      })
-      .filter((player) => {
-        if (!query) return true;
-
-        return (
-          player.display_name
-            .toLowerCase()
-            .includes(query) ||
-          (player.short_name ?? "")
-            .toLowerCase()
-            .includes(query) ||
-          (player.position ?? "")
-            .toLowerCase()
-            .includes(query)
-        );
+        const av = sortValue(a, sortKey);
+        const bv = sortValue(b, sortKey);
+        if (av !== bv) return sortDirection === "asc" ? av - bv : bv - av;
+        return b.fp - a.fp || a.display_name.localeCompare(b.display_name);
       });
   }, [
-    players,
-    rosteredPlayerIds,
+    views,
     search,
+    teamFilter,
     positionFilter,
+    statusFilter,
+    sortKey,
+    sortDirection,
+    positionMode,
+    seasonHasStarted,
   ]);
 
   const myClaims = useMemo(() => {
     if (!myTeam) return [];
-
-    return claims
-      .filter(
-        (claim) =>
-          claim.fantasy_team_id === myTeam.id
-      )
-      .sort((a, b) => {
-        if (
-          a.status === "pending" &&
-          b.status !== "pending"
-        ) {
-          return -1;
-        }
-
-        if (
-          a.status !== "pending" &&
-          b.status === "pending"
-        ) {
-          return 1;
-        }
-
-        if (
-          a.status === "pending" &&
-          b.status === "pending"
-        ) {
-          return (
-            a.claim_priority -
-            b.claim_priority
-          );
-        }
-
-        return (
-          new Date(b.created_at).getTime() -
-          new Date(a.created_at).getTime()
-        );
-      });
+    return claims.filter(c => c.fantasy_team_id === myTeam.id).sort((a, b) => {
+      if (a.status === "pending" && b.status !== "pending") return -1;
+      if (a.status !== "pending" && b.status === "pending") return 1;
+      if (a.status === "pending" && b.status === "pending") return a.claim_priority - b.claim_priority;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
   }, [claims, myTeam]);
 
-  const pendingClaims = useMemo(
-    () =>
-      myClaims.filter(
-        (claim) =>
-          claim.status === "pending"
-      ),
-    [myClaims]
+  const pendingClaims = useMemo(() => myClaims.filter(c => c.status === "pending"), [myClaims]);
+  const myWaiverState = useMemo(
+    () => myTeam ? waiverOrder.find(w => w.fantasy_team_id === myTeam.id) ?? null : null,
+    [waiverOrder, myTeam]
   );
+  const faabMode = String(settings?.waiver_mode ?? "").toLowerCase() === "faab";
+  const faabBudget = num(settings?.faab_budget);
+  const faabRemaining = Math.max(0, faabBudget - num(myWaiverState?.faab_spent));
 
-  const myWaiverState = useMemo(() => {
-    if (!myTeam) return null;
+  const changeSort = (key: SortKey) => {
+    if (sortKey === key) setSortDirection(d => d === "desc" ? "asc" : "desc");
+    else {
+      setSortKey(key);
+      setSortDirection(key === "gaa" ? "asc" : "desc");
+    }
+  };
 
-    return (
-      waiverState.find(
-        (row) =>
-          row.fantasy_team_id === myTeam.id
-      ) ?? null
-    );
-  }, [waiverState, myTeam]);
-
-  const faabMode =
-    (
-      settings?.waiver_mode ?? ""
-    ).toLowerCase() === "faab";
-
-  const faabBudget = n(settings?.faab_budget);
-
-  const faabRemaining = Math.max(
-    0,
-    faabBudget - n(myWaiverState?.faab_spent)
-  );
-
-  const openClaim = (player: Player) => {
+  const addPlayer = async (player: PlayerView) => {
+    if (!myTeam) return;
+    setActionId(player.id);
+    setError("");
     setMessage("");
+    try {
+      const { error: rpcError } = await supabase.rpc("add_nhl_traditional_free_agent", {
+        p_league_id: leagueId,
+        p_fantasy_team_id: myTeam.id,
+        p_nhl_player_id: player.id,
+      });
+      if (rpcError) throw rpcError;
+      setMessage(`${player.display_name} added to your roster.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to add free agent.");
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const openClaim = (player: PlayerView) => {
+    setClaimPlayer(player);
     setDropPlayerId(null);
     setFaabBid("");
-    setClaimModal({ player });
+    setError("");
+    setMessage("");
   };
 
   const submitClaim = async () => {
-    if (!claimModal || !myTeam) {
-      return;
-    }
-
+    if (!claimPlayer || !myTeam) return;
     setSubmitting(true);
     setError("");
-    setMessage("");
-
     try {
-      const nextPriority =
-        pendingClaims.length + 1;
-
-      const bid = faabMode
-        ? Number(faabBid)
-        : null;
-
-      if (
-        faabMode &&
-        (
-          !Number.isFinite(bid) ||
-          bid == null ||
-          bid < 0
-        )
-      ) {
-        throw new Error(
-          "Enter a valid FAAB bid."
-        );
+      const bid = faabMode ? Number(faabBid) : null;
+      if (faabMode && (!Number.isFinite(bid) || bid == null || bid < 0 || bid > faabRemaining)) {
+        throw new Error("Enter a valid FAAB bid within your remaining budget.");
       }
-
-      if (
-        faabMode &&
-        bid != null &&
-        bid > faabRemaining
-      ) {
-        throw new Error(
-          "FAAB bid exceeds your remaining budget."
-        );
-      }
-
-      const { error: rpcError } =
-        await supabase.rpc(
-          "submit_nhl_traditional_waiver_claim",
-          {
-            p_league_id: leagueId,
-            p_fantasy_team_id: myTeam.id,
-            p_nhl_player_id: claimModal.player.id,
-            p_drop_nhl_player_id: dropPlayerId,
-            p_faab_bid: bid,
-            p_claim_priority: nextPriority,
-          }
-        );
-
-      if (rpcError) {
-        throw rpcError;
-      }
-
-      const claimedName =
-        claimModal.player.display_name;
-
-      setClaimModal(null);
-      setDropPlayerId(null);
-      setFaabBid("");
-
-      setMessage(
-        `Waiver claim submitted for ${claimedName}.`
-      );
-
+      const { error: rpcError } = await supabase.rpc("submit_nhl_traditional_waiver_claim", {
+        p_league_id: leagueId,
+        p_fantasy_team_id: myTeam.id,
+        p_nhl_player_id: claimPlayer.id,
+        p_drop_nhl_player_id: dropPlayerId,
+        p_faab_bid: bid,
+        p_claim_priority: pendingClaims.length + 1,
+      });
+      if (rpcError) throw rpcError;
+      setMessage(`Waiver claim submitted for ${claimPlayer.display_name}.`);
+      setClaimPlayer(null);
       setTab("CLAIMS");
-
       await load();
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to submit waiver claim."
-      );
+      setError(err instanceof Error ? err.message : "Unable to submit waiver claim.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const cancelClaim = async (
-    claimId: number
-  ) => {
+  const cancelClaim = async (claimId: number) => {
     setActionId(claimId);
     setError("");
-    setMessage("");
-
     try {
-      const { error: rpcError } =
-        await supabase.rpc(
-          "cancel_nhl_traditional_waiver_claim",
-          {
-            p_claim_id: claimId,
-          }
-        );
-
-      if (rpcError) {
-        throw rpcError;
-      }
-
-      setMessage(
-        "Waiver claim cancelled."
-      );
-
+      const { error: rpcError } = await supabase.rpc("cancel_nhl_traditional_waiver_claim", { p_claim_id: claimId });
+      if (rpcError) throw rpcError;
+      setMessage("Waiver claim cancelled.");
       await load();
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to cancel claim."
-      );
+      setError(err instanceof Error ? err.message : "Unable to cancel claim.");
     } finally {
       setActionId(null);
     }
   };
 
-  const moveClaim = async (
-    claimId: number,
-    direction: -1 | 1
-  ) => {
+  const moveClaim = async (claimId: number, direction: -1 | 1) => {
     if (!myTeam) return;
-
-    const ordered =
-      pendingClaims.map(
-        (claim) => claim.id
-      );
-
-    const index =
-      ordered.indexOf(claimId);
-
-    const target =
-      index + direction;
-
-    if (
-      index < 0 ||
-      target < 0 ||
-      target >= ordered.length
-    ) {
-      return;
-    }
-
-    [
-      ordered[index],
-      ordered[target],
-    ] = [
-      ordered[target],
-      ordered[index],
-    ];
-
+    const ordered = pendingClaims.map(c => c.id);
+    const index = ordered.indexOf(claimId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= ordered.length) return;
+    [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
     setActionId(claimId);
-    setError("");
-    setMessage("");
-
     try {
-      const { error: rpcError } =
-        await supabase.rpc(
-          "reorder_nhl_traditional_waiver_claims",
-          {
-            p_league_id: leagueId,
-            p_fantasy_team_id: myTeam.id,
-            p_claim_ids: ordered,
-          }
-        );
-
-      if (rpcError) {
-        throw rpcError;
-      }
-
-      setMessage(
-        "Claim priority updated."
-      );
-
+      const { error: rpcError } = await supabase.rpc("reorder_nhl_traditional_waiver_claims", {
+        p_league_id: leagueId,
+        p_fantasy_team_id: myTeam.id,
+        p_claim_ids: ordered,
+      });
+      if (rpcError) throw rpcError;
       await load();
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to reorder claims."
-      );
+      setError(err instanceof Error ? err.message : "Unable to reorder claims.");
     } finally {
       setActionId(null);
     }
   };
 
-  if (loading) {
-    return (
-      <main style={S.page}>
-        <div style={S.loading}>
-          Loading NHL waivers...
-        </div>
-      </main>
-    );
-  }
+  if (loading) return <main style={S.page}><div style={S.loading}>Loading NHL player pool...</div></main>;
+
+  const skaterHeaders: Array<[string, SortKey]> = [
+    ["FP", "fp"],
+    ["FPPG", "fppg"],
+    ["GP", "gp"],
+    ["G", "goals"],
+    ["A", "assists"],
+    ["PTS", "points"],
+    ["SOG", "sog"],
+    ["HIT", "hits"],
+    ["BLK", "blocks"],
+    ["PPP", "ppp"],
+    ["SHP", "shp"],
+  ];
+
+  const goalieHeaders: Array<[string, SortKey]> = [
+    ["FP", "fp"],
+    ["FPPG", "fppg"],
+    ["GP", "gp"],
+    ["GS", "goalieStarts"],
+    ["W", "goalieWins"],
+    ["SV", "saves"],
+    ["SA", "shotsAgainst"],
+    ["GA", "goalsAgainst"],
+    ["SO", "shutouts"],
+    ["SV%", "savePct"],
+    ["GAA", "gaa"],
+  ];
+
+  const allHeaders: Array<[string, SortKey]> = [
+    ["FP", "fp"],
+    ["FPPG", "fppg"],
+    ["GP", "gp"],
+    ["G", "goals"],
+    ["A", "assists"],
+    ["PTS", "points"],
+    ["SOG", "sog"],
+    ["HIT", "hits"],
+    ["BLK", "blocks"],
+    ["PPP", "ppp"],
+    ["SHP", "shp"],
+    ["GS", "goalieStarts"],
+    ["W", "goalieWins"],
+    ["SV", "saves"],
+    ["SA", "shotsAgainst"],
+    ["GA", "goalsAgainst"],
+    ["SO", "shutouts"],
+    ["SV%", "savePct"],
+    ["GAA", "gaa"],
+  ];
+
+  const showingAllPositions = positionFilter === "ALL";
+  const showingGoalies = positionFilter === "G";
+  const headers = showingAllPositions
+    ? allHeaders
+    : showingGoalies
+      ? goalieHeaders
+      : skaterHeaders;
 
   return (
     <main style={S.page}>
       <div style={S.shell}>
         <section style={S.hero}>
           <div>
-            <div style={S.eyebrow}>
-              GRIDIRON365 • NHL TRADITIONAL
-            </div>
-
-            <h1 style={S.title}>
-              Waivers
-            </h1>
-
+            <div style={S.eyebrow}>GRIDIRON365 • NHL TRADITIONAL</div>
+            <h1 style={S.title}>Add Players</h1>
             <div style={S.subtitle}>
-              {settings?.season ?? "—"}
-              {" • "}
-              {title(settings?.league_format)}
-              {" • "}
-              {title(settings?.waiver_mode)} Waivers
+              Waivers & Free Agents • {settings ? seasonLabel(settings.season) : "—"} • {title(settings?.league_format)} • {title(settings?.waiver_mode)}
             </div>
           </div>
-
           <div style={S.heroStats}>
-            {!faabMode && (
-              <div style={S.statBox}>
-                <span style={S.statLabel}>
-                  MY PRIORITY
-                </span>
-
-                <strong style={S.statValue}>
-                  {myWaiverState
-                    ? `#${myWaiverState.waiver_priority}`
-                    : "—"}
-                </strong>
-              </div>
-            )}
-
-            {faabMode && (
-              <div style={S.statBox}>
-                <span style={S.statLabel}>
-                  FAAB LEFT
-                </span>
-
-                <strong style={S.statValue}>
-                  ${faabRemaining.toFixed(0)}
-                </strong>
-              </div>
-            )}
-
-            <div style={S.statBox}>
-              <span style={S.statLabel}>
-                PENDING
-              </span>
-
-              <strong style={S.statValue}>
-                {pendingClaims.length}
-              </strong>
-            </div>
+            {!faabMode && <Stat label="MY PRIORITY" value={myWaiverState ? `#${myWaiverState.waiver_priority}` : "—"} />}
+            {faabMode && <Stat label="FAAB LEFT" value={`$${faabRemaining.toFixed(0)}`} />}
+            <Stat label="UNROSTERED" value={String(views.length)} />
+            <Stat label="PENDING" value={String(pendingClaims.length)} />
           </div>
         </section>
 
-        <Link
-          href={`/league/${leagueId}/nhl`}
-          style={S.back}
-        >
-          ← LEAGUE HOME
-        </Link>
+        <Link href={`/league/${leagueId}/nhl`} style={S.back}>← LEAGUE HOME</Link>
 
-        {error && (
-          <div style={S.error}>
-            <strong>
-              WAIVERS ERROR
-            </strong>
-
-            <span>{error}</span>
-
-            <button
-              type="button"
-              onClick={() => {
-                setError("");
-                void load();
-              }}
-              style={S.retry}
-            >
-              RETRY
-            </button>
-          </div>
-        )}
-
-        {message && (
-          <div style={S.success}>
-            {message}
-          </div>
-        )}
-
-        {!myTeam && (
-          <div style={S.warning}>
-            No active fantasy team is
-            associated with your account in
-            this league.
-          </div>
-        )}
+        {error && <div style={S.error}><strong>WAIVERS ERROR</strong><span>{error}</span></div>}
+        {message && <div style={S.success}>{message}</div>}
+        {!myTeam && <div style={S.warning}>No active fantasy team is associated with your account in this league.</div>}
 
         <nav style={S.tabs}>
-          {[
-            ["AVAILABLE", "Available"],
-            [
-              "CLAIMS",
-              `My Claims (${pendingClaims.length})`,
-            ],
+          {([
+            ["PLAYERS", `Add Players (${views.length})`],
+            ["CLAIMS", `My Claims (${pendingClaims.length})`],
             ["ORDER", "Waiver Order"],
-            ["HISTORY", "History"],
-          ].map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() =>
-                setTab(
-                  value as typeof tab
-                )
-              }
-              style={{
-                ...S.tab,
-                ...(tab === value
-                  ? S.activeTab
-                  : {}),
-              }}
-            >
-              {label}
-            </button>
+            ["HISTORY", "Transactions"],
+          ] as const).map(([value, label]) => (
+            <button key={value} type="button" onClick={() => setTab(value)}
+              style={{ ...S.tab, ...(tab === value ? S.activeTab : {}) }}>{label}</button>
           ))}
         </nav>
 
-        {tab === "AVAILABLE" && (
-          <section style={S.panel}>
-            <div style={S.panelHead}>
-              <div>
-                <strong>
-                  AVAILABLE PLAYERS
-                </strong>
-
-                <div style={S.panelSub}>
-                  Search unrostered NHL
-                  players and submit a
-                  waiver claim.
+        {tab === "PLAYERS" && (
+          <>
+            <section style={S.panel}>
+              <div style={S.panelHead}>
+                <div>
+                  <strong>ADD PLAYERS</strong>
+                  <div style={S.panelSub}>
+                    Search the unrostered NHL player pool. {seasonHasStarted
+                      ? "Players default to actual fantasy production for the current season."
+                      : "Before the season starts, players default to G365 projected fantasy rankings."} Skaters show skater categories; select G to show the complete goalie categories.
+                  </div>
                 </div>
+                <div style={S.countBadge}>{filteredPlayers.length}</div>
               </div>
 
-              <div style={S.countBadge}>
-                {availablePlayers.length}
+              <div style={S.filters}>
+                <input value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Search player or NHL team..." style={S.input} />
+                <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)} style={S.input}>
+                  <option value="ALL">All NHL Teams</option>
+                  {nhlTeams.map(team => (
+                    <option key={team.id} value={String(team.id)}>
+                      {team.display_name ?? team.name ?? team.abbreviation ?? `Team ${team.id}`}
+                    </option>
+                  ))}
+                </select>
+                <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)} style={S.input}>
+                  <option value="ALL">Available + Waivers</option>
+                  <option value="AVAILABLE">Available Now</option>
+                  <option value="WAIVERS">On Waivers</option>
+                </select>
               </div>
-            </div>
 
-            <div style={S.filters}>
-              <input
-                value={search}
-                onChange={(event) =>
-                  setSearch(
-                    event.target.value
-                  )
-                }
-                placeholder="Search players..."
-                style={S.search}
-              />
-
-              <div style={S.positionFilters}>
-                {[
-                  "ALL",
-                  "C",
-                  "LW",
-                  "RW",
-                  "F",
-                  "D",
-                  "G",
-                ].map((position) => (
-                  <button
-                    key={position}
-                    type="button"
-                    onClick={() =>
-                      setPositionFilter(
-                        position
-                      )
-                    }
-                    style={{
-                      ...S.filterButton,
-                      ...(positionFilter ===
-                      position
-                        ? S.filterActive
-                        : {}),
-                    }}
-                  >
+              <div style={S.positionRow}>
+                {positions.map(position => (
+                  <button key={position} type="button" onClick={() => setPositionFilter(position)}
+                    style={{ ...S.filterButton, ...(positionFilter === position ? S.filterActive : {}) }}>
                     {position}
                   </button>
                 ))}
               </div>
-            </div>
 
-            <div style={S.playerList}>
-              {availablePlayers.length ===
-              0 ? (
-                <div style={S.empty}>
-                  No available players match
-                  these filters.
+              <div style={S.categoryBar}>
+                <strong style={S.categoryTitle}>
+                  {showingAllPositions ? "ALL STAT CATEGORIES" : showingGoalies ? "GOALIE STATS" : "SKATER STATS"}
+                </strong>
+                <div style={S.categoryList}>
+                  {headers.map(([label]) => <span key={label} style={S.categoryChip}>{label}</span>)}
                 </div>
-              ) : (
-                availablePlayers.map(
-                  (player) => (
-                    <div
-                      key={player.id}
-                      style={S.playerRow}
-                    >
-                      <div style={S.playerIdentity}>
-                        <div style={S.headshotWrap}>
-                          {player.headshot_url ? (
-                            <img
-                              src={player.headshot_url}
-                              alt=""
-                              style={S.headshot}
-                            />
+              </div>
+            </section>
+
+            <section style={S.panel}>
+              <div style={S.tableWrap}>
+                <table style={{ ...S.table, minWidth: showingAllPositions ? 1240 : 940 }}>
+                  <thead>
+                    <tr>
+                      <th style={S.actionHead}>ACTION</th>
+                      <th style={S.leftHead}>PLAYER</th>
+                      <th>POS</th><th>NHL</th><th>STATUS</th>
+                      {headers.map(([label, key]) => (
+                        <th key={key}>
+                          <button type="button" onClick={() => changeSort(key)} style={S.sortButton}>
+                            {label}{sortKey === key ? (sortDirection === "desc" ? " ▼" : " ▲") : ""}
+                          </button>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPlayers.map(player => (
+                      <tr key={player.id}>
+                        <td style={S.actionCell}>
+                          {player.waiverStatus === "available" ? (
+                            <button type="button" disabled={!myTeam || actionId === player.id}
+                              onClick={() => void addPlayer(player)} style={S.addButton}>
+                              {actionId === player.id ? "ADDING..." : "+ ADD"}
+                            </button>
+                          ) : player.waiverStatus === "waivers" ? (
+                            <button type="button" disabled={!myTeam} onClick={() => openClaim(player)} style={S.claimButton}>+ CLAIM</button>
                           ) : (
-                            <span style={S.initials}>
-                              {initials(
-                                player.display_name
-                              )}
-                            </span>
+                            <button type="button" disabled style={S.disabledButton}>WAIT</button>
                           )}
-                        </div>
-
-                        <div style={S.playerText}>
-                          <strong style={S.playerName}>
-                            {player.display_name}
-                          </strong>
-
-                          <div style={S.playerMeta}>
-                            <span style={S.position}>
-                              {player.position ??
-                                player.position_group ??
-                                "—"}
+                        </td>
+                        <td style={S.playerCell}>
+                          <button type="button" onClick={() => setSelectedPlayer(player)} style={S.playerButton}>
+                            <span style={S.avatar}>
+                              {player.headshot_url ? <img src={player.headshot_url} alt="" style={S.headshot} /> : initials(player.display_name)}
                             </span>
+                            <span>
+                              <strong style={S.playerName}>{player.display_name}</strong>
+                              <small style={S.playerSub}>
+                                {player.injury_status ? `${player.injury_status} • ` : ""}
+                                {player.teamName}
+                              </small>
+                            </span>
+                          </button>
+                        </td>
+                        <td><strong style={S.orange}>{normalizePosition(player, positionMode)}</strong></td>
+                        <td>{player.teamAbbr}</td>
+                        <td>
+                          {player.waiverStatus === "available" ? (
+                            <span style={S.availableBadge}>AVAILABLE</span>
+                          ) : player.waiverStatus === "processing" ? (
+                            <span style={S.processingBadge}>PROCESSING</span>
+                          ) : (
+                            <span style={S.waiverBadge}>WAIVERS<br/><small>{formatDate(player.clearsAt)}</small></span>
+                          )}
+                        </td>
+                        <td style={S.fp}>{fmt(seasonHasStarted ? player.fp : player.projectedFp, 1)}</td>
+                        <td>{fmt(seasonHasStarted ? player.fppg : player.projectedFppg, 1)}</td>
+                        <td>{seasonHasStarted ? fmt(player.gp) : "—"}</td>
 
-                            {player.jersey_number && (
-                              <span>
-                                #{player.jersey_number}
-                              </span>
-                            )}
-
-                            {player.injury_status && (
-                              <span style={S.injury}>
-                                {player.injury_status}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        disabled={!myTeam}
-                        onClick={() =>
-                          openClaim(player)
-                        }
-                        style={{
-                          ...S.claimButton,
-                          ...(!myTeam
-                            ? S.disabledButton
-                            : {}),
-                        }}
-                      >
-                        CLAIM
-                      </button>
-                    </div>
-                  )
-                )
-              )}
-            </div>
-          </section>
+                        {showingAllPositions ? (
+                          normalizePosition(player, positionMode) === "G" ? (
+                            <>
+                              <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+                              <td>{fmt(player.goalieStarts)}</td>
+                              <td>{fmt(player.goalieWins)}</td>
+                              <td>{fmt(player.saves)}</td>
+                              <td>{fmt(player.shotsAgainst)}</td>
+                              <td>{fmt(player.goalsAgainst)}</td>
+                              <td>{fmt(player.shutouts)}</td>
+                              <td>{fmt(player.savePct, 3)}</td>
+                              <td>{fmt(player.gaa, 2)}</td>
+                            </>
+                          ) : (
+                            <>
+                              <td>{fmt(player.goals)}</td>
+                              <td>{fmt(player.assists)}</td>
+                              <td>{fmt(player.points)}</td>
+                              <td>{fmt(player.sog)}</td>
+                              <td>{fmt(player.hits)}</td>
+                              <td>{fmt(player.blocks)}</td>
+                              <td>{fmt(player.ppp)}</td>
+                              <td>{fmt(player.shp)}</td>
+                              <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+                            </>
+                          )
+                        ) : showingGoalies ? (
+                          <>
+                            <td>{fmt(player.goalieStarts)}</td>
+                            <td>{fmt(player.goalieWins)}</td>
+                            <td>{fmt(player.saves)}</td>
+                            <td>{fmt(player.shotsAgainst)}</td>
+                            <td>{fmt(player.goalsAgainst)}</td>
+                            <td>{fmt(player.shutouts)}</td>
+                            <td>{fmt(player.savePct, 3)}</td>
+                            <td>{fmt(player.gaa, 2)}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td>{fmt(player.goals)}</td>
+                            <td>{fmt(player.assists)}</td>
+                            <td>{fmt(player.points)}</td>
+                            <td>{fmt(player.sog)}</td>
+                            <td>{fmt(player.hits)}</td>
+                            <td>{fmt(player.blocks)}</td>
+                            <td>{fmt(player.ppp)}</td>
+                            <td>{fmt(player.shp)}</td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {filteredPlayers.length === 0 && <div style={S.empty}>No unrostered players match these filters.</div>}
+              </div>
+            </section>
+          </>
         )}
 
         {tab === "CLAIMS" && (
           <section style={S.panel}>
-            <div style={S.panelHead}>
+            <div style={S.panelHead}><strong>MY WAIVER CLAIMS</strong><div style={S.countBadge}>{myClaims.length}</div></div>
+            {myClaims.length === 0 ? <div style={S.empty}>No waiver claims yet.</div> : (
               <div>
-                <strong>
-                  MY WAIVER CLAIMS
-                </strong>
-
-                <div style={S.panelSub}>
-                  Move pending claims up or
-                  down to set your preferred
-                  claim order.
-                </div>
-              </div>
-            </div>
-
-            {myClaims.length === 0 ? (
-              <div style={S.empty}>
-                You have not submitted any
-                waiver claims.
-              </div>
-            ) : (
-              <div style={S.claimList}>
-                {myClaims.map((claim) => {
-                  const player =
-                    playerById.get(
-                      claim.nhl_player_id
-                    );
-
-                  const dropPlayer =
-                    claim.drop_nhl_player_id
-                      ? playerById.get(
-                          claim.drop_nhl_player_id
-                        )
-                      : null;
-
-                  const pending =
-                    claim.status === "pending";
-
-                  const pendingIndex =
-                    pendingClaims.findIndex(
-                      (row) =>
-                        row.id === claim.id
-                    );
-
+                {myClaims.map((claim, index) => {
+                  const player = playerMap.get(claim.nhl_player_id);
+                  const drop = claim.drop_nhl_player_id == null ? null : playerMap.get(claim.drop_nhl_player_id);
                   return (
-                    <div
-                      key={claim.id}
-                      style={S.claimRow}
-                    >
-                      <div style={S.claimPriority}>
-                        {pending
-                          ? `#${claim.claim_priority}`
-                          : "—"}
-                      </div>
-
-                      <div style={S.claimMain}>
-                        <strong style={S.playerName}>
-                          {player?.display_name ??
-                            `Player ${claim.nhl_player_id}`}
-                        </strong>
-
+                    <div key={claim.id} style={S.claimRow}>
+                      <div style={S.claimPriority}>#{claim.claim_priority}</div>
+                      <div>
+                        <strong>{player?.display_name ?? `Player ${claim.nhl_player_id}`}</strong>
                         <div style={S.claimDetails}>
-                          {dropPlayer && (
-                            <span>
-                              Drop:{" "}
-                              {dropPlayer.display_name}
-                            </span>
-                          )}
-
-                          {faabMode &&
-                            claim.faab_bid != null && (
-                              <span>
-                                Bid: ${claim.faab_bid}
-                              </span>
-                            )}
-
-                          <span>
-                            Submitted{" "}
-                            {formatDate(
-                              claim.created_at
-                            )}
-                          </span>
+                          <span>{claim.status.toUpperCase()}</span>
+                          {faabMode && <span>Bid ${num(claim.faab_bid).toFixed(0)}</span>}
+                          {drop && <span>Drop: {drop.display_name}</span>}
+                          <span>{formatDate(claim.created_at)}</span>
                         </div>
-
-                        {claim.failure_reason && (
-                          <div style={S.failure}>
-                            {claim.failure_reason}
-                          </div>
-                        )}
+                        {claim.failure_reason && <div style={S.failure}>{claim.failure_reason}</div>}
                       </div>
-
-                      <div style={S.claimActions}>
-                        <span
-                          style={{
-                            ...S.status,
-                            ...(claim.status === "won"
-                              ? S.statusWon
-                              : claim.status === "pending"
-                                ? S.statusPending
-                                : claim.status === "failed"
-                                  ? S.statusFailed
-                                  : S.statusLost),
-                          }}
-                        >
-                          {claim.status.toUpperCase()}
-                        </span>
-
-                        {pending && (
-                          <>
-                            <div style={S.moveButtons}>
-                              <button
-                                type="button"
-                                disabled={
-                                  pendingIndex <= 0 ||
-                                  actionId === claim.id
-                                }
-                                onClick={() =>
-                                  void moveClaim(
-                                    claim.id,
-                                    -1
-                                  )
-                                }
-                                style={S.smallButton}
-                              >
-                                ↑
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={
-                                  pendingIndex ===
-                                    pendingClaims.length -
-                                      1 ||
-                                  actionId === claim.id
-                                }
-                                onClick={() =>
-                                  void moveClaim(
-                                    claim.id,
-                                    1
-                                  )
-                                }
-                                style={S.smallButton}
-                              >
-                                ↓
-                              </button>
-                            </div>
-
-                            <button
-                              type="button"
-                              disabled={
-                                actionId === claim.id
-                              }
-                              onClick={() =>
-                                void cancelClaim(
-                                  claim.id
-                                )
-                              }
-                              style={S.cancelButton}
-                            >
-                              CANCEL
-                            </button>
-                          </>
-                        )}
-                      </div>
+                      {claim.status === "pending" && (
+                        <div style={S.claimActions}>
+                          <button disabled={index === 0 || actionId === claim.id} onClick={() => void moveClaim(claim.id, -1)} style={S.smallButton}>↑</button>
+                          <button disabled={index === pendingClaims.length - 1 || actionId === claim.id} onClick={() => void moveClaim(claim.id, 1)} style={S.smallButton}>↓</button>
+                          <button disabled={actionId === claim.id} onClick={() => void cancelClaim(claim.id)} style={S.cancelButton}>CANCEL</button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1270,326 +957,140 @@ export default function NhlTraditionalWaivers({
 
         {tab === "ORDER" && (
           <section style={S.panel}>
-            <div style={S.panelHead}>
-              <div>
-                <strong>
-                  {faabMode
-                    ? "FAAB STATUS"
-                    : "WAIVER PRIORITY"}
-                </strong>
-
-                <div style={S.panelSub}>
-                  {faabMode
-                    ? "Current league FAAB balances and tiebreak priority."
-                    : "A successful rolling waiver claim moves that team to the bottom."}
+            <div style={S.panelHead}><strong>{faabMode ? "FAAB BALANCES" : "WAIVER PRIORITY"}</strong></div>
+            {waiverOrder.map(row => {
+              const team = teamMap.get(row.fantasy_team_id);
+              const mine = myTeam?.id === row.fantasy_team_id;
+              return (
+                <div key={row.fantasy_team_id} style={{ ...S.orderRow, ...(mine ? S.myOrderRow : {}) }}>
+                  <strong style={S.orderNumber}>#{row.waiver_priority}</strong>
+                  <div><strong>{team?.team_name ?? "Unknown Team"}</strong>{mine && <div style={S.orange}>YOUR TEAM</div>}</div>
+                  {faabMode && <strong>${Math.max(0, faabBudget - row.faab_spent).toFixed(0)}</strong>}
                 </div>
-              </div>
-            </div>
-
-            <div style={S.orderList}>
-              {waiverState.map((state) => {
-                const team =
-                  teamById.get(
-                    state.fantasy_team_id
-                  );
-
-                const mine =
-                  myTeam?.id ===
-                  state.fantasy_team_id;
-
-                return (
-                  <div
-                    key={state.fantasy_team_id}
-                    style={{
-                      ...S.orderRow,
-                      ...(mine
-                        ? S.myOrderRow
-                        : {}),
-                    }}
-                  >
-                    <div style={S.orderNumber}>
-                      #{state.waiver_priority}
-                    </div>
-
-                    <div style={S.orderTeam}>
-                      <strong>
-                        {team?.team_name ??
-                          `Team ${state.fantasy_team_id}`}
-                      </strong>
-
-                      <div style={S.orderMeta}>
-                        {mine && "YOUR TEAM"}
-
-                        {team?.is_cpu &&
-                          `${mine ? " • " : ""}CPU`}
-                      </div>
-                    </div>
-
-                    {faabMode && (
-                      <div style={S.faabBalance}>
-                        <span>
-                          REMAINING
-                        </span>
-
-                        <strong>
-                          $
-                          {Math.max(
-                            0,
-                            faabBudget -
-                              state.faab_spent
-                          ).toFixed(0)}
-                        </strong>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+              );
+            })}
           </section>
         )}
 
         {tab === "HISTORY" && (
           <section style={S.panel}>
-            <div style={S.panelHead}>
-              <div>
-                <strong>
-                  WAIVER HISTORY
-                </strong>
-
-                <div style={S.panelSub}>
-                  Completed waiver adds and
-                  related drops.
+            <div style={S.panelHead}><strong>TRANSACTION HISTORY</strong></div>
+            {transactions.length === 0 ? <div style={S.empty}>No waiver or free-agent transactions yet.</div> : transactions.map(tx => (
+              <div key={tx.id} style={S.transactionRow}>
+                <div>
+                  <strong>{teamMap.get(tx.fantasy_team_id)?.team_name ?? "Unknown Team"}</strong>
+                  <div style={S.panelSub}>
+                    {tx.transaction_type === "waiver_add" ? "Claimed" : tx.transaction_type === "free_agent_add" ? "Added" : "Dropped"}{" "}
+                    <strong>{playerMap.get(tx.nhl_player_id)?.display_name ?? `Player ${tx.nhl_player_id}`}</strong>
+                  </div>
                 </div>
+                <span style={S.panelSub}>{formatDate(tx.created_at)}</span>
               </div>
-            </div>
-
-            {transactions.length === 0 ? (
-              <div style={S.empty}>
-                No waiver transactions yet.
-              </div>
-            ) : (
-              <div style={S.transactionList}>
-                {transactions.map(
-                  (transaction) => {
-                    const team =
-                      teamById.get(
-                        transaction.fantasy_team_id
-                      );
-
-                    const player =
-                      playerById.get(
-                        transaction.nhl_player_id
-                      );
-
-                    return (
-                      <div
-                        key={transaction.id}
-                        style={S.transactionRow}
-                      >
-                        <div>
-                          <strong>
-                            {team?.team_name ??
-                              "Unknown Team"}
-                          </strong>
-
-                          <div style={S.transactionText}>
-                            {transaction.transaction_type ===
-                            "waiver_add"
-                              ? "Added"
-                              : "Dropped"}{" "}
-                            <strong>
-                              {player?.display_name ??
-                                `Player ${transaction.nhl_player_id}`}
-                            </strong>
-                          </div>
-                        </div>
-
-                        <div style={S.transactionDate}>
-                          {formatDate(
-                            transaction.created_at
-                          )}
-                        </div>
-                      </div>
-                    );
-                  }
-                )}
-              </div>
-            )}
+            ))}
           </section>
         )}
       </div>
 
-      {claimModal && (
-        <div
-          style={S.modalBackdrop}
-          onMouseDown={(event) => {
-            if (
-              event.target ===
-              event.currentTarget
-            ) {
-              setClaimModal(null);
-            }
-          }}
-        >
+      {selectedPlayer && (
+        <div style={S.modalBackdrop} onMouseDown={e => e.target === e.currentTarget && setSelectedPlayer(null)}>
+          <div style={S.modal}>
+            <div style={S.modalHead}>
+              <div style={S.modalIdentity}>
+                <span style={S.bigAvatar}>
+                  {selectedPlayer.headshot_url ? <img src={selectedPlayer.headshot_url} alt="" style={S.headshot} /> : initials(selectedPlayer.display_name)}
+                </span>
+                <div>
+                  <div style={S.eyebrow}>PLAYER DETAILS</div>
+                  <h2 style={S.modalTitle}>{selectedPlayer.display_name}</h2>
+                  <div style={S.subtitle}>{selectedPlayer.teamName} • {normalizePosition(selectedPlayer, positionMode)}</div>
+                </div>
+              </div>
+              <button type="button" onClick={() => setSelectedPlayer(null)} style={S.close}>×</button>
+            </div>
+            <div style={S.detailGrid}>
+              <Detail
+                label={seasonHasStarted ? "Fantasy Points" : "Projected Fantasy Points"}
+                value={fmt(seasonHasStarted ? selectedPlayer.fp : selectedPlayer.projectedFp, 1)}
+              />
+              <Detail
+                label={seasonHasStarted ? "Fantasy PPG" : "Projected Fantasy PPG"}
+                value={fmt(seasonHasStarted ? selectedPlayer.fppg : selectedPlayer.projectedFppg, 1)}
+              />
+              <Detail label="Games Played" value={seasonHasStarted ? fmt(selectedPlayer.gp) : "—"} />
+
+              {normalizePosition(selectedPlayer, positionMode) === "G" ? (
+                <>
+                  <Detail label="Goalie Starts" value={fmt(selectedPlayer.goalieStarts)} />
+                  <Detail label="Wins" value={fmt(selectedPlayer.goalieWins)} />
+                  <Detail label="Saves" value={fmt(selectedPlayer.saves)} />
+                  <Detail label="Shots Against" value={fmt(selectedPlayer.shotsAgainst)} />
+                  <Detail label="Goals Against" value={fmt(selectedPlayer.goalsAgainst)} />
+                  <Detail label="Shutouts" value={fmt(selectedPlayer.shutouts)} />
+                  <Detail label="Save %" value={fmt(selectedPlayer.savePct, 3)} />
+                  <Detail label="GAA" value={fmt(selectedPlayer.gaa, 2)} />
+                </>
+              ) : (
+                <>
+                  <Detail label="Goals" value={fmt(selectedPlayer.goals)} />
+                  <Detail label="Assists" value={fmt(selectedPlayer.assists)} />
+                  <Detail label="Points" value={fmt(selectedPlayer.points)} />
+                  <Detail label="Shots" value={fmt(selectedPlayer.sog)} />
+                  <Detail label="Hits" value={fmt(selectedPlayer.hits)} />
+                  <Detail label="Blocks" value={fmt(selectedPlayer.blocks)} />
+                  <Detail label="Power Play Pts" value={fmt(selectedPlayer.ppp)} />
+                  <Detail label="Short-Handed Pts" value={fmt(selectedPlayer.shp)} />
+                </>
+              )}
+            </div>
+            <div style={S.modalActions}>
+              {selectedPlayer.waiverStatus === "available" ? (
+                <button type="button" onClick={() => { setSelectedPlayer(null); void addPlayer(selectedPlayer); }} style={S.addButton}>ADD PLAYER</button>
+              ) : selectedPlayer.waiverStatus === "waivers" ? (
+                <button type="button" onClick={() => { const p = selectedPlayer; setSelectedPlayer(null); openClaim(p); }} style={S.claimButton}>CLAIM PLAYER</button>
+              ) : <button disabled style={S.disabledButton}>WAIVER PROCESSING</button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {claimPlayer && (
+        <div style={S.modalBackdrop} onMouseDown={e => e.target === e.currentTarget && setClaimPlayer(null)}>
           <div style={S.modal}>
             <div style={S.modalHead}>
               <div>
-                <div style={S.eyebrow}>
-                  WAIVER CLAIM
-                </div>
-
-                <h2 style={S.modalTitle}>
-                  {claimModal.player.display_name}
-                </h2>
-
-                <div style={S.subtitle}>
-                  {claimModal.player.position ??
-                    claimModal.player.position_group ??
-                    "—"}
-                </div>
+                <div style={S.eyebrow}>WAIVER CLAIM</div>
+                <h2 style={S.modalTitle}>{claimPlayer.display_name}</h2>
+                <div style={S.subtitle}>Clears {formatDate(claimPlayer.clearsAt)}</div>
               </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setClaimModal(null)
-                }
-                style={S.close}
-              >
-                ×
-              </button>
+              <button type="button" onClick={() => setClaimPlayer(null)} style={S.close}>×</button>
             </div>
 
             {faabMode && (
               <label style={S.field}>
-                <span style={S.fieldLabel}>
-                  FAAB BID
-                </span>
-
-                <input
-                  type="number"
-                  min="0"
-                  max={faabRemaining}
-                  step="1"
-                  value={faabBid}
-                  onChange={(event) =>
-                    setFaabBid(
-                      event.target.value
-                    )
-                  }
-                  placeholder={`$0 - $${faabRemaining.toFixed(
-                    0
-                  )}`}
-                  style={S.input}
-                />
-
-                <span style={S.help}>
-                  Remaining budget: $
-                  {faabRemaining.toFixed(0)}
-                </span>
+                <span style={S.fieldLabel}>FAAB BID</span>
+                <input type="number" min="0" max={faabRemaining} step="1" value={faabBid}
+                  onChange={e => setFaabBid(e.target.value)} style={S.input} />
+                <span style={S.help}>Remaining budget: ${faabRemaining.toFixed(0)}</span>
               </label>
             )}
 
             <label style={S.field}>
-              <span style={S.fieldLabel}>
-                DROP PLAYER
-              </span>
-
-              <select
-                value={dropPlayerId ?? ""}
-                onChange={(event) =>
-                  setDropPlayerId(
-                    event.target.value
-                      ? Number(
-                          event.target.value
-                        )
-                      : null
-                  )
-                }
-                style={S.input}
-              >
-                <option value="">
-                  No drop selected
-                </option>
-
-                {myRoster.map(
-                  ({ roster, player }) => (
-                    <option
-                      key={roster.id}
-                      value={player.id}
-                    >
-                      {player.display_name} —{" "}
-                      {player.position ??
-                        player.position_group ??
-                        "—"}{" "}
-                      ({title(
-                        roster.roster_status
-                      )})
-                    </option>
-                  )
-                )}
+              <span style={S.fieldLabel}>DROP PLAYER</span>
+              <select value={dropPlayerId ?? ""} onChange={e => setDropPlayerId(e.target.value ? Number(e.target.value) : null)} style={S.input}>
+                <option value="">No drop selected</option>
+                {myRoster.map(({ roster, player }) => (
+                  <option key={roster.id} value={player.id}>
+                    {player.display_name} — {player.position ?? player.position_group ?? "—"} ({title(roster.roster_status)})
+                  </option>
+                ))}
               </select>
-
-              <span style={S.help}>
-                If your standard roster is
-                full, you must select a
-                player to drop.
-              </span>
+              <span style={S.help}>If your standard roster is full, select the player to drop if this claim wins.</span>
             </label>
 
-            <div style={S.modalSummary}>
-              <div>
-                <span style={S.summaryLabel}>
-                  CLAIM ORDER
-                </span>
-
-                <strong>
-                  #{pendingClaims.length + 1}
-                </strong>
-              </div>
-
-              {!faabMode && (
-                <div>
-                  <span style={S.summaryLabel}>
-                    WAIVER PRIORITY
-                  </span>
-
-                  <strong>
-                    {myWaiverState
-                      ? `#${myWaiverState.waiver_priority}`
-                      : "—"}
-                  </strong>
-                </div>
-              )}
-            </div>
-
             <div style={S.modalActions}>
-              <button
-                type="button"
-                onClick={() =>
-                  setClaimModal(null)
-                }
-                style={S.secondaryButton}
-              >
-                CANCEL
-              </button>
-
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() =>
-                  void submitClaim()
-                }
-                style={{
-                  ...S.primaryButton,
-                  ...(submitting
-                    ? S.disabledButton
-                    : {}),
-                }}
-              >
-                {submitting
-                  ? "SUBMITTING..."
-                  : "SUBMIT CLAIM"}
+              <button type="button" onClick={() => setClaimPlayer(null)} style={S.secondaryButton}>CANCEL</button>
+              <button type="button" disabled={submitting} onClick={() => void submitClaim()} style={S.claimButton}>
+                {submitting ? "SUBMITTING..." : "SUBMIT CLAIM"}
               </button>
             </div>
           </div>
@@ -1599,677 +1100,92 @@ export default function NhlTraditionalWaivers({
   );
 }
 
+function Stat({ label, value }: { label: string; value: string }) {
+  return <div style={S.statBox}><span style={S.statLabel}>{label}</span><strong style={S.statValue}>{value}</strong></div>;
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return <div style={S.detail}><span style={S.statLabel}>{label.toUpperCase()}</span><strong style={S.detailValue}>{value}</strong></div>;
+}
+
 const S: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: "100vh",
-    background: "#09090a",
-    color: "#f5f5f5",
-    padding: "14px 10px 48px",
-  },
-
-  shell: {
-    width: "min(1100px, 100%)",
-    margin: "0 auto",
-    display: "grid",
-    gap: 12,
-  },
-
-  loading: {
-    padding: 50,
-    textAlign: "center",
-    color: "#999ca2",
-    fontWeight: 800,
-  },
-
-  hero: {
-    padding: "18px 20px",
-    border: "1px solid #29292d",
-    borderRadius: 10,
-    background:
-      "linear-gradient(135deg, #171719 0%, #111113 60%, #21110b 100%)",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 18,
-    flexWrap: "wrap",
-  },
-
-  eyebrow: {
-    color: "#ff6a00",
-    fontSize: 9,
-    fontWeight: 1000,
-    letterSpacing: 1.3,
-  },
-
-  title: {
-    margin: "4px 0 0",
-    fontSize: "clamp(28px, 5vw, 42px)",
-    lineHeight: 1,
-    fontWeight: 1000,
-  },
-
-  subtitle: {
-    marginTop: 7,
-    color: "#a0a0a5",
-    fontSize: 11,
-    fontWeight: 800,
-  },
-
-  heroStats: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-
-  statBox: {
-    minWidth: 95,
-    padding: "9px 12px",
-    border: "1px solid #493025",
-    borderRadius: 7,
-    background: "#17110e",
-    display: "grid",
-    gap: 3,
-  },
-
-  statLabel: {
-    color: "#8e8e94",
-    fontSize: 7,
-    fontWeight: 1000,
-    letterSpacing: 0.8,
-  },
-
-  statValue: {
-    color: "#ff7b31",
-    fontSize: 18,
-    fontWeight: 1000,
-  },
-
-  back: {
-    justifySelf: "start",
-    color: "#ff7b31",
-    textDecoration: "none",
-    fontSize: 10,
-    fontWeight: 1000,
-  },
-
-  tabs: {
-    display: "flex",
-    gap: 6,
-    overflowX: "auto",
-    paddingBottom: 2,
-  },
-
-  tab: {
-    flex: "0 0 auto",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: "#303034",
-    borderRadius: 6,
-    background: "#121214",
-    color: "#9a9aa0",
-    padding: "9px 12px",
-    fontSize: 9,
-    fontWeight: 1000,
-    cursor: "pointer",
-  },
-
-  activeTab: {
-    background: "#26150d",
-    borderColor: "#7c3c1d",
-    color: "#ff7b31",
-  },
-
-  panel: {
-    border: "1px solid #29292d",
-    borderRadius: 9,
-    overflow: "hidden",
-    background: "#111113",
-  },
-
-  panelHead: {
-    padding: "12px 14px",
-    background: "#0d0d0f",
-    borderBottom: "1px solid #29292d",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    fontSize: 10,
-  },
-
-  panelSub: {
-    marginTop: 4,
-    color: "#777a80",
-    fontSize: 8,
-    fontWeight: 700,
-  },
-
-  countBadge: {
-    minWidth: 32,
-    padding: "5px 8px",
-    borderRadius: 999,
-    background: "#26150d",
-    border: "1px solid #66351f",
-    color: "#ff7b31",
-    textAlign: "center",
-    fontSize: 9,
-    fontWeight: 1000,
-  },
-
-  filters: {
-    padding: 12,
-    borderBottom: "1px solid #242428",
-    display: "grid",
-    gap: 9,
-  },
-
-  search: {
-    width: "100%",
-    boxSizing: "border-box",
-    minHeight: 42,
-    border: "1px solid #333338",
-    borderRadius: 7,
-    background: "#0d0d0f",
-    color: "#fff",
-    padding: "0 12px",
-    outline: "none",
-    fontSize: 13,
-  },
-
-  positionFilters: {
-    display: "flex",
-    gap: 5,
-    overflowX: "auto",
-  },
-
-  filterButton: {
-    flex: "0 0 auto",
-    minWidth: 42,
-    minHeight: 34,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: "#303034",
-    borderRadius: 5,
-    background: "#151517",
-    color: "#999ca2",
-    fontSize: 9,
-    fontWeight: 1000,
-    cursor: "pointer",
-  },
-
-  filterActive: {
-    background: "#ff5a1f",
-    borderColor: "#ff5a1f",
-    color: "#fff",
-  },
-
-  playerList: {
-    display: "grid",
-  },
-
-  playerRow: {
-    minHeight: 68,
-    padding: "8px 12px",
-    borderBottom: "1px solid #242428",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-  },
-
-  playerIdentity: {
-    minWidth: 0,
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-  },
-
-  headshotWrap: {
-    width: 44,
-    height: 44,
-    flex: "0 0 44px",
-    borderRadius: "50%",
-    overflow: "hidden",
-    border: "1px solid #343438",
-    background: "#1a1a1d",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  headshot: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-  },
-
-  initials: {
-    color: "#777a80",
-    fontSize: 10,
-    fontWeight: 1000,
-  },
-
-  playerText: {
-    minWidth: 0,
-  },
-
-  playerName: {
-    color: "#f4f4f5",
-    fontSize: 12,
-    fontWeight: 1000,
-  },
-
-  playerMeta: {
-    marginTop: 4,
-    display: "flex",
-    gap: 7,
-    flexWrap: "wrap",
-    color: "#777a80",
-    fontSize: 8,
-    fontWeight: 800,
-  },
-
-  position: {
-    color: "#ff7b31",
-  },
-
-  injury: {
-    color: "#e78378",
-  },
-
-  claimButton: {
-    flex: "0 0 auto",
-    minHeight: 38,
-    padding: "0 14px",
-    borderWidth: 0,
-    borderStyle: "solid",
-    borderColor: "transparent",
-    borderRadius: 6,
-    background:
-      "linear-gradient(135deg, #ff3d18, #ff7628)",
-    color: "#fff",
-    fontSize: 9,
-    fontWeight: 1000,
-    cursor: "pointer",
-  },
-
-  disabledButton: {
-    opacity: 0.45,
-    cursor: "not-allowed",
-  },
-
-  empty: {
-    padding: 30,
-    textAlign: "center",
-    color: "#777a80",
-    fontSize: 11,
-    fontWeight: 700,
-  },
-
-  claimList: {
-    display: "grid",
-  },
-
-  claimRow: {
-    padding: 12,
-    borderBottom: "1px solid #242428",
-    display: "grid",
-    gridTemplateColumns: "44px minmax(0, 1fr) auto",
-    gap: 10,
-    alignItems: "center",
-  },
-
-  claimPriority: {
-    width: 34,
-    height: 34,
-    borderRadius: "50%",
-    background: "#21140f",
-    border: "1px solid #66351f",
-    color: "#ff7b31",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 10,
-    fontWeight: 1000,
-  },
-
-  claimMain: {
-    minWidth: 0,
-  },
-
-  claimDetails: {
-    marginTop: 5,
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-    color: "#777a80",
-    fontSize: 8,
-    fontWeight: 700,
-  },
-
-  failure: {
-    marginTop: 5,
-    color: "#e78378",
-    fontSize: 8,
-    fontWeight: 800,
-  },
-
-  claimActions: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 6,
-    flexWrap: "wrap",
-  },
-
-  moveButtons: {
-    display: "flex",
-    gap: 3,
-  },
-
-  smallButton: {
-    width: 30,
-    height: 30,
-    border: "1px solid #38383d",
-    borderRadius: 5,
-    background: "#18181b",
-    color: "#fff",
-    fontWeight: 1000,
-    cursor: "pointer",
-  },
-
-  cancelButton: {
-    minHeight: 30,
-    padding: "0 8px",
-    border: "1px solid #57302c",
-    borderRadius: 5,
-    background: "#211413",
-    color: "#e78378",
-    fontSize: 7,
-    fontWeight: 1000,
-    cursor: "pointer",
-  },
-
-  status: {
-    padding: "5px 8px",
-    borderRadius: 999,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: "#343438",
-    fontSize: 7,
-    fontWeight: 1000,
-    letterSpacing: 0.4,
-  },
-
-  statusPending: {
-    background: "#26150d",
-    borderColor: "#6a351e",
-    color: "#ff7b31",
-  },
-
-  statusWon: {
-    background: "#102319",
-    borderColor: "#245d39",
-    color: "#67d68a",
-  },
-
-  statusLost: {
-    background: "#171719",
-    borderColor: "#343438",
-    color: "#8d8d93",
-  },
-
-  statusFailed: {
-    background: "#211313",
-    borderColor: "#58302d",
-    color: "#e78378",
-  },
-
-  orderList: {
-    display: "grid",
-  },
-
-  orderRow: {
-    minHeight: 60,
-    padding: "8px 12px",
-    borderBottom: "1px solid #242428",
-    borderLeftWidth: 3,
-    borderLeftStyle: "solid",
-    borderLeftColor: "transparent",
-    display: "grid",
-    gridTemplateColumns: "50px minmax(0, 1fr) auto",
-    gap: 10,
-    alignItems: "center",
-  },
-
-  myOrderRow: {
-    background: "#19120f",
-    borderLeftColor: "#ff5a1f",
-  },
-
-  orderNumber: {
-    color: "#ff7b31",
-    fontSize: 17,
-    fontWeight: 1000,
-  },
-
-  orderTeam: {
-    fontSize: 11,
-  },
-
-  orderMeta: {
-    minHeight: 10,
-    marginTop: 3,
-    color: "#ff7b31",
-    fontSize: 7,
-    fontWeight: 1000,
-  },
-
-  faabBalance: {
-    display: "grid",
-    justifyItems: "end",
-    gap: 2,
-    color: "#777a80",
-    fontSize: 7,
-    fontWeight: 1000,
-  },
-
-  transactionList: {
-    display: "grid",
-  },
-
-  transactionRow: {
-    padding: "11px 13px",
-    borderBottom: "1px solid #242428",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    fontSize: 10,
-  },
-
-  transactionText: {
-    marginTop: 4,
-    color: "#9a9aa0",
-    fontSize: 9,
-  },
-
-  transactionDate: {
-    flex: "0 0 auto",
-    color: "#777a80",
-    fontSize: 8,
-  },
-
-  error: {
-    padding: 14,
-    border: "1px solid #742b25",
-    borderRadius: 8,
-    background: "#29110f",
-    color: "#ffd1cc",
-    display: "grid",
-    gap: 7,
-    fontSize: 10,
-  },
-
-  retry: {
-    justifySelf: "start",
-    border: 0,
-    borderRadius: 5,
-    padding: "7px 10px",
-    background: "#ff4b20",
-    color: "#fff",
-    fontWeight: 1000,
-    cursor: "pointer",
-  },
-
-  success: {
-    padding: "11px 13px",
-    border: "1px solid #245d39",
-    borderRadius: 7,
-    background: "#102319",
-    color: "#67d68a",
-    fontSize: 10,
-    fontWeight: 900,
-  },
-
-  warning: {
-    padding: "11px 13px",
-    border: "1px solid #65421f",
-    borderRadius: 7,
-    background: "#24180d",
-    color: "#ffb66d",
-    fontSize: 10,
-    fontWeight: 800,
-  },
-
-  modalBackdrop: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 1000,
-    background: "rgba(0,0,0,.78)",
-    padding: 12,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  modal: {
-    width: "min(560px, 100%)",
-    maxHeight: "90vh",
-    overflowY: "auto",
-    border: "1px solid #38383d",
-    borderRadius: 10,
-    background: "#111113",
-    boxShadow:
-      "0 24px 70px rgba(0,0,0,.55)",
-  },
-
-  modalHead: {
-    padding: "16px 18px",
-    borderBottom: "1px solid #29292d",
-    background:
-      "linear-gradient(135deg, #171719, #21110b)",
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-
-  modalTitle: {
-    margin: "4px 0 0",
-    fontSize: 23,
-    fontWeight: 1000,
-  },
-
-  close: {
-    width: 36,
-    height: 36,
-    border: "1px solid #3b3b40",
-    borderRadius: 6,
-    background: "#171719",
-    color: "#fff",
-    fontSize: 22,
-    cursor: "pointer",
-  },
-
-  field: {
-    padding: "14px 18px 0",
-    display: "grid",
-    gap: 6,
-  },
-
-  fieldLabel: {
-    color: "#ff7b31",
-    fontSize: 8,
-    fontWeight: 1000,
-    letterSpacing: 0.7,
-  },
-
-  input: {
-    width: "100%",
-    boxSizing: "border-box",
-    minHeight: 42,
-    border: "1px solid #343438",
-    borderRadius: 6,
-    background: "#0d0d0f",
-    color: "#fff",
-    padding: "0 10px",
-    fontSize: 11,
-  },
-
-  help: {
-    color: "#777a80",
-    fontSize: 8,
-    lineHeight: 1.4,
-  },
-
-  modalSummary: {
-    margin: "15px 18px 0",
-    padding: 12,
-    border: "1px solid #2e2e32",
-    borderRadius: 7,
-    background: "#0d0d0f",
-    display: "flex",
-    gap: 24,
-    flexWrap: "wrap",
-  },
-
-  summaryLabel: {
-    display: "block",
-    marginBottom: 4,
-    color: "#777a80",
-    fontSize: 7,
-    fontWeight: 1000,
-  },
-
-  modalActions: {
-    padding: 18,
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: 8,
-  },
-
-  secondaryButton: {
-    minHeight: 40,
-    padding: "0 14px",
-    border: "1px solid #38383d",
-    borderRadius: 6,
-    background: "#18181b",
-    color: "#aaaab0",
-    fontSize: 9,
-    fontWeight: 1000,
-    cursor: "pointer",
-  },
-
-  primaryButton: {
-    minHeight: 40,
-    padding: "0 16px",
-    border: 0,
-    borderRadius: 6,
-    background:
-      "linear-gradient(135deg, #ff3d18, #ff7628)",
-    color: "#fff",
-    fontSize: 9,
-    fontWeight: 1000,
-    cursor: "pointer",
-  },
+  page: { minHeight: "100vh", background: "#09090a", color: "#f5f5f5", padding: "14px 10px 48px" },
+  shell: { width: "min(1400px, 100%)", margin: "0 auto", display: "grid", gap: 12 },
+  loading: { padding: 50, textAlign: "center", color: "#999ca2", fontWeight: 800 },
+  hero: { padding: "18px 20px", border: "1px solid #29292d", borderRadius: 10, background: "linear-gradient(135deg,#171719 0%,#111113 60%,#21110b 100%)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 18, flexWrap: "wrap" },
+  eyebrow: { color: "#ff6a00", fontSize: 9, fontWeight: 1000, letterSpacing: 1.3 },
+  title: { margin: "4px 0 0", fontSize: "clamp(28px,5vw,42px)", lineHeight: 1, fontWeight: 1000 },
+  subtitle: { marginTop: 7, color: "#a0a0a5", fontSize: 11, fontWeight: 800 },
+  heroStats: { display: "flex", gap: 8, flexWrap: "wrap" },
+  statBox: { minWidth: 95, padding: "9px 12px", border: "1px solid #493025", borderRadius: 7, background: "#17110e", display: "grid", gap: 3 },
+  statLabel: { color: "#8e8e94", fontSize: 7, fontWeight: 1000, letterSpacing: .8 },
+  statValue: { color: "#ff7b31", fontSize: 18, fontWeight: 1000 },
+  back: { justifySelf: "start", color: "#ff7b31", textDecoration: "none", fontSize: 10, fontWeight: 1000 },
+  tabs: { display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 },
+  tab: { flex: "0 0 auto", border: "1px solid #303034", borderRadius: 6, background: "#121214", color: "#9a9aa0", padding: "9px 12px", fontSize: 9, fontWeight: 1000, cursor: "pointer" },
+  activeTab: { background: "#26150d", border: "1px solid #7c3c1d", color: "#ff7b31" },
+  panel: { border: "1px solid #29292d", borderRadius: 9, overflow: "hidden", background: "#111113" },
+  panelHead: { padding: "12px 14px", background: "#0d0d0f", borderBottom: "1px solid #29292d", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, fontSize: 10 },
+  panelSub: { marginTop: 4, color: "#777a80", fontSize: 8, fontWeight: 700 },
+  countBadge: { minWidth: 32, padding: "5px 8px", borderRadius: 999, background: "#26150d", border: "1px solid #66351f", color: "#ff7b31", textAlign: "center", fontSize: 9, fontWeight: 1000 },
+  filters: { padding: 12, display: "grid", gridTemplateColumns: "minmax(180px,2fr) minmax(150px,1fr) minmax(150px,1fr)", gap: 8, borderBottom: "1px solid #242428" },
+  input: { width: "100%", boxSizing: "border-box", minHeight: 42, border: "1px solid #343438", borderRadius: 6, background: "#0d0d0f", color: "#fff", padding: "0 10px", fontSize: 11 },
+  positionRow: { display: "flex", gap: 5, overflowX: "auto", padding: "10px 12px 7px" },
+  categoryBar: { padding: "0 12px 11px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", borderTop: "1px solid #1f1f22" },
+  categoryTitle: { color: "#ff7b31", fontSize: 8, fontWeight: 1000, letterSpacing: .8, paddingTop: 9 },
+  categoryList: { display: "flex", gap: 4, flexWrap: "wrap", paddingTop: 8 },
+  categoryChip: { padding: "4px 6px", border: "1px solid #303034", borderRadius: 4, background: "#151517", color: "#b6b6bb", fontSize: 7, fontWeight: 1000 },
+  filterButton: { flex: "0 0 auto", minWidth: 42, minHeight: 34, border: "1px solid #303034", borderRadius: 5, background: "#151517", color: "#999ca2", fontSize: 9, fontWeight: 1000, cursor: "pointer" },
+  filterActive: { background: "#ff5a1f", border: "1px solid #ff5a1f", color: "#fff" },
+  tableWrap: { width: "100%", overflowX: "auto" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 8, textAlign: "center", tableLayout: "auto", lineHeight: 1.15 },
+  actionHead: { position: "sticky", left: 0, zIndex: 4, width: 62, minWidth: 62, background: "#0d0d0f", textAlign: "center", fontSize: 7, padding: "7px 3px" },
+  leftHead: { position: "sticky", left: 62, zIndex: 4, textAlign: "left", width: 180, minWidth: 180, background: "#0d0d0f", fontSize: 7, padding: "7px 5px" },
+  sortButton: { border: 0, background: "transparent", color: "#aaaab0", fontSize: 7, fontWeight: 1000, cursor: "pointer", padding: "7px 3px", whiteSpace: "nowrap" },
+  actionCell: { position: "sticky", left: 0, zIndex: 3, width: 62, minWidth: 62, background: "#111113", textAlign: "center", padding: "3px 3px" },
+  playerCell: { textAlign: "left", position: "sticky", left: 62, zIndex: 2, background: "#111113", width: 180, minWidth: 180, padding: "2px 4px" },
+  playerButton: { width: "100%", border: 0, background: "transparent", color: "#fff", display: "flex", alignItems: "center", gap: 6, textAlign: "left", cursor: "pointer", padding: "4px 4px" },
+  avatar: { width: 28, height: 28, flex: "0 0 28px", borderRadius: "50%", overflow: "hidden", background: "#1b1b1e", border: "1px solid #333338", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 1000, color: "#777" },
+  bigAvatar: { width: 58, height: 58, flex: "0 0 58px", borderRadius: "50%", overflow: "hidden", background: "#1b1b1e", border: "1px solid #3a3a3e", display: "flex", alignItems: "center", justifyContent: "center" },
+  headshot: { width: "100%", height: "100%", objectFit: "cover" },
+  playerName: { display: "block", fontSize: 9, fontWeight: 1000, whiteSpace: "nowrap" },
+  playerSub: { display: "block", marginTop: 1, color: "#777a80", fontSize: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 135 },
+  orange: { color: "#ff7b31", fontSize: 8, fontWeight: 1000 },
+  fp: { color: "#fff", fontWeight: 1000, fontSize: 8 },
+  availableBadge: { display: "inline-block", padding: "3px 5px", borderRadius: 999, background: "#102319", border: "1px solid #245d39", color: "#67d68a", fontSize: 6, fontWeight: 1000, whiteSpace: "nowrap" },
+  waiverBadge: { display: "inline-block", padding: "3px 5px", borderRadius: 5, background: "#26150d", border: "1px solid #6a351e", color: "#ff7b31", fontSize: 6, fontWeight: 1000, lineHeight: 1.25, whiteSpace: "nowrap" },
+  processingBadge: { display: "inline-block", padding: "3px 5px", borderRadius: 999, background: "#211b0e", border: "1px solid #66511f", color: "#f2c14e", fontSize: 6, fontWeight: 1000, whiteSpace: "nowrap" },
+  addButton: { minHeight: 28, padding: "0 7px", border: "1px solid #245d39", borderRadius: 5, background: "#102319", color: "#67d68a", fontSize: 7, fontWeight: 1000, cursor: "pointer", whiteSpace: "nowrap" },
+  claimButton: { minHeight: 28, padding: "0 7px", border: 0, borderRadius: 5, background: "linear-gradient(135deg,#ff3d18,#ff7628)", color: "#fff", fontSize: 7, fontWeight: 1000, cursor: "pointer", whiteSpace: "nowrap" },
+  disabledButton: { minHeight: 28, padding: "0 6px", border: "1px solid #333", borderRadius: 5, background: "#18181b", color: "#666", fontSize: 7, fontWeight: 1000, cursor: "not-allowed", whiteSpace: "nowrap" },
+  empty: { padding: 30, textAlign: "center", color: "#777a80", fontSize: 11, fontWeight: 700 },
+  claimRow: { padding: 12, borderBottom: "1px solid #242428", display: "grid", gridTemplateColumns: "44px minmax(0,1fr) auto", gap: 10, alignItems: "center" },
+  claimPriority: { width: 34, height: 34, borderRadius: "50%", background: "#21140f", border: "1px solid #66351f", color: "#ff7b31", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 1000 },
+  claimDetails: { marginTop: 5, display: "flex", gap: 8, flexWrap: "wrap", color: "#777a80", fontSize: 8, fontWeight: 700 },
+  failure: { marginTop: 5, color: "#e78378", fontSize: 8, fontWeight: 800 },
+  claimActions: { display: "flex", gap: 5, flexWrap: "wrap" },
+  smallButton: { width: 30, height: 30, border: "1px solid #38383d", borderRadius: 5, background: "#18181b", color: "#fff", fontWeight: 1000, cursor: "pointer" },
+  cancelButton: { minHeight: 30, padding: "0 8px", border: "1px solid #57302c", borderRadius: 5, background: "#211413", color: "#e78378", fontSize: 7, fontWeight: 1000, cursor: "pointer" },
+  orderRow: { minHeight: 60, padding: "8px 12px", borderBottom: "1px solid #242428", borderLeft: "3px solid transparent", display: "grid", gridTemplateColumns: "50px minmax(0,1fr) auto", gap: 10, alignItems: "center" },
+  myOrderRow: { background: "#19120f", borderLeft: "3px solid #ff5a1f" },
+  orderNumber: { color: "#ff7b31", fontSize: 17, fontWeight: 1000 },
+  transactionRow: { padding: "11px 13px", borderBottom: "1px solid #242428", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, fontSize: 10 },
+  error: { padding: 14, border: "1px solid #742b25", borderRadius: 8, background: "#29110f", color: "#ffd1cc", display: "grid", gap: 7, fontSize: 10 },
+  success: { padding: "11px 13px", border: "1px solid #245d39", borderRadius: 7, background: "#102319", color: "#67d68a", fontSize: 10, fontWeight: 900 },
+  warning: { padding: "11px 13px", border: "1px solid #65421f", borderRadius: 7, background: "#24180d", color: "#ffb66d", fontSize: 10, fontWeight: 800 },
+  modalBackdrop: { position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.78)", padding: 12, display: "flex", alignItems: "center", justifyContent: "center" },
+  modal: { width: "min(680px,100%)", maxHeight: "90vh", overflowY: "auto", border: "1px solid #38383d", borderRadius: 10, background: "#111113", boxShadow: "0 24px 70px rgba(0,0,0,.55)" },
+  modalHead: { padding: "16px 18px", borderBottom: "1px solid #29292d", background: "linear-gradient(135deg,#171719,#21110b)", display: "flex", justifyContent: "space-between", gap: 12 },
+  modalIdentity: { display: "flex", alignItems: "center", gap: 12 },
+  modalTitle: { margin: "4px 0 0", fontSize: 23, fontWeight: 1000 },
+  close: { width: 36, height: 36, border: "1px solid #3b3b40", borderRadius: 6, background: "#171719", color: "#fff", fontSize: 22, cursor: "pointer" },
+  detailGrid: { padding: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8 },
+  detail: { padding: 10, border: "1px solid #29292d", borderRadius: 7, background: "#0d0d0f", display: "grid", gap: 5 },
+  detailValue: { color: "#fff", fontSize: 16, fontWeight: 1000 },
+  field: { padding: "14px 18px 0", display: "grid", gap: 6 },
+  fieldLabel: { color: "#ff7b31", fontSize: 8, fontWeight: 1000, letterSpacing: .7 },
+  help: { color: "#777a80", fontSize: 8, lineHeight: 1.4 },
+  modalActions: { padding: 18, display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" },
+  secondaryButton: { minHeight: 40, padding: "0 14px", border: "1px solid #38383d", borderRadius: 6, background: "#18181b", color: "#aaaab0", fontSize: 9, fontWeight: 1000, cursor: "pointer" },
 };
+

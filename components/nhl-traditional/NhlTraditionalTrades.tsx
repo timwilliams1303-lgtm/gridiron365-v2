@@ -130,10 +130,20 @@ function dateLabel(value: string | null | undefined) {
   }).format(date);
 }
 
+function resolvedPickLabel(pick: PickAssetRow) {
+  if (!pick.pick_number) return null;
+
+  return `${pick.round_number}.${String(pick.pick_number).padStart(2, "0")}`;
+}
+
 function pickLabel(pick: PickAssetRow, teams: Map<number, FantasyTeamRow>) {
-  const original = teams.get(pick.original_fantasy_team_id)?.team_name ?? "Original team";
-  const pickNo = pick.pick_number ? ` • Pick ${pick.pick_number}` : "";
-  return `${pick.draft_season} Round ${pick.round_number}${pickNo} • ${original}`;
+  const original =
+    teams.get(pick.original_fantasy_team_id)?.team_name ?? "Original team";
+  const resolvedPick = resolvedPickLabel(pick);
+
+  return resolvedPick
+    ? `${pick.draft_season} Round ${pick.round_number} • Pick ${resolvedPick} • Originally ${original}`
+    : `${pick.draft_season} Round ${pick.round_number} • ${original}`;
 }
 
 function statusLabel(value: string) {
@@ -164,6 +174,9 @@ export default function NhlTraditionalTrades({ leagueId }: Props) {
   const [offeredPickIds, setOfferedPickIds] = useState<number[]>([]);
   const [requestedPickIds, setRequestedPickIds] = useState<number[]>([]);
   const [tradeMessage, setTradeMessage] = useState("");
+  const [offerHistoryFilter, setOfferHistoryFilter] = useState<
+    "active" | "completed" | "all"
+  >("active");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -408,6 +421,22 @@ export default function NhlTraditionalTrades({ leagueId }: Props) {
     );
   }, [offers, myTeam]);
 
+  const visibleOffers = useMemo(() => {
+    if (offerHistoryFilter === "active") {
+      return myOffers.filter((offer) =>
+        ["pending", "countered"].includes(offer.status.toLowerCase())
+      );
+    }
+
+    if (offerHistoryFilter === "completed") {
+      return myOffers.filter((offer) =>
+        ["accepted", "completed"].includes(offer.status.toLowerCase())
+      );
+    }
+
+    return myOffers;
+  }, [myOffers, offerHistoryFilter]);
+
   function toggle(setter: React.Dispatch<React.SetStateAction<number[]>>, id: number) {
     setter((current) =>
       current.includes(id)
@@ -577,7 +606,7 @@ export default function NhlTraditionalTrades({ leagueId }: Props) {
             <h2>Build an offer</h2>
             <p>
               {leagueFormat === "dynasty"
-                ? `Trade NHL players and eligible ${league.season + 1}–${league.season + 2} draft-pick assets.`
+                ? `Trade NHL players and eligible ${league.season}–${league.season + 2} draft-pick assets.`
                 : "Trade NHL players with another team in your league."}
             </p>
           </div>
@@ -667,21 +696,66 @@ export default function NhlTraditionalTrades({ leagueId }: Props) {
         </section>
 
         <section className="offers-section">
-          <div className="section-heading">
+          <div className="section-heading trade-history-heading">
             <div>
               <p className="eyebrow">LEAGUE ACTIVITY</p>
               <h2>Your trade offers</h2>
+              <p className="trade-history-copy">
+                Active offers stay front and center. Open completed or full history only when you need it.
+              </p>
             </div>
+
             <span>{myOffers.length} total</span>
           </div>
 
-          {myOffers.length === 0 ? (
+          <div className="trade-history-tabs" role="group" aria-label="Trade offer history">
+            <button
+              type="button"
+              className={offerHistoryFilter === "active" ? "active" : ""}
+              onClick={() => setOfferHistoryFilter("active")}
+            >
+              Active
+              <span>
+                {myOffers.filter((offer) =>
+                  ["pending", "countered"].includes(offer.status.toLowerCase())
+                ).length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className={offerHistoryFilter === "completed" ? "active" : ""}
+              onClick={() => setOfferHistoryFilter("completed")}
+            >
+              Completed
+              <span>
+                {myOffers.filter((offer) =>
+                  ["accepted", "completed"].includes(offer.status.toLowerCase())
+                ).length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className={offerHistoryFilter === "all" ? "active" : ""}
+              onClick={() => setOfferHistoryFilter("all")}
+            >
+              All History
+              <span>{myOffers.length}</span>
+            </button>
+          </div>
+
+          {visibleOffers.length === 0 ? (
             <div className="g365-panel empty-state">
-              No trade offers yet.
+              {offerHistoryFilter === "active"
+                ? "No active trade offers."
+                : offerHistoryFilter === "completed"
+                  ? "No completed trades yet."
+                  : "No trade offers yet."}
             </div>
           ) : (
             <div className="offers-list">
-              {myOffers.map((offer) => {
+              {visibleOffers.map((offer) => {
                 const incoming = offer.receiving_fantasy_team_id === myTeam.id;
                 const otherTeamId = incoming
                   ? offer.proposing_fantasy_team_id
@@ -702,8 +776,12 @@ export default function NhlTraditionalTrades({ leagueId }: Props) {
                   : offer.requestedPicks;
 
                 return (
-                  <article className="g365-panel offer-card" key={offer.id}>
-                    <div className="offer-top">
+                  <details
+                    className="g365-panel offer-card offer-details"
+                    key={offer.id}
+                    open={offer.status.toLowerCase() === "pending"}
+                  >
+                    <summary className="offer-top">
                       <div>
                         <span className={incoming ? "direction incoming" : "direction outgoing"}>
                           {incoming ? "INCOMING" : "OUTGOING"}
@@ -711,11 +789,16 @@ export default function NhlTraditionalTrades({ leagueId }: Props) {
                         <h3>{otherTeam?.team_name ?? `Team ${otherTeamId}`}</h3>
                         <p>{dateLabel(offer.proposed_at)}</p>
                       </div>
-                      <span className={`status status-${offer.status.toLowerCase()}`}>
-                        {statusLabel(offer.status)}
-                      </span>
-                    </div>
 
+                      <div className="offer-summary-right">
+                        <span className={`status status-${offer.status.toLowerCase()}`}>
+                          {statusLabel(offer.status)}
+                        </span>
+                        <span className="offer-chevron" aria-hidden="true">⌄</span>
+                      </div>
+                    </summary>
+
+                    <div className="offer-details-body">
                     <div className="offer-assets">
                       <AssetSummary
                         heading="You give"
@@ -772,7 +855,8 @@ export default function NhlTraditionalTrades({ leagueId }: Props) {
                         )}
                       </div>
                     ) : null}
-                  </article>
+                    </div>
+                  </details>
                 );
               })}
             </div>
@@ -806,6 +890,53 @@ function TradeSide({
   nhlTeamMap: Map<number, NhlTeamRow>;
   dynasty: boolean;
 }) {
+  const positionOrder = ["C", "LW", "RW", "F", "D", "G", "OTHER"];
+
+  const groupedPlayers = useMemo(() => {
+    const groups = new Map<string, PlayerRow[]>();
+
+    for (const player of players) {
+      const raw = normalizePosition(player);
+      const position =
+        raw === "C" || raw === "LW" || raw === "RW" || raw === "D" || raw === "G"
+          ? raw
+          : raw === "F" || raw.includes("F")
+            ? "F"
+            : "OTHER";
+
+      const current = groups.get(position) ?? [];
+      current.push(player);
+      groups.set(position, current);
+    }
+
+    for (const rows of groups.values()) {
+      rows.sort((a, b) => playerName(a).localeCompare(playerName(b)));
+    }
+
+    return groups;
+  }, [players]);
+
+  const groupedPicks = useMemo(() => {
+    const groups = new Map<number, PickAssetRow[]>();
+
+    for (const pick of picks) {
+      const current = groups.get(pick.draft_season) ?? [];
+      current.push(pick);
+      groups.set(pick.draft_season, current);
+    }
+
+    for (const rows of groups.values()) {
+      rows.sort(
+        (a, b) =>
+          a.round_number - b.round_number ||
+          (a.pick_number ?? Number.MAX_SAFE_INTEGER) -
+            (b.pick_number ?? Number.MAX_SAFE_INTEGER)
+      );
+    }
+
+    return [...groups.entries()].sort(([a], [b]) => a - b);
+  }, [picks]);
+
   return (
     <section className="g365-panel trade-side">
       <h2>{title}</h2>
@@ -819,36 +950,78 @@ function TradeSide({
         {players.length === 0 ? (
           <div className="mini-empty">No active players found.</div>
         ) : (
-          <div className="player-list">
-            {players.map((player) => {
-              const checked = selectedPlayerIds.includes(player.id);
-              const nhlTeam = player.team_id ? nhlTeamMap.get(player.team_id) : null;
-              const teamLabel =
-                nhlTeam?.abbreviation ??
-                nhlTeam?.short_name ??
-                nhlTeam?.name ??
-                nhlTeam?.display_name ??
-                "FA";
+          <div className="asset-dropdowns">
+            {positionOrder.map((position) => {
+              const rows = groupedPlayers.get(position) ?? [];
+              if (rows.length === 0) return null;
+
+              const selectedCount = rows.filter((player) =>
+                selectedPlayerIds.includes(player.id)
+              ).length;
 
               return (
-                <button
-                  type="button"
-                  key={player.id}
-                  className={`asset-row ${checked ? "selected" : ""}`}
-                  onClick={() => onTogglePlayer(player.id)}
-                >
-                  <span className="check">{checked ? "✓" : ""}</span>
-                  <span className="asset-main">
-                    <strong>{playerName(player)}</strong>
-                    <small>
-                      {normalizePosition(player)} • {teamLabel}
-                      {player.injury_status &&
-                      !["active", "healthy"].includes(player.injury_status.toLowerCase())
-                        ? ` • ${player.injury_status}`
-                        : ""}
-                    </small>
-                  </span>
-                </button>
+                <details className="asset-dropdown" key={position}>
+                  <summary>
+                    <span>
+                      <strong>{position === "OTHER" ? "Other" : position}</strong>
+                      <small>{rows.length} players</small>
+                    </span>
+                    <span className={selectedCount > 0 ? "selected-count active" : "selected-count"}>
+                      {selectedCount} selected
+                    </span>
+                  </summary>
+
+                  <div className="dropdown-rows">
+                    {rows.map((player) => {
+                      const checked = selectedPlayerIds.includes(player.id);
+                      const nhlTeam = player.team_id
+                        ? nhlTeamMap.get(player.team_id)
+                        : null;
+                      const teamLabel =
+                        nhlTeam?.abbreviation ??
+                        nhlTeam?.short_name ??
+                        nhlTeam?.name ??
+                        nhlTeam?.display_name ??
+                        "FA";
+
+                      return (
+                        <button
+                          type="button"
+                          key={player.id}
+                          className={`asset-row ${checked ? "selected" : ""}`}
+                          onClick={() => onTogglePlayer(player.id)}
+                        >
+                          <span className="check">{checked ? "✓" : ""}</span>
+
+                          {player.headshot_url ? (
+                            <img
+                              className="trade-player-headshot"
+                              src={player.headshot_url}
+                              alt=""
+                            />
+                          ) : (
+                            <span className="trade-player-headshot fallback">
+                              {playerName(player).slice(0, 1)}
+                            </span>
+                          )}
+
+                          <span className="asset-main">
+                            <strong>{playerName(player)}</strong>
+                            <small>
+                              {normalizePosition(player)} • {teamLabel}
+                              {player.injury_status &&
+                              !["active", "healthy"].includes(
+                                player.injury_status.toLowerCase()
+                              )
+                                ? ` • ${player.injury_status}`
+                                : ""}
+                            </small>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </details>
               );
             })}
           </div>
@@ -864,30 +1037,61 @@ function TradeSide({
 
           {picks.length === 0 ? (
             <div className="mini-empty">
-              No eligible future draft-pick assets found.
+              No eligible draft-pick assets found.
             </div>
           ) : (
-            <div className="player-list">
-              {picks.map((pick) => {
-                const checked = selectedPickIds.includes(pick.id);
+            <div className="asset-dropdowns">
+              {groupedPicks.map(([season, seasonPicks]) => {
+                const selectedCount = seasonPicks.filter((pick) =>
+                  selectedPickIds.includes(pick.id)
+                ).length;
+
                 return (
-                  <button
-                    type="button"
-                    key={pick.id}
-                    className={`asset-row ${checked ? "selected" : ""}`}
-                    onClick={() => onTogglePick(pick.id)}
-                  >
-                    <span className="check">{checked ? "✓" : ""}</span>
-                    <span className="asset-main">
-                      <strong>
-                        {pick.draft_season} Round {pick.round_number}
-                      </strong>
-                      <small>
-                        {pick.pick_number ? `Pick ${pick.pick_number} • ` : ""}
-                        Originally {teamMap.get(pick.original_fantasy_team_id)?.team_name ?? "Unknown"}
-                      </small>
-                    </span>
-                  </button>
+                  <details className="asset-dropdown" key={season}>
+                    <summary>
+                      <span>
+                        <strong>{season} Draft Picks</strong>
+                        <small>{seasonPicks.length} picks</small>
+                      </span>
+                      <span className={selectedCount > 0 ? "selected-count active" : "selected-count"}>
+                        {selectedCount} selected
+                      </span>
+                    </summary>
+
+                    <div className="dropdown-rows">
+                      {seasonPicks.map((pick) => {
+                        const checked = selectedPickIds.includes(pick.id);
+
+                        return (
+                          <button
+                            type="button"
+                            key={pick.id}
+                            className={`asset-row ${checked ? "selected" : ""}`}
+                            onClick={() => onTogglePick(pick.id)}
+                          >
+                            <span className="check">{checked ? "✓" : ""}</span>
+                            <span className="asset-main">
+                              <strong>
+                                Round {pick.round_number}
+                                {resolvedPickLabel(pick)
+                                  ? ` • Pick ${resolvedPickLabel(pick)}`
+                                  : ""}
+                              </strong>
+                              <small>
+                                {pick.pick_number
+                                  ? "Draft position resolved"
+                                  : "Draft position not yet resolved"}
+                                {" • "}
+                                Originally{" "}
+                                {teamMap.get(pick.original_fantasy_team_id)
+                                  ?.team_name ?? "Unknown"}
+                              </small>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </details>
                 );
               })}
             </div>
@@ -1087,12 +1291,102 @@ const styles = `
     text-transform: none;
   }
 
-  .player-list {
+  .asset-dropdowns {
     display: grid;
-    gap: 7px;
-    max-height: 430px;
+    gap: 8px;
+  }
+
+  .asset-dropdown {
+    overflow: hidden;
+    border: 1px solid #2d3035;
+    border-radius: 11px;
+    background: #101216;
+  }
+
+  .asset-dropdown[open] {
+    border-color: rgba(255, 122, 24, .42);
+  }
+
+  .asset-dropdown summary {
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+
+  .asset-dropdown summary::-webkit-details-marker { display: none; }
+
+  .asset-dropdown summary::after {
+    content: "⌄";
+    flex: 0 0 auto;
+    color: #ff7a18;
+    font-size: 18px;
+    font-weight: 900;
+    transition: transform .16s ease;
+  }
+
+  .asset-dropdown[open] summary::after {
+    transform: rotate(180deg);
+  }
+
+  .asset-dropdown summary > span:first-child {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .asset-dropdown summary strong {
+    color: #fff;
+    font-size: 13px;
+  }
+
+  .asset-dropdown summary small {
+    color: #7f8793;
+    font-size: 10px;
+  }
+
+  .selected-count {
+    margin-left: auto;
+    color: #858c96;
+    font-size: 10px;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+
+  .selected-count.active { color: #ff8b36; }
+
+  .dropdown-rows {
+    max-height: 300px;
     overflow-y: auto;
-    padding-right: 3px;
+    display: grid;
+    gap: 6px;
+    padding: 0 7px 7px;
+    border-top: 1px solid #292c31;
+  }
+
+  .dropdown-rows .asset-row:first-child { margin-top: 7px; }
+
+  .trade-player-headshot {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #090a0d;
+    border: 1px solid #343840;
+  }
+
+  .trade-player-headshot.fallback {
+    display: grid;
+    place-items: center;
+    color: #ff9b4f;
+    font-size: 12px;
+    font-weight: 900;
   }
 
   .asset-row {
@@ -1177,8 +1471,83 @@ const styles = `
 
   .offers-section { display: grid; gap: 12px; }
   .section-heading > span { color: #777d87; font-size: 12px; }
-  .offers-list { display: grid; gap: 12px; }
-  .offer-card { padding: 18px; }
+  .trade-history-copy {
+    margin: 5px 0 0;
+    color: #777d87;
+    font-size: 11px;
+  }
+
+  .trade-history-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+  }
+
+  .trade-history-tabs button {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 11px;
+    border: 1px solid #30343a;
+    border-radius: 9px;
+    color: #aeb4be;
+    background: #101216;
+    font-size: 11px;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .trade-history-tabs button span {
+    min-width: 20px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    color: #ff9b4f;
+    background: rgba(255, 122, 24, .08);
+    text-align: center;
+  }
+
+  .trade-history-tabs button.active {
+    border-color: #ff7a18;
+    color: #fff;
+    background: linear-gradient(135deg, rgba(180, 39, 22, .28), rgba(255, 122, 24, .10));
+  }
+
+  .offers-list { display: grid; gap: 9px; }
+
+  .offer-card {
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .offer-details > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 14px 16px;
+  }
+
+  .offer-details > summary::-webkit-details-marker { display: none; }
+
+  .offer-details-body {
+    padding: 0 16px 16px;
+    border-top: 1px solid #292c31;
+  }
+
+  .offer-summary-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .offer-chevron {
+    color: #ff7a18;
+    font-size: 18px;
+    font-weight: 900;
+    transition: transform .16s ease;
+  }
+
+  .offer-details[open] .offer-chevron { transform: rotate(180deg); }
+
   .offer-top h3 { margin: 8px 0 4px; }
 
   .direction { display: inline-block; padding: 5px 8px; }
@@ -1259,7 +1628,9 @@ const styles = `
 
   @media (max-width: 560px) {
     .g365-trades-page { padding-inline: 9px; }
-    .trade-hero, .trade-side, .submit-panel, .offer-card { padding: 14px; }
+    .trade-hero, .trade-side, .submit-panel { padding: 14px; }
+    .offer-details > summary { padding: 13px; }
+    .offer-details-body { padding: 0 13px 13px; }
     .offer-assets { grid-template-columns: 1fr; }
     .submit-actions, .offer-actions { display: grid; grid-template-columns: 1fr; }
     .primary-button, .secondary-button { width: 100%; min-height: 46px; }

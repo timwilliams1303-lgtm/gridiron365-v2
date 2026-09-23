@@ -24,6 +24,7 @@ export type LeagueCapabilityKey =
   | "seasonRecap"
   | "history"
   | "draft"
+  | "draftLottery"
   | "draftGrades"
   | "leagueTeams"
   | "recap"
@@ -62,6 +63,7 @@ const none: LeagueCapabilities = {
   seasonRecap: false,
   history: false,
   draft: false,
+  draftLottery: false,
   draftGrades: false,
   leagueTeams: false,
   recap: false,
@@ -115,9 +117,11 @@ export function getLeagueCapabilities({
    * - Redraft
    * - Dynasty
    *
-   * All planned NHL league tabs are exposed
-   * now so the complete league structure is
-   * visible while individual pages are built.
+   * Player acquisition is handled through
+   * the Waivers / Add Players page.
+   *
+   * Separate Players and Teams pages are
+   * no longer exposed in NHL navigation.
    * =========================================
    */
   if (leagueType === "nhl_traditional") {
@@ -127,18 +131,29 @@ export function getLeagueCapabilities({
       home: true,
 
       myTeam: true,
-      leagueTeams: true,
 
-      players: true,
+      /*
+       * NHL Traditional no longer exposes
+       * separate Teams or Players pages.
+       */
+      leagueTeams: false,
+      players: false,
+
       rankings: true,
 
       matchups: true,
       standings: true,
 
+      /*
+       * Waivers is now the NHL Traditional
+       * Add Players / Free Agents / Claims
+       * player-pool page.
+       */
       waivers: true,
       trades: true,
 
       draft: true,
+      draftLottery: true,
       playoffs: true,
 
       recap: true,
