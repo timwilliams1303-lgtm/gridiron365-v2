@@ -122,10 +122,10 @@ type NhlPlayerUpsertRow = {
     string | null;
 
   position_group:
-    "FORWARD" |
-    "DEFENSE" |
-    "GOALIE" |
-    null;
+    | "FORWARD"
+    | "DEFENSE"
+    | "GOALIE"
+    | null;
 
   shoots_catches:
     string | null;
@@ -315,8 +315,8 @@ function cleanText(
 
 function localizedText(
   value:
-    LocalizedText |
-    undefined
+    | LocalizedText
+    | undefined
 ) {
   return cleanText(
     value?.default
@@ -442,10 +442,10 @@ function getPositionGroup(
   position:
     string | null
 ):
-  "FORWARD" |
-  "DEFENSE" |
-  "GOALIE" |
-  null {
+  | "FORWARD"
+  | "DEFENSE"
+  | "GOALIE"
+  | null {
   if (
     position ===
       "C" ||
@@ -522,11 +522,45 @@ function getOfficialNhlAbbreviation(
 }
 
 
+/* =========================================================
+   NHL SEASON HELPERS
+========================================================= */
+
 function buildSeasonKey(
   season:
     number
 ) {
   return `${season}${season + 1}`;
+}
+
+
+/**
+ * Returns the NHL season START year for the current date.
+ *
+ * NHL seasons cross calendar years:
+ *
+ * Sep-Dec 2026 -> 2026
+ * Jan-Aug 2027 -> 2026
+ * Sep-Dec 2027 -> 2027
+ *
+ * September is intentionally treated as the start of the
+ * new NHL season so preseason/roster synchronization moves
+ * to the upcoming season automatically.
+ */
+function getCurrentNhlSeasonStartYear(
+  now:
+    Date =
+      new Date()
+) {
+  const year =
+    now.getUTCFullYear();
+
+  const month =
+    now.getUTCMonth();
+
+  return month >= 8
+    ? year
+    : year - 1;
 }
 
 
@@ -671,15 +705,15 @@ function normalizePlayer({
     NhlTeamRow;
 
   rosterGroup:
-    "forward" |
-    "defenseman" |
-    "goalie";
+    | "forward"
+    | "defenseman"
+    | "goalie";
 
   season:
     number;
 }):
-  NhlPlayerUpsertRow |
-  null {
+  | NhlPlayerUpsertRow
+  | null {
   if (
     !player.id
   ) {
@@ -1201,10 +1235,16 @@ export async function POST(
     }
 
 
+    /*
+     * If a season is explicitly supplied, use it.
+     *
+     * Otherwise automatically determine the current
+     * NHL season start year.
+     */
     const season =
       body.season ===
       undefined
-        ? 2026
+        ? getCurrentNhlSeasonStartYear()
         : Number(
             body.season
           );
