@@ -94,6 +94,25 @@ type DbPlayer = {
   active: boolean;
 };
 
+type DateSyncResult = {
+  success: boolean;
+  date: string;
+  generatedAt?: string;
+  projectionSource?: string;
+  sourceGames: number;
+  sourceStarters: number;
+  mappedGames: number;
+  mappedGoalies: number;
+  projected: number;
+  confirmed: number;
+  written: number;
+  skippedStartedGames: number;
+  failed: number;
+  warnings: Array<Record<string, unknown>>;
+  results: Array<Record<string, unknown>>;
+  error?: string;
+};
+
 function env(name: string): string {
   const value = process.env[name];
 
@@ -163,6 +182,23 @@ function easternDateString(date = new Date()): string {
   }
 
   return `${year}-${month}-${day}`;
+}
+
+function addDaysToDateString(
+  dateString: string,
+  days: number,
+): string {
+  const [year, month, day] = dateString.split("-").map(Number);
+
+  const date = new Date(
+    Date.UTC(year, month - 1, day + days, 12, 0, 0),
+  );
+
+  const nextYear = date.getUTCFullYear();
+  const nextMonth = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const nextDay = String(date.getUTCDate()).padStart(2, "0");
+
+  return `${nextYear}-${nextMonth}-${nextDay}`;
 }
 
 function normalize(value: unknown): string {
@@ -324,7 +360,7 @@ function findPlayer(
 
   /*
    * Safe fallback:
-   * same team + goalie position + normalized exact name.
+   * same team + goalie position + exact normalized name.
    */
   const byTeamAndName = players.filter(
     (player) =>
@@ -375,94 +411,45 @@ function findGame(
   };
 }
 
-export async function POST(request: NextRequest) {
-  const startedAt = Date.now();
-
+async function syncDate(
+  date: string,
+  dryRun: boolean,
+): Promise<DateSyncResult> {
   try {
-    if (!authorized(request)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Unauthorized.",
-        },
-        {
-          status: 401,
-        },
-      );
-    }
-
-    let body: RequestBody = {};
-
-    try {
-      body = (await request.json()) as RequestBody;
-    } catch {
-      body = {};
-    }
-
-    const date = body.date?.trim() || easternDateString();
-
-    /*
-     * Safe default:
-     * if dryRun is omitted, do not write.
-     */
-    const dryRun = body.dryRun !== false;
-
-    if (!isValidDate(date)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "date must use YYYY-MM-DD format.",
-        },
-        {
-          status: 400,
-        },
-      );
-    }
-
     const source = await fetchStartingGoalies(date);
 
-    const supabase = adminClient();
-
     /*
-     * Zero NHL games is a valid successful result.
+     * Zero games is valid.
      */
     if (source.games.length === 0) {
-      return NextResponse.json({
+      return {
         success: true,
-        sourceProvider: "NHL Fantasy Data",
         date,
-        dryRun,
         generatedAt: source.generated_at,
         projectionSource: source.projection_source,
-
         sourceGames: 0,
         sourceStarters: 0,
-
         mappedGames: 0,
         mappedGoalies: 0,
-
         projected: 0,
         confirmed: 0,
-
         written: 0,
         skippedStartedGames: 0,
         failed: 0,
-
         warnings: source.warnings ?? [],
         results: [],
-
-        durationMs: Date.now() - startedAt,
-      });
+      };
     }
+
+    const supabase = adminClient();
 
     const externalGameIds = source.games.map((game) =>
       String(game.nhl_game_id),
     );
 
     /*
-     * IMPORTANT:
-     * Keep these .select() values as literal strings.
-     * Supabase TypeScript uses the literal to infer the selected row shape.
+     * Keep these select expressions as literal strings so
+     * Supabase TypeScript can infer their row shapes.
      */
     const [gamesResult, teamsResult, playersResult] = await Promise.all([
       supabase
@@ -518,7 +505,7 @@ export async function POST(request: NextRequest) {
 
     for (const sourceGame of source.games) {
       /*
-       * Game mapping uses the official NHL game ID.
+       * Game mapping uses the official external NHL game ID.
        */
       const gameMatch = findGame(games, sourceGame);
 
@@ -528,11 +515,9 @@ export async function POST(request: NextRequest) {
         results.push({
           success: false,
           stage: "game_mapping",
-
           sourceNhlGameId: sourceGame.nhl_game_id,
           awayTeam: sourceGame.away_team,
           homeTeam: sourceGame.home_team,
-
           candidateCount: gameMatch.candidateCount,
         });
 
@@ -544,10 +529,10 @@ export async function POST(request: NextRequest) {
       mappedGames += 1;
 
       /*
-       * This source is only for pregame intelligence.
+       * This table stores pregame information.
        *
-       * Once puck drop occurs, official NHL Gamecenter
-       * becomes authoritative for actual goalie_started.
+       * Once the game starts, official NHL Gamecenter
+       * owns the actual goalie_started result.
        */
       const gameStartMs = new Date(game.start_time).getTime();
 
@@ -560,11 +545,9 @@ export async function POST(request: NextRequest) {
         results.push({
           success: true,
           stage: "skipped_started_game",
-
           internalGameId: game.id,
           nhlGameId: game.nhl_game_id,
           gameStart: game.start_time,
-
           awayTeam: sourceGame.away_team,
           homeTeam: sourceGame.home_team,
         });
@@ -572,9 +555,6 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      /*
-       * NHL Fantasy Data returns team abbreviations.
-       */
       const awayTeam = findTeam(teams, sourceGame.away_team);
       const homeTeam = findTeam(teams, sourceGame.home_team);
 
@@ -584,13 +564,10 @@ export async function POST(request: NextRequest) {
         results.push({
           success: false,
           stage: "team_mapping",
-
           internalGameId: game.id,
           nhlGameId: game.nhl_game_id,
-
           sourceAwayTeam: sourceGame.away_team,
           sourceHomeTeam: sourceGame.home_team,
-
           awayTeamMapped: Boolean(awayTeam),
           homeTeamMapped: Boolean(homeTeam),
         });
@@ -599,8 +576,8 @@ export async function POST(request: NextRequest) {
       }
 
       /*
-       * Safety check:
-       * make sure the source teams agree with our NHL game.
+       * Cross-check the source matchup against the
+       * teams attached to our NHL game.
        */
       if (
         game.away_team_id !== awayTeam.id ||
@@ -611,13 +588,10 @@ export async function POST(request: NextRequest) {
         results.push({
           success: false,
           stage: "game_team_crosscheck",
-
           internalGameId: game.id,
           nhlGameId: game.nhl_game_id,
-
           databaseAwayTeamId: game.away_team_id,
           sourceAwayTeamId: awayTeam.id,
-
           databaseHomeTeamId: game.home_team_id,
           sourceHomeTeamId: homeTeam.id,
         });
@@ -648,19 +622,16 @@ export async function POST(request: NextRequest) {
 
       for (const side of sides) {
         /*
-         * The source may know the game but not yet have
-         * a selected starter.
+         * A game can exist before the provider has
+         * selected a starter.
          */
         if (!side.sourceGoalie) {
           results.push({
             success: true,
             stage: "no_starter",
-
             side: side.side,
-
             internalGameId: game.id,
             nhlGameId: game.nhl_game_id,
-
             teamId: side.team.id,
             team: side.team.display_name,
           });
@@ -674,7 +645,7 @@ export async function POST(request: NextRequest) {
          * Player mapping:
          *
          * 1. official NHL player ID
-         * 2. safe same-team goalie-name fallback
+         * 2. same-team goalie + exact normalized name fallback
          */
         const playerMatch = findPlayer(
           players,
@@ -688,18 +659,13 @@ export async function POST(request: NextRequest) {
           results.push({
             success: false,
             stage: "goalie_mapping",
-
             side: side.side,
-
             internalGameId: game.id,
             nhlGameId: game.nhl_game_id,
-
             teamId: side.team.id,
             team: side.team.display_name,
-
             sourceNhlPlayerId: side.sourceGoalie.nhl_player_id,
             sourceGoalieName: side.sourceGoalie.name,
-
             mappingMethod: playerMatch.method,
             candidateCount: playerMatch.candidateCount,
           });
@@ -714,8 +680,8 @@ export async function POST(request: NextRequest) {
         /*
          * G365 pregame status:
          *
-         * externally_confirmed=false -> projected
-         * externally_confirmed=true  -> confirmed
+         * externally_confirmed = false -> projected
+         * externally_confirmed = true  -> confirmed
          */
         const starterStatus: "projected" | "confirmed" =
           side.sourceGoalie.externally_confirmed
@@ -730,23 +696,16 @@ export async function POST(request: NextRequest) {
 
         const nowIso = new Date().toISOString();
 
-        /*
-         * Preserve the useful source information inside
-         * raw_source_data without expanding the DB schema.
-         */
         const record = {
           /*
-           * INTERNAL public.nhl_games.id.
-           *
-           * Do not confuse this with the source's
-           * external NHL game ID.
+           * INTERNAL public.nhl_games.id
            */
           nhl_game_id: game.id,
 
           team_id: side.team.id,
 
           /*
-           * INTERNAL public.nhl_players.id.
+           * INTERNAL public.nhl_players.id
            */
           nhl_player_id: player.id,
 
@@ -759,11 +718,8 @@ export async function POST(request: NextRequest) {
           source_url: NHL_FANTASY_DATA_MCP_URL,
 
           /*
-           * The source tells us whether the starter has
-           * been externally confirmed but does not expose
-           * a dedicated confirmation timestamp.
-           *
-           * Do not invent one.
+           * The provider gives confirmation state but
+           * does not provide a confirmation timestamp.
            */
           source_confirmed_at: null,
 
@@ -784,15 +740,10 @@ export async function POST(request: NextRequest) {
             sourceGoalie: {
               nhlPlayerId: side.sourceGoalie.nhl_player_id,
               name: side.sourceGoalie.name,
-
-              startProbability:
-                side.sourceGoalie.start_probability,
-
+              startProbability: side.sourceGoalie.start_probability,
               externallyConfirmed:
                 side.sourceGoalie.externally_confirmed,
-
-              lastStartDate:
-                side.sourceGoalie.last_start_date,
+              lastStartDate: side.sourceGoalie.last_start_date,
             },
 
             alternatives: side.alternatives,
@@ -809,10 +760,8 @@ export async function POST(request: NextRequest) {
 
         if (!dryRun) {
           /*
-           * One current starter record per game/team.
-           *
-           * If the projected goalie changes, this updates
-           * the same row instead of creating a duplicate.
+           * One current pregame starter per game/team.
+           * A changed projection updates this same row.
            */
           const { error: writeError } = await supabase
             .from("nhl_starting_goalies")
@@ -826,17 +775,12 @@ export async function POST(request: NextRequest) {
             results.push({
               success: false,
               stage: "database_write",
-
               side: side.side,
-
               internalGameId: game.id,
               nhlGameId: game.nhl_game_id,
-
               teamId: side.team.id,
-
               goalieId: player.id,
               goalie: player.display_name,
-
               error: writeError.message,
             });
 
@@ -848,68 +792,185 @@ export async function POST(request: NextRequest) {
 
         results.push({
           success: true,
-
           stage: dryRun ? "dry_run" : "written",
-
           side: side.side,
-
           internalGameId: game.id,
           nhlGameId: game.nhl_game_id,
           gameStart: game.start_time,
-
           teamId: side.team.id,
           team: side.team.display_name,
-
           goalieId: player.id,
           officialNhlPlayerId: player.nhl_player_id,
           goalie: player.display_name,
-
           mappingMethod: playerMatch.method,
-
           starterStatus,
-
-          startProbability:
-            side.sourceGoalie.start_probability,
-
+          startProbability: side.sourceGoalie.start_probability,
           externallyConfirmed:
             side.sourceGoalie.externally_confirmed,
-
           projectedShotsAgainst:
             side.starterProjection?.projected_shots_against ?? null,
-
           projectedSaves:
             side.starterProjection?.projected_saves ?? null,
         });
       }
     }
 
-    return NextResponse.json({
+    return {
       success: failed === 0,
-
-      sourceProvider: "NHL Fantasy Data",
-
       date,
-      dryRun,
-
       generatedAt: source.generated_at,
       projectionSource: source.projection_source,
-
       sourceGames: source.games.length,
       sourceStarters,
-
       mappedGames,
       mappedGoalies,
-
       projected,
       confirmed,
-
       written,
       skippedStartedGames,
       failed,
-
       warnings: source.warnings ?? [],
-
       results,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      date,
+      sourceGames: 0,
+      sourceStarters: 0,
+      mappedGames: 0,
+      mappedGoalies: 0,
+      projected: 0,
+      confirmed: 0,
+      written: 0,
+      skippedStartedGames: 0,
+      failed: 1,
+      warnings: [],
+      results: [],
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unknown NHL starting-goalie date synchronization error.",
+    };
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const startedAt = Date.now();
+
+  try {
+    if (!authorized(request)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized.",
+        },
+        {
+          status: 401,
+        },
+      );
+    }
+
+    let body: RequestBody = {};
+
+    try {
+      body = (await request.json()) as RequestBody;
+    } catch {
+      body = {};
+    }
+
+    const explicitDate = body.date?.trim() || null;
+
+    if (explicitDate && !isValidDate(explicitDate)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "date must use YYYY-MM-DD format.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /*
+     * Safe default:
+     * omitted dryRun means dry-run.
+     *
+     * Job 90 explicitly sends dryRun:false.
+     */
+    const dryRun = body.dryRun !== false;
+
+    /*
+     * Explicit date:
+     * process only that date.
+     *
+     * No date:
+     * automatically process today + tomorrow
+     * in America/New_York.
+     */
+    const today = easternDateString();
+
+    const dates = explicitDate
+      ? [explicitDate]
+      : [today, addDaysToDateString(today, 1)];
+
+    const dateResults: DateSyncResult[] = [];
+
+    /*
+     * Run sequentially rather than in parallel.
+     *
+     * This is only two source requests and avoids unnecessary
+     * load on the free provider.
+     */
+    for (const date of dates) {
+      const result = await syncDate(date, dryRun);
+      dateResults.push(result);
+    }
+
+    const totals = dateResults.reduce(
+      (acc, result) => {
+        acc.sourceGames += result.sourceGames;
+        acc.sourceStarters += result.sourceStarters;
+        acc.mappedGames += result.mappedGames;
+        acc.mappedGoalies += result.mappedGoalies;
+        acc.projected += result.projected;
+        acc.confirmed += result.confirmed;
+        acc.written += result.written;
+        acc.skippedStartedGames += result.skippedStartedGames;
+        acc.failed += result.failed;
+
+        return acc;
+      },
+      {
+        sourceGames: 0,
+        sourceStarters: 0,
+        mappedGames: 0,
+        mappedGoalies: 0,
+        projected: 0,
+        confirmed: 0,
+        written: 0,
+        skippedStartedGames: 0,
+        failed: 0,
+      },
+    );
+
+    const success = dateResults.every((result) => result.success);
+
+    return NextResponse.json({
+      success,
+
+      sourceProvider: "NHL Fantasy Data",
+
+      mode: explicitDate ? "single_date" : "today_and_tomorrow",
+
+      dryRun,
+
+      datesRequested: dates,
+
+      totals,
+
+      dateResults,
 
       durationMs: Date.now() - startedAt,
     });
@@ -917,12 +978,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-
         error:
           error instanceof Error
             ? error.message
             : "Unknown NHL starting-goalie synchronization error.",
-
         durationMs: Date.now() - startedAt,
       },
       {
