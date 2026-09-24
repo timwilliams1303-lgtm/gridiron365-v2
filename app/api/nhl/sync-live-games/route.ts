@@ -530,9 +530,7 @@ function detectOvertime(
 }
 
 function buildScoreboardUrl(
-  start:
-    Date,
-  end:
+  date:
     Date
 ) {
   const url =
@@ -540,13 +538,15 @@ function buildScoreboardUrl(
       ESPN_NHL_SCOREBOARD
     );
 
+  /*
+   * ESPN NHL live-state requests are fetched one calendar
+   * date at a time. Do not send a YYYYMMDD-YYYYMMDD range.
+   */
   url.searchParams.set(
     "dates",
-    `${yyyymmdd(
-      start
-    )}-${yyyymmdd(
-      end
-    )}`
+    yyyymmdd(
+      date
+    )
   );
 
   url.searchParams.set(
@@ -557,16 +557,13 @@ function buildScoreboardUrl(
   return url.toString();
 }
 
-async function fetchScoreboard(
-  start:
-    Date,
-  end:
+async function fetchScoreboardDay(
+  date:
     Date
 ) {
   const url =
     buildScoreboardUrl(
-      start,
-      end
+      date
     );
 
   const response =
@@ -594,7 +591,9 @@ async function fetchScoreboard(
 
   if (!response.ok) {
     throw new Error(
-      `ESPN NHL scoreboard returned HTTP ${response.status}: ${text.slice(
+      `ESPN NHL scoreboard returned HTTP ${response.status} for ${yyyymmdd(
+        date
+      )}: ${text.slice(
         0,
         300
       )}`
@@ -603,6 +602,11 @@ async function fetchScoreboard(
 
   try {
     return {
+      date:
+        yyyymmdd(
+          date
+        ),
+
       url,
 
       payload:
@@ -612,9 +616,93 @@ async function fetchScoreboard(
     };
   } catch {
     throw new Error(
-      "ESPN NHL scoreboard returned invalid JSON."
+      `ESPN NHL scoreboard returned invalid JSON for ${yyyymmdd(
+        date
+      )}.`
     );
   }
+}
+
+async function fetchScoreboard(
+  start:
+    Date,
+  end:
+    Date
+) {
+  const scoreboardUrls:
+    string[] = [];
+
+  const eventsById =
+    new Map<
+      string,
+      EspnEvent
+    >();
+
+  const fetchedDates:
+    string[] = [];
+
+  const cursor =
+    new Date(
+      start
+    );
+
+  while (
+    cursor.getTime() <=
+    end.getTime()
+  ) {
+    const result =
+      await fetchScoreboardDay(
+        cursor
+      );
+
+    scoreboardUrls.push(
+      result.url
+    );
+
+    fetchedDates.push(
+      result.date
+    );
+
+    for (
+      const event of
+        result.payload.events ??
+        []
+    ) {
+      const eventId =
+        event.id ??
+        event.competitions?.[0]?.id;
+
+      if (!eventId) {
+        continue;
+      }
+
+      eventsById.set(
+        String(
+          eventId
+        ),
+        event
+      );
+    }
+
+    cursor.setUTCDate(
+      cursor.getUTCDate() +
+        1
+    );
+  }
+
+  return {
+    urls:
+      scoreboardUrls,
+
+    fetchedDates,
+
+    payload: {
+      events:
+        Array.from(
+          eventsById.values()
+        ),
+    } satisfies EspnScoreboard,
+  };
 }
 
 function normalizeEvent(
@@ -1082,7 +1170,8 @@ export async function POST(
      */
 
     const {
-      url,
+      urls,
+      fetchedDates,
       payload,
     } =
       await fetchScoreboard(
@@ -1397,8 +1486,10 @@ export async function POST(
           endDate
         ),
 
-      scoreboardUrl:
-        url,
+      scoreboardUrls:
+        urls,
+
+      fetchedDates,
 
       eventsReceived:
         events.length,
