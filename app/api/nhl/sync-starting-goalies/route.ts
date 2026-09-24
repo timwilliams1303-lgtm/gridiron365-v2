@@ -4,16 +4,69 @@ import { createClient } from "@supabase/supabase-js";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
+const NHL_FANTASY_DATA_MCP_URL = "https://nhlfantasydata.com/mcp";
+
 type RequestBody = {
   date?: string;
   dryRun?: boolean;
 };
 
-type DbTeam = {
-  id: number;
-  abbreviation: string;
-  display_name: string;
+type SourceGoalie = {
+  nhl_player_id: number | null;
   name: string;
+  start_probability: number | null;
+  externally_confirmed: boolean;
+  last_start_date: string | null;
+};
+
+type SourceGoalieProjection = {
+  projected_shots_against: number;
+  projected_saves: number;
+};
+
+type SourceGoalieSide = {
+  starter: SourceGoalie | null;
+  alternatives: SourceGoalie[];
+  starter_projection: SourceGoalieProjection | null;
+};
+
+type SourceGame = {
+  nhl_game_id: number;
+  start_time: string | null;
+  home_team: string;
+  away_team: string;
+  game_projection: Record<string, unknown> | null;
+  goalies: {
+    home: SourceGoalieSide;
+    away: SourceGoalieSide;
+  };
+};
+
+type SourceStructuredContent = {
+  schema_version: string;
+  date: string;
+  generated_at: string;
+  projection_source: string;
+  games: SourceGame[];
+  warnings?: Array<Record<string, unknown>>;
+};
+
+type McpResponse = {
+  jsonrpc?: string;
+  id?: number;
+  result?: {
+    content?: Array<{
+      type?: string;
+      text?: string;
+    }>;
+    structuredContent?: SourceStructuredContent;
+    isError?: boolean;
+  };
+  error?: {
+    code?: number;
+    message?: string;
+    data?: unknown;
+  };
 };
 
 type DbGame = {
@@ -25,8 +78,15 @@ type DbGame = {
   status_completed: boolean;
 };
 
+type DbTeam = {
+  id: number;
+  abbreviation: string;
+  display_name: string;
+};
+
 type DbPlayer = {
   id: number;
+  nhl_player_id: number | null;
   team_id: number | null;
   display_name: string;
   position: string | null;
@@ -34,41 +94,13 @@ type DbPlayer = {
   active: boolean;
 };
 
-type ParsedGoalie = {
-  teamName: string;
-  goalieName: string;
-  rawStatus: string;
-  starterStatus: "projected" | "confirmed";
-  confirmedAt: string | null;
-};
-
-type ParsedMatchup = {
-  awayTeamName: string;
-  homeTeamName: string;
-  startTime: string;
-  awayGoalie: ParsedGoalie;
-  homeGoalie: ParsedGoalie;
-};
-
-function normalize(value: unknown): string {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[’']/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, " ")
-    .trim()
-    .toLowerCase();
-}
-
-function compactNormalize(value: unknown): string {
-  return normalize(value).replace(/\s+/g, "");
-}
-
 function env(name: string): string {
   const value = process.env[name];
+
   if (!value) {
     throw new Error(`Missing environment variable ${name}.`);
   }
+
   return value;
 }
 
@@ -91,20 +123,26 @@ function authorized(request: NextRequest): boolean {
     process.env.NFL_SYNC_SECRET ??
     "";
 
-  if (!secret) return false;
+  if (!secret) {
+    return false;
+  }
 
   const headerSecret =
     request.headers.get("x-gridiron-sync-secret")?.trim() ?? "";
 
-  const auth = request.headers.get("authorization")?.trim() ?? "";
-  const bearer = auth.toLowerCase().startsWith("bearer ")
-    ? auth.slice(7).trim()
+  const authorization =
+    request.headers.get("authorization")?.trim() ?? "";
+
+  const bearerSecret = authorization
+    .toLowerCase()
+    .startsWith("bearer ")
+    ? authorization.slice(7).trim()
     : "";
 
-  return headerSecret === secret || bearer === secret;
+  return headerSecret === secret || bearerSecret === secret;
 }
 
-function validDate(value: string): boolean {
+function isValidDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
@@ -116,375 +154,225 @@ function easternDateString(date = new Date()): string {
     day: "2-digit",
   }).formatToParts(date);
 
-  const year = parts.find((p) => p.type === "year")?.value;
-  const month = parts.find((p) => p.type === "month")?.value;
-  const day = parts.find((p) => p.type === "day")?.value;
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
 
   if (!year || !month || !day) {
-    throw new Error("Unable to determine Eastern calendar date.");
+    throw new Error("Unable to determine current Eastern date.");
   }
 
   return `${year}-${month}-${day}`;
 }
 
-function decodeHtml(value: string): string {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
-}
-
-function stripHtml(value: string): string {
-  return decodeHtml(
-    value
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-      .replace(/<[^>]+>/g, " "),
-  )
-    .replace(/\s+/g, " ")
+function normalize(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’']/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "")
+    .toLowerCase()
     .trim();
 }
 
-/**
- * Daily Faceoff does not publish a stable public API contract for this page.
- *
- * Keep parsing isolated here. If their markup changes, this function should
- * throw rather than manufacture goalie assignments.
- *
- * The parser intentionally uses the server HTML text and recognizable
- * matchup/status structures. The dry-run response exposes the parsed records
- * so we can validate the contract before enabling writes.
- */
-function parseDailyFaceoffHtml(html: string): ParsedMatchup[] {
-  const text = stripHtml(html);
+function isGoalie(player: DbPlayer): boolean {
+  const position = normalize(player.position);
+  const group = normalize(player.position_group);
 
-  const statusMatches = [
-    ...text.matchAll(/\b(Confirmed|Unconfirmed)\b/gi),
-  ];
+  return (
+    position === "g" ||
+    position === "goalie" ||
+    position === "goaltender" ||
+    group === "g" ||
+    group === "goalie" ||
+    group === "goaltender"
+  );
+}
 
-  if (statusMatches.length === 0) {
-    throw new Error(
-      "Daily Faceoff page contained no Confirmed/Unconfirmed goalie statuses.",
-    );
-  }
+async function fetchStartingGoalies(
+  date: string,
+): Promise<SourceStructuredContent> {
+  const payload = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: {
+      name: "get_starting_goalies",
+      arguments: {
+        date,
+      },
+    },
+  };
 
-  /*
-   * Daily Faceoff also embeds useful structured strings in its server response.
-   * Pull ISO timestamps and use them as matchup anchors.
-   */
-  const isoTimes = [
-    ...new Set(
-      [...html.matchAll(/2026-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z/g)]
-        .map((match) => match[0]),
-    ),
-  ];
-
-  if (isoTimes.length === 0) {
-    throw new Error(
-      "Daily Faceoff page contained no recognizable game timestamps.",
-    );
-  }
-
-  /*
-   * We do NOT infer team/goalie relationships from the number of statuses.
-   * Instead find structured JSON-like fragments containing the known fields.
-   *
-   * Daily Faceoff is a Next application and its HTML contains serialized
-   * server data. These regexes intentionally accept several common key names
-   * while remaining strict about requiring team, goalie and status.
-   */
-  const decoded = decodeHtml(html)
-    .replace(/\\"/g, '"')
-    .replace(/\\u0026/g, "&");
-
-  const objects: string[] = [];
-  let depth = 0;
-  let start = -1;
-  let inString = false;
-  let escaped = false;
-
-  for (let i = 0; i < decoded.length; i += 1) {
-    const char = decoded[i];
-
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      inString = true;
-      continue;
-    }
-
-    if (char === "{") {
-      if (depth === 0) start = i;
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-
-      if (depth === 0 && start >= 0) {
-        const candidate = decoded.slice(start, i + 1);
-
-        if (
-          /confirmed/i.test(candidate) &&
-          /goalie|goalkeeper|player/i.test(candidate)
-        ) {
-          objects.push(candidate);
-        }
-
-        start = -1;
-      }
-    }
-  }
-
-  /*
-   * Because undocumented source markup can vary, the first production test
-   * must prove parsing. If structured extraction fails, return a descriptive
-   * error instead of falling back to positional guessing.
-   */
-  const parsedFromJson: unknown[] = [];
-
-  for (const objectText of objects) {
-    try {
-      parsedFromJson.push(JSON.parse(objectText));
-    } catch {
-      // Ignore fragments that are not standalone JSON.
-    }
-  }
-
-  const records: Array<Record<string, unknown>> = [];
-
-  function walk(value: unknown) {
-    if (Array.isArray(value)) {
-      for (const item of value) walk(item);
-      return;
-    }
-
-    if (!value || typeof value !== "object") return;
-
-    const record = value as Record<string, unknown>;
-    records.push(record);
-
-    for (const child of Object.values(record)) {
-      walk(child);
-    }
-  }
-
-  for (const root of parsedFromJson) {
-    walk(root);
-  }
-
-  function stringField(
-    record: Record<string, unknown>,
-    names: string[],
-  ): string | null {
-    for (const name of names) {
-      const value = record[name];
-      if (typeof value === "string" && value.trim()) {
-        return value.trim();
-      }
-    }
-    return null;
-  }
-
-  /*
-   * Collect likely goalie records. This intentionally remains conservative.
-   */
-  const goalieCandidates: Array<{
-    goalieName: string;
-    teamName: string | null;
-    status: "projected" | "confirmed";
-    confirmedAt: string | null;
-    raw: Record<string, unknown>;
-  }> = [];
-
-  for (const record of records) {
-    const rawStatus = stringField(record, [
-      "status",
-      "goalieStatus",
-      "startingGoalieStatus",
-      "confirmationStatus",
-    ]);
-
-    if (
-      !rawStatus ||
-      !["confirmed", "unconfirmed"].includes(normalize(rawStatus))
-    ) {
-      continue;
-    }
-
-    const goalieName =
-      stringField(record, [
-        "goalieName",
-        "playerName",
-        "name",
-        "fullName",
-        "displayName",
-      ]) ?? null;
-
-    if (!goalieName) continue;
-
-    const teamName = stringField(record, [
-      "teamName",
-      "team",
-      "teamDisplayName",
-      "teamFullName",
-    ]);
-
-    const confirmedAt = stringField(record, [
-      "confirmedAt",
-      "confirmationTime",
-      "confirmedDate",
-      "updatedAt",
-    ]);
-
-    goalieCandidates.push({
-      goalieName,
-      teamName,
-      status:
-        normalize(rawStatus) === "confirmed" ? "confirmed" : "projected",
-      confirmedAt,
-      raw: record,
-    });
-  }
-
-  /*
-   * Current Daily Faceoff server data may not expose its nested structure as
-   * simple standalone JSON objects. In that case we deliberately stop here.
-   * We will inspect the dry-run diagnostic rather than guess.
-   */
-  if (goalieCandidates.length === 0) {
-    throw new Error(
-      `Daily Faceoff HTML was reachable and contained ${statusMatches.length} goalie statuses and ${isoTimes.length} game timestamps, but no safe structured goalie records could be extracted. Parser needs to be adjusted to the current server payload.`,
-    );
-  }
-
-  /*
-   * We only build matchups when records themselves provide enough relationship
-   * information. This prevents accidentally swapping away/home goalies.
-   */
-  const matchupRecords = records.filter((record) => {
-    const away =
-      stringField(record, [
-        "awayTeamName",
-        "awayTeam",
-        "away",
-      ]) ?? null;
-
-    const home =
-      stringField(record, [
-        "homeTeamName",
-        "homeTeam",
-        "home",
-      ]) ?? null;
-
-    const time =
-      stringField(record, [
-        "startTime",
-        "gameTime",
-        "gameDate",
-        "dateTime",
-      ]) ?? null;
-
-    return Boolean(away && home && time);
+  const response = await fetch(NHL_FANTASY_DATA_MCP_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store",
   });
 
-  const matchups: ParsedMatchup[] = [];
+  const responseText = await response.text();
 
-  for (const record of matchupRecords) {
-    const awayTeamName = stringField(record, [
-      "awayTeamName",
-      "awayTeam",
-      "away",
-    ]);
-
-    const homeTeamName = stringField(record, [
-      "homeTeamName",
-      "homeTeam",
-      "home",
-    ]);
-
-    const startTime = stringField(record, [
-      "startTime",
-      "gameTime",
-      "gameDate",
-      "dateTime",
-    ]);
-
-    if (!awayTeamName || !homeTeamName || !startTime) continue;
-
-    const awayGoalie = goalieCandidates.find(
-      (goalie) =>
-        goalie.teamName &&
-        compactNormalize(goalie.teamName) === compactNormalize(awayTeamName),
-    );
-
-    const homeGoalie = goalieCandidates.find(
-      (goalie) =>
-        goalie.teamName &&
-        compactNormalize(goalie.teamName) === compactNormalize(homeTeamName),
-    );
-
-    if (!awayGoalie || !homeGoalie) continue;
-
-    matchups.push({
-      awayTeamName,
-      homeTeamName,
-      startTime,
-      awayGoalie: {
-        teamName: awayTeamName,
-        goalieName: awayGoalie.goalieName,
-        rawStatus:
-          awayGoalie.status === "confirmed"
-            ? "Confirmed"
-            : "Unconfirmed",
-        starterStatus: awayGoalie.status,
-        confirmedAt: awayGoalie.confirmedAt,
-      },
-      homeGoalie: {
-        teamName: homeTeamName,
-        goalieName: homeGoalie.goalieName,
-        rawStatus:
-          homeGoalie.status === "confirmed"
-            ? "Confirmed"
-            : "Unconfirmed",
-        starterStatus: homeGoalie.status,
-        confirmedAt: homeGoalie.confirmedAt,
-      },
-    });
-  }
-
-  if (matchups.length === 0) {
+  if (!response.ok) {
     throw new Error(
-      `Daily Faceoff structured data produced ${goalieCandidates.length} goalie candidates but no safely related matchups. Parser needs adjustment before writes are allowed.`,
+      `NHL Fantasy Data returned HTTP ${response.status}: ${responseText.slice(
+        0,
+        500,
+      )}`,
     );
   }
 
-  return matchups;
+  let parsed: McpResponse;
+
+  try {
+    parsed = JSON.parse(responseText) as McpResponse;
+  } catch {
+    throw new Error("NHL Fantasy Data returned invalid JSON.");
+  }
+
+  if (parsed.error) {
+    throw new Error(
+      `NHL Fantasy Data MCP error: ${
+        parsed.error.message ??
+        `code ${parsed.error.code ?? "unknown"}`
+      }`,
+    );
+  }
+
+  if (parsed.result?.isError) {
+    const text =
+      parsed.result.content
+        ?.map((item) => item.text ?? "")
+        .filter(Boolean)
+        .join(" ") ?? "Unknown NHL Fantasy Data tool error.";
+
+    throw new Error(text);
+  }
+
+  const structured = parsed.result?.structuredContent;
+
+  if (!structured) {
+    throw new Error(
+      "NHL Fantasy Data response did not contain structuredContent.",
+    );
+  }
+
+  if (!Array.isArray(structured.games)) {
+    throw new Error(
+      "NHL Fantasy Data structuredContent.games was not an array.",
+    );
+  }
+
+  return structured;
 }
 
-function teamMatches(source: string, team: DbTeam): boolean {
-  const sourceNorm = compactNormalize(source);
+function findTeam(
+  teams: DbTeam[],
+  abbreviation: string,
+): DbTeam | null {
+  const normalized = normalize(abbreviation);
 
-  return [
-    team.display_name,
-    team.name,
-    team.abbreviation,
-  ].some((value) => compactNormalize(value) === sourceNorm);
+  const matches = teams.filter(
+    (team) => normalize(team.abbreviation) === normalized,
+  );
+
+  return matches.length === 1 ? matches[0] : null;
 }
 
-function goalieMatches(source: string, player: DbPlayer): boolean {
-  return compactNormalize(source) === compactNormalize(player.display_name);
+function findPlayer(
+  players: DbPlayer[],
+  sourceGoalie: SourceGoalie,
+  teamId: number,
+): {
+  player: DbPlayer | null;
+  method:
+    | "nhl_player_id"
+    | "team_name"
+    | "unmapped"
+    | "ambiguous";
+  candidateCount: number;
+} {
+  /*
+   * Preferred mapping:
+   * official NHL player ID.
+   */
+  if (sourceGoalie.nhl_player_id != null) {
+    const byOfficialId = players.filter(
+      (player) =>
+        player.nhl_player_id === sourceGoalie.nhl_player_id,
+    );
+
+    if (byOfficialId.length === 1) {
+      return {
+        player: byOfficialId[0],
+        method: "nhl_player_id",
+        candidateCount: 1,
+      };
+    }
+
+    if (byOfficialId.length > 1) {
+      return {
+        player: null,
+        method: "ambiguous",
+        candidateCount: byOfficialId.length,
+      };
+    }
+  }
+
+  /*
+   * Safe fallback:
+   * same team + goalie position + normalized exact name.
+   */
+  const byTeamAndName = players.filter(
+    (player) =>
+      player.team_id === teamId &&
+      isGoalie(player) &&
+      normalize(player.display_name) === normalize(sourceGoalie.name),
+  );
+
+  if (byTeamAndName.length === 1) {
+    return {
+      player: byTeamAndName[0],
+      method: "team_name",
+      candidateCount: 1,
+    };
+  }
+
+  if (byTeamAndName.length > 1) {
+    return {
+      player: null,
+      method: "ambiguous",
+      candidateCount: byTeamAndName.length,
+    };
+  }
+
+  return {
+    player: null,
+    method: "unmapped",
+    candidateCount: 0,
+  };
+}
+
+function findGame(
+  games: DbGame[],
+  sourceGame: SourceGame,
+): {
+  game: DbGame | null;
+  candidateCount: number;
+} {
+  const externalGameId = String(sourceGame.nhl_game_id);
+
+  const matches = games.filter(
+    (game) => String(game.nhl_game_id ?? "") === externalGameId,
+  );
+
+  return {
+    game: matches.length === 1 ? matches[0] : null,
+    candidateCount: matches.length,
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -497,7 +385,9 @@ export async function POST(request: NextRequest) {
           success: false,
           error: "Unauthorized.",
         },
-        { status: 401 },
+        {
+          status: 401,
+        },
       );
     }
 
@@ -510,293 +400,420 @@ export async function POST(request: NextRequest) {
     }
 
     const date = body.date?.trim() || easternDateString();
+
+    /*
+     * Safe default:
+     * if dryRun is omitted, do not write.
+     */
     const dryRun = body.dryRun !== false;
 
-    if (!validDate(date)) {
+    if (!isValidDate(date)) {
       return NextResponse.json(
         {
           success: false,
-          error: "date must use YYYY-MM-DD.",
+          error: "date must use YYYY-MM-DD format.",
         },
-        { status: 400 },
-      );
-    }
-
-    const sourceUrl =
-      `https://www.dailyfaceoff.com/starting-goalies/${date}`;
-
-    const sourceResponse = await fetch(sourceUrl, {
-      method: "GET",
-      headers: {
-        Accept: "text/html,application/xhtml+xml",
-        "User-Agent":
-          "Mozilla/5.0 (compatible; Gridiron365/1.0; +https://www.gridiron365fantasy.com)",
-      },
-      cache: "no-store",
-    });
-
-    const html = await sourceResponse.text();
-
-    if (!sourceResponse.ok) {
-      throw new Error(
-        `Daily Faceoff returned HTTP ${sourceResponse.status}.`,
-      );
-    }
-
-    if (!html.trim()) {
-      throw new Error("Daily Faceoff returned an empty response.");
-    }
-
-    let parsedMatchups: ParsedMatchup[];
-
-    try {
-      parsedMatchups = parseDailyFaceoffHtml(html);
-    } catch (error) {
-      return NextResponse.json(
         {
-          success: false,
-          sourceProvider: "Daily Faceoff",
-          sourceUrl,
-          date,
-          dryRun,
-          sourceHttpStatus: sourceResponse.status,
-          htmlLength: html.length,
-          containsConfirmed:
-            /\bConfirmed\b/i.test(stripHtml(html)),
-          containsUnconfirmed:
-            /\bUnconfirmed\b/i.test(stripHtml(html)),
-          error:
-            error instanceof Error
-              ? error.message
-              : "Unable to parse Daily Faceoff.",
-          durationMs: Date.now() - startedAt,
+          status: 400,
         },
-        { status: 422 },
       );
     }
+
+    const source = await fetchStartingGoalies(date);
 
     const supabase = adminClient();
 
     /*
-     * Daily Faceoff hockey-day pages can contain games after midnight UTC.
-     * Search a generous UTC window around the requested date and then match
-     * teams + start time.
+     * Zero NHL games is a valid successful result.
      */
-    const startWindow =
-      new Date(`${date}T00:00:00.000Z`);
+    if (source.games.length === 0) {
+      return NextResponse.json({
+        success: true,
+        sourceProvider: "NHL Fantasy Data",
+        date,
+        dryRun,
+        generatedAt: source.generated_at,
+        projectionSource: source.projection_source,
 
-    startWindow.setUTCHours(startWindow.getUTCHours() - 8);
+        sourceGames: 0,
+        sourceStarters: 0,
 
-    const endWindow = new Date(`${date}T00:00:00.000Z`);
-    endWindow.setUTCDate(endWindow.getUTCDate() + 2);
-    endWindow.setUTCHours(endWindow.getUTCHours() + 8);
+        mappedGames: 0,
+        mappedGoalies: 0,
 
-    const [
-      gamesResult,
-      teamsResult,
-      playersResult,
-    ] = await Promise.all([
+        projected: 0,
+        confirmed: 0,
+
+        written: 0,
+        skippedStartedGames: 0,
+        failed: 0,
+
+        warnings: source.warnings ?? [],
+        results: [],
+
+        durationMs: Date.now() - startedAt,
+      });
+    }
+
+    const externalGameIds = source.games.map((game) =>
+      String(game.nhl_game_id),
+    );
+
+    /*
+     * IMPORTANT:
+     * Keep these .select() values as literal strings.
+     * Supabase TypeScript uses the literal to infer the selected row shape.
+     */
+    const [gamesResult, teamsResult, playersResult] = await Promise.all([
       supabase
         .from("nhl_games")
         .select(
-          "id,nhl_game_id,start_time,away_team_id,home_team_id,status_completed",
+          "id, nhl_game_id, start_time, away_team_id, home_team_id, status_completed",
         )
-        .gte("start_time", startWindow.toISOString())
-        .lt("start_time", endWindow.toISOString()),
+        .in("nhl_game_id", externalGameIds),
 
       supabase
         .from("nhl_teams")
-        .select(
-          "id,abbreviation,display_name,name",
-        )
+        .select("id, abbreviation, display_name")
         .eq("active", true),
 
       supabase
         .from("nhl_players")
         .select(
-          "id,team_id,display_name,position,position_group,active",
+          "id, nhl_player_id, team_id, display_name, position, position_group, active",
         )
         .eq("active", true),
     ]);
 
-    if (gamesResult.error) throw gamesResult.error;
-    if (teamsResult.error) throw teamsResult.error;
-    if (playersResult.error) throw playersResult.error;
+    if (gamesResult.error) {
+      throw gamesResult.error;
+    }
+
+    if (teamsResult.error) {
+      throw teamsResult.error;
+    }
+
+    if (playersResult.error) {
+      throw playersResult.error;
+    }
 
     const games = (gamesResult.data ?? []) as DbGame[];
     const teams = (teamsResult.data ?? []) as DbTeam[];
     const players = (playersResult.data ?? []) as DbPlayer[];
 
-    const teamById = new Map(
-      teams.map((team) => [team.id, team]),
-    );
-
     const results: Array<Record<string, unknown>> = [];
 
+    let sourceStarters = 0;
     let mappedGames = 0;
     let mappedGoalies = 0;
-    let failed = 0;
+
+    let projected = 0;
+    let confirmed = 0;
+
     let written = 0;
+    let skippedStartedGames = 0;
+    let failed = 0;
 
-    for (const matchup of parsedMatchups) {
-      const awayTeamCandidates = teams.filter((team) =>
-        teamMatches(matchup.awayTeamName, team),
-      );
+    const nowMs = Date.now();
 
-      const homeTeamCandidates = teams.filter((team) =>
-        teamMatches(matchup.homeTeamName, team),
-      );
+    for (const sourceGame of source.games) {
+      /*
+       * Game mapping uses the official NHL game ID.
+       */
+      const gameMatch = findGame(games, sourceGame);
 
-      if (
-        awayTeamCandidates.length !== 1 ||
-        homeTeamCandidates.length !== 1
-      ) {
-        failed += 1;
-
-        results.push({
-          success: false,
-          stage: "team_mapping",
-          matchup,
-          awayTeamCandidateCount:
-            awayTeamCandidates.length,
-          homeTeamCandidateCount:
-            homeTeamCandidates.length,
-        });
-
-        continue;
-      }
-
-      const awayTeam = awayTeamCandidates[0];
-      const homeTeam = homeTeamCandidates[0];
-
-      const sourceStart = new Date(matchup.startTime);
-      const sourceStartMs = sourceStart.getTime();
-
-      const gameCandidates = games.filter((game) => {
-        if (
-          game.away_team_id !== awayTeam.id ||
-          game.home_team_id !== homeTeam.id
-        ) {
-          return false;
-        }
-
-        const gameMs = new Date(game.start_time).getTime();
-
-        return (
-          Number.isFinite(sourceStartMs) &&
-          Math.abs(gameMs - sourceStartMs) <=
-            3 * 60 * 60 * 1000
-        );
-      });
-
-      if (gameCandidates.length !== 1) {
+      if (!gameMatch.game) {
         failed += 1;
 
         results.push({
           success: false,
           stage: "game_mapping",
-          matchup,
-          awayTeamId: awayTeam.id,
-          homeTeamId: homeTeam.id,
-          gameCandidateCount: gameCandidates.length,
-          gameCandidates: gameCandidates.map((game) => ({
-            id: game.id,
-            nhlGameId: game.nhl_game_id,
-            startTime: game.start_time,
-          })),
+
+          sourceNhlGameId: sourceGame.nhl_game_id,
+          awayTeam: sourceGame.away_team,
+          homeTeam: sourceGame.home_team,
+
+          candidateCount: gameMatch.candidateCount,
         });
 
         continue;
       }
 
-      const game = gameCandidates[0];
+      const game = gameMatch.game;
+
       mappedGames += 1;
+
+      /*
+       * This source is only for pregame intelligence.
+       *
+       * Once puck drop occurs, official NHL Gamecenter
+       * becomes authoritative for actual goalie_started.
+       */
+      const gameStartMs = new Date(game.start_time).getTime();
+
+      if (
+        game.status_completed ||
+        (Number.isFinite(gameStartMs) && gameStartMs <= nowMs)
+      ) {
+        skippedStartedGames += 1;
+
+        results.push({
+          success: true,
+          stage: "skipped_started_game",
+
+          internalGameId: game.id,
+          nhlGameId: game.nhl_game_id,
+          gameStart: game.start_time,
+
+          awayTeam: sourceGame.away_team,
+          homeTeam: sourceGame.home_team,
+        });
+
+        continue;
+      }
+
+      /*
+       * NHL Fantasy Data returns team abbreviations.
+       */
+      const awayTeam = findTeam(teams, sourceGame.away_team);
+      const homeTeam = findTeam(teams, sourceGame.home_team);
+
+      if (!awayTeam || !homeTeam) {
+        failed += 1;
+
+        results.push({
+          success: false,
+          stage: "team_mapping",
+
+          internalGameId: game.id,
+          nhlGameId: game.nhl_game_id,
+
+          sourceAwayTeam: sourceGame.away_team,
+          sourceHomeTeam: sourceGame.home_team,
+
+          awayTeamMapped: Boolean(awayTeam),
+          homeTeamMapped: Boolean(homeTeam),
+        });
+
+        continue;
+      }
+
+      /*
+       * Safety check:
+       * make sure the source teams agree with our NHL game.
+       */
+      if (
+        game.away_team_id !== awayTeam.id ||
+        game.home_team_id !== homeTeam.id
+      ) {
+        failed += 1;
+
+        results.push({
+          success: false,
+          stage: "game_team_crosscheck",
+
+          internalGameId: game.id,
+          nhlGameId: game.nhl_game_id,
+
+          databaseAwayTeamId: game.away_team_id,
+          sourceAwayTeamId: awayTeam.id,
+
+          databaseHomeTeamId: game.home_team_id,
+          sourceHomeTeamId: homeTeam.id,
+        });
+
+        continue;
+      }
 
       const sides = [
         {
-          side: "away",
+          side: "away" as const,
           team: awayTeam,
-          goalie: matchup.awayGoalie,
+          sourceTeam: sourceGame.away_team,
+          sourceGoalie: sourceGame.goalies.away.starter,
+          alternatives: sourceGame.goalies.away.alternatives,
+          starterProjection:
+            sourceGame.goalies.away.starter_projection,
         },
         {
-          side: "home",
+          side: "home" as const,
           team: homeTeam,
-          goalie: matchup.homeGoalie,
+          sourceTeam: sourceGame.home_team,
+          sourceGoalie: sourceGame.goalies.home.starter,
+          alternatives: sourceGame.goalies.home.alternatives,
+          starterProjection:
+            sourceGame.goalies.home.starter_projection,
         },
-      ] as const;
+      ];
 
       for (const side of sides) {
-        const goalieCandidates = players.filter((player) => {
-          if (player.team_id !== side.team.id) return false;
-
-          const position =
-            normalize(player.position);
-          const group =
-            normalize(player.position_group);
-
-          const isGoalie =
-            position === "g" ||
-            position === "goalie" ||
-            position === "goaltender" ||
-            group === "g" ||
-            group === "goalie" ||
-            group === "goaltender";
-
-          if (!isGoalie) return false;
-
-          return goalieMatches(
-            side.goalie.goalieName,
-            player,
-          );
-        });
-
-        if (goalieCandidates.length !== 1) {
-          failed += 1;
-
+        /*
+         * The source may know the game but not yet have
+         * a selected starter.
+         */
+        if (!side.sourceGoalie) {
           results.push({
-            success: false,
-            stage: "goalie_mapping",
+            success: true,
+            stage: "no_starter",
+
             side: side.side,
+
             internalGameId: game.id,
             nhlGameId: game.nhl_game_id,
+
             teamId: side.team.id,
             team: side.team.display_name,
-            goalieName: side.goalie.goalieName,
-            goalieCandidateCount:
-              goalieCandidates.length,
           });
 
           continue;
         }
 
-        const goalie = goalieCandidates[0];
+        sourceStarters += 1;
+
+        /*
+         * Player mapping:
+         *
+         * 1. official NHL player ID
+         * 2. safe same-team goalie-name fallback
+         */
+        const playerMatch = findPlayer(
+          players,
+          side.sourceGoalie,
+          side.team.id,
+        );
+
+        if (!playerMatch.player) {
+          failed += 1;
+
+          results.push({
+            success: false,
+            stage: "goalie_mapping",
+
+            side: side.side,
+
+            internalGameId: game.id,
+            nhlGameId: game.nhl_game_id,
+
+            teamId: side.team.id,
+            team: side.team.display_name,
+
+            sourceNhlPlayerId: side.sourceGoalie.nhl_player_id,
+            sourceGoalieName: side.sourceGoalie.name,
+
+            mappingMethod: playerMatch.method,
+            candidateCount: playerMatch.candidateCount,
+          });
+
+          continue;
+        }
+
+        const player = playerMatch.player;
+
         mappedGoalies += 1;
 
+        /*
+         * G365 pregame status:
+         *
+         * externally_confirmed=false -> projected
+         * externally_confirmed=true  -> confirmed
+         */
+        const starterStatus: "projected" | "confirmed" =
+          side.sourceGoalie.externally_confirmed
+            ? "confirmed"
+            : "projected";
+
+        if (starterStatus === "confirmed") {
+          confirmed += 1;
+        } else {
+          projected += 1;
+        }
+
+        const nowIso = new Date().toISOString();
+
+        /*
+         * Preserve the useful source information inside
+         * raw_source_data without expanding the DB schema.
+         */
         const record = {
+          /*
+           * INTERNAL public.nhl_games.id.
+           *
+           * Do not confuse this with the source's
+           * external NHL game ID.
+           */
           nhl_game_id: game.id,
+
           team_id: side.team.id,
-          nhl_player_id: goalie.id,
-          goalie_name: side.goalie.goalieName,
-          starter_status: side.goalie.starterStatus,
-          source_provider: "Daily Faceoff",
-          source_url: sourceUrl,
-          source_confirmed_at:
-            side.goalie.starterStatus === "confirmed"
-              ? side.goalie.confirmedAt
-              : null,
-          last_seen_at: new Date().toISOString(),
+
+          /*
+           * INTERNAL public.nhl_players.id.
+           */
+          nhl_player_id: player.id,
+
+          goalie_name: side.sourceGoalie.name,
+
+          starter_status: starterStatus,
+
+          source_provider: "NHL Fantasy Data",
+
+          source_url: NHL_FANTASY_DATA_MCP_URL,
+
+          /*
+           * The source tells us whether the starter has
+           * been externally confirmed but does not expose
+           * a dedicated confirmation timestamp.
+           *
+           * Do not invent one.
+           */
+          source_confirmed_at: null,
+
+          last_seen_at: nowIso,
+
           raw_source_data: {
-            date,
+            schemaVersion: source.schema_version,
+            sourceDate: source.date,
+            generatedAt: source.generated_at,
+            projectionSource: source.projection_source,
+
+            sourceNhlGameId: sourceGame.nhl_game_id,
+            sourceGameStart: sourceGame.start_time,
+
             side: side.side,
-            sourceStatus: side.goalie.rawStatus,
-            sourceTeamName: side.goalie.teamName,
-            sourceGoalieName: side.goalie.goalieName,
-            sourceGameStart: matchup.startTime,
+            sourceTeam: side.sourceTeam,
+
+            sourceGoalie: {
+              nhlPlayerId: side.sourceGoalie.nhl_player_id,
+              name: side.sourceGoalie.name,
+
+              startProbability:
+                side.sourceGoalie.start_probability,
+
+              externallyConfirmed:
+                side.sourceGoalie.externally_confirmed,
+
+              lastStartDate:
+                side.sourceGoalie.last_start_date,
+            },
+
+            alternatives: side.alternatives,
+
+            starterProjection: side.starterProjection,
+
+            gameProjection: sourceGame.game_projection,
+
+            playerMappingMethod: playerMatch.method,
           },
-          updated_at: new Date().toISOString(),
+
+          updated_at: nowIso,
         };
 
         if (!dryRun) {
+          /*
+           * One current starter record per game/team.
+           *
+           * If the projected goalie changes, this updates
+           * the same row instead of creating a duplicate.
+           */
           const { error: writeError } = await supabase
             .from("nhl_starting_goalies")
             .upsert(record, {
@@ -809,12 +826,17 @@ export async function POST(request: NextRequest) {
             results.push({
               success: false,
               stage: "database_write",
+
               side: side.side,
+
               internalGameId: game.id,
               nhlGameId: game.nhl_game_id,
+
               teamId: side.team.id,
-              goalieId: goalie.id,
-              goalieName: goalie.display_name,
+
+              goalieId: player.id,
+              goalie: player.display_name,
+
               error: writeError.message,
             });
 
@@ -826,47 +848,86 @@ export async function POST(request: NextRequest) {
 
         results.push({
           success: true,
+
           stage: dryRun ? "dry_run" : "written",
+
           side: side.side,
+
           internalGameId: game.id,
           nhlGameId: game.nhl_game_id,
           gameStart: game.start_time,
+
           teamId: side.team.id,
           team: side.team.display_name,
-          goalieId: goalie.id,
-          goalie: goalie.display_name,
-          starterStatus: side.goalie.starterStatus,
+
+          goalieId: player.id,
+          officialNhlPlayerId: player.nhl_player_id,
+          goalie: player.display_name,
+
+          mappingMethod: playerMatch.method,
+
+          starterStatus,
+
+          startProbability:
+            side.sourceGoalie.start_probability,
+
+          externallyConfirmed:
+            side.sourceGoalie.externally_confirmed,
+
+          projectedShotsAgainst:
+            side.starterProjection?.projected_shots_against ?? null,
+
+          projectedSaves:
+            side.starterProjection?.projected_saves ?? null,
         });
       }
     }
 
     return NextResponse.json({
       success: failed === 0,
-      sourceProvider: "Daily Faceoff",
-      sourceUrl,
+
+      sourceProvider: "NHL Fantasy Data",
+
       date,
       dryRun,
-      parsedMatchups: parsedMatchups.length,
-      expectedGoalieRecords:
-        parsedMatchups.length * 2,
+
+      generatedAt: source.generated_at,
+      projectionSource: source.projection_source,
+
+      sourceGames: source.games.length,
+      sourceStarters,
+
       mappedGames,
       mappedGoalies,
+
+      projected,
+      confirmed,
+
       written,
+      skippedStartedGames,
       failed,
+
+      warnings: source.warnings ?? [],
+
       results,
+
       durationMs: Date.now() - startedAt,
     });
   } catch (error) {
     return NextResponse.json(
       {
         success: false,
+
         error:
           error instanceof Error
             ? error.message
-            : "Unknown starting-goalie synchronization error.",
+            : "Unknown NHL starting-goalie synchronization error.",
+
         durationMs: Date.now() - startedAt,
       },
-      { status: 500 },
+      {
+        status: 500,
+      },
     );
   }
 }
