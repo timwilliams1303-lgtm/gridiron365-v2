@@ -54,7 +54,11 @@ type MatchedInjury = {
   matchMethod:
     | "cbs_player_id"
     | "team_name_position"
-    | "team_name";
+    | "team_name"
+    | "team_name_alias_position"
+    | "team_name_alias"
+    | "historical_exact_name_position"
+    | "historical_exact_name";
 };
 
 type UnmatchedInjury = {
@@ -254,6 +258,44 @@ function normalizeName(
     )
     .trim()
     .toLowerCase();
+}
+
+function normalizeComparableName(
+  value: string
+) {
+  const normalized =
+    normalizeName(value);
+
+  const parts =
+    normalized
+      .split(" ")
+      .filter(Boolean);
+
+  if (parts.length === 0) {
+    return "";
+  }
+
+  /*
+   * CBS sometimes uses a formal first name while the
+   * official NHL roster uses the player's shorter name.
+   * Keep this intentionally narrow. This is NOT fuzzy matching.
+   */
+  const firstNameAliases:
+    Record<string, string> = {
+      benjamin: "ben",
+      ben: "ben",
+      matthew: "matt",
+      matt: "matt",
+    };
+
+  const first =
+    firstNameAliases[parts[0]] ??
+    parts[0];
+
+  return [
+    first,
+    ...parts.slice(1),
+  ].join(" ");
 }
 
 function normalizePosition(
@@ -905,6 +947,10 @@ function findPlayerMatch({
       reason:
         string;
     } {
+  /* =====================================================
+     1. EXISTING CBS PLAYER ID
+     ===================================================== */
+
   const byCbsId =
     players.filter(
       player =>
@@ -944,6 +990,16 @@ function findPlayerMatch({
       injury.playerName
     );
 
+  const comparableInjuryName =
+    normalizeComparableName(
+      injury.playerName
+    );
+
+  const injuryPosition =
+    normalizePosition(
+      injury.position
+    );
+
   const teamPlayers =
     players.filter(
       player =>
@@ -951,7 +1007,11 @@ function findPlayerMatch({
         team.id
     );
 
-  const nameMatches =
+  /* =====================================================
+     2. EXACT NAME ON CURRENT G365 TEAM
+     ===================================================== */
+
+  const exactTeamNameMatches =
     teamPlayers.filter(
       player =>
         normalizeName(
@@ -961,28 +1021,10 @@ function findPlayerMatch({
     );
 
   if (
-    nameMatches.length ===
-    0
-  ) {
-    return {
-      player: null,
-      method: null,
-
-      reason:
-        "No player on the matching G365 NHL team has this normalized name.",
-    };
-  }
-
-  const injuryPosition =
-    normalizePosition(
-      injury.position
-    );
-
-  if (
     injuryPosition
   ) {
     const positionMatches =
-      nameMatches.filter(
+      exactTeamNameMatches.filter(
         player =>
           normalizePosition(
             player.position
@@ -1012,21 +1054,203 @@ function findPlayerMatch({
         method: null,
 
         reason:
-          "Multiple G365 players matched team, name, and position.",
+          "Multiple G365 players matched team, exact name, and position.",
       };
     }
   }
 
   if (
-    nameMatches.length ===
+    exactTeamNameMatches.length ===
     1
   ) {
     return {
       player:
-        nameMatches[0],
+        exactTeamNameMatches[0],
 
       method:
         "team_name",
+    };
+  }
+
+  if (
+    exactTeamNameMatches.length >
+    1
+  ) {
+    return {
+      player: null,
+      method: null,
+
+      reason:
+        "Multiple G365 players matched team and exact normalized name.",
+    };
+  }
+
+  /* =====================================================
+     3. SAFE FIRST-NAME ALIAS ON CURRENT TEAM
+
+     CBS can use a formal first name while the NHL roster
+     uses the shorter name. This is intentionally narrow
+     and is NOT general fuzzy matching.
+     ===================================================== */
+
+  const aliasTeamMatches =
+    teamPlayers.filter(
+      player =>
+        normalizeComparableName(
+          player.display_name
+        ) ===
+        comparableInjuryName
+    );
+
+  if (
+    injuryPosition
+  ) {
+    const positionMatches =
+      aliasTeamMatches.filter(
+        player =>
+          normalizePosition(
+            player.position
+          ) ===
+          injuryPosition
+      );
+
+    if (
+      positionMatches.length ===
+      1
+    ) {
+      return {
+        player:
+          positionMatches[0],
+
+        method:
+          "team_name_alias_position",
+      };
+    }
+
+    if (
+      positionMatches.length >
+      1
+    ) {
+      return {
+        player: null,
+        method: null,
+
+        reason:
+          "Multiple G365 players matched team, safe name alias, and position.",
+      };
+    }
+  }
+
+  if (
+    aliasTeamMatches.length ===
+    1
+  ) {
+    return {
+      player:
+        aliasTeamMatches[0],
+
+      method:
+        "team_name_alias",
+    };
+  }
+
+  if (
+    aliasTeamMatches.length >
+    1
+  ) {
+    return {
+      player: null,
+      method: null,
+
+      reason:
+        "Multiple G365 players matched team and safe name alias.",
+    };
+  }
+
+  /* =====================================================
+     4. UNIQUE HISTORICAL / TEAMLESS EXACT NAME
+
+     CBS may still list an injured player for a team while
+     the official NHL roster feed currently considers that
+     player inactive. We may attach the injury information
+     to the existing historical record, but we DO NOT
+     reactivate the player or assign a team.
+     ===================================================== */
+
+  const historicalExactMatches =
+    players.filter(
+      player =>
+        player.team_id ===
+          null &&
+        !player.active &&
+        normalizeName(
+          player.display_name
+        ) ===
+          injuryName
+    );
+
+  if (
+    injuryPosition
+  ) {
+    const positionMatches =
+      historicalExactMatches.filter(
+        player =>
+          normalizePosition(
+            player.position
+          ) ===
+          injuryPosition
+      );
+
+    if (
+      positionMatches.length ===
+      1
+    ) {
+      return {
+        player:
+          positionMatches[0],
+
+        method:
+          "historical_exact_name_position",
+      };
+    }
+
+    if (
+      positionMatches.length >
+      1
+    ) {
+      return {
+        player: null,
+        method: null,
+
+        reason:
+          "Multiple historical G365 players matched exact name and position.",
+      };
+    }
+  }
+
+  if (
+    historicalExactMatches.length ===
+    1
+  ) {
+    return {
+      player:
+        historicalExactMatches[0],
+
+      method:
+        "historical_exact_name",
+    };
+  }
+
+  if (
+    historicalExactMatches.length >
+    1
+  ) {
+    return {
+      player: null,
+      method: null,
+
+      reason:
+        "Multiple historical G365 players matched the exact normalized name.",
     };
   }
 
@@ -1035,7 +1259,7 @@ function findPlayerMatch({
     method: null,
 
     reason:
-      "Multiple G365 players matched team and normalized name.",
+      "No safe G365 NHL player match was found for this CBS injury row.",
   };
 }
 
@@ -1700,6 +1924,78 @@ export async function POST(
           cleared +=
             1;
         }
+      }
+    }
+
+    /* =====================================================
+       CLEAR STALE CBS INJURIES ON HISTORICAL / TEAMLESS
+       PLAYERS
+
+       Only do this on a full-league sync. A team-scoped
+       request cannot safely determine which teamless
+       historical players belong to that requested team.
+    ===================================================== */
+
+    if (
+      !dryRun &&
+      !requestedTeam
+    ) {
+      const staleHistoricalPlayers =
+        players.filter(
+          player =>
+            player.team_id ===
+              null &&
+            player
+              .injury_source ===
+              "CBS Sports" &&
+            !seenPlayerIds.has(
+              player.id
+            )
+        );
+
+      for (
+        const player
+        of staleHistoricalPlayers
+      ) {
+        const {
+          error:
+            clearError,
+        } =
+          await supabase
+            .from(
+              "nhl_players"
+            )
+            .update({
+              injury_status:
+                null,
+
+              injury_detail:
+                null,
+
+              injury_return_date:
+                null,
+
+              injury_updated_at:
+                now,
+
+              injury_source:
+                null,
+            })
+            .eq(
+              "id",
+              player.id
+            );
+
+        if (
+          clearError
+        ) {
+          throw new Error(
+            `Unable to clear stale historical injury for ${player.display_name}: ${clearError.message}`
+          );
+        }
+
+        cleared +=
+          1;
       }
     }
 
