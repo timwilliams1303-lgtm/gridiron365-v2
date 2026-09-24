@@ -136,9 +136,6 @@ type NhlPlayerUpsertRow = {
   status:
     string | null;
 
-  injury_status:
-    string | null;
-
   headshot_url:
     string | null;
 
@@ -635,6 +632,30 @@ async function fetchRoster(
 
 /* =========================================================
    PLAYER NORMALIZATION
+
+   IMPORTANT:
+   Injury fields are intentionally NOT written here.
+
+   NHL roster synchronization owns:
+   - identity
+   - team
+   - name
+   - jersey
+   - position
+   - active roster status
+   - headshot
+   - NHL provider metadata
+
+   The dedicated NHL injury synchronization route owns:
+   - injury_status
+   - injury_detail
+   - injury_return_date
+   - injury_updated_at
+   - injury_source
+   - cbs_player_id
+
+   This prevents a roster refresh from erasing current
+   injury information.
 ========================================================= */
 
 function normalizePlayer({
@@ -752,9 +773,6 @@ function normalizePlayer({
 
     status:
       "active",
-
-    injury_status:
-      null,
 
     headshot_url:
       cleanText(
