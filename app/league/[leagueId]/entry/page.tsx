@@ -2,219 +2,149 @@ import {
   notFound,
   redirect,
 } from "next/navigation";
-
 import SeasonLongWeeklyLineup from "@/components/season-long/SeasonLongWeeklyLineup";
 import NflPlayoffsEntry from "@/components/nfl-playoffs/NflPlayoffsEntry";
-
 import {
   requireLeagueMember,
 } from "@/lib/leagues/requireLeagueMember";
-
 import {
   createSupabaseServerClient,
 } from "@/lib/supabase/server";
-
-
 type PageProps = {
   params:
     Promise<{
       leagueId: string;
     }>;
-
   searchParams:
     Promise<{
       edit?: string;
     }>;
 };
-
-
 type SeasonLongSettingsRow = {
   season:
     number;
-
   competition_format:
     | "total_points"
     | "head_to_head";
-
   weekly_salary_cap:
     number | string | null;
-
   starting_qb:
     number;
-
   starting_rb:
     number;
-
   starting_wr:
     number;
-
   starting_te:
     number;
-
   starting_flex:
     number;
-
   starting_superflex:
     number;
-
   starting_k:
     number;
-
   starting_dst:
     number;
 };
-
-
 type WeeklyEntryRow = {
   week:
     number;
-
   status:
     string | null;
-
   salary_used:
     number | string | null;
-
   projected_points:
     number | string | null;
-
   submitted_at:
     string | null;
 };
-
-
 type WeeklyLineupRow = {
   player_id:
     number;
-
   lineup_slot:
     string;
-
   slot_index:
     number;
-
   salary_at_selection:
     number | string | null;
-
   projected_points_at_selection:
     number | string | null;
-
   is_locked:
     boolean;
-
   locked_at:
     string | null;
-
   nfl_game_id:
     number | null;
-
   game_start_at:
     string | null;
-
   opponent_abbreviation:
     string | null;
-
   home_or_away:
     string | null;
 };
-
-
 type SalaryRow = {
   nfl_player_id:
     number;
-
   salary:
     number | string | null;
-
   projected_points:
     number | string | null;
-
   salary_change:
     number | string | null;
-
   salary_change_percent:
     number | string | null;
 };
-
-
 type NflPlayerRow = {
   id:
     number;
-
   full_name:
     string;
-
   primary_position:
     string | null;
-
   team_abbreviation:
     string | null;
-
   status:
     string | null;
-
   is_active:
     boolean | null;
 };
-
-
 type WeeklyProjectionRow = {
   player_id:
     number;
-
   team_abbreviation:
     string | null;
-
   opponent_abbreviation:
     string | null;
-
   home_or_away:
     string | null;
-
   kickoff_at:
     string | null;
-
   is_bye:
     boolean | null;
-
   projected_points:
     number | string | null;
 };
-
-
 type MatchupRankingRow = {
   position:
     string;
-
   opponent_abbreviation:
     string;
-
   matchup_rank:
     number | null;
 };
-
-
 type InjuryRow = {
   nfl_player_id:
     number;
-
   status:
     string | null;
-
   injury_type:
     string | null;
-
   injury_location:
     string | null;
-
   injury_detail:
     string | null;
-
   return_date:
     string | null;
 };
-
-
 function toNumber(
   value:
     number |
@@ -226,15 +156,12 @@ function toNumber(
     Number(
       value ?? 0
     );
-
   return Number.isFinite(
     parsed
   )
     ? parsed
     : 0;
 }
-
-
 function projectionNumber(
   value:
     number |
@@ -246,8 +173,6 @@ function projectionNumber(
     toNumber(value) * 10
   ) / 10;
 }
-
-
 function normalizePosition(
   value:
     string |
@@ -258,24 +183,19 @@ function normalizePosition(
     (value ?? "")
       .trim()
       .toUpperCase();
-
   if (
     position === "PK"
   ) {
     return "K";
   }
-
   if (
     position === "DEF" ||
     position === "D/ST"
   ) {
     return "DST";
   }
-
   return position;
 }
-
-
 function normalizeTeamAbbreviation(
   value:
     string |
@@ -286,12 +206,9 @@ function normalizeTeamAbbreviation(
     (value ?? "")
       .trim()
       .toUpperCase();
-
   return abbreviation ||
     null;
 }
-
-
 export default async function SeasonLongEntryPage({
   params,
   searchParams,
@@ -300,21 +217,15 @@ export default async function SeasonLongEntryPage({
     leagueId,
   } =
     await params;
-
   const query =
     await searchParams;
-
   const editMode =
     query.edit ===
     "1";
-
-
   const access =
     await requireLeagueMember(
       leagueId
     );
-
-
   if (
     access.league.leagueType ===
     "nfl_playoffs"
@@ -327,8 +238,6 @@ export default async function SeasonLongEntryPage({
       />
     );
   }
-
-
   if (
     access.league.leagueType !==
     "season_long"
@@ -337,13 +246,9 @@ export default async function SeasonLongEntryPage({
       `/league/${leagueId}`
     );
   }
-
-
   const rawPlayerSelectionMode =
     access.league
       .playerSelectionMode;
-
-
   if (
     rawPlayerSelectionMode !==
       "salary" &&
@@ -354,32 +259,20 @@ export default async function SeasonLongEntryPage({
       `/league/${leagueId}`
     );
   }
-
-
   const playerSelectionMode:
     "salary" | "no_salary" =
       rawPlayerSelectionMode;
-
-
   if (
     !access.fantasyTeam
   ) {
     notFound();
   }
-
-
   const supabase =
     await createSupabaseServerClient();
-
-
   const fantasyTeamId =
     access.fantasyTeam.id;
-
-
   const season =
     access.league.season;
-
-
   const settingsResult =
     await supabase
       .from(
@@ -403,8 +296,6 @@ export default async function SeasonLongEntryPage({
         leagueId
       )
       .maybeSingle();
-
-
   if (
     settingsResult.error
   ) {
@@ -414,8 +305,6 @@ export default async function SeasonLongEntryPage({
         .message
     );
   }
-
-
   if (
     !settingsResult.data
   ) {
@@ -423,13 +312,9 @@ export default async function SeasonLongEntryPage({
       "Season-Long settings have not been initialized for this league."
     );
   }
-
-
   const settings =
     settingsResult
       .data as SeasonLongSettingsRow;
-
-
   /*
    * The lifecycle creates one entry row per team/week.
    *
@@ -455,8 +340,6 @@ export default async function SeasonLongEntryPage({
           season,
       }
     );
-
-
   if (
     activeWeekResult.error
   ) {
@@ -466,14 +349,10 @@ export default async function SeasonLongEntryPage({
         .message
     );
   }
-
-
   const activeWeekValue =
     Number(
       activeWeekResult.data
     );
-
-
   const currentWeek =
     Number.isInteger(
       activeWeekValue
@@ -481,8 +360,6 @@ export default async function SeasonLongEntryPage({
     activeWeekValue > 0
       ? activeWeekValue
       : 1;
-
-
   /*
    * ============================================================
    * HEAD-TO-HEAD MY ENTRY
@@ -501,8 +378,6 @@ export default async function SeasonLongEntryPage({
     string |
     null =
       null;
-
-
   if (
     settings.competition_format ===
     "head_to_head"
@@ -537,8 +412,6 @@ export default async function SeasonLongEntryPage({
             "playoff",
           ]
         );
-
-
     if (
       matchupResult.error
     ) {
@@ -548,8 +421,6 @@ export default async function SeasonLongEntryPage({
           .message
       );
     }
-
-
     const myMatchups =
       (
         matchupResult.data ??
@@ -565,7 +436,6 @@ export default async function SeasonLongEntryPage({
             .away_fantasy_team_id ===
             fantasyTeamId
       );
-
     const myMatchup =
       myMatchups.find(
         (
@@ -577,8 +447,6 @@ export default async function SeasonLongEntryPage({
       ) ??
       myMatchups[0] ??
       null;
-
-
     if (
       myMatchup &&
       myMatchup
@@ -587,7 +455,6 @@ export default async function SeasonLongEntryPage({
     ) {
       currentMatchupHref =
         `/league/${leagueId}/season-long/matchups/${myMatchup.id}`;
-
       if (
         !editMode
       ) {
@@ -597,8 +464,6 @@ export default async function SeasonLongEntryPage({
       }
     }
   }
-
-
   /*
    * Load only the entry for the lifecycle's active week.
    */
@@ -631,8 +496,6 @@ export default async function SeasonLongEntryPage({
         currentWeek
       )
       .maybeSingle();
-
-
   if (
     currentEntryResult.error
   ) {
@@ -642,13 +505,9 @@ export default async function SeasonLongEntryPage({
         .message
     );
   }
-
-
   const currentEntry =
     currentEntryResult
       .data as WeeklyEntryRow | null;
-
-
   /*
    * Keep lock state current before loading the lineup.
    */
@@ -658,16 +517,12 @@ export default async function SeasonLongEntryPage({
       {
         p_league_id:
           leagueId,
-
         p_season:
           season,
-
         p_week:
           currentWeek,
       }
     );
-
-
   if (
     lockResult.error
   ) {
@@ -677,8 +532,6 @@ export default async function SeasonLongEntryPage({
         .message
     );
   }
-
-
   const lineupResult =
     await supabase
       .from(
@@ -727,8 +580,6 @@ export default async function SeasonLongEntryPage({
             true,
         }
       );
-
-
   if (
     lineupResult.error
   ) {
@@ -738,24 +589,16 @@ export default async function SeasonLongEntryPage({
         .message
     );
   }
-
-
   const lineup =
     (
       lineupResult.data ??
       []
     ) as WeeklyLineupRow[];
-
-
   const isSalary =
     playerSelectionMode ===
     "salary";
-
-
   let salaries:
     SalaryRow[] = [];
-
-
   if (
     isSalary
   ) {
@@ -767,7 +610,6 @@ export default async function SeasonLongEntryPage({
      * order below; the client can also re-sort by projected points.
      */
     const salaryPageSize = 1000;
-
     for (
       let from = 0;
       ;
@@ -777,7 +619,6 @@ export default async function SeasonLongEntryPage({
         from +
         salaryPageSize -
         1;
-
       const salaryResult =
         await supabase
           .from(
@@ -812,7 +653,6 @@ export default async function SeasonLongEntryPage({
             from,
             to
           );
-
       if (
         salaryResult.error
       ) {
@@ -822,17 +662,14 @@ export default async function SeasonLongEntryPage({
             .message
         );
       }
-
       const pageRows =
         (
           salaryResult.data ??
           []
         ) as SalaryRow[];
-
       salaries.push(
         ...pageRows
       );
-
       if (
         pageRows.length <
         salaryPageSize
@@ -841,8 +678,6 @@ export default async function SeasonLongEntryPage({
       }
     }
   }
-
-
   const salaryMap =
     new Map<
       number,
@@ -857,8 +692,6 @@ export default async function SeasonLongEntryPage({
         ]
       )
     );
-
-
   /*
    * ============================================================
    * COMPLETE NFL PLAYER POOL
@@ -871,12 +704,8 @@ export default async function SeasonLongEntryPage({
    */
   const players:
     NflPlayerRow[] = [];
-
-
   const nflPlayerPageSize =
     1000;
-
-
   for (
     let from = 0;
     ;
@@ -886,8 +715,6 @@ export default async function SeasonLongEntryPage({
       from +
       nflPlayerPageSize -
       1;
-
-
     const playerPageResult =
       await supabase
         .from(
@@ -925,8 +752,6 @@ export default async function SeasonLongEntryPage({
           from,
           to
         );
-
-
     if (
       playerPageResult.error
     ) {
@@ -936,20 +761,14 @@ export default async function SeasonLongEntryPage({
           .message
       );
     }
-
-
     const pageRows =
       (
         playerPageResult.data ??
         []
       ) as NflPlayerRow[];
-
-
     players.push(
       ...pageRows
     );
-
-
     if (
       pageRows.length <
       nflPlayerPageSize
@@ -957,9 +776,6 @@ export default async function SeasonLongEntryPage({
       break;
     }
   }
-
-
-
   const playerMap =
     new Map<
       number,
@@ -974,8 +790,6 @@ export default async function SeasonLongEntryPage({
         ]
       )
     );
-
-
   /*
    * Make sure already-selected lineup players are always present
    * even if the salary/player pool changed after they were chosen.
@@ -996,8 +810,6 @@ export default async function SeasonLongEntryPage({
             playerId
           )
       );
-
-
   if (
     missingLineupPlayerIds.length >
       0
@@ -1019,8 +831,6 @@ export default async function SeasonLongEntryPage({
           "id",
           missingLineupPlayerIds
         );
-
-
     if (
       missingPlayerResult.error
     ) {
@@ -1030,8 +840,6 @@ export default async function SeasonLongEntryPage({
           .message
       );
     }
-
-
     for (
       const player of
         (
@@ -1042,15 +850,12 @@ export default async function SeasonLongEntryPage({
       players.push(
         player
       );
-
       playerMap.set(
         player.id,
         player
       );
     }
   }
-
-
   /*
    * ============================================================
    * WEEK-SPECIFIC PLAYER CONTEXT
@@ -1071,10 +876,8 @@ export default async function SeasonLongEntryPage({
    */
   const weeklyProjectionRows:
     WeeklyProjectionRow[] = [];
-
   const weeklyProjectionPageSize =
     1000;
-
   for (
     let from = 0;
     ;
@@ -1084,7 +887,6 @@ export default async function SeasonLongEntryPage({
       from +
       weeklyProjectionPageSize -
       1;
-
     const weeklyProjectionPageResult =
       await supabase
         .from(
@@ -1126,8 +928,6 @@ export default async function SeasonLongEntryPage({
           from,
           to
         );
-
-
     if (
       weeklyProjectionPageResult.error
     ) {
@@ -1137,20 +937,14 @@ export default async function SeasonLongEntryPage({
           .message
       );
     }
-
-
     const pageRows =
       (
         weeklyProjectionPageResult.data ??
         []
       ) as WeeklyProjectionRow[];
-
-
     weeklyProjectionRows.push(
       ...pageRows
     );
-
-
     if (
       pageRows.length <
       weeklyProjectionPageSize
@@ -1158,8 +952,6 @@ export default async function SeasonLongEntryPage({
       break;
     }
   }
-
-
   const weeklyProjectionMap =
     new Map<
       number,
@@ -1174,8 +966,6 @@ export default async function SeasonLongEntryPage({
         ]
       )
     );
-
-
   /*
    * Position-specific matchup difficulty board.
    * #1 = hardest, #32 = easiest.
@@ -1202,19 +992,13 @@ export default async function SeasonLongEntryPage({
         "week",
         currentWeek
       );
-
-
   if (matchupRankingResult.error) {
     throw new Error(
       matchupRankingResult.error.message
     );
   }
-
-
   const matchupRankMap =
     new Map<string, number>();
-
-
   for (
     const row of
       (matchupRankingResult.data ?? []) as MatchupRankingRow[]
@@ -1229,12 +1013,10 @@ export default async function SeasonLongEntryPage({
         normalizePosition(
           row.position
         );
-
       const normalizedOpponent =
         normalizeTeamAbbreviation(
           row.opponent_abbreviation
         );
-
       if (
         normalizedPosition &&
         normalizedOpponent
@@ -1246,8 +1028,6 @@ export default async function SeasonLongEntryPage({
       }
     }
   }
-
-
   const getMatchupRank = (
     playerId: number,
     opponent: string | null | undefined
@@ -1256,31 +1036,39 @@ export default async function SeasonLongEntryPage({
       normalizeTeamAbbreviation(
         opponent
       );
-
     if (
       !normalizedOpponent
     ) {
       return null;
     }
-
     const position =
       normalizePosition(
         playerMap.get(playerId)
           ?.primary_position
       );
-
     if (
       !position
     ) {
       return null;
     }
-
     return matchupRankMap.get(
       `${position}:${normalizedOpponent}`
     ) ?? null;
   };
-
-
+  const getMatchupDifficulty = (
+    matchupRank: number | null
+  ): string | null => {
+    if (matchupRank === null) {
+      return null;
+    }
+    if (matchupRank <= 10) {
+      return "tough";
+    }
+    if (matchupRank >= 23) {
+      return "favorable";
+    }
+    return "average";
+  };
   /*
    * ESPN-synced injury designations live in nfl_player_injuries.
    * This is more useful than the generic nfl_players.status value
@@ -1308,8 +1096,6 @@ export default async function SeasonLongEntryPage({
         "season",
         season
       );
-
-
   if (
     injuryResult.error
   ) {
@@ -1319,15 +1105,11 @@ export default async function SeasonLongEntryPage({
         .message
     );
   }
-
-
   const injuryRows =
     (
       injuryResult.data ??
       []
     ) as InjuryRow[];
-
-
   const injuryMap =
     new Map<
       number,
@@ -1342,8 +1124,6 @@ export default async function SeasonLongEntryPage({
         ]
       )
     );
-
-
   const lineupForClient =
     lineup.map(
       (
@@ -1353,67 +1133,53 @@ export default async function SeasonLongEntryPage({
           playerMap.get(
             row.player_id
           );
-
         const weeklyProjection =
           weeklyProjectionMap.get(
             row.player_id
           );
-
         const injury =
           injuryMap.get(
             row.player_id
           );
-
-
         return {
           playerId:
             row.player_id,
-
           name:
             player
               ?.full_name ??
             `Player ${row.player_id}`,
-
           position:
             normalizePosition(
               player
                 ?.primary_position
             ),
-
           teamAbbreviation:
             player
               ?.team_abbreviation ??
             null,
-
           injuryStatus:
             injury
               ?.status ??
             null,
-
           injuryType:
             injury
               ?.injury_type ??
             injury
               ?.injury_location ??
             null,
-
           injuryDetail:
             injury
               ?.injury_detail ??
             null,
-
           byeWeek:
             weeklyProjection
               ?.is_bye
               ? currentWeek
               : null,
-
           lineupSlot:
             row.lineup_slot,
-
           slotIndex:
             row.slot_index,
-
           salary:
             row.salary_at_selection ===
             null
@@ -1421,7 +1187,6 @@ export default async function SeasonLongEntryPage({
               : toNumber(
                   row.salary_at_selection
                 ),
-
           projectedPoints:
             projectionNumber(
               weeklyProjection
@@ -1432,36 +1197,29 @@ export default async function SeasonLongEntryPage({
                 ?.projected_points ??
               row.projected_points_at_selection
             ),
-
           isLocked:
             Boolean(
               row.is_locked
             ),
-
           lockedAt:
             row.locked_at,
-
           nflGameId:
             row.nfl_game_id,
-
           gameStartAt:
             row.game_start_at ??
             weeklyProjection
               ?.kickoff_at ??
             null,
-
           opponentAbbreviation:
             row.opponent_abbreviation ??
             weeklyProjection
               ?.opponent_abbreviation ??
             null,
-
           homeOrAway:
             row.home_or_away ??
             weeklyProjection
               ?.home_or_away ??
             null,
-
           matchupRank:
             getMatchupRank(
               row.player_id,
@@ -1469,11 +1227,17 @@ export default async function SeasonLongEntryPage({
               weeklyProjection
                 ?.opponent_abbreviation
             ),
+          matchupDifficulty:
+            getMatchupDifficulty(
+              getMatchupRank(
+                row.player_id,
+                row.opponent_abbreviation ??
+                weeklyProjection?.opponent_abbreviation
+              )
+            ),
         };
       }
     );
-
-
   const poolForClient =
     players
       .filter(
@@ -1485,7 +1249,6 @@ export default async function SeasonLongEntryPage({
               player.primary_position ??
               ""
             ).toUpperCase();
-
           return [
             "QB",
             "RB",
@@ -1509,81 +1272,72 @@ export default async function SeasonLongEntryPage({
             salaryMap.get(
               player.id
             );
-
           const weeklyProjection =
             weeklyProjectionMap.get(
               player.id
             );
-
           const injury =
             injuryMap.get(
               player.id
             );
-
           return {
             id:
               player.id,
-
             name:
               player.full_name,
-
             position:
               normalizePosition(
                 player.primary_position
               ),
-
             teamAbbreviation:
               player.team_abbreviation,
-
             injuryStatus:
               injury?.status ?? null,
-
             injuryType:
               injury
                 ?.injury_type ??
               injury
                 ?.injury_location ??
               null,
-
             injuryDetail:
               injury
                 ?.injury_detail ??
               null,
-
             opponentAbbreviation:
               weeklyProjection
                 ?.opponent_abbreviation ??
               null,
-
             homeOrAway:
               weeklyProjection
                 ?.home_or_away ??
               null,
-
             matchupRank:
               getMatchupRank(
                 player.id,
                 weeklyProjection
                   ?.opponent_abbreviation
               ),
-
+            matchupDifficulty:
+              getMatchupDifficulty(
+                getMatchupRank(
+                  player.id,
+                  weeklyProjection?.opponent_abbreviation
+                )
+              ),
             gameStartAt:
               weeklyProjection
                 ?.kickoff_at ??
               null,
-
             isBye:
               Boolean(
                 weeklyProjection
                   ?.is_bye
               ),
-
             byeWeek:
               weeklyProjection
                 ?.is_bye
                 ? currentWeek
                 : null,
-
             salary:
               isSalary
                 ? salary
@@ -1597,7 +1351,6 @@ export default async function SeasonLongEntryPage({
                       salary.salary
                     )
                 : null,
-
             projectedPoints:
               projectionNumber(
                 weeklyProjection
@@ -1605,7 +1358,6 @@ export default async function SeasonLongEntryPage({
                 salary
                   ?.projected_points
               ),
-
             salaryChange:
               isSalary &&
               salary
@@ -1618,7 +1370,6 @@ export default async function SeasonLongEntryPage({
                     salary.salary_change
                   )
                 : null,
-
             salaryChangePercent:
               isSalary &&
               salary
@@ -1631,7 +1382,6 @@ export default async function SeasonLongEntryPage({
                     salary.salary_change_percent
                   )
                 : null,
-
             isActive:
               player.is_active !==
               false,
@@ -1651,35 +1401,27 @@ export default async function SeasonLongEntryPage({
             if (a.salary === null && b.salary !== null) {
               return 1;
             }
-
             if (b.salary === null && a.salary !== null) {
               return -1;
             }
-
             const salaryDifference =
               (b.salary ?? 0) -
               (a.salary ?? 0);
-
             if (salaryDifference !== 0) {
               return salaryDifference;
             }
           }
-
           const projectionDifference =
             b.projectedPoints -
             a.projectedPoints;
-
           if (projectionDifference !== 0) {
             return projectionDifference;
           }
-
           return a.name.localeCompare(
             b.name
           );
         }
       );
-
-
   return (
     <SeasonLongWeeklyLineup
       leagueId={
@@ -1709,28 +1451,20 @@ export default async function SeasonLongEntryPage({
           toNumber(
             settings.weekly_salary_cap
           ),
-
         startingQb:
           settings.starting_qb,
-
         startingRb:
           settings.starting_rb,
-
         startingWr:
           settings.starting_wr,
-
         startingTe:
           settings.starting_te,
-
         startingFlex:
           settings.starting_flex,
-
         startingSuperflex:
           settings.starting_superflex,
-
         startingK:
           settings.starting_k,
-
         startingDst:
           settings.starting_dst,
       }}
@@ -1739,7 +1473,6 @@ export default async function SeasonLongEntryPage({
           ? {
               status:
                 currentEntry.status,
-
               salaryUsed:
                 currentEntry.salary_used ===
                 null
@@ -1747,12 +1480,10 @@ export default async function SeasonLongEntryPage({
                   : toNumber(
                       currentEntry.salary_used
                     ),
-
               projectedPoints:
                 projectionNumber(
                   currentEntry.projected_points
                 ),
-
               submittedAt:
                 currentEntry.submitted_at,
             }
