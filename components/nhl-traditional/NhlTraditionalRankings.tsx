@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import NhlInjuryBadge from "@/components/nhl-traditional/NhlInjuryBadge";
 
 type Props = { leagueId: string };
 
@@ -64,6 +65,15 @@ type RankingRow = {
   projected_goals_against_average: number | null;
   projection_method: string | null;
   headshot_url: string | null;
+};
+
+
+type InjuryRow = {
+  id: number;
+  injury_status: string | null;
+  injury_detail: string | null;
+  injury_return_date: string | null;
+  injury_source: string | null;
 };
 
 type UserRankingRow = {
@@ -191,6 +201,7 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
   const [league, setLeague] = useState<LeagueRow | null>(null);
   const [settings, setSettings] = useState<SettingsRow | null>(null);
   const [rankings, setRankings] = useState<RankingRow[]>([]);
+  const [injuries, setInjuries] = useState<Map<number, InjuryRow>>(new Map());
   const [myRankings, setMyRankings] = useState<UserRankingRow[]>([]);
   const [draft, setDraft] = useState<DraftRow | null>(null);
   const [draftPicks, setDraftPicks] = useState<DraftPickRow[]>([]);
@@ -289,13 +300,29 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
       );
       if (masterError) throw masterError;
 
-      setRankings(
-        Array.isArray(master)
-          ? master.map((row) =>
-              normalizeRanking(row as Record<string, unknown>)
-            )
-          : []
-      );
+      const normalizedRankings = Array.isArray(master)
+        ? master.map((row) => normalizeRanking(row as Record<string, unknown>))
+        : [];
+
+      setRankings(normalizedRankings);
+
+      const rankingPlayerIds = normalizedRankings.map((player) => player.nhl_player_id);
+      if (rankingPlayerIds.length) {
+        const { data: injuryRows, error: injuryError } = await supabase
+          .from("nhl_players")
+          .select("id,injury_status,injury_detail,injury_return_date,injury_source")
+          .in("id", rankingPlayerIds);
+
+        if (injuryError) throw injuryError;
+
+        setInjuries(
+          new Map(
+            ((injuryRows as InjuryRow[] | null) ?? []).map((row) => [row.id, row])
+          )
+        );
+      } else {
+        setInjuries(new Map());
+      }
 
       const { error: initializeError } = await supabase.rpc(
         "initialize_nhl_traditional_user_rankings",
@@ -743,7 +770,15 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
                     <div className="my-rank-player-wrap">
                       {player.headshot_url ? <img className="my-rank-headshot" src={player.headshot_url} alt="" loading="lazy" /> : <span className="my-rank-headshot my-rank-headshot-fallback" aria-hidden="true">NHL</span>}
                       <div className="my-rank-mobile-name">
-                        <button type="button" className="my-rank-name" onClick={() => void openDetail(player.nhl_player_id)} style={styles.playerButton}>{player.display_name}</button>
+                        <div style={styles.playerNameLine}>
+                          <button type="button" className="my-rank-name" onClick={() => void openDetail(player.nhl_player_id)} style={styles.playerButton}>{player.display_name}</button>
+                          <NhlInjuryBadge
+                            status={injuries.get(player.nhl_player_id)?.injury_status}
+                            detail={injuries.get(player.nhl_player_id)?.injury_detail}
+                            returnDate={injuries.get(player.nhl_player_id)?.injury_return_date}
+                            source={injuries.get(player.nhl_player_id)?.injury_source}
+                          />
+                        </div>
                         <div className="my-rank-mobile-meta">{player.team_abbreviation ?? "FA"} • {pos(player)} • G365 #{player.overall_rank} • {positionRank(player, mode)}</div>
                       </div>
                     </div>
@@ -818,14 +853,22 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
                               NHL
                             </span>
                           )}
-                          <button
-                            type="button"
-                            className="my-rank-name"
-                            onClick={() => void openDetail(player.nhl_player_id)}
-                            style={styles.playerButton}
-                          >
-                            {player.display_name}
-                          </button>
+                          <div style={styles.playerNameLine}>
+                            <button
+                              type="button"
+                              className="my-rank-name"
+                              onClick={() => void openDetail(player.nhl_player_id)}
+                              style={styles.playerButton}
+                            >
+                              {player.display_name}
+                            </button>
+                            <NhlInjuryBadge
+                              status={injuries.get(player.nhl_player_id)?.injury_status}
+                              detail={injuries.get(player.nhl_player_id)?.injury_detail}
+                              returnDate={injuries.get(player.nhl_player_id)?.injury_return_date}
+                              source={injuries.get(player.nhl_player_id)?.injury_source}
+                            />
+                          </div>
                         </div>
                       </td>
                       <td className="my-rank-team" style={styles.centerCell}>
@@ -919,7 +962,15 @@ export default function NhlTraditionalRankings({ leagueId }: Props) {
               <div style={styles.modalHeader}>
                 <div>
                   <div style={styles.eyebrow}>G365 DRAFT PROFILE</div>
-                  <h2 style={styles.modalTitle}>{detail.display_name}</h2>
+                  <div style={styles.modalNameLine}>
+                    <h2 style={styles.modalTitle}>{detail.display_name}</h2>
+                    <NhlInjuryBadge
+                      status={injuries.get(detail.nhl_player_id)?.injury_status}
+                      detail={injuries.get(detail.nhl_player_id)?.injury_detail}
+                      returnDate={injuries.get(detail.nhl_player_id)?.injury_return_date}
+                      source={injuries.get(detail.nhl_player_id)?.injury_source}
+                    />
+                  </div>
                   <div style={styles.modalMeta}>
                     {pos(detail)} • {detail.team_abbreviation ?? "NHL FA"} • MY
                     RK #{myRankById.get(detail.nhl_player_id) ?? detail.overall_rank} •
@@ -1287,6 +1338,12 @@ const styles: Record<string, CSSProperties> = {
   },
   centerCell: { padding: "6px 4px", textAlign: "center", color: "#c7c9cf", overflow: "hidden", textOverflow: "ellipsis" },
   playerCell: { padding: "6px", width: "32%", minWidth: 0, overflow: "hidden" },
+  playerNameLine: {
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    minWidth: 0,
+  },
   playerButton: {
     padding: 0,
     border: 0,
@@ -1378,6 +1435,7 @@ const styles: Record<string, CSSProperties> = {
     borderBottom: "1px solid #29292d",
     background: "linear-gradient(135deg,#1b0c08,#101012 65%)",
   },
+  modalNameLine: { display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" },
   modalTitle: { margin: "2px 0 0", fontSize: 25, lineHeight: 1 },
   modalMeta: { marginTop: 5, color: "#999ca4", fontSize: 10 },
   close: {

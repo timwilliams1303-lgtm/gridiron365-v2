@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import NhlInjuryBadge from "@/components/nhl-traditional/NhlInjuryBadge";
 
 type Props = { leagueId: string; matchupId: number };
 type Settings = { season:number; league_format:string|null; competition_format:string|null; lineup_period:string|null; regular_season_weeks:number; playoff_weeks:number; scoring_system:string|null; goalie_minimum_starts:number|null };
@@ -11,7 +12,7 @@ type Standing = { fantasy_team_id:number; wins:number; losses:number; ties:numbe
 type Matchup = { id:number; league_id:string; season:number; week:number; home_fantasy_team_id:number; away_fantasy_team_id:number; home_score:number; away_score:number; status:string|null; winner_fantasy_team_id:number|null; is_tie:boolean };
 type LineupRow = { fantasy_team_id:number; nhl_player_id:number; nhl_game_id:number|null; lineup_slot:string|null; slot_index:number|null; lineup_date:string|null; game_start_at:string|null };
 type RosterRow = { fantasy_team_id:number; nhl_player_id:number; roster_status:string|null };
-type Player = { id:number; team_id:number|null; display_name:string; short_name:string|null; jersey_number:string|null; position:string|null; position_group:string|null; injury_status:string|null; headshot_url:string|null };
+type Player = { id:number; team_id:number|null; display_name:string; short_name:string|null; jersey_number:string|null; position:string|null; position_group:string|null; injury_status:string|null; injury_detail:string|null; injury_return_date:string|null; injury_source:string|null; headshot_url:string|null };
 type NhlTeam = { id:number; abbreviation:string|null; display_name:string|null; logo_url:string|null };
 type Game = { id:number; start_time:string|null; away_team_id:number|null; home_team_id:number|null; away_score:number|null; home_score:number|null; status_type:string|null; status_name:string|null; status_detail:string|null; period:number|null; display_clock:string|null; status_completed:boolean|null };
 type GameStat = { nhl_game_id:number; nhl_player_id:number; goals:number; assists:number; points:number; plus_minus:number; penalty_minutes:number; power_play_goals:number; power_play_assists:number; power_play_points:number; short_handed_goals:number; short_handed_assists:number; short_handed_points:number; game_winning_goals:number; shots_on_goal:number; hits:number; blocked_shots:number; goalie_started:boolean; goalie_decision:string|null; saves:number; shots_against:number; goals_against:number; save_percentage:number; goalie_minutes_seconds:number; goalie_win:number; goalie_loss:number; goalie_overtime_loss:number; shutout:number; is_final:boolean };
@@ -20,6 +21,7 @@ type Projection = { nhl_player_id:number; projected_games_played:number; project
 type CategoryRule = { stat_key:string; enabled:boolean; direction:string|null };
 type CategoryDef = { label:string; field?:keyof GameStat; projectionField?:keyof Projection; ratio?:"save_percentage"|"gaa" };
 type CategoryResult = { key:string; label:string; home:number; away:number; direction:"higher"|"lower"; winner:"home"|"away"|"tie" };
+type AcquisitionSummary = { leagueId:string; fantasyTeamId:number; season:number; week:number|null; limit:number|null; unlimited:boolean; counted:number; pending:number; usedForLimit:number; remaining:number|null };
 
 const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
@@ -48,8 +50,18 @@ function fmtCategory(key:string,v:number){ if(key.includes("save_percentage")) r
 function fmtDate(v:string|null){ if(!v)return "TBD"; const d=new Date(v); return Number.isNaN(d.getTime())?"TBD":d.toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}); }
 function errorMessage(e:unknown){ if(e instanceof Error)return e.message; if(e&&typeof e==="object"&&"message" in e)return String((e as {message?:unknown}).message??"Unknown error"); return "Unable to load detailed matchup."; }
 
+function AcquisitionPill({summary}:{summary:AcquisitionSummary|undefined}){
+  const used=n(summary?.usedForLimit);
+  const pending=n(summary?.pending);
+  const limit=summary?.limit==null?"∞":String(summary.limit);
+  return <div style={S.acquisitionPill}>
+    <strong>{used} / {limit}</strong>
+    <span>{pending>0?`${pending} PENDING`:"USED"}</span>
+  </div>;
+}
+
 export default function NhlTraditionalDetailedMatchup({leagueId,matchupId}:Props){
-  const [settings,setSettings]=useState<Settings|null>(null); const [matchup,setMatchup]=useState<Matchup|null>(null); const [teams,setTeams]=useState<FantasyTeam[]>([]); const [standings,setStandings]=useState<Standing[]>([]); const [lineups,setLineups]=useState<LineupRow[]>([]); const [rosters,setRosters]=useState<RosterRow[]>([]); const [players,setPlayers]=useState<Player[]>([]); const [nhlTeams,setNhlTeams]=useState<NhlTeam[]>([]); const [games,setGames]=useState<Game[]>([]); const [stats,setStats]=useState<GameStat[]>([]); const [scores,setScores]=useState<GameScore[]>([]); const [projections,setProjections]=useState<Projection[]>([]); const [rankings,setRankings]=useState<Map<number,number>>(new Map()); const [categoryRules,setCategoryRules]=useState<CategoryRule[]>([]); const [loading,setLoading]=useState(true); const [error,setError]=useState(""); const [selectedDay,setSelectedDay]=useState<string>("");
+  const [settings,setSettings]=useState<Settings|null>(null); const [acquisitions,setAcquisitions]=useState<Map<number,AcquisitionSummary>>(new Map()); const [matchup,setMatchup]=useState<Matchup|null>(null); const [teams,setTeams]=useState<FantasyTeam[]>([]); const [standings,setStandings]=useState<Standing[]>([]); const [lineups,setLineups]=useState<LineupRow[]>([]); const [rosters,setRosters]=useState<RosterRow[]>([]); const [players,setPlayers]=useState<Player[]>([]); const [nhlTeams,setNhlTeams]=useState<NhlTeam[]>([]); const [games,setGames]=useState<Game[]>([]); const [stats,setStats]=useState<GameStat[]>([]); const [scores,setScores]=useState<GameScore[]>([]); const [projections,setProjections]=useState<Projection[]>([]); const [rankings,setRankings]=useState<Map<number,number>>(new Map()); const [categoryRules,setCategoryRules]=useState<CategoryRule[]>([]); const [loading,setLoading]=useState(true); const [error,setError]=useState(""); const [selectedDay,setSelectedDay]=useState<string>("");
   const isCategories=useMemo(()=>norm(settings?.scoring_system).includes("categor"),[settings?.scoring_system]);
   const teamById=useMemo(()=>new Map(teams.map(x=>[x.id,x])),[teams]); const standingByTeam=useMemo(()=>new Map(standings.map(x=>[x.fantasy_team_id,x])),[standings]); const playerById=useMemo(()=>new Map(players.map(x=>[x.id,x])),[players]); const nhlTeamById=useMemo(()=>new Map(nhlTeams.map(x=>[x.id,x])),[nhlTeams]); const gameById=useMemo(()=>new Map(games.map(x=>[x.id,x])),[games]); const projectionByPlayer=useMemo(()=>new Map(projections.map(x=>[x.nhl_player_id,x])),[projections]);
   const savedLineupDays=useMemo(()=>[...new Set(lineups.map(x=>x.lineup_date).filter((x):x is string=>Boolean(x)))].sort(),[lineups]);
@@ -71,11 +83,25 @@ export default function NhlTraditionalDetailedMatchup({leagueId,matchupId}:Props
       supabase.from("nhl_teams").select("id,abbreviation,display_name,logo_url").eq("active",true)
     ]);
     for(const r of [settingR,teamR,standingR,lineupR,rosterR,catR,projR,nhlTeamR]) if(r.error)throw r.error;
-    setSettings(settingR.data as Settings); setTeams((teamR.data??[]) as FantasyTeam[]); setStandings((standingR.data??[]).map(x=>({...x,wins:n(x.wins),losses:n(x.losses),ties:n(x.ties),points_for:n(x.points_for),points_against:n(x.points_against),rank:x.rank==null?null:n(x.rank)})) as Standing[]); setCategoryRules((catR.data??[]) as CategoryRule[]); setNhlTeams((nhlTeamR.data??[]) as NhlTeam[]);
+    setSettings(settingR.data as Settings);
+    const acquisitionResults=await Promise.all(
+      [m.home_fantasy_team_id,m.away_fantasy_team_id].map(async(teamId)=>{
+        const result=await supabase.rpc("get_nhl_traditional_matchup_acquisition_summary",{
+          p_league_id:leagueId,
+          p_fantasy_team_id:teamId,
+          p_season:m.season,
+          p_week:m.week
+        });
+        if(result.error)throw result.error;
+        return [teamId,result.data as AcquisitionSummary] as const;
+      })
+    );
+    setAcquisitions(new Map(acquisitionResults));
+    setTeams((teamR.data??[]) as FantasyTeam[]); setStandings((standingR.data??[]).map(x=>({...x,wins:n(x.wins),losses:n(x.losses),ties:n(x.ties),points_for:n(x.points_for),points_against:n(x.points_against),rank:x.rank==null?null:n(x.rank)})) as Standing[]); setCategoryRules((catR.data??[]) as CategoryRule[]); setNhlTeams((nhlTeamR.data??[]) as NhlTeam[]);
     setRosters((rosterR.data??[]).map(x=>({fantasy_team_id:n(x.fantasy_team_id),nhl_player_id:n(x.nhl_player_id),roster_status:x.roster_status})) as RosterRow[]); const l=(lineupR.data??[]).map(x=>({...x,fantasy_team_id:n(x.fantasy_team_id),nhl_player_id:n(x.nhl_player_id),nhl_game_id:x.nhl_game_id==null?null:n(x.nhl_game_id),slot_index:x.slot_index==null?null:n(x.slot_index)})) as LineupRow[]; setLineups(l);
     setProjections((projR.data??[]).map(raw=>{const x={...raw} as unknown as Projection; for(const k of Object.keys(x) as (keyof Projection)[]) x[k]=n(x[k]) as never; return x;}));
     const playerIds=[...new Set([...l.map(x=>x.nhl_player_id),...(rosterR.data??[]).map(x=>n(x.nhl_player_id))])]; const gameIds=[...new Set(l.map(x=>x.nhl_game_id).filter((x):x is number=>x!=null))];
-    const playerR=playerIds.length?await supabase.from("nhl_players").select("id,team_id,display_name,short_name,jersey_number,position,position_group,injury_status,headshot_url").in("id",playerIds):{data:[],error:null}; if(playerR.error)throw playerR.error; setPlayers((playerR.data??[]) as Player[]);
+    const playerR=playerIds.length?await supabase.from("nhl_players").select("id,team_id,display_name,short_name,jersey_number,position,position_group,injury_status,injury_detail,injury_return_date,injury_source,headshot_url").in("id",playerIds):{data:[],error:null}; if(playerR.error)throw playerR.error; setPlayers((playerR.data??[]) as Player[]);
     if(gameIds.length){ const [gameR,statR,scoreR]=await Promise.all([
       supabase.from("nhl_games").select("id,start_time,away_team_id,home_team_id,away_score,home_score,status_type,status_name,status_detail,period,display_clock,status_completed").in("id",gameIds),
       supabase.from("nhl_player_game_stats").select("nhl_game_id,nhl_player_id,goals,assists,points,plus_minus,penalty_minutes,power_play_goals,power_play_assists,power_play_points,short_handed_goals,short_handed_assists,short_handed_points,game_winning_goals,shots_on_goal,hits,blocked_shots,goalie_started,goalie_decision,saves,shots_against,goals_against,save_percentage,goalie_minutes_seconds,goalie_win,goalie_loss,goalie_overtime_loss,shutout,is_final").in("nhl_game_id",gameIds).in("nhl_player_id",playerIds),
@@ -109,6 +135,11 @@ export default function NhlTraditionalDetailedMatchup({leagueId,matchupId}:Props
 
     <section style={S.espnScoreboard}>
       <div className="score-grid" style={S.scoreGrid}><TeamHead name={homeName} standing={standingByTeam.get(matchup.home_fantasy_team_id)} /><div style={S.vs}>VS</div><TeamHead name={awayName} standing={standingByTeam.get(matchup.away_fantasy_team_id)} /></div>
+      <div style={S.acquisitionGrid}>
+        <AcquisitionPill summary={acquisitions.get(matchup.home_fantasy_team_id)} />
+        <span style={S.acquisitionSpacer}>MATCHUP ACQUISITIONS</span>
+        <AcquisitionPill summary={acquisitions.get(matchup.away_fantasy_team_id)} />
+      </div>
       {!isCategories?<><div style={S.bigScore}><strong>{homeActual.toFixed(1)}</strong><span>—</span><strong>{awayActual.toFixed(1)}</strong></div></>:null}
       {isCategories?<CategoryBoard rows={actualCats} home={homeName} away={awayName} title="LIVE MATCHUP"/>:null}
       <div style={S.probWrap}>
@@ -126,7 +157,18 @@ export default function NhlTraditionalDetailedMatchup({leagueId,matchupId}:Props
     {isCategories&&settings?.goalie_minimum_starts?<div style={S.note}>Goalie minimum: {settings.goalie_minimum_starts} starts for the matchup period.</div>:null}
   </div></main>;
 
-  function Lineup({teamId,teamName,label}:{teamId:number;teamName:string;label:string}){const ids=[...new Set(displayActiveRows(teamId).map(x=>x.nhl_player_id))];return <div style={S.lineupCard}><div style={S.lineupHead}><div><small style={S.lineupLabel}>{label} — {teamName}</small></div><span style={S.lineupDay}>{selectedDay?new Date(`${selectedDay}T12:00:00`).toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"}):`${ids.length} ACTIVE`}</span></div><div style={S.columnHead}><span>POS</span><span>PLAYER</span><span>OPP / STATUS</span><span>STATS</span><span style={{textAlign:"right"}}>FP</span></div>{ids.length===0?<div style={S.empty}>No active lineup has been saved for this week.</div>:ids.map(pid=>{const p=playerById.get(pid);const rows=displayActiveRows(teamId).filter(x=>x.nhl_player_id===pid).sort((a,b)=>(a.game_start_at??"").localeCompare(b.game_start_at??""));const slot=rows[0]?.lineup_slot??p?.position??"—";const actual=playerActual(teamId,pid);const firstGame=rows.find(x=>x.nhl_game_id!=null);const game=firstGame?.nhl_game_id?gameById.get(firstGame.nhl_game_id):undefined;const own= p?.team_id?nhlTeamById.get(p.team_id):undefined;const oppId=game?(game.home_team_id===p?.team_id?game.away_team_id:game.home_team_id):null;const opp=oppId?nhlTeamById.get(oppId):undefined;const atHome=game?.home_team_id===p?.team_id;const statSummary=actual.stats.map(st=>p?.position_group?.toUpperCase()==="G"||p?.position?.toUpperCase()==="G"?`${st.saves} SV • ${st.goals_against} GA${st.goalie_started?" • START":""}`:`${st.goals} G • ${st.assists} A • ${st.shots_on_goal} SOG • ${st.hits} HIT`).join(" | ")||"No game stats yet";return <div className="player-row" style={S.playerRow} key={pid}><div style={S.slot}>{txt(slot,"—").toUpperCase()}</div><div style={S.playerCell}>{p?.headshot_url?<img src={p.headshot_url} alt="" style={S.headshot}/>:<div style={S.headshotBlank}/>}<div style={{minWidth:0}}><strong style={S.playerName}>{p?.display_name??`Player ${pid}`}</strong><small>{own?.abbreviation??"NHL"} • {p?.position??"—"}{p?.injury_status?` • ${p.injury_status}`:""}</small></div></div><div style={S.gameInfo}><small style={S.playerDay}>{rows[0]?.lineup_date?new Date(`${rows[0].lineup_date}T12:00:00`).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}):(selectedDay||"—")}</small>{game?<><strong>{atHome?"vs":"@"} {opp?.abbreviation??"TBD"}</strong><small>{game.status_completed?`FINAL ${game.away_score??0}-${game.home_score??0}`:txt(game.status_detail)||fmtDate(game.start_time)}</small></>:<><strong>NO GAME</strong></>}</div><div style={S.statLine}>{statSummary}</div><div style={S.actual}><strong>{actual.fp.toFixed(1)}</strong><small>PROJ {projectedFp(teamId,pid).toFixed(1)}</small></div></div>})}</div>}
+  function Lineup({teamId,teamName,label}:{teamId:number;teamName:string;label:string}){const ids=[...new Set(displayActiveRows(teamId).map(x=>x.nhl_player_id))];return <div style={S.lineupCard}><div style={S.lineupHead}><div><small style={S.lineupLabel}>{label} — {teamName}</small></div><span style={S.lineupDay}>{selectedDay?new Date(`${selectedDay}T12:00:00`).toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"}):`${ids.length} ACTIVE`}</span></div><div style={S.columnHead}><span>POS</span><span>PLAYER</span><span>OPP / STATUS</span><span>STATS</span><span style={{textAlign:"right"}}>FP</span></div>{ids.length===0?<div style={S.empty}>No active lineup has been saved for this week.</div>:ids.map(pid=>{const p=playerById.get(pid);const rows=displayActiveRows(teamId).filter(x=>x.nhl_player_id===pid).sort((a,b)=>(a.game_start_at??"").localeCompare(b.game_start_at??""));const slot=rows[0]?.lineup_slot??p?.position??"—";const actual=playerActual(teamId,pid);const firstGame=rows.find(x=>x.nhl_game_id!=null);const game=firstGame?.nhl_game_id?gameById.get(firstGame.nhl_game_id):undefined;const own= p?.team_id?nhlTeamById.get(p.team_id):undefined;const oppId=game?(game.home_team_id===p?.team_id?game.away_team_id:game.home_team_id):null;const opp=oppId?nhlTeamById.get(oppId):undefined;const atHome=game?.home_team_id===p?.team_id;const statSummary=actual.stats.map(st=>p?.position_group?.toUpperCase()==="G"||p?.position?.toUpperCase()==="G"?`${st.saves} SV • ${st.goals_against} GA${st.goalie_started?" • START":""}`:`${st.goals} G • ${st.assists} A • ${st.shots_on_goal} SOG • ${st.hits} HIT`).join(" | ")||"No game stats yet";return <div className="player-row" style={S.playerRow} key={pid}><div style={S.slot}>{txt(slot,"—").toUpperCase()}</div><div style={S.playerCell}>{p?.headshot_url?<img src={p.headshot_url} alt="" style={S.headshot}/>:<div style={S.headshotBlank}/>}<div style={{minWidth:0}}>
+  <div style={S.playerNameRow}>
+    <strong style={S.playerName}>{p?.display_name??`Player ${pid}`}</strong>
+    <NhlInjuryBadge
+      status={p?.injury_status}
+      detail={p?.injury_detail}
+      returnDate={p?.injury_return_date}
+      source={p?.injury_source}
+    />
+  </div>
+  <small>{own?.abbreviation??"NHL"} • {p?.position??"—"}</small>
+</div></div><div style={S.gameInfo}><small style={S.playerDay}>{rows[0]?.lineup_date?new Date(`${rows[0].lineup_date}T12:00:00`).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}):(selectedDay||"—")}</small>{game?<><strong>{atHome?"vs":"@"} {opp?.abbreviation??"TBD"}</strong><small>{game.status_completed?`FINAL ${game.away_score??0}-${game.home_score??0}`:txt(game.status_detail)||fmtDate(game.start_time)}</small></>:<><strong>NO GAME</strong></>}</div><div style={S.statLine}>{statSummary}</div><div style={S.actual}><strong>{actual.fp.toFixed(1)}</strong><small>PROJ {projectedFp(teamId,pid).toFixed(1)}</small></div></div>})}</div>}
 }
 
 function TeamHead({name,standing}:{name:string;standing?:Standing}){return <div style={S.teamHead}><div className="team-title" style={S.teamTitle}>{name}</div><span>{record(standing)}{standing?.rank?` • #${standing.rank}`:""}</span><small>PF {(standing?.points_for??0).toFixed(1)}</small></div>}
@@ -179,6 +221,7 @@ const S:Record<string,React.CSSProperties>={
   playerRow:{padding:"8px",borderBottom:"1px solid #232529",minWidth:0,background:"#121315"},
   slot:{display:"flex",alignItems:"center",justifyContent:"center",minHeight:27,borderRadius:3,background:"#222429",color:"#f2f3f4",fontSize:9,fontWeight:1000},
   playerCell:{display:"flex",alignItems:"center",gap:7,minWidth:0},
+  playerNameRow:{display:"flex",alignItems:"center",gap:4,minWidth:0},
   playerName:{display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:11},
   headshot:{width:31,height:31,borderRadius:"50%",objectFit:"cover",background:"#1d1f22"},
   headshotBlank:{width:31,height:31,borderRadius:"50%",background:"#1d1f22",flex:"0 0 auto"},
@@ -187,5 +230,9 @@ const S:Record<string,React.CSSProperties>={
   note:{padding:"9px 11px",border:"1px solid #3a2a22",borderRadius:5,background:"#17110e",color:"#aaa",fontSize:10,lineHeight:1.4},
   empty:{padding:22,textAlign:"center",color:"#777"},
   error:{padding:16,border:"1px solid #7d2d27",borderRadius:8,background:"#2b1110",color:"#ffd1cc",display:"grid",gap:8},
-  retry:{justifySelf:"start",border:0,borderRadius:5,padding:"8px 12px",background:"#ff4b20",color:"#fff",fontWeight:900,cursor:"pointer"}
+  retry:{justifySelf:"start",border:0,borderRadius:5,padding:"8px 12px",background:"#ff4b20",color:"#fff",fontWeight:900,cursor:"pointer"},
+
+  acquisitionGrid:{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto minmax(0,1fr)",alignItems:"center",gap:6,padding:"0 8px 7px"},
+  acquisitionPill:{justifySelf:"center",minWidth:78,padding:"5px 8px",border:"1px solid rgba(255,116,20,.24)",borderRadius:8,background:"rgba(255,92,0,.055)",display:"flex",alignItems:"baseline",justifyContent:"center",gap:4,fontSize:11},
+  acquisitionSpacer:{color:"#777e89",fontSize:7,fontWeight:900,letterSpacing:".07em",textAlign:"center"},
 };

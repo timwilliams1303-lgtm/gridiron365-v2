@@ -4,8 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 
+import NhlInjuryBadge from "@/components/nhl-traditional/NhlInjuryBadge";
+
 type NhlTraditionalDraftProps = {
   leagueId: string;
+  draftSeason?: number;
+  offseasonMode?: boolean;
 };
 
 type LeagueRow = {
@@ -66,6 +70,14 @@ type FantasyTeamRow = {
   active: boolean | null;
 };
 
+type DraftRosterRow = {
+  fantasyTeamId: number;
+  nhlPlayerId: number;
+  rosterStatus: string;
+  acquiredVia: string | null;
+  acquiredAt: string | null;
+};
+
 type DraftPickRow = {
   id: number;
   draft_id: string;
@@ -90,6 +102,9 @@ type NhlPlayerRow = {
   active: boolean | null;
   status: string | null;
   injury_status: string | null;
+  injury_detail: string | null;
+  injury_return_date: string | null;
+  injury_source: string | null;
   headshot_url: string | null;
 };
 
@@ -181,6 +196,9 @@ type AutoDraftCandidate = {
   source?: string;
   reason?: string;
   forceNeed?: boolean;
+  queueOrder?: number | null;
+  myRank?: number | null;
+  g365Rank?: number | null;
 };
 
 const supabase = createBrowserClient(
@@ -310,11 +328,14 @@ function statText(value: number | null, digits = 0) {
 
 export default function NhlTraditionalDraft({
   leagueId,
+  draftSeason,
+  offseasonMode = false,
 }: NhlTraditionalDraftProps) {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [draftingPlayerId, setDraftingPlayerId] =
     useState<number | null>(null);
+  const [commissionerPickMode, setCommissionerPickMode] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -331,6 +352,7 @@ export default function NhlTraditionalDraft({
   const [fantasyTeams, setFantasyTeams] =
     useState<FantasyTeamRow[]>([]);
   const [draftPicks, setDraftPicks] = useState<DraftPickRow[]>([]);
+  const [targetRosterRows, setTargetRosterRows] = useState<DraftRosterRow[]>([]);
   const [players, setPlayers] = useState<NhlPlayerRow[]>([]);
   const [nhlTeams, setNhlTeams] = useState<NhlTeamRow[]>([]);
   const [draftRankings, setDraftRankings] = useState<DraftRankingRow[]>([]);
@@ -346,6 +368,7 @@ export default function NhlTraditionalDraft({
     "players" | "queue" | "rankings" | "board" | "trade" | "summary"
   >("players");
   const [queueIds, setQueueIds] = useState<number[]>([]);
+  const [queueBusy, setQueueBusy] = useState(false);
   const [myRankingIds, setMyRankingIds] = useState<number[]>([]);
   const [rankingBusy, setRankingBusy] = useState(false);
   const [autoDraftEnabled, setAutoDraftEnabled] = useState(false);
@@ -357,6 +380,7 @@ export default function NhlTraditionalDraft({
   const previousDraftStatusRef = useRef<string | null>(null);
   const previousPickIdsRef = useRef<Set<number>>(new Set());
   const countdownSoundRef = useRef<string | null>(null);
+  const spokenTurnRef = useRef<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [livePickAssets, setLivePickAssets] = useState<LivePickAsset[]>([]);
   const [tradeBusy, setTradeBusy] = useState(false);
@@ -413,7 +437,6 @@ export default function NhlTraditionalDraft({
           draftResult,
           teamsResult,
           nhlTeamsResult,
-          playersResult,
         ] = await Promise.all([
           supabase
             .from("leagues")
@@ -435,9 +458,14 @@ export default function NhlTraditionalDraft({
             .eq("league_id", leagueId)
             .maybeSingle(),
 
-          supabase.rpc("get_nhl_traditional_draft_state", {
-            p_league_id: leagueId,
-          }),
+          offseasonMode && draftSeason
+            ? supabase.rpc("get_nhl_traditional_draft_state", {
+                p_league_id: leagueId,
+                p_season: draftSeason,
+              })
+            : supabase.rpc("get_nhl_traditional_draft_state", {
+                p_league_id: leagueId,
+              }),
 
           supabase
             .from("fantasy_teams")
@@ -450,36 +478,6 @@ export default function NhlTraditionalDraft({
             .from("nhl_teams")
             .select("*")
             .order("id", { ascending: true }),
-
-          (async () => {
-            const pageSize = 1000;
-            const allPlayers: NhlPlayerRow[] = [];
-
-            for (let from = 0; ; from += pageSize) {
-              const { data, error: playersPageError } = await supabase
-                .from("nhl_players")
-                .select(
-                  "id,display_name,first_name,last_name,team_id,position,position_group,jersey_number,active,status,injury_status,headshot_url"
-                )
-                .eq("active", true)
-                .order("display_name", { ascending: true })
-                .order("id", { ascending: true })
-                .range(from, from + pageSize - 1);
-
-              if (playersPageError) {
-                throw playersPageError;
-              }
-
-              const page = (data as NhlPlayerRow[] | null) ?? [];
-              allPlayers.push(...page);
-
-              if (page.length < pageSize) {
-                break;
-              }
-            }
-
-            return allPlayers;
-          })(),
         ]);
 
         if (leagueResult.error) {
@@ -508,18 +506,6 @@ export default function NhlTraditionalDraft({
 
         const loadedLeague =
           leagueResult.data as LeagueRow;
-
-        const { data: rankingsData, error: rankingsError } = await supabase.rpc(
-          "get_nhl_traditional_draft_rankings",
-          {
-            p_league_id: leagueId,
-            p_season: Number((draftResult.data as RpcJson | null)?.season ?? loadedLeague.season),
-          }
-        );
-
-        if (rankingsError) {
-          throw rankingsError;
-        }
 
         const loadedSettings =
           (settingsResult.data as NhlSettingsRow | null) ?? null;
@@ -577,9 +563,16 @@ export default function NhlTraditionalDraft({
         const loadedFantasyTeams =
           (teamsResult.data as FantasyTeamRow[] | null) ?? [];
 
-        const loadedPlayers = playersResult;
         const loadedNhlTeams =
           (nhlTeamsResult.data as NhlTeamRow[] | null) ?? [];
+
+        const annualRoomReady =
+          !offseasonMode ||
+          (Boolean(loadedDraft) &&
+            draftState?.orderReady === true &&
+            ["ready", "drafting", "paused", "completed"].includes(
+              loadedDraft?.status ?? ""
+            ));
 
         setLeague(loadedLeague);
         setSettings(loadedSettings);
@@ -587,14 +580,77 @@ export default function NhlTraditionalDraft({
         setDraft(loadedDraft);
         setFantasyTeams(loadedFantasyTeams);
         setNhlTeams(loadedNhlTeams);
-        setPlayers(loadedPlayers);
-        setDraftRankings((rankingsData as DraftRankingRow[] | null) ?? []);
 
-        if (!loadedDraft) {
+        // During the annual Dynasty offseason, do not load or retain any Draft
+        // Room data until the exact target-season draft exists and its order is ready.
+        // This prevents the previous season's players, ticker, queue, rankings,
+        // board, clock, and roster data from leaking into the new annual draft.
+        if (!loadedDraft || !annualRoomReady) {
+          setPlayers([]);
+          setDraftRankings([]);
           setDraftTeams([]);
           setDraftPicks([]);
+          setTargetRosterRows([]);
+          setLivePickAssets([]);
+          setQueueIds([]);
+          setMyRankingIds([]);
+          setAutoCandidate(null);
+          setAutoDraftEnabled(false);
           return;
         }
+
+        const pageSize = 1000;
+        const loadedPlayers: NhlPlayerRow[] = [];
+
+        for (let from = 0; ; from += pageSize) {
+          const { data, error: playersPageError } = await supabase
+            .from("nhl_players")
+            .select(
+              "id,display_name,first_name,last_name,team_id,position,position_group,jersey_number,active,status,injury_status,injury_detail,injury_return_date,injury_source,headshot_url"
+            )
+            .eq("active", true)
+            .order("display_name", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, from + pageSize - 1);
+
+          if (playersPageError) throw playersPageError;
+
+          const page = (data as NhlPlayerRow[] | null) ?? [];
+          loadedPlayers.push(...page);
+          if (page.length < pageSize) break;
+        }
+
+        const { data: rankingsData, error: rankingsError } = await supabase.rpc(
+          "get_nhl_traditional_draft_rankings",
+          {
+            p_league_id: leagueId,
+            p_season: loadedDraft.season,
+          }
+        );
+
+        if (rankingsError) throw rankingsError;
+
+        let loadedTargetRosterRows: DraftRosterRow[] = [];
+
+        if (offseasonMode && draftSeason) {
+          const { data: rosterData, error: rosterError } = await supabase.rpc(
+            "get_nhl_traditional_draft_rosters",
+            {
+              p_league_id: leagueId,
+              p_season: draftSeason,
+            }
+          );
+
+          if (rosterError) throw rosterError;
+
+          loadedTargetRosterRows = Array.isArray(rosterData)
+            ? (rosterData as DraftRosterRow[])
+            : [];
+        }
+
+        setPlayers(loadedPlayers);
+        setDraftRankings((rankingsData as DraftRankingRow[] | null) ?? []);
+        setTargetRosterRows(loadedTargetRosterRows);
 
         const [draftTeamsResult, draftPicksResult] =
           await Promise.all([
@@ -630,7 +686,7 @@ export default function NhlTraditionalDraft({
 
         // Browser RLS can legitimately hide these two draft tables.
         // The member-safe RPC is the authoritative Draft Room fallback.
-        if (loadedDraftTeams.length === 0) {
+        if (loadedDraftTeams.length === 0 && !offseasonMode) {
           const { data: roomData, error: roomError } = await supabase.rpc(
             "get_nhl_traditional_draft_room_data",
             { p_league_id: leagueId }
@@ -664,7 +720,7 @@ export default function NhlTraditionalDraft({
             p_fantasy_team_id: ownedTeam.id,
           });
 
-          const [myRanksResult, rankingsPageResult, autoPrefResult] = await Promise.all([
+          const [myRanksResult, rankingsPageResult, autoPrefResult, queueResult] = await Promise.all([
             supabase
               .from("nhl_traditional_draft_player_rankings")
               .select("nhl_player_id,rank")
@@ -680,19 +736,36 @@ export default function NhlTraditionalDraft({
               p_league_id: leagueId,
               p_fantasy_team_id: ownedTeam.id,
             }),
+            supabase.rpc("get_nhl_traditional_draft_queue", {
+              p_league_id: leagueId,
+              p_fantasy_team_id: ownedTeam.id,
+            }),
           ]);
 
           if (myRanksResult.error) throw myRanksResult.error;
           if (rankingsPageResult.error) throw rankingsPageResult.error;
           if (autoPrefResult.error) throw autoPrefResult.error;
+          if (queueResult.error) throw queueResult.error;
+
+          const queuePayload =
+            queueResult.data && typeof queueResult.data === "object"
+              ? (queueResult.data as RpcJson)
+              : null;
+          const rawQueue = Array.isArray(queuePayload?.queue)
+            ? (queuePayload.queue as Array<Record<string, unknown>>)
+            : [];
+          const loadedQueueIds = rawQueue
+            .map((row) => Number(row.nhlPlayerId))
+            .filter((id) => Number.isFinite(id));
+          setQueueIds(loadedQueueIds);
 
           const draftedIds = new Set(loadedDraftPicks.map((pick) => pick.nhl_player_id));
           const rankingsPageIds = ((rankingsPageResult.data as Array<{ nhl_player_id: number; rank_order: number }> | null) ?? [])
             .map((row) => Number(row.nhl_player_id))
-            .filter((id) => Number.isFinite(id) && !draftedIds.has(id));
+            .filter((id) => Number.isFinite(id) && !draftedIds.has(id) && !loadedTargetRosterRows.some((row) => row.nhlPlayerId === id));
           const draftSpecificIds = ((myRanksResult.data as MyDraftRankingRow[] | null) ?? [])
             .map((row) => row.nhl_player_id)
-            .filter((id) => !draftedIds.has(id));
+            .filter((id) => !draftedIds.has(id) && !loadedTargetRosterRows.some((row) => row.nhlPlayerId === id));
 
           // The standalone My Rankings page is the source of truth for the user's order.
           // Mirror it into this draft's saved rankings so the Draft Room and Auto Draft use the same list.
@@ -764,7 +837,7 @@ export default function NhlTraditionalDraft({
         }
       }
     },
-    [leagueId]
+    [leagueId, draftSeason, offseasonMode]
   );
 
   useEffect(() => {
@@ -782,6 +855,42 @@ export default function NhlTraditionalDraft({
 
     return () => {
       window.clearInterval(interval);
+    };
+  }, [draft?.id, draft?.status, loadDraft]);
+
+  useEffect(() => {
+    if (!draft?.id || !["drafting", "paused"].includes(draft.status)) return;
+
+    const channel = supabase
+      .channel(`nhl-draft-live-${draft.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "nhl_traditional_draft_picks",
+          filter: `draft_id=eq.${draft.id}`,
+        },
+        () => {
+          void loadDraft(false);
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "nhl_traditional_drafts",
+          filter: `id=eq.${draft.id}`,
+        },
+        () => {
+          void loadDraft(false);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
     };
   }, [draft?.id, draft?.status, loadDraft]);
 
@@ -884,6 +993,19 @@ export default function NhlTraditionalDraft({
     );
   }, [draftPicks]);
 
+  const targetRosteredPlayerIds = useMemo(() => {
+    return new Set(
+      targetRosterRows.map((row) => row.nhlPlayerId)
+    );
+  }, [targetRosterRows]);
+
+  const unavailablePlayerIds = useMemo(() => {
+    return new Set([
+      ...draftedPlayerIds,
+      ...targetRosteredPlayerIds,
+    ]);
+  }, [draftedPlayerIds, targetRosteredPlayerIds]);
+
   const draftRankingByPlayerId = useMemo(() => {
     return new Map(
       draftRankings.map((ranking) => [ranking.nhl_player_id, ranking])
@@ -892,9 +1014,9 @@ export default function NhlTraditionalDraft({
 
   useEffect(() => {
     setQueueIds((current) =>
-      current.filter((playerId) => !draftedPlayerIds.has(playerId))
+      current.filter((playerId) => !unavailablePlayerIds.has(playerId))
     );
-  }, [draftedPlayerIds]);
+  }, [unavailablePlayerIds]);
 
   const currentTeam =
     draft?.current_fantasy_team_id != null
@@ -908,6 +1030,11 @@ export default function NhlTraditionalDraft({
       (team) => team.owner_id === userId
     ) ?? null;
 
+  const autoCandidatePlayer =
+    autoCandidate?.nhlPlayerId != null
+      ? playerById.get(Number(autoCandidate.nhlPlayerId)) ?? null
+      : null;
+
   const isMyTurn =
     Boolean(
       draft?.status === "drafting" &&
@@ -915,20 +1042,27 @@ export default function NhlTraditionalDraft({
         currentTeam.owner_id === userId
     );
 
-  const canCommissionerPick =
+  const canCommissionerPausedPick =
     Boolean(
-      draft?.status === "drafting" &&
-        isCommissioner
+      draft?.status === "paused" &&
+        isCommissioner &&
+        commissionerPickMode
     );
 
   const canMakePick =
-    isMyTurn || canCommissionerPick;
+    isMyTurn || canCommissionerPausedPick;
+
+  useEffect(() => {
+    if (draft?.status !== "paused") {
+      setCommissionerPickMode(false);
+    }
+  }, [draft?.status]);
 
   const filteredPlayers = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     return players.filter((player) => {
-      if (draftedPlayerIds.has(player.id)) {
+      if (unavailablePlayerIds.has(player.id)) {
         return false;
       }
 
@@ -983,7 +1117,7 @@ export default function NhlTraditionalDraft({
       return playerName(a).localeCompare(playerName(b));
     });
   }, [
-    draftedPlayerIds,
+    unavailablePlayerIds,
     draftRankingByPlayerId,
     nhlTeamById,
     players,
@@ -1010,11 +1144,39 @@ export default function NhlTraditionalDraft({
         const originalDraftTeam = draftTeams.find((team) => team.draft_slot === originalSlot);
         if (!originalDraftTeam) continue;
 
-        const asset = ["redraft", "startup", "dynasty"].includes(draft.draft_type) ? liveAssetByOverall.get(overallPick) : undefined;
-        const ownerId = asset?.currentFantasyTeamId ?? originalDraftTeam.fantasy_team_id;
-        const originalId = asset?.originalFantasyTeamId ?? originalDraftTeam.fantasy_team_id;
-        const ownerName = asset?.currentTeamName ?? fantasyTeamById.get(ownerId)?.team_name ?? `Team ${ownerId}`;
-        const originalName = asset?.originalTeamName ?? fantasyTeamById.get(originalId)?.team_name ?? `Team ${originalId}`;
+        const candidateAsset = ["redraft", "startup", "dynasty"].includes(draft.draft_type)
+          ? liveAssetByOverall.get(overallPick)
+          : undefined;
+
+        /*
+         * A startup lottery can change draft_slot ownership after draft-pick
+         * assets were initially created. Only trust a pick asset when its
+         * original owner still matches the team that owns this slot in the
+         * authoritative nhl_traditional_draft_teams order.
+         *
+         * This preserves legitimate traded-pick ownership while preventing
+         * stale pre-lottery assets from replacing the official lottery order
+         * in the ticker, board, "Your Next Pick", and roster views.
+         */
+        const asset =
+          candidateAsset &&
+          Number(candidateAsset.originalFantasyTeamId) ===
+            Number(originalDraftTeam.fantasy_team_id)
+            ? candidateAsset
+            : undefined;
+
+        const ownerId =
+          asset?.currentFantasyTeamId ?? originalDraftTeam.fantasy_team_id;
+        const originalId =
+          asset?.originalFantasyTeamId ?? originalDraftTeam.fantasy_team_id;
+        const ownerName =
+          asset?.currentTeamName ??
+          fantasyTeamById.get(ownerId)?.team_name ??
+          `Team ${ownerId}`;
+        const originalName =
+          asset?.originalTeamName ??
+          fantasyTeamById.get(originalId)?.team_name ??
+          `Team ${originalId}`;
         const pick = picksByOverall.get(overallPick);
 
         cells.push({
@@ -1047,44 +1209,72 @@ export default function NhlTraditionalDraft({
     setMessage(null);
 
     try {
-      let functionName:
-        | "prepare_nhl_traditional_draft"
-        | "commissioner_start_nhl_traditional_draft"
-        | "commissioner_pause_nhl_traditional_draft"
-        | "commissioner_resume_nhl_traditional_draft"
-        | "commissioner_reset_nhl_traditional_draft";
+      let data: unknown = null;
+      let rpcError: { message: string } | null = null;
 
-      switch (action) {
-        case "prepare":
-          functionName =
-            "prepare_nhl_traditional_draft";
-          break;
+      if (
+        action === "prepare" &&
+        offseasonMode &&
+        settings?.league_format === "dynasty"
+      ) {
+        if (!draftSeason) {
+          throw new Error("Annual draft season is unavailable.");
+        }
 
-        case "start":
-          functionName =
-            "commissioner_start_nhl_traditional_draft";
-          break;
+        const confirmed = window.confirm(
+          `Prepare the ${draftSeason} Annual Dynasty Draft?\n\n` +
+            "This creates the target-season annual draft using the saved " +
+            "Offseason Draft Settings and finalized protected rosters."
+        );
 
-        case "pause":
-          functionName =
-            "commissioner_pause_nhl_traditional_draft";
-          break;
+        if (!confirmed) {
+          setActionLoading(false);
+          return;
+        }
 
-        case "resume":
-          functionName =
-            "commissioner_resume_nhl_traditional_draft";
-          break;
+        const annualPrepareResult = await supabase.rpc(
+          "prepare_nhl_dynasty_rookie_draft",
+          {
+            p_league_id: leagueId,
+            p_draft_season: draftSeason,
+          }
+        );
 
-        case "reset":
-          functionName =
-            "commissioner_reset_nhl_traditional_draft";
-          break;
-      }
+        data = annualPrepareResult.data;
+        rpcError = annualPrepareResult.error;
+      } else {
+        let functionName:
+          | "prepare_nhl_traditional_draft"
+          | "commissioner_start_nhl_traditional_draft"
+          | "commissioner_pause_nhl_traditional_draft"
+          | "commissioner_resume_nhl_traditional_draft"
+          | "commissioner_reset_nhl_traditional_draft";
 
-      const { data, error: rpcError } =
-        await supabase.rpc(functionName, {
+        switch (action) {
+          case "prepare":
+            functionName = "prepare_nhl_traditional_draft";
+            break;
+          case "start":
+            functionName = "commissioner_start_nhl_traditional_draft";
+            break;
+          case "pause":
+            functionName = "commissioner_pause_nhl_traditional_draft";
+            break;
+          case "resume":
+            functionName = "commissioner_resume_nhl_traditional_draft";
+            break;
+          case "reset":
+            functionName = "commissioner_reset_nhl_traditional_draft";
+            break;
+        }
+
+        const standardActionResult = await supabase.rpc(functionName, {
           p_league_id: leagueId,
         });
+
+        data = standardActionResult.data;
+        rpcError = standardActionResult.error;
+      }
 
       if (rpcError) {
         throw rpcError;
@@ -1129,41 +1319,49 @@ export default function NhlTraditionalDraft({
   async function draftPlayer(player: NhlPlayerRow) {
     if (
       !draft ||
-      draft.status !== "drafting" ||
       !canMakePick ||
       draftingPlayerId !== null
     ) {
       return;
     }
 
+    const commissionerOverride =
+      draft.status === "paused" &&
+      isCommissioner &&
+      commissionerPickMode;
+
     const confirmed = window.confirm(
-      `Draft ${playerName(player)} (${normalizePosition(
-        player.position,
-        player.position_group
-      )}) with Pick #${draft.current_overall_pick}?`
+      commissionerOverride
+        ? `Commissioner pick for ${currentTeam?.team_name ?? "team"}: ${playerName(player)} (${normalizePosition(
+            player.position,
+            player.position_group
+          )}) with Pick #${draft.current_overall_pick}?`
+        : `Draft ${playerName(player)} (${normalizePosition(
+            player.position,
+            player.position_group
+          )}) with Pick #${draft.current_overall_pick}?`
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setDraftingPlayerId(player.id);
     setError(null);
     setMessage(null);
 
     try {
-      const { data, error: rpcError } =
-        await supabase.rpc(
-          "make_nhl_traditional_draft_pick",
-          {
-            p_league_id: leagueId,
-            p_nhl_player_id: player.id,
-          }
-        );
+      const functionName = commissionerOverride
+        ? "commissioner_make_nhl_traditional_draft_pick"
+        : "make_nhl_traditional_draft_pick";
 
-      if (rpcError) {
-        throw rpcError;
-      }
+      const { data, error: rpcError } = await supabase.rpc(
+        functionName,
+        {
+          p_league_id: leagueId,
+          p_nhl_player_id: player.id,
+        }
+      );
+
+      if (rpcError) throw rpcError;
 
       const result =
         data && typeof data === "object"
@@ -1175,8 +1373,14 @@ export default function NhlTraditionalDraft({
         playerName(player);
 
       setMessage(
-        `${selectedName} was drafted successfully.`
+        commissionerOverride
+          ? `${selectedName} was selected for ${currentTeam?.team_name ?? "the team"}. Draft remains paused.`
+          : `${selectedName} was drafted successfully.`
       );
+
+      if (commissionerOverride) {
+        setCommissionerPickMode(false);
+      }
 
       await loadDraft(false);
     } catch (caughtError) {
@@ -1331,8 +1535,37 @@ export default function NhlTraditionalDraft({
   }, [draft?.status]);
 
   useEffect(() => {
-    if (isMyTurn) playDraftSound("turn");
-  }, [isMyTurn, draft?.current_overall_pick]);
+    if (
+      !soundEnabled ||
+      !isMyTurn ||
+      !draft ||
+      draft.status !== "drafting" ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    const key = `${draft.id}:${draft.current_overall_pick}`;
+    if (spokenTurnRef.current === key) return;
+    spokenTurnRef.current = key;
+
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance("It's your turn.");
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      // Voice notification is optional and may be blocked by browser settings.
+    }
+  }, [
+    soundEnabled,
+    isMyTurn,
+    draft?.id,
+    draft?.status,
+    draft?.current_overall_pick,
+  ]);
 
   useEffect(() => {
     if (!draft || draft.status !== "drafting" || remainingSeconds < 1 || remainingSeconds > 10) return;
@@ -1374,8 +1607,25 @@ export default function NhlTraditionalDraft({
 
   useEffect(() => {
     if (!draft || draft.status !== "drafting" || autoBusy) return;
-    const currentDraftTeam = draftTeams.find((team) => team.fantasy_team_id === draft.current_fantasy_team_id);
-    const shouldRun = remainingSeconds === 0 || Boolean(currentDraftTeam?.is_cpu) || (isMyTurn && autoDraftEnabled);
+    const currentDraftTeam = draftTeams.find(
+      (team) => team.fantasy_team_id === draft.current_fantasy_team_id
+    );
+    const isCpuTurn = Boolean(currentDraftTeam?.is_cpu);
+
+    const pickStartedAtMs = draft.current_pick_started_at
+      ? Date.parse(draft.current_pick_started_at)
+      : Number.NaN;
+
+    const cpuFiveSecondsElapsed =
+      isCpuTurn &&
+      Number.isFinite(pickStartedAtMs) &&
+      nowMs - pickStartedAtMs >= 5000;
+
+    const shouldRun =
+      remainingSeconds === 0 ||
+      cpuFiveSecondsElapsed ||
+      (isMyTurn && autoDraftEnabled);
+
     if (!shouldRun) return;
     const key = `${draft.id}:${draft.current_overall_pick}`;
     if (autoAttemptRef.current === key) return;
@@ -1399,7 +1649,7 @@ export default function NhlTraditionalDraft({
       }
       setAutoBusy(false);
     });
-  }, [draft?.id, draft?.status, draft?.current_overall_pick, draft?.current_fantasy_team_id, remainingSeconds, autoDraftEnabled, isMyTurn, draftTeams, autoBusy, leagueId, loadDraft]);
+  }, [draft?.id, draft?.status, draft?.current_overall_pick, draft?.current_fantasy_team_id, draft?.current_pick_started_at, remainingSeconds, autoDraftEnabled, isMyTurn, draftTeams, autoBusy, leagueId, loadDraft, nowMs]);
 
   const myFuturePicks =
     draft && myFantasyTeam
@@ -1422,7 +1672,7 @@ export default function NhlTraditionalDraft({
     .filter((player): player is NhlPlayerRow => Boolean(player));
 
   const rankingPlayers = myRankingIds
-    .filter((id) => !draftedPlayerIds.has(id))
+    .filter((id) => !unavailablePlayerIds.has(id))
     .map((id) => playerById.get(id))
     .filter((player): player is NhlPlayerRow => Boolean(player));
 
@@ -1435,6 +1685,11 @@ export default function NhlTraditionalDraft({
     rosterTeamId == null
       ? []
       : draftPicks.filter((pick) => pick.fantasy_team_id === rosterTeamId);
+
+  const rosterKeepers =
+    rosterTeamId == null
+      ? []
+      : targetRosterRows.filter((row) => row.fantasyTeamId === rosterTeamId);
 
   const rosterSlots = (() => {
     const rs = rosterSettings;
@@ -1458,36 +1713,98 @@ export default function NhlTraditionalDraft({
     ];
   })();
 
+  const rosterKeeperPlayerIds = useMemo(
+    () => new Set(rosterKeepers.map((row) => row.nhlPlayerId)),
+    [rosterKeepers]
+  );
+
   const rosterAssignments = (() => {
     const assigned: Record<string, NhlPlayerRow[]> = {};
     for (const slot of rosterSlots) assigned[slot.key] = [];
 
-    const targetFor = (key: string) => rosterSlots.find((slot) => slot.key === key)?.target ?? 0;
-    const isFdg = (settings?.position_mode ?? "detailed").toLowerCase() === "fdg";
+    const targetFor = (key: string) =>
+      rosterSlots.find((slot) => slot.key === key)?.target ?? 0;
+    const isFdg =
+      (settings?.position_mode ?? "detailed").toLowerCase() === "fdg";
+    const assignedIds = new Set<number>();
 
-    for (const pick of [...rosterPicks].sort((a, b) => a.overall_pick - b.overall_pick)) {
-      const player = playerById.get(pick.nhl_player_id);
-      if (!player) continue;
+    const assignPlayer = (player: NhlPlayerRow) => {
+      if (assignedIds.has(player.id)) return;
+
       const pos = normalizePosition(player.position, player.position_group);
-      const natural = isFdg && ["C", "LW", "RW", "F"].includes(pos) ? "F" : pos;
+      const natural =
+        isFdg && ["C", "LW", "RW", "F"].includes(pos) ? "F" : pos;
 
-      if (assigned[natural] && assigned[natural].length < targetFor(natural)) {
+      if (
+        assigned[natural] &&
+        assigned[natural].length < targetFor(natural)
+      ) {
         assigned[natural].push(player);
-        continue;
+        assignedIds.add(player.id);
+        return;
       }
 
-      if (natural !== "G" && assigned.UTIL && assigned.UTIL.length < targetFor("UTIL")) {
+      if (
+        natural !== "G" &&
+        assigned.UTIL &&
+        assigned.UTIL.length < targetFor("UTIL")
+      ) {
         assigned.UTIL.push(player);
-        continue;
+        assignedIds.add(player.id);
+        return;
       }
 
-      if (assigned.BENCH && assigned.BENCH.length < targetFor("BENCH")) {
+      if (
+        assigned.BENCH &&
+        assigned.BENCH.length < targetFor("BENCH")
+      ) {
         assigned.BENCH.push(player);
+        assignedIds.add(player.id);
       }
+    };
+
+    // Finalized Dynasty keepers fill the target-season roster first.
+    for (const keeper of rosterKeepers) {
+      const player = playerById.get(keeper.nhlPlayerId);
+      if (player) assignPlayer(player);
+    }
+
+    // Annual draft selections fill the remaining openings.
+    for (const pick of [...rosterPicks].sort(
+      (a, b) => a.overall_pick - b.overall_pick
+    )) {
+      const player = playerById.get(pick.nhl_player_id);
+      if (player) assignPlayer(player);
     }
 
     return assigned;
   })();
+
+  const rosterTotalSlots = rosterSlots.reduce(
+    (sum, slot) => sum + slot.target,
+    0
+  );
+
+  const rosterFilledCount = Object.values(rosterAssignments).reduce(
+    (sum, slotPlayers) => sum + slotPlayers.length,
+    0
+  );
+
+  const rosterOpenCount = Math.max(
+    0,
+    rosterTotalSlots - rosterFilledCount
+  );
+
+  const rosterNeeds = rosterSlots
+    .map((slot) => ({
+      label: slot.label,
+      open: Math.max(
+        0,
+        slot.target - (rosterAssignments[slot.key]?.length ?? 0)
+      ),
+    }))
+    .filter((slot) => slot.open > 0);
+
 
   const rpcRows = (data: unknown): RpcJson[] => {
     if (Array.isArray(data)) return data as RpcJson[];
@@ -1801,12 +2118,76 @@ export default function NhlTraditionalDraft({
 
   const toggleId = (setter: Dispatch<SetStateAction<number[]>>, id: number) => setter((xs) => xs.includes(id) ? xs.filter((x) => x !== id) : [...xs,id]);
 
+  async function saveQueue(nextIds: number[]) {
+    if (!myFantasyTeam || queueBusy) return;
+
+    setQueueBusy(true);
+    setError(null);
+
+    try {
+      const { error: saveError } = await supabase.rpc(
+        "save_nhl_traditional_draft_queue",
+        {
+          p_league_id: leagueId,
+          p_fantasy_team_id: myFantasyTeam.id,
+          p_queue: nextIds.map((nhlPlayerId) => ({ nhlPlayerId })),
+        }
+      );
+
+      if (saveError) throw saveError;
+
+      setQueueIds(nextIds);
+
+      if (draft?.status === "drafting" && isMyTurn) {
+        const { data, error: candidateError } = await supabase.rpc(
+          "get_nhl_traditional_auto_draft_candidate",
+          {
+            p_league_id: leagueId,
+            p_fantasy_team_id: myFantasyTeam.id,
+          }
+        );
+
+        if (candidateError) throw candidateError;
+
+        setAutoCandidate(
+          data && typeof data === "object"
+            ? (data as AutoDraftCandidate)
+            : null
+        );
+      }
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Unable to save the Draft Queue."
+      );
+    } finally {
+      setQueueBusy(false);
+    }
+  }
+
   function toggleQueue(playerId: number) {
-    setQueueIds((current) =>
-      current.includes(playerId)
-        ? current.filter((id) => id !== playerId)
-        : [...current, playerId]
-    );
+    const next = queueIds.includes(playerId)
+      ? queueIds.filter((id) => id !== playerId)
+      : [...queueIds, playerId];
+
+    void saveQueue(next);
+  }
+
+  function moveQueue(playerId: number, direction: -1 | 1) {
+    const currentIndex = queueIds.indexOf(playerId);
+    if (currentIndex < 0) return;
+
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= queueIds.length) return;
+
+    const next = [...queueIds];
+    [next[currentIndex], next[nextIndex]] = [
+      next[nextIndex],
+      next[currentIndex],
+    ];
+
+    void saveQueue(next);
   }
 
   if (loading) {
@@ -1821,6 +2202,71 @@ export default function NhlTraditionalDraft({
     return (
       <main style={styles.page}>
         <div style={styles.errorBox}>NHL Traditional league was not found.</div>
+      </main>
+    );
+  }
+
+  const annualDraftRoomReady =
+    !offseasonMode ||
+    (Boolean(draft) &&
+      ["ready", "drafting", "paused", "completed"].includes(draft?.status ?? ""));
+
+  if (offseasonMode && !annualDraftRoomReady) {
+    const targetSeason = draftSeason ?? league.season + 1;
+    const waitingForOrder = Boolean(draft);
+
+    return (
+      <main className="g365-nhl-draft-page" style={styles.page}>
+        <div style={styles.container}>
+          <section className="g365-draft-topbar" style={styles.topBar}>
+            <div style={styles.brandBlock}>
+              <div style={styles.eyebrow}>GRIDIRON365 • NHL TRADITIONAL</div>
+              <div style={styles.draftTitleRow}>
+                <h1 className="g365-draft-title" style={styles.title}>
+                  {targetSeason} Annual Draft
+                </h1>
+                <span style={styles.formatPill}>Dynasty</span>
+              </div>
+              <div style={styles.subtitle}>
+                {league.name} • {targetSeason} • {positionMode}
+              </div>
+            </div>
+            <div style={styles.statusBadge}>
+              {waitingForOrder ? "Waiting for Order" : "Not Prepared"}
+            </div>
+          </section>
+
+          {error ? <div style={styles.errorBox}>{error}</div> : null}
+          {message ? <div style={styles.successBox}>{message}</div> : null}
+
+          <section style={styles.emptyCard}>
+            <div style={styles.emptyTitle}>
+              {waitingForOrder
+                ? `Waiting for ${targetSeason} Annual Draft Order`
+                : `${targetSeason} Annual Draft — Not Prepared`}
+            </div>
+            <div style={styles.emptyText}>
+              {waitingForOrder
+                ? "The annual draft shell is prepared, but the official draft order is not ready yet. The Draft Room will open automatically after the lottery or previous-season standings order is applied."
+                : isCommissioner
+                  ? "Finish the offseason Draft Settings and prepare the annual draft. No player pool, ticker, clock, queue, rankings, board, or draft roster will load until the target-season draft and order are ready."
+                  : "Waiting for the commissioner to finish the offseason Draft Settings and prepare the annual draft."}
+            </div>
+
+            {!waitingForOrder && isCommissioner ? (
+              <button
+                type="button"
+                style={styles.primaryButton}
+                disabled={actionLoading}
+                onClick={() => void runCommissionerAction("prepare")}
+              >
+                {actionLoading
+                  ? `Preparing ${targetSeason} Draft...`
+                  : `Prepare ${targetSeason} Annual Draft`}
+              </button>
+            ) : null}
+          </section>
+        </div>
       </main>
     );
   }
@@ -2057,7 +2503,6 @@ export default function NhlTraditionalDraft({
         </section>
 
         {error ? <div style={styles.errorBox}>{error}</div> : null}
-        {message ? <div style={styles.successBox}>{message}</div> : null}
 
         {!draft ? (
           <section style={styles.emptyCard}>
@@ -2155,21 +2600,47 @@ export default function NhlTraditionalDraft({
             <section style={styles.autoDraftBar}>
               <div style={styles.autoDraftInfo}>
                 <span style={styles.clockLabel}>AUTO PICK</span>
-                <strong style={styles.autoDraftPlayer}>
-                  {autoCandidate?.exists
-                    ? `${autoCandidate.playerName ?? "Player"} • ${autoCandidate.position ?? "—"}`
-                    : isMyTurn
-                      ? "Calculating best available player…"
-                      : "Shown when your team is on the clock"}
-                </strong>
-                {autoCandidate?.source ? (
-                  <span style={styles.clockMeta}>
-                    {autoCandidate.source === "my_rankings" ? "My Rankings" : "G365 Best Available"}
-                    {autoCandidate.forceNeed ? " • roster need" : ""}
-                  </span>
-                ) : null}
+                <span style={styles.clockMeta}>
+                  Timeout selection preview
+                </span>
               </div>
               <div style={styles.autoDraftControls}>
+                {isMyTurn ? (
+                  <div style={styles.autoPickPreview}>
+                    {autoCandidate?.exists ? (
+                      <>
+                        {autoCandidatePlayer?.headshot_url ? (
+                          <img
+                            src={autoCandidatePlayer.headshot_url}
+                            alt=""
+                            style={styles.autoPickHeadshot}
+                          />
+                        ) : (
+                          <div style={styles.autoPickHeadshotFallback}>
+                            {(autoCandidate.playerName ?? "P").slice(0, 1).toUpperCase()}
+                          </div>
+                        )}
+                        <div style={styles.autoPickPreviewText}>
+                          <strong style={styles.autoPickPreviewName}>
+                            {autoCandidate.playerName ?? "Player"}
+                          </strong>
+                          <span style={styles.autoPickPreviewMeta}>
+                            {autoCandidate.position ?? "—"} • {
+                              autoCandidate.source === "queue" || autoCandidate.source === "queue_need"
+                                ? `QUEUE${autoCandidate.queueOrder ? ` #${autoCandidate.queueOrder}` : ""}`
+                                : autoCandidate.source === "my_rankings" || autoCandidate.source === "my_rankings_need"
+                                  ? `MY RANKINGS${autoCandidate.myRank ? ` #${autoCandidate.myRank}` : ""}`
+                                  : "G365 BEST"
+                            }
+                            {autoCandidate.forceNeed ? " • NEED" : ""}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <span style={styles.autoPickLoading}>Calculating…</span>
+                    )}
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   disabled={!myFantasyTeam || autoBusy}
@@ -2187,7 +2658,19 @@ export default function NhlTraditionalDraft({
                     const next = !soundEnabled;
                     setSoundEnabled(next);
                     window.localStorage.setItem("g365-nhl-draft-sound", next ? "on" : "off");
-                    if (next) playDraftSound("turn");
+                    if (next) {
+                      if (isMyTurn && typeof window !== "undefined") {
+                        try {
+                          window.speechSynthesis.cancel();
+                          const utterance = new SpeechSynthesisUtterance("It's your turn.");
+                          window.speechSynthesis.speak(utterance);
+                        } catch {
+                          // Voice notification is optional.
+                        }
+                      } else {
+                        playDraftSound("start");
+                      }
+                    }
                   }}
                   style={styles.soundButton}
                 >
@@ -2197,7 +2680,10 @@ export default function NhlTraditionalDraft({
             </section>
 
             <section className="g365-draft-ticker-shell" style={styles.draftTickerShell}>
-              <div className="g365-draft-ticker-label" style={styles.draftTickerLabel}>DRAFT TICKER</div>
+              <div className="g365-draft-ticker-label" style={styles.draftTickerLabel}>
+                <span>DRAFT TICKER</span>
+                <strong style={styles.draftTickerRound}>ROUND {draft.current_round}</strong>
+              </div>
               <div className="g365-draft-ticker-scroller" style={styles.draftTickerScroller}>
                 {(() => {
                   const currentIndex = Math.max(
@@ -2206,8 +2692,15 @@ export default function NhlTraditionalDraft({
                       (cell) => cell.overallPick === draft.current_overall_pick
                     )
                   );
-                  const start = Math.max(0, currentIndex - 5);
-                  const end = Math.min(boardCells.length, currentIndex + 8);
+                  // Keep the current pick anchored at the left edge of the ticker.
+                  // As the draft advances, completed picks slide out and the ticker
+                  // uses the available width for the maximum number of upcoming picks.
+                  const start = currentIndex;
+                  const visibleTickerPicks = 12;
+                  const end = Math.min(
+                    boardCells.length,
+                    start + visibleTickerPicks
+                  );
                   return boardCells.slice(start, end).map((cell) => {
                     const isMine = cell.fantasyTeamId === myFantasyTeam?.id;
                     const completedPick = draftPicks.find(
@@ -2233,12 +2726,29 @@ export default function NhlTraditionalDraft({
                         <div className="g365-draft-ticker-number" style={styles.draftTickerNumber}>
                           {cell.overallPick}
                         </div>
+                        {pickedPlayer ? (
+                          pickedPlayer.headshot_url ? (
+                            <img src={pickedPlayer.headshot_url} alt="" style={styles.draftTickerHeadshot} />
+                          ) : (
+                            <div style={styles.draftTickerHeadshotFallback}>
+                              {playerName(pickedPlayer).slice(0, 1).toUpperCase()}
+                            </div>
+                          )
+                        ) : null}
                         <div className="g365-draft-ticker-info" style={styles.draftTickerInfo}>
                           {pickedPlayer ? (
                             <>
-                              <strong className="g365-draft-ticker-primary" style={styles.draftTickerPrimary}>
-                                {playerName(pickedPlayer)}
-                              </strong>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                                <strong className="g365-draft-ticker-primary" style={styles.draftTickerPrimary}>
+                                  {playerName(pickedPlayer)}
+                                </strong>
+                                <NhlInjuryBadge
+                                  status={pickedPlayer.injury_status}
+                                  detail={pickedPlayer.injury_detail}
+                                  returnDate={pickedPlayer.injury_return_date}
+                                  source={pickedPlayer.injury_source}
+                                />
+                              </div>
                               <span className="g365-draft-ticker-secondary" style={styles.draftTickerSecondary}>
                                 {normalizePosition(
                                   pickedPlayer.position,
@@ -2273,15 +2783,6 @@ export default function NhlTraditionalDraft({
               </div>
             </section>
 
-            {isMyTurn ? (
-              <section style={styles.yourTurn}>
-                <strong>IT&apos;S YOUR TURN</strong>
-                <span>
-                  {myFantasyTeam?.team_name ?? "Your Team"} is on the clock.
-                </span>
-              </section>
-            ) : null}
-
             {isCommissioner ? (
               <section style={styles.commissionerBar}>
                 <div>
@@ -2315,14 +2816,35 @@ export default function NhlTraditionalDraft({
                   ) : null}
 
                   {draft.status === "paused" ? (
-                    <button
-                      type="button"
-                      style={styles.primaryButton}
-                      disabled={actionLoading}
-                      onClick={() => void runCommissionerAction("resume")}
-                    >
-                      Resume Draft
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        style={{
+                          ...styles.secondaryButton,
+                          ...(commissionerPickMode ? styles.commissionerPickModeButton : {}),
+                        }}
+                        disabled={actionLoading || !currentTeam}
+                        onClick={() => {
+                          setCommissionerPickMode((current) => !current);
+                          setActiveTab("players");
+                        }}
+                      >
+                        {commissionerPickMode
+                          ? "Cancel Make Pick"
+                          : `Make Pick for ${currentTeam?.team_name ?? "Team"}`}
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.primaryButton}
+                        disabled={actionLoading}
+                        onClick={() => {
+                          setCommissionerPickMode(false);
+                          void runCommissionerAction("resume");
+                        }}
+                      >
+                        Resume Draft
+                      </button>
+                    </>
                   ) : null}
 
                   <button
@@ -2339,6 +2861,14 @@ export default function NhlTraditionalDraft({
                     Reset Draft
                   </button>
                 </div>
+
+                {draft.status === "paused" && commissionerPickMode ? (
+                  <div style={styles.commissionerPickNotice}>
+                    COMMISSIONER PICK MODE • Select a player below for{" "}
+                    <strong>{currentTeam?.team_name ?? "the team on the clock"}</strong>.
+                    The draft will advance one pick and remain paused.
+                  </div>
+                ) : null}
               </section>
             ) : null}
 
@@ -2362,8 +2892,25 @@ export default function NhlTraditionalDraft({
                         return (
                           <div key={pick.id} style={styles.historyRailRow}>
                             <div style={styles.historyRailPick}>#{pick.overall_pick}</div>
+                            {player?.headshot_url ? (
+                              <img src={player.headshot_url} alt="" style={styles.historyHeadshot} />
+                            ) : (
+                              <div style={styles.historyHeadshotFallback}>
+                                {player ? playerName(player).slice(0, 1).toUpperCase() : "?"}
+                              </div>
+                            )}
                             <div style={styles.historyRailInfo}>
-                              <strong>{player ? playerName(player) : `Player #${pick.nhl_player_id}`}</strong>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                                <strong>{player ? playerName(player) : `Player #${pick.nhl_player_id}`}</strong>
+                                {player ? (
+                                  <NhlInjuryBadge
+                                    status={player.injury_status}
+                                    detail={player.injury_detail}
+                                    returnDate={player.injury_return_date}
+                                    source={player.injury_source}
+                                  />
+                                ) : null}
+                              </div>
                               <span>{team?.team_name ?? `Team ${pick.fantasy_team_id}`}</span>
                               <span>R{pick.round_number} P{pick.pick_in_round}{player ? ` • ${normalizePosition(player.position, player.position_group)}` : ""}</span>
                             </div>
@@ -2438,7 +2985,7 @@ export default function NhlTraditionalDraft({
                           : activeTab === "queue"
                             ? "Your saved draft targets. Drafted players are removed automatically."
                             : activeTab === "rankings"
-                              ? "Saved draft-specific rankings. Auto Draft uses this order first, then G365 best available and late-draft roster need."
+                              ? "Saved draft-specific rankings. Auto Pick uses Queue first, then My Rankings, then G365 Best Available."
                               : `${draftPicks.length} of ${totalPicks} selections completed.`}
                       </div>
                     </div>
@@ -2535,15 +3082,23 @@ export default function NhlTraditionalDraft({
                                   <div style={styles.headshotFallback}>{pos}</div>
                                 )}
                                 <div style={styles.playerTextBlock}>
-                                  <button
-                                    type="button"
-                                    onClick={() => void openPlayerDetail(player.id)}
-                                    className="g365-player-name"
-                                    style={styles.playerNameButton}
-                                    title={`View ${playerName(player)} projections and last-season stats`}
-                                  >
-                                    {playerName(player)}
-                                  </button>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => void openPlayerDetail(player.id)}
+                                      className="g365-player-name"
+                                      style={styles.playerNameButton}
+                                      title={`View ${playerName(player)} projections and last-season stats`}
+                                    >
+                                      {playerName(player)}
+                                    </button>
+                                    <NhlInjuryBadge
+                                      status={player.injury_status}
+                                      detail={player.injury_detail}
+                                      returnDate={player.injury_return_date}
+                                      source={player.injury_source}
+                                    />
+                                  </div>
                                   <div style={styles.playerMeta}>
                                     {ranking?.position_rank != null
                                       ? `${pos}${ranking.position_rank}`
@@ -2554,9 +3109,7 @@ export default function NhlTraditionalDraft({
                                     {ranking?.projected_games_played != null
                                       ? ` • ${Number(ranking.projected_games_played).toFixed(1)} GP`
                                       : ""}
-                                    {player.injury_status
-                                      ? ` • ${player.injury_status}`
-                                      : ""}
+
                                   </div>
                                 </div>
                               </div>
@@ -2578,6 +3131,7 @@ export default function NhlTraditionalDraft({
                               <button
                                 className="g365-player-queue"
                                 type="button"
+                                disabled={queueBusy}
                                 onClick={() => toggleQueue(player.id)}
                                 style={{
                                   ...styles.queueButton,
@@ -2617,7 +3171,15 @@ export default function NhlTraditionalDraft({
                           <div key={player.id} style={styles.queueRow}>
                             <span style={styles.queueRank}>{index + 1}</span>
                             <div style={styles.queuePlayerInfo}>
-                              <strong>{playerName(player)}</strong>
+                              <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                                <strong>{playerName(player)}</strong>
+                                <NhlInjuryBadge
+                                  status={player.injury_status}
+                                  detail={player.injury_detail}
+                                  returnDate={player.injury_return_date}
+                                  source={player.injury_source}
+                                />
+                              </div>
                               <span style={styles.playerMeta}>
                                 {normalizePosition(
                                   player.position,
@@ -2628,8 +3190,29 @@ export default function NhlTraditionalDraft({
                                   : ""}
                               </span>
                             </div>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button
+                                type="button"
+                                disabled={queueBusy || index === 0}
+                                style={styles.removeQueueButton}
+                                onClick={() => moveQueue(player.id, -1)}
+                                aria-label={`Move ${playerName(player)} up in queue`}
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                disabled={queueBusy || index === queuedPlayers.length - 1}
+                                style={styles.removeQueueButton}
+                                onClick={() => moveQueue(player.id, 1)}
+                                aria-label={`Move ${playerName(player)} down in queue`}
+                              >
+                                ↓
+                              </button>
+                            </div>
                             <button
                               type="button"
+                              disabled={queueBusy}
                               style={styles.removeQueueButton}
                               onClick={() => toggleQueue(player.id)}
                             >
@@ -2671,7 +3254,15 @@ export default function NhlTraditionalDraft({
                                 <div className="g365-my-ranking-player" style={styles.rankingPlayerIdentity}>
                                   {player.headshot_url ? <img src={player.headshot_url} alt="" style={styles.rankingHeadshot} /> : <span style={styles.rankingHeadshotFallback}>{playerName(player).slice(0,1).toUpperCase()}</span>}
                                   <div style={styles.rankingPlayerText}>
-                                    <button type="button" onClick={() => void openPlayerDetail(player.id)} style={styles.rankingPlayerButton}>{playerName(player)}</button>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                                      <button type="button" onClick={() => void openPlayerDetail(player.id)} style={styles.rankingPlayerButton}>{playerName(player)}</button>
+                                      <NhlInjuryBadge
+                                        status={player.injury_status}
+                                        detail={player.injury_detail}
+                                        returnDate={player.injury_return_date}
+                                        source={player.injury_source}
+                                      />
+                                    </div>
                                     <span style={styles.rankingPlayerMeta}>G365 {ranking?.overall_rank != null ? `#${ranking.overall_rank}` : "—"}{ranking?.position_rank != null ? ` • ${pos}${ranking.position_rank}` : ""}</span>
                                   </div>
                                 </div>
@@ -2768,8 +3359,14 @@ export default function NhlTraditionalDraft({
                                     </div>
                                     {cell.player ? (
                                       <>
-                                        <div style={styles.boardPlayerName}>
-                                          {playerName(cell.player)}
+                                        <div style={{ ...styles.boardPlayerName, display: "flex", alignItems: "center", gap: 6 }}>
+                                          <span>{playerName(cell.player)}</span>
+                                          <NhlInjuryBadge
+                                            status={cell.player.injury_status}
+                                            detail={cell.player.injury_detail}
+                                            returnDate={cell.player.injury_return_date}
+                                            source={cell.player.injury_source}
+                                          />
                                         </div>
                                         <div style={styles.boardPosition}>
                                           {normalizePosition(
@@ -3242,7 +3839,7 @@ export default function NhlTraditionalDraft({
                   <summary className="g365-mobile-collapse-summary" style={styles.cardHead}>
                     <span style={styles.cardTitle}>ROSTERS</span>
                     <span className="g365-mobile-collapse-meta">
-                      <span style={styles.cardMeta}>{rosterPicks.length}/{draft.rounds}</span>
+                      <span style={styles.cardMeta}>{rosterFilledCount}/{rosterTotalSlots}</span>
                       <span className="g365-mobile-collapse-chevron" aria-hidden="true">⌄</span>
                     </span>
                   </summary>
@@ -3277,8 +3874,33 @@ export default function NhlTraditionalDraft({
                           <div style={styles.rosterMiniPlayers}>
                             {naturalPlayers.slice(0, slot.target).map((player) => (
                               <div key={player.id} style={styles.rosterMiniPlayer}>
-                                <span>{playerName(player)}</span>
-                                <b>{normalizePosition(player.position, player.position_group)}</b>
+                                <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                                  <span>{playerName(player)}</span>
+                                  <NhlInjuryBadge
+                                    status={player.injury_status}
+                                    detail={player.injury_detail}
+                                    returnDate={player.injury_return_date}
+                                    source={player.injury_source}
+                                  />
+                                </span>
+                                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  {rosterKeeperPlayerIds.has(player.id) ? (
+                                    <span
+                                      style={{
+                                        border: "1px solid rgba(249,115,22,.55)",
+                                        borderRadius: 999,
+                                        padding: "2px 6px",
+                                        fontSize: 9,
+                                        fontWeight: 900,
+                                        color: "#fb923c",
+                                        letterSpacing: ".05em",
+                                      }}
+                                    >
+                                      KEEPER
+                                    </span>
+                                  ) : null}
+                                  <b>{normalizePosition(player.position, player.position_group)}</b>
+                                </span>
                               </div>
                             ))}
                             {Array.from({ length: Math.max(0, slot.target - naturalPlayers.length) }).map((_, index) => (
@@ -3289,9 +3911,27 @@ export default function NhlTraditionalDraft({
                       );
                     })}
                   </div>
-                  <div style={styles.rosterFooter}>
-                    <span>TOTAL DRAFTED</span>
-                    <strong>{rosterPicks.length}/{draft.rounds}</strong>
+                  <div
+                    style={{
+                      ...styles.rosterFooter,
+                      alignItems: "flex-start",
+                      gap: 10,
+                    }}
+                  >
+                    <div>
+                      <span style={{ display: "block" }}>ROSTER</span>
+                      <strong>{rosterFilledCount}/{rosterTotalSlots}</strong>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <span style={{ display: "block" }}>DRAFT NEEDS</span>
+                      <strong>
+                        {rosterOpenCount === 0
+                          ? "FULL"
+                          : rosterNeeds
+                              .map((need) => `${need.label} ${need.open}`)
+                              .join(" • ")}
+                      </strong>
+                    </div>
                   </div>
                   </div>
                 </details>
@@ -3328,7 +3968,15 @@ export default function NhlTraditionalDraft({
                   ) : null}
                   <div>
                     <div style={styles.modalEyebrow}>G365 DRAFT PROFILE</div>
-                    <h2 style={styles.modalTitle}>{playerName(detailPlayer)}</h2>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <h2 style={styles.modalTitle}>{playerName(detailPlayer)}</h2>
+                      <NhlInjuryBadge
+                        status={detailPlayer.injury_status}
+                        detail={detailPlayer.injury_detail}
+                        returnDate={detailPlayer.injury_return_date}
+                        source={detailPlayer.injury_source}
+                      />
+                    </div>
                     <div style={styles.modalMeta}>
                       {normalizePosition(detailPlayer.position, detailPlayer.position_group)}
                       {" • "}
@@ -3632,13 +4280,18 @@ const styles: Record<string, React.CSSProperties> = {
   myDraftStats: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 1, background: "#242428" },
   sideStatLabel: { display: "block", paddingTop: 9, color: "#737780", fontSize: 8, textAlign: "center", textTransform: "uppercase" },
   sideStatValue: { display: "block", padding: "3px 4px 10px", background: "#101012", textAlign: "center", fontSize: 18 },
+  commissionerPickModeButton: { border: "1px solid #ff5a00", background: "linear-gradient(135deg,#451207,#21100b)", color: "#ff8a3d", boxShadow: "inset 0 0 0 1px rgba(255,90,0,.16)" },
+  commissionerPickNotice: { width: "100%", marginTop: 10, padding: "9px 11px", border: "1px solid rgba(255,90,0,.42)", borderRadius: 8, background: "rgba(255,90,0,.07)", color: "#d8d9dd", fontSize: 10, fontWeight: 800, lineHeight: 1.4 },
   draftTickerShell: { display: "flex", alignItems: "stretch", gap: 0, marginBottom: 10, border: "1px solid #29292d", borderRadius: 9, background: "#0c0c0e", overflow: "hidden" },
-  draftTickerLabel: { display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 94px", padding: "8px 10px", borderRight: "1px solid #2b2b30", background: "#151518", color: "#fff", fontSize: 9, fontWeight: 950, letterSpacing: .5, textAlign: "center" },
+  draftTickerLabel: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, flex: "0 0 94px", padding: "8px 10px", borderRight: "1px solid #2b2b30", background: "#151518", color: "#fff", fontSize: 9, fontWeight: 950, letterSpacing: .5, textAlign: "center" },
+  draftTickerRound: { color: "#ff6a00", fontSize: 9, fontWeight: 1000, letterSpacing: .7 },
   draftTickerScroller: { display: "flex", flex: "1 1 auto", minWidth: 0, overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "thin" },
   draftTickerPick: { display: "flex", alignItems: "center", gap: 8, flex: "0 0 180px", minHeight: 62, padding: "7px 10px", borderRight: "1px solid #252529", background: "linear-gradient(180deg,#151517,#101012)" },
-  draftTickerCurrent: { border: "1px solid #ff5a00", background: "linear-gradient(135deg,#5a1305,#24100a)", boxShadow: "inset 0 0 0 1px rgba(255,111,0,.22)" },
+  draftTickerCurrent: { borderTop: "1px solid #ff5a00", borderRight: "1px solid #ff5a00", borderBottom: "1px solid #ff5a00", borderLeft: "1px solid #ff5a00", background: "linear-gradient(135deg,#5a1305,#24100a)", boxShadow: "inset 0 0 0 1px rgba(255,111,0,.22)" },
   draftTickerMine: { background: "linear-gradient(180deg,#261109,#151012)", boxShadow: "inset 0 0 0 1px rgba(255,90,0,.28)" },
   draftTickerNumber: { display: "grid", placeItems: "center", width: 28, height: 28, flex: "0 0 28px", borderRadius: 6, background: "#202024", color: "#ff7a28", fontSize: 11, fontWeight: 950 },
+  draftTickerHeadshot: { width: 34, height: 34, flex: "0 0 34px", borderRadius: 7, objectFit: "cover", background: "#202024" },
+  draftTickerHeadshotFallback: { width: 34, height: 34, flex: "0 0 34px", display: "grid", placeItems: "center", borderRadius: 7, background: "#222227", color: "#ff7a28", fontSize: 11, fontWeight: 950 },
   draftTickerInfo: { display: "flex", flexDirection: "column", minWidth: 0, gap: 3 },
   draftTickerPrimary: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#fff", fontSize: 10, fontWeight: 950 },
   draftTickerSecondary: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#81858e", fontSize: 8, fontWeight: 800 },
@@ -3711,8 +4364,10 @@ const styles: Record<string, React.CSSProperties> = {
   recentPickNumber: { width: 34, color: "#ff6a00", fontSize: 9, fontWeight: 950, flexShrink: 0 },
   recentInfo: { display: "flex", flexDirection: "column", minWidth: 0, fontSize: 9 },
   historyRailList: { maxHeight: 720, overflowY: "auto", padding: 6 },
-  historyRailRow: { display: "grid", gridTemplateColumns: "42px minmax(0,1fr)", gap: 7, padding: "8px 6px", borderBottom: "1px solid #222226" },
-  historyRailPick: { color: "#ff6a00", fontSize: 10, fontWeight: 950, paddingTop: 2 },
+  historyRailRow: { display: "grid", gridTemplateColumns: "36px 38px minmax(0,1fr)", gap: 7, alignItems: "center", padding: "8px 6px", borderBottom: "1px solid #222226" },
+  historyRailPick: { color: "#ff6a00", fontSize: 10, fontWeight: 950 },
+  historyHeadshot: { width: 38, height: 38, borderRadius: 7, objectFit: "cover", background: "#202024" },
+  historyHeadshotFallback: { width: 38, height: 38, display: "grid", placeItems: "center", borderRadius: 7, background: "#222227", color: "#ff7a28", fontSize: 12, fontWeight: 950 },
   historyRailInfo: { display: "flex", flexDirection: "column", minWidth: 0, gap: 2, fontSize: 9 },
   rosterSelectorWrap: { padding: 8, borderBottom: "1px solid #242428" },
   rosterSelect: { width: "100%", minHeight: 38, padding: "7px 9px", borderRadius: 7, border: "1px solid #38383d", background: "#09090b", color: "#fff", fontSize: 11, fontWeight: 850 },
@@ -3785,9 +4440,16 @@ const styles: Record<string, React.CSSProperties> = {
   assetScroll: { maxHeight: 230, overflowY: "auto", overscrollBehavior: "contain", scrollbarGutter: "stable" },
   compactOfferSummary: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, cursor: "pointer", color: "#fff", listStylePosition: "inside" },
   autoDraftBar: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 10, padding: 12, border: "1px solid rgba(255,90,0,.42)", borderRadius: 10, background: "linear-gradient(135deg,#1f0b05,#101012 62%)" },
-  autoDraftInfo: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: "1 1 260px" },
+  autoDraftInfo: { display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: "1 1 150px" },
   autoDraftPlayer: { color: "#fff", fontSize: 14, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  autoDraftControls: { display: "flex", gap: 7, flexWrap: "wrap" },
+  autoDraftControls: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7, flexWrap: "wrap" },
+  autoPickPreview: { display: "flex", alignItems: "center", gap: 7, minWidth: 0, maxWidth: 245, minHeight: 40, padding: "4px 8px 4px 4px", border: "1px solid #4a2a1e", borderRadius: 8, background: "#111113" },
+  autoPickHeadshot: { width: 32, height: 32, flex: "0 0 32px", borderRadius: 6, objectFit: "cover", background: "#202024" },
+  autoPickHeadshotFallback: { width: 32, height: 32, flex: "0 0 32px", display: "grid", placeItems: "center", borderRadius: 6, background: "#222227", color: "#ff7a28", fontSize: 11, fontWeight: 950 },
+  autoPickPreviewText: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
+  autoPickPreviewName: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#fff", fontSize: 10, fontWeight: 950 },
+  autoPickPreviewMeta: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#ff8a3d", fontSize: 7, fontWeight: 900 },
+  autoPickLoading: { color: "#9a9da5", fontSize: 9, fontWeight: 850 },
   autoToggle: { minHeight: 40, padding: "8px 12px", border: "1px solid #4a4a50", borderRadius: 8, background: "#17171a", color: "#c7c9ce", fontSize: 10, fontWeight: 950, cursor: "pointer" },
   autoToggleOn: { border: "1px solid #ff5a00", background: "linear-gradient(135deg,#641800,#2b0c04)", color: "#fff", boxShadow: "0 0 18px rgba(255,90,0,.16)" },
   soundButton: { minHeight: 40, padding: "8px 12px", border: "1px solid #38383e", borderRadius: 8, background: "#121214", color: "#fff", fontSize: 10, fontWeight: 950, cursor: "pointer" },

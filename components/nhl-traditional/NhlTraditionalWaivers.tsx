@@ -37,6 +37,9 @@ type Player = {
   jersey_number: string | null;
   status: string | null;
   injury_status: string | null;
+  injury_detail: string | null;
+  injury_return_date: string | null;
+  injury_source: string | null;
   headshot_url: string | null;
 };
 
@@ -187,6 +190,60 @@ const fmt = (value: number | null, decimals = 0) =>
 const initials = (name: string) =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0]).join("").toUpperCase();
 
+const injuryStatusLabel = (value: string | null | undefined) => {
+  const status = String(value ?? "").trim().toLowerCase();
+  if (!status) return null;
+  if (status === "injured_reserve" || status === "injury_reserve") return "IR";
+  if (status === "out") return "O";
+  if (status === "day_to_day") return "DTD";
+  if (status === "suspension" || status === "suspended") return "SUS";
+  return status.slice(0, 3).toUpperCase();
+};
+
+const injuryReturnLabel = (value: string | null | undefined) => {
+  if (!value) return null;
+  const parsed = new Date(`${value}T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(parsed);
+};
+
+function InjuryBadge({ player }: { player: Player }) {
+  const [open, setOpen] = useState(false);
+  const label = injuryStatusLabel(player.injury_status);
+  if (!label) return null;
+
+  const returnLabel = injuryReturnLabel(player.injury_return_date);
+
+  return (
+    <span className={`g365-waivers-injury-wrap${open ? " is-open" : ""}`}>
+      <button
+        type="button"
+        className="g365-waivers-injury-badge"
+        aria-label={`View ${player.display_name} injury information`}
+        aria-expanded={open}
+        onClick={event => {
+          event.stopPropagation();
+          setOpen(value => !value);
+        }}
+      >
+        {label}
+      </button>
+      {open ? (
+        <span className="g365-waivers-injury-popover" role="status">
+          <strong>{title(player.injury_status)}</strong>
+          {player.injury_detail ? <span>{player.injury_detail}</span> : null}
+          {returnLabel ? <span>Expected return: {returnLabel}</span> : null}
+          {player.injury_source ? <small>Source: {player.injury_source}</small> : null}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 const normalizePosition = (player: Player, mode: string) => {
   const pos = String(player.position ?? player.position_group ?? "").toUpperCase();
   if (mode === "fdg") {
@@ -287,7 +344,7 @@ export default function NhlTraditionalWaivers({ leagueId }: Props) {
           const pageSize = 1000;
           for (let from = 0; ; from += pageSize) {
             const { data, error } = await supabase.from("nhl_players")
-              .select("id, display_name, short_name, team_id, position, position_group, jersey_number, status, injury_status, headshot_url")
+              .select("id, display_name, short_name, team_id, position, position_group, jersey_number, status, injury_status, injury_detail, injury_return_date, injury_source, headshot_url")
               .eq("active", true)
               .order("display_name")
               .range(from, from + pageSize - 1);
@@ -753,6 +810,102 @@ export default function NhlTraditionalWaivers({ leagueId }: Props) {
   return (
     <main className="g365-nhl-waivers-page" style={S.page}>
       <style>{`
+        .g365-waivers-desktop-player-identity {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          position: relative;
+        }
+
+        .g365-waivers-player-name-line {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          min-width: 0;
+        }
+
+        .g365-waivers-injury-wrap {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          flex: 0 0 auto;
+          z-index: 50;
+          overflow: visible;
+        }
+
+        .g365-waivers-injury-wrap.is-open {
+          z-index: 99999;
+        }
+
+        .g365-waivers-desktop-player-cell:has(.g365-waivers-injury-wrap.is-open) {
+          z-index: 99998 !important;
+          overflow: visible !important;
+        }
+
+        .g365-waivers-desktop-player-identity:has(.g365-waivers-injury-wrap.is-open) {
+          z-index: 99999;
+          overflow: visible;
+        }
+
+        .g365-waivers-injury-badge {
+          width: 25px;
+          height: 25px;
+          min-width: 25px;
+          padding: 0;
+          border: 1px solid #9a3d26;
+          border-radius: 50%;
+          background: #2a120d;
+          color: #ff7b31;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 8px;
+          line-height: 1;
+          font-weight: 1000;
+          cursor: pointer;
+        }
+
+        .g365-waivers-injury-badge-static {
+          cursor: default;
+          flex: 0 0 25px;
+        }
+
+        .g365-waivers-injury-popover {
+          position: absolute;
+          top: calc(100% + 6px);
+          left: 0;
+          z-index: 100000;
+          width: min(260px, calc(100vw - 36px));
+          padding: 9px 10px;
+          border: 1px solid #63321f;
+          border-radius: 7px;
+          background: #17110e;
+          color: #fff;
+          box-shadow: 0 12px 30px rgba(0,0,0,.5);
+          display: grid;
+          gap: 4px;
+          white-space: normal;
+          text-align: left;
+          font-size: 9px;
+          line-height: 1.35;
+        }
+
+        .g365-waivers-injury-popover strong { color: #ff7b31; font-size: 9px; }
+        .g365-waivers-injury-popover small { color: #8f8f95; font-size: 8px; }
+
+        .g365-waivers-modal-injury {
+          margin-top: 8px;
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          color: #fff;
+          font-size: 9px;
+        }
+
+        .g365-waivers-modal-injury > span:last-child { display: grid; gap: 2px; }
+        .g365-waivers-modal-injury strong { color: #ff7b31; }
+        .g365-waivers-modal-injury small { color: #9a9aa0; font-size: 8px; }
+
         .g365-waivers-mobile-player-list {
           display: none;
         }
@@ -833,7 +986,7 @@ export default function NhlTraditionalWaivers({ leagueId }: Props) {
 
           .g365-waivers-mobile-player-main {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-columns: minmax(0, 1fr) auto auto;
             gap: 8px;
             align-items: center;
             padding: 9px;
@@ -919,7 +1072,11 @@ export default function NhlTraditionalWaivers({ leagueId }: Props) {
           }
 
           .g365-waivers-mobile-player-main {
-            grid-template-columns: minmax(0, 1fr);
+            grid-template-columns: minmax(0, 1fr) auto;
+          }
+
+          .g365-waivers-mobile-action {
+            grid-column: 1 / -1;
           }
 
           .g365-waivers-mobile-action,
@@ -1057,14 +1214,14 @@ export default function NhlTraditionalWaivers({ leagueId }: Props) {
                             ? <img src={player.headshot_url} alt="" style={S.headshot} />
                             : initials(player.display_name)}
                         </span>
-                        <span>
-                          <strong>{player.display_name}</strong>
-                          <small>
-                            {normalizePosition(player, positionMode)} • {player.teamAbbr}
-                            {player.injury_status ? ` • ${player.injury_status}` : ""}
-                          </small>
+                        <span className="g365-waivers-mobile-player-copy">
+                          <span className="g365-waivers-player-name-line">
+                            <strong>{player.display_name}</strong>
+                          </span>
+                          <small>{normalizePosition(player, positionMode)} • {player.teamAbbr}</small>
                         </span>
                       </button>
+                      <InjuryBadge player={player} />
 
                       <div className="g365-waivers-mobile-action">
                         {player.waiverStatus === "available" ? (
@@ -1147,19 +1304,19 @@ export default function NhlTraditionalWaivers({ leagueId }: Props) {
                             <button type="button" disabled style={S.disabledButton}>WAIT</button>
                           )}
                         </td>
-                        <td style={S.playerCell}>
-                          <button type="button" onClick={() => setSelectedPlayer(player)} style={S.playerButton}>
-                            <span style={S.avatar}>
-                              {player.headshot_url ? <img src={player.headshot_url} alt="" style={S.headshot} /> : initials(player.display_name)}
-                            </span>
-                            <span>
-                              <strong style={S.playerName}>{player.display_name}</strong>
-                              <small style={S.playerSub}>
-                                {player.injury_status ? `${player.injury_status} • ` : ""}
-                                {player.teamName}
-                              </small>
-                            </span>
-                          </button>
+                        <td className="g365-waivers-desktop-player-cell" style={S.playerCell}>
+                          <div className="g365-waivers-desktop-player-identity">
+                            <button type="button" onClick={() => setSelectedPlayer(player)} style={S.playerButton}>
+                              <span style={S.avatar}>
+                                {player.headshot_url ? <img src={player.headshot_url} alt="" style={S.headshot} /> : initials(player.display_name)}
+                              </span>
+                              <span>
+                                <strong style={S.playerName}>{player.display_name}</strong>
+                                <small style={S.playerSub}>{player.teamName}</small>
+                              </span>
+                            </button>
+                            <InjuryBadge player={player} />
+                          </div>
                         </td>
                         <td><strong style={S.orange}>{normalizePosition(player, positionMode)}</strong></td>
                         <td>{player.teamAbbr}</td>
@@ -1319,6 +1476,21 @@ export default function NhlTraditionalWaivers({ leagueId }: Props) {
                   <div style={S.eyebrow}>PLAYER DETAILS</div>
                   <h2 style={S.modalTitle}>{selectedPlayer.display_name}</h2>
                   <div style={S.subtitle}>{selectedPlayer.teamName} • {normalizePosition(selectedPlayer, positionMode)}</div>
+                  {injuryStatusLabel(selectedPlayer.injury_status) ? (
+                    <div className="g365-waivers-modal-injury">
+                      <span className="g365-waivers-injury-badge g365-waivers-injury-badge-static">
+                        {injuryStatusLabel(selectedPlayer.injury_status)}
+                      </span>
+                      <span>
+                        <strong>{title(selectedPlayer.injury_status)}</strong>
+                        {selectedPlayer.injury_detail ? <small>{selectedPlayer.injury_detail}</small> : null}
+                        {injuryReturnLabel(selectedPlayer.injury_return_date) ? (
+                          <small>Expected return: {injuryReturnLabel(selectedPlayer.injury_return_date)}</small>
+                        ) : null}
+                        {selectedPlayer.injury_source ? <small>Source: {selectedPlayer.injury_source}</small> : null}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <button type="button" onClick={() => setSelectedPlayer(null)} style={S.close}>×</button>

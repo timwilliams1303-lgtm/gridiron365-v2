@@ -51,6 +51,7 @@ type NhlSettings = {
   trade_review_mode: "none" | "commissioner";
   waiver_mode: "rolling" | "reverse_standings" | "faab";
   faab_budget: number | null;
+  matchup_acquisition_limit: number | null;
   dynasty_rookie_rounds: number;
   dynasty_future_pick_years: number;
   dynasty_rosters_carry_over: boolean;
@@ -425,6 +426,36 @@ type ProtectionSelection = {
   status: "selected" | "locked" | "carried_over" | string;
 };
 
+type KeeperSubmissionTeam = {
+  fantasyTeamId: number;
+  teamName: string;
+  ownerId: string | null;
+  isCpu: boolean;
+  selectedCount: number;
+  keeperLimit: number;
+  submitted: boolean;
+  submittedAt: string | null;
+  lockedCount: number;
+  carriedOverCount: number;
+  complete: boolean;
+  finalized: boolean;
+};
+
+type KeeperSubmissionProgress = {
+  success: boolean;
+  leagueId: string;
+  sourceSeason: number;
+  targetSeason: number;
+  keeperLimit: number;
+  activeTeams: number;
+  submittedTeams: number;
+  remainingTeams: number;
+  allSubmitted: boolean;
+  protectionStatus: string;
+  finalized: boolean;
+  teams: KeeperSubmissionTeam[];
+};
+
 type OffseasonCalendar = {
   success: boolean;
   leagueId: string;
@@ -559,6 +590,7 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
   const [teamDivisions, setTeamDivisions] = useState<NhlTeamDivision[]>([]);
   const [draftTimerSeconds, setDraftTimerSeconds] = useState(90);
   const [protectionSelections, setProtectionSelections] = useState<ProtectionSelection[]>([]);
+  const [keeperSubmissionProgress, setKeeperSubmissionProgress] = useState<KeeperSubmissionProgress | null>(null);
   const [protectionPanelCollapsed, setProtectionPanelCollapsed] = useState(false);
   const [offseasonCalendar, setOffseasonCalendar] = useState<OffseasonCalendar | null>(null);
   const [dynastyChecklist, setDynastyChecklist] = useState<DynastySeasonChecklist | null>(null);
@@ -765,6 +797,29 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
       }
     } else {
       setProtectionSelections([]);
+    }
+
+    if (loadedSettings.league_format === "dynasty") {
+      const targetSeason = Number(loadedSettings.season) + 1;
+      const submissionProgressResult = await supabase.rpc(
+        "get_nhl_dynasty_keeper_submission_progress",
+        {
+          p_league_id: leagueId,
+          p_target_season: targetSeason,
+        }
+      );
+
+      if (submissionProgressResult.error) {
+        setError(submissionProgressResult.error.message);
+        setLoading(false);
+        return;
+      }
+
+      setKeeperSubmissionProgress(
+        (submissionProgressResult.data ?? null) as KeeperSubmissionProgress | null
+      );
+    } else {
+      setKeeperSubmissionProgress(null);
     }
 
     if (loadedSettings.league_format === "dynasty") {
@@ -1697,6 +1752,15 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
         });
         if (settingsResult.error) return settingsResult;
 
+        const acquisitionLimitResult = await supabase.rpc(
+          "commissioner_set_nhl_traditional_matchup_acquisition_limit",
+          {
+            p_league_id: leagueId,
+            p_limit: settings.matchup_acquisition_limit,
+          }
+        );
+        if (acquisitionLimitResult.error) return acquisitionLimitResult;
+
         const scoringSystemResult = await supabase.rpc("update_nhl_traditional_scoring_system", {
           p_league_id: leagueId,
           p_scoring_system: settings.scoring_system ?? "points",
@@ -1753,11 +1817,17 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
 
     const targetSeason = Number(settings.season) + 1;
 
+    if (!keeperSubmissionProgress?.allSubmitted) {
+      setError(
+        `All active teams must submit their keeper list first. ${keeperSubmissionProgress?.submittedTeams ?? 0} of ${keeperSubmissionProgress?.activeTeams ?? activeTeams} teams have submitted.`
+      );
+      return;
+    }
+
     if (
       !window.confirm(
-        `Finalize protected rosters for ${targetSeason}?\n\n` +
-          "This carries the locked protected players into the next season. " +
-          "After this step the protection period cannot be reopened."
+        `Finalize and lock ALL keeper lists for ${targetSeason}?\n\n` +
+          "Every submitted keeper list will be locked at the same time, protected players will carry into the next season, and owners will no longer be able to make changes."
       )
     ) {
       return;
@@ -1765,11 +1835,11 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
 
     await runAction(
       () =>
-        supabase.rpc("commissioner_finalize_nhl_dynasty_keepers", {
+        supabase.rpc("commissioner_lock_and_finalize_nhl_dynasty_keepers", {
           p_league_id: leagueId,
           p_target_season: targetSeason,
         }),
-      `${targetSeason} protected rosters finalized.`
+      `${targetSeason} keeper lists finalized and locked.`
     );
   }
 
@@ -1940,6 +2010,10 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
 
   const annualDraftSeason = Number(settings?.season ?? 0) + 1;
   const activeDynastyTeams = teams.filter((team) => team.active).slice(0, settings?.max_teams ?? teams.length);
+  const keeperTeams = keeperSubmissionProgress?.teams ?? [];
+  const allKeeperListsSubmitted = keeperSubmissionProgress?.allSubmitted ?? false;
+  const keeperSubmittedTeams = keeperSubmissionProgress?.submittedTeams ?? 0;
+  const keeperActiveTeams = keeperSubmissionProgress?.activeTeams ?? activeDynastyTeams.length;
   const annualProtectionFinalized =
     settings?.league_format === "dynasty" &&
     activeDynastyTeams.length > 0 &&
@@ -2332,147 +2406,6 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
                 <Stat label="Goalie Minimum" value={`${settings?.goalie_minimum_starts ?? 3} starts/week`} />
               </div>
             </Section>
-
-            {settings?.league_format === "dynasty" && dynastyChecklist ? (
-              <Section
-                title={`${dynastyChecklist.targetSeason} Dynasty ${dynastyChecklist.checklistType === "startup" ? "Startup Checklist" : "Offseason Checklist"}`}
-                subtitle={
-                  dynastyChecklist.checklistType === "startup"
-                    ? `Complete the one-time ${dynastyChecklist.targetSeason} startup requirements before activating the inaugural Dynasty season.`
-                    : `Finish the ${dynastyChecklist.targetSeason} offseason requirements before advancing the league into the new season.`
-                }
-              >
-                {(() => {
-                  const automaticKeys = new Set(["calendar_ready", "matchups_ready"]);
-                  const requiredItems = dynastyChecklist.items.filter((item) => !automaticKeys.has(item.key));
-                  const automaticItems = dynastyChecklist.items.filter((item) => automaticKeys.has(item.key));
-                  const completedRequired = requiredItems.filter((item) => item.complete).length;
-                  const progress = requiredItems.length > 0
-                    ? Math.round((completedRequired / requiredItems.length) * 100)
-                    : 0;
-
-                  return (
-                    <div style={styles.checklistWrap}>
-                      <div style={styles.checklistHero}>
-                        <div style={styles.checklistHeroCopy}>
-                          <span style={styles.checklistEyebrow}>
-                            {dynastyChecklist.checklistType === "startup"
-                              ? "DYNASTY STARTUP"
-                              : `${dynastyChecklist.sourceSeason ?? "PRIOR"} → ${dynastyChecklist.targetSeason} OFFSEASON`}
-                          </span>
-                          <strong style={styles.checklistHeroTitle}>
-                            {completedRequired} OF {requiredItems.length} REQUIRED STEPS COMPLETE
-                          </strong>
-                          <span style={styles.checklistHeroSub}>
-                            {dynastyChecklist.readyToActivate
-                              ? `${dynastyChecklist.targetSeason} is cleared for commissioner activation.`
-                              : "The activation button unlocks automatically when every required database gate is complete."}
-                          </span>
-                        </div>
-                        <div style={styles.checklistProgressBadge}>{progress}%</div>
-                      </div>
-
-                      <div style={styles.checklistProgressTrack}>
-                        <div style={{ ...styles.checklistProgressFill, width: `${progress}%` }} />
-                      </div>
-
-                      <div style={styles.checklistList}>
-                        {requiredItems.map((item) => (
-                          <div key={item.key} style={{ ...styles.checklistRow, ...(item.complete ? styles.checklistRowComplete : {}) }}>
-                            <span style={{ ...styles.checklistIcon, ...(item.complete ? styles.checklistIconComplete : {}) }}>
-                              {item.complete ? "✓" : "○"}
-                            </span>
-                            <div style={styles.checklistItemCopy}>
-                              <strong style={styles.checklistItemLabel}>{item.label}</strong>
-                              {item.key === "startup_draft_completed" || item.key === "annual_draft_completed" ? (
-                                <span style={styles.checklistItemMeta}>
-                                  {Number(item.completedPicks ?? 0)} / {Number(item.expectedPicks ?? 0)} picks complete
-                                </span>
-                              ) : null}
-                              {item.key === "rosters_valid" ? (
-                                <span style={styles.checklistItemMeta}>
-                                  {Number(item.rosteredPlayers ?? 0)} / {Number(item.expectedPlayers ?? 0)} roster spots filled
-                                </span>
-                              ) : null}
-                              {item.key === "teams_ready" ? (
-                                <span style={styles.checklistItemMeta}>
-                                  {Number(item.readyTeams ?? 0)} / {Number(item.activeTeams ?? 0)} active franchises ready
-                                </span>
-                              ) : null}
-                              {item.key === "keepers_finalized" ? (
-                                <span style={styles.checklistItemMeta}>
-                                  {Number(item.carriedOver ?? 0)} / {Number(item.expected ?? 0)} keepers carried over
-                                </span>
-                              ) : null}
-                              {item.key === "draft_pick_assets" ? (
-                                <span style={styles.checklistItemMeta}>
-                                  {Number(item.resolvedAssets ?? 0)} / {Number(item.expectedAssets ?? 0)} draft assets resolved
-                                </span>
-                              ) : null}
-                              {item.key === "draft_order" && item.method ? (
-                                <span style={styles.checklistItemMeta}>Order method: {pretty(String(item.method))}</span>
-                              ) : null}
-                            </div>
-                            <span style={item.complete ? styles.checklistStatusComplete : styles.checklistStatusPending}>
-                              {item.complete ? "COMPLETE" : "PENDING"}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-
-                      {automaticItems.length > 0 ? (
-                        <div style={styles.checklistAutomatic}>
-                          <div style={styles.checklistAutomaticHead}>AUTOMATIC SEASON PREPARATION</div>
-                          {automaticItems.map((item) => (
-                            <div key={item.key} style={styles.checklistAutomaticRow}>
-                              <span style={{ ...styles.checklistIcon, ...(item.complete ? styles.checklistIconComplete : {}) }}>
-                                {item.complete ? "✓" : "↻"}
-                              </span>
-                              <div style={styles.checklistItemCopy}>
-                                <strong style={styles.checklistItemLabel}>{item.label}</strong>
-                                <span style={styles.checklistItemMeta}>
-                                  {item.complete
-                                    ? item.key === "calendar_ready"
-                                      ? `${Number(item.calendarRows ?? 0)} calendar periods ready`
-                                      : `${Number(item.matchups ?? 0)} matchups ready`
-                                    : "Prepared automatically when the season is activated"}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      <div style={styles.checklistActivation}>
-                        <div style={styles.checklistActivationCopy}>
-                          <span style={styles.checklistEyebrow}>SEASON CONTROL</span>
-                          <strong style={styles.checklistActivationTitle}>
-                            {dynastyChecklist.readyToActivate
-                              ? `${dynastyChecklist.targetSeason} IS READY TO ACTIVATE`
-                              : `ACTIVATE ${dynastyChecklist.targetSeason} LOCKED`}
-                          </strong>
-                          <span style={styles.checklistHeroSub}>
-                            {dynastyChecklist.readyToActivate
-                              ? "Activation will prepare any automatic season items, sync future picks, and run the NHL lifecycle."
-                              : "Finish every required item above. This control unlocks automatically."}
-                          </span>
-                        </div>
-                        <Button
-                          disabled={!dynastyChecklist.readyToActivate || saving || activatingSeason}
-                          onClick={() => void activateDynastySeason()}
-                        >
-                          {activatingSeason
-                            ? `ACTIVATING ${dynastyChecklist.targetSeason}…`
-                            : dynastyChecklist.readyToActivate
-                              ? `ACTIVATE ${dynastyChecklist.targetSeason} SEASON`
-                              : `🔒 ACTIVATE ${dynastyChecklist.targetSeason}`}
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </Section>
-            ) : null}
 
             <Section
               title="Commissioner Setup"
@@ -2886,6 +2819,56 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
                       />
                     ) : null}
 
+                    <label style={styles.field}>
+                      <span style={styles.fieldLabel}>Matchup Acquisitions Allowed</span>
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <select
+                          value={
+                            settings.matchup_acquisition_limit === null
+                              ? "unlimited"
+                              : "limited"
+                          }
+                          onChange={(event) =>
+                            setSettings({
+                              ...settings,
+                              matchup_acquisition_limit:
+                                event.target.value === "unlimited"
+                                  ? null
+                                  : settings.matchup_acquisition_limit ?? 5,
+                            })
+                          }
+                          style={styles.input}
+                        >
+                          <option value="unlimited">Unlimited</option>
+                          <option value="limited">Set Matchup Limit</option>
+                        </select>
+
+                        {settings.matchup_acquisition_limit !== null ? (
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            inputMode="numeric"
+                            value={settings.matchup_acquisition_limit}
+                            onChange={(event) => {
+                              const parsed = Number(event.target.value);
+                              setSettings({
+                                ...settings,
+                                matchup_acquisition_limit: Number.isFinite(parsed)
+                                  ? Math.max(0, Math.trunc(parsed))
+                                  : 0,
+                              });
+                            }}
+                            style={styles.input}
+                            aria-label="Matchup acquisitions allowed"
+                          />
+                        ) : null}
+                      </div>
+                      <span style={styles.fieldHint}>
+                        Counts successful free-agent and waiver additions during each fantasy matchup. Pending same-day pickups reserve a spot. Unlimited removes the matchup cap.
+                      </span>
+                    </label>
+
                     <SelectField
                       label="Trade Deadline"
                       value={settings.trade_deadline_week?.toString() ?? "none"}
@@ -2943,7 +2926,7 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
                 <div style={styles.subPanel}>
                   <div style={styles.subsectionTitle}>DYNASTY SETTINGS</div>
                   <div style={styles.setupGroupText}>
-                    All Dynasty configuration lives here. Player protection always closes at 12:00 AM league time on the selected offseason day.
+                    Core Dynasty roster and future-draft configuration.
                   </div>
 
                   <div className="g365-nhl-grid" style={styles.grid}>
@@ -2962,10 +2945,16 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
                     <label style={styles.field}>
                       <span style={styles.fieldLabel}>Annual Draft Rounds</span>
                       <div style={styles.readOnly}>
-                        {Math.max(1, totalActiveSlots + (roster?.bench_slots ?? 0) - settings.dynasty_protected_players)}
+                        {Math.max(
+                          1,
+                          totalActiveSlots +
+                            (roster?.bench_slots ?? 0) -
+                            settings.dynasty_protected_players
+                        )}
                       </div>
                       <span style={styles.fieldHint}>
-                        Full roster ({totalActiveSlots + (roster?.bench_slots ?? 0)}) − protected players ({settings.dynasty_protected_players})
+                        Full roster ({totalActiveSlots + (roster?.bench_slots ?? 0)}) −
+                        protected players ({settings.dynasty_protected_players})
                       </span>
                     </label>
 
@@ -2975,7 +2964,13 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
                       min={1}
                       max={5}
                       onChange={(value) =>
-                        setSettings({ ...settings, dynasty_future_pick_years: Math.max(1, Math.min(5, value ?? 3)) })
+                        setSettings({
+                          ...settings,
+                          dynasty_future_pick_years: Math.max(
+                            1,
+                            Math.min(5, value ?? 3)
+                          ),
+                        })
                       }
                     />
 
@@ -2983,68 +2978,12 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
                       label="Carry Rosters Between Seasons"
                       value={settings.dynasty_rosters_carry_over}
                       onChange={(value) =>
-                        setSettings({ ...settings, dynasty_rosters_carry_over: value })
+                        setSettings({
+                          ...settings,
+                          dynasty_rosters_carry_over: value,
+                        })
                       }
                     />
-
-                    <SelectField
-                      label="Protection Deadline Week"
-                      value={selectedOffseasonWeek}
-                      onChange={(value) =>
-                        setSettings({
-                          ...settings,
-                          dynasty_protection_deadline_week: Number(value),
-                          dynasty_protection_deadline_time: "00:00:00",
-                        })
-                      }
-                    >
-                      <option value="" disabled>Select protection deadline week</option>
-                      {offseasonWeekOptions.length > 0
-                        ? offseasonWeekOptions.map((option) => (
-                            <option key={option.week} value={option.week}>
-                              Week {option.week} — {formatOffseasonDate(option.start)}–{formatOffseasonDate(option.end)}, {option.start.getFullYear()}
-                            </option>
-                          ))
-                        : Array.from({ length: 12 }, (_, index) => index + 1).map((week) => (
-                            <option key={week} value={week}>Week {week}</option>
-                          ))}
-                    </SelectField>
-
-                    <SelectField
-                      label="Protection Deadline Day"
-                      value={settings.dynasty_protection_deadline_day == null ? "" : String(settings.dynasty_protection_deadline_day)}
-                      onChange={(value) =>
-                        setSettings({
-                          ...settings,
-                          dynasty_protection_deadline_day: Number(value),
-                          dynasty_protection_deadline_time: "00:00:00",
-                        })
-                      }
-                    >
-                      <option value="" disabled>Select protection deadline day</option>
-                      <option value="1">Monday</option>
-                      <option value="2">Tuesday</option>
-                      <option value="3">Wednesday</option>
-                      <option value="4">Thursday</option>
-                      <option value="5">Friday</option>
-                      <option value="6">Saturday</option>
-                      <option value="7">Sunday</option>
-                    </SelectField>
-
-                    <label style={styles.field}>
-                      <span style={styles.fieldLabel}>Protection Deadline Time</span>
-                      <div style={styles.readOnly}>12:00 AM</div>
-                      <span style={styles.fieldHint}>Fixed for every Dynasty league.</span>
-                    </label>
-
-                    <label style={styles.field}>
-                      <span style={styles.fieldLabel}>Calculated Protection Deadline</span>
-                      <div style={styles.readOnly}>{configuredProtectionDeadlineLabel}</div>
-                    </label>
-                  </div>
-
-                  <div style={styles.inlineHelp}>
-                    Offseason Week 1 starts on the first Monday after the final G365 fantasy day. The actual calendar date is calculated from the league's NHL fantasy calendar and the deadline is always 12:00 AM league time.
                   </div>
                 </div>
               ) : null}
@@ -3293,596 +3232,320 @@ export default function NhlTraditionalCommissioner({ leagueId }: Props) {
 
         {tab === "draft" && settings ? (
           <Section
-            title={settings.league_format === "dynasty" ? "Dynasty Draft Setup & Order" : "Redraft Draft Setup & Order"}
+            title={settings.league_format === "dynasty" ? "Dynasty Beginning-Season Draft Order" : "Redraft Draft Setup & Order"}
             subtitle={
               settings.league_format === "dynasty"
-                ? "Operate the Dynasty startup draft, offseason player protection, and each future Annual Dynasty Draft from one lifecycle."
+                ? "Run the beginning-season lottery or set the startup order manually, then save the numbered franchise order into the live draft."
                 : "Prepare the NHL draft, randomize Round 1, or manually set every franchise's draft slot. Snake order reverses automatically each round."
             }
           >
             {settings.league_format === "dynasty" ? (
               <>
-                <div style={styles.dynastyDraftBlock}>
-                  <div style={styles.dynastyDraftHead}>
-                    <div>
-                      <div style={styles.dynastyDraftEyebrow}>DYNASTY STARTUP DRAFT</div>
-                      <div style={styles.dynastyDraftTitle}>{settings.season} DYNASTY STARTUP DRAFT</div>
-                      <div style={styles.setupGroupText}>
-                        Choose exactly one startup order method. The official lottery gives every remaining franchise equal odds for the next available slot. Manual order lets the commissioner place every franchise. The startup player draft is snake format.
-                      </div>
-                    </div>
-                    <div style={styles.dynastyDraftBadge}>SNAKE DRAFT</div>
-                  </div>
-
-                  {!draftState?.exists ? (
-                    <div style={styles.notice}>
-                      <strong>STARTUP DRAFT NOT PREPARED</strong>
-                      <span>Prepare the startup draft first. This creates the draft and active franchise slot records.</span>
-                      <div className="g365-nhl-actions" style={styles.actions}>
-                        <Button disabled={saving} onClick={() => void prepareDraft()}>
-                          PREPARE {settings.season} STARTUP DRAFT
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="g365-nhl-stats" style={styles.stats}>
-                        <Stat label="Status" value={pretty(draftState.status)} />
-                        <Stat label="Format" value="Dynasty Startup" />
-                        <Stat label="Rounds" value={draftState.rounds ?? "—"} />
-                        <Stat label="Timer" value={(draftState.secondsPerPick ?? 90) === 0 ? "No Timer" : `${draftState.secondsPerPick ?? 90} sec`} />
-                        <Stat label="Picks Made" value={draftState.pickCount ?? 0} />
-                        <Stat label="Total Picks" value={draftState.totalPicks ?? "—"} />
-                      </div>
-
-                      {draftState.status === "setup" || draftState.status === "ready" ? (
-                        <>
-                          <div className="g365-nhl-dynasty-choice-grid" style={styles.dynastyChoiceGrid}>
-                            <button
-                              type="button"
-                              disabled={saving}
-                              onClick={() => {}}
-                              style={{
-                                ...styles.dynastyChoiceCard,
-                                ...(saving ? styles.disabled : {}),
-                              }}
-                            >
-                              <span style={styles.dynastyChoiceNumber}>OPTION 1</span>
-                              <strong style={styles.dynastyChoiceTitle}>OFFICIAL EQUAL-ODDS LOTTERY</strong>
-                              <span style={styles.dynastyChoiceText}>
-                                Every active franchise starts equal. After each draw, all remaining franchises again have equal odds for the next draft slot.
-                              </span>
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={saving}
-                              onClick={() => void chooseDynastyStartupManual()}
-                              style={{
-                                ...styles.dynastyChoiceCard,
-                                ...(saving ? styles.disabled : {}),
-                              }}
-                            >
-                              <span style={styles.dynastyChoiceNumber}>OPTION 2</span>
-                              <strong style={styles.dynastyChoiceTitle}>MANUAL DRAFT ORDER</strong>
-                              <span style={styles.dynastyChoiceText}>
-                                Commissioner sets the complete Round 1 startup order manually. Round 2 reverses automatically and the draft continues as a snake.
-                              </span>
-                            </button>
-                          </div>
-
-                          <div className="g365-nhl-actions" style={styles.actions}>
-                            <Button
-                              secondary
-                              disabled={saving}
-                              onClick={() => router.push(`/league/${leagueId}/nhl/draft-lottery`)}
-                            >
-                              OPEN MEMBER DRAFT LOTTERY PAGE
-                            </Button>
-                          </div>
-
-                          <NhlDynastyLotteryOfficial
-                            leagueId={leagueId}
-                            draftSeason={Number(settings.season)}
-                          />
-
-                          <div style={styles.setupGroup}>
-                            <div style={styles.setupGroupHead}>
-                              <div>
-                                <div style={styles.subsectionTitle}>PICK TIMER</div>
-                                <div style={styles.setupGroupText}>
-                                  Choose how long each team has to make a startup selection. No Timer leaves the current team on the clock until a pick is made.
-                                </div>
-                              </div>
-                            </div>
-                            <div className="g365-nhl-setup-grid g365-nhl-setup-grid-3" style={styles.setupGrid3}>
-                              <SelectField
-                                label="Time Per Pick"
-                                value={String(draftTimerSeconds)}
-                                onChange={(value) => setDraftTimerSeconds(Number(value))}
-                              >
-                                <option value="30">30 Seconds</option>
-                                <option value="45">45 Seconds</option>
-                                <option value="60">60 Seconds</option>
-                                <option value="90">90 Seconds</option>
-                                <option value="120">2 Minutes</option>
-                                <option value="180">3 Minutes</option>
-                                <option value="300">5 Minutes</option>
-                                <option value="0">No Timer</option>
-                              </SelectField>
-                            </div>
-                            <div className="g365-nhl-actions" style={styles.actions}>
-                              <Button disabled={saving} onClick={() => void saveDraftTimer()}>SAVE PICK TIMER</Button>
-                            </div>
-                          </div>
-
-                          <div style={styles.draftToolbar}>
-                            <div>
-                              <div style={styles.subsectionTitle}>LEAGUE STARTUP DRAFT ORDER</div>
-                              <div style={styles.setupGroupText}>
-                                This is the league's Round 1 startup order. In Manual mode, arrange every franchise here and save it. The startup draft snakes automatically after Round 1.
-                              </div>
-                            </div>
-                          </div>
-
-                          <div style={styles.draftOrderList}>
-                            {draftOrder.map((teamId, index) => {
-                              const team = teams.find((row) => row.id === teamId);
-                              const draftTeam = draftTeams.find((row) => row.fantasy_team_id === teamId);
-                              return (
-                                <div key={teamId} className="g365-nhl-draft-order-row" style={styles.draftOrderRow}>
-                                  <div style={styles.draftSlotNumber}>{index + 1}</div>
-                                  <div style={styles.draftTeamName}>
-                                    <strong>{team?.team_name ?? `Team ${teamId}`}</strong>
-                                    <span>{draftTeam?.is_cpu || team?.is_cpu ? "CPU TEAM" : team?.owner_id ? "OWNER ASSIGNED" : "OPEN TEAM"}</span>
-                                  </div>
-                                  <label style={styles.draftSlotField}>
-                                    <span style={styles.fieldLabel}>SLOT</span>
-                                    <select value={index + 1} onChange={(e) => assignDraftSlot(teamId, Number(e.target.value))} style={styles.input}>
-                                      {draftOrder.map((_, slotIndex) => (
-                                        <option key={slotIndex + 1} value={slotIndex + 1}>{slotIndex + 1}</option>
-                                      ))}
-                                    </select>
-                                  </label>
-                                  <div style={styles.draftMoveButtons}>
-                                    <Button secondary disabled={saving || index === 0} onClick={() => moveDraftTeam(teamId, -1)}>MOVE UP</Button>
-                                    <Button secondary disabled={saving || index === draftOrder.length - 1} onClick={() => moveDraftTeam(teamId, 1)}>MOVE DOWN</Button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          <div style={styles.snakePreview}>
-                            <strong>LEAGUE STARTUP DRAFT ORDER PREVIEW</strong>
-                            <span>Round 1: {draftOrder.map((id) => teams.find((team) => team.id === id)?.team_name ?? `Team ${id}`).join(" → ") || "—"}</span>
-                            <span>Round 2: {[...draftOrder].reverse().map((id) => teams.find((team) => team.id === id)?.team_name ?? `Team ${id}`).join(" → ") || "—"}</span>
-                          </div>
-
-                          <div className="g365-nhl-actions" style={styles.actions}>
-                            <Button disabled={saving || draftOrder.length === 0} onClick={() => void saveManualDraftOrder()}>
-                              SAVE MANUAL STARTUP ORDER
-                            </Button>
-                            <Button secondary disabled={saving} onClick={() => router.push(`/league/${leagueId}/nhl/draft`)}>
-                              OPEN LIVE DRAFT
-                            </Button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div style={styles.notice}>
-                            <strong>STARTUP DRAFT ORDER LOCKED</strong>
-                            <span>The startup draft is {pretty(draftState.status)}. Its order cannot be changed after the draft begins.</span>
-                          </div>
-
-                          <div style={styles.draftToolbar}>
-                            <div>
-                              <div style={styles.subsectionTitle}>OFFICIAL LEAGUE STARTUP DRAFT ORDER</div>
-                              <div style={styles.setupGroupText}>
-                                This is the saved Round 1 order being used by the league. The Dynasty startup draft is snake format, so Round 2 reverses this order.
-                              </div>
-                            </div>
-                          </div>
-
-                          <div style={styles.draftOrderList}>
-                            {draftOrder.map((teamId, index) => {
-                              const team = teams.find((row) => row.id === teamId);
-                              const draftTeam = draftTeams.find((row) => row.fantasy_team_id === teamId);
-                              return (
-                                <div key={teamId} className="g365-nhl-draft-order-row" style={styles.draftOrderRow}>
-                                  <div style={styles.draftSlotNumber}>{index + 1}</div>
-                                  <div style={styles.draftTeamName}>
-                                    <strong>{team?.team_name ?? `Team ${teamId}`}</strong>
-                                    <span>{draftTeam?.is_cpu || team?.is_cpu ? "CPU TEAM" : team?.owner_id ? "OWNER ASSIGNED" : "OPEN TEAM"}</span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          <div style={styles.snakePreview}>
-                            <strong>OFFICIAL STARTUP SNAKE ORDER</strong>
-                            <span>Round 1: {draftOrder.map((id) => teams.find((team) => team.id === id)?.team_name ?? `Team ${id}`).join(" → ") || "—"}</span>
-                            <span>Round 2: {[...draftOrder].reverse().map((id) => teams.find((team) => team.id === id)?.team_name ?? `Team ${id}`).join(" → ") || "—"}</span>
-                          </div>
-
-                          <div className="g365-nhl-actions" style={styles.actions}>
-                            <Button secondary disabled={saving} onClick={() => router.push(`/league/${leagueId}/nhl/draft`)}>
-                              OPEN LIVE DRAFT
-                            </Button>
-                          </div>
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                <div style={styles.divider} />
-
-                <div style={styles.dynastyDraftBlock}>
-                  <div style={styles.dynastyDraftHead}>
-                    <div>
-                      <div style={styles.dynastyDraftEyebrow}>OFFSEASON LIFECYCLE</div>
-                      <div style={styles.dynastyDraftTitle}>
-                        {settings.season} → {Number(settings.season) + 1} PLAYER PROTECTION
-                      </div>
-                      <div style={styles.setupGroupText}>
-                        Owners protect exactly {settings.dynasty_protected_players} players from their current roster.
-                        Lock the league only after every active franchise is complete, then finalize the protected
-                        rosters before the Annual Dynasty Draft can be prepared.
-                      </div>
-                    </div>
-                    <div style={styles.row}>
-                      <div style={styles.dynastyDraftBadge}>
-                        {pretty(settings.dynasty_protection_status)}
-                      </div>
-                      <Button secondary onClick={() => setProtectionPanelCollapsed((value) => !value)}>
-                        {protectionPanelCollapsed ? "EXPAND" : "MINIMIZE"}
+                {!draftState?.exists ? (
+                  <div style={styles.notice}>
+                    <strong>STARTUP DRAFT NOT PREPARED</strong>
+                    <span>
+                      Prepare the beginning-season Dynasty draft first. This creates
+                      the active franchise draft slots used by both the lottery and
+                      manual draft order.
+                    </span>
+                    <div className="g365-nhl-actions" style={styles.actions}>
+                      <Button
+                        disabled={saving}
+                        onClick={() => void prepareDraft()}
+                      >
+                        PREPARE {settings.season} STARTUP DRAFT
                       </Button>
                     </div>
                   </div>
-
-                  {!protectionPanelCollapsed ? <>
-                  <div className="g365-nhl-stats" style={styles.stats}>
-                    <Stat label="Source Season" value={settings.season} />
-                    <Stat label="Target Season" value={Number(settings.season) + 1} />
-                    <Stat label="Protected / Team" value={settings.dynasty_protected_players} />
-                    <Stat
-                      label="Deadline"
-                      value={
-                        settings.dynasty_protection_deadline
-                          ? new Date(settings.dynasty_protection_deadline).toLocaleString()
-                          : "Manual Lock"
-                      }
-                    />
-                  </div>
-
-                  <div style={styles.setupGroup}>
-                    <div style={styles.setupGroupHead}>
-                      <div>
-                        <div style={styles.subsectionTitle}>PROTECTION WINDOW</div>
-                        <div style={styles.setupGroupText}>
-                          Protection rules are configured under League Setup. This section only controls the offseason protection lifecycle.
-                        </div>
-                      </div>
-                    </div>
-
+                ) : (
+                  <>
                     <div className="g365-nhl-stats" style={styles.stats}>
-                      <Stat label="Configured Deadline" value={configuredProtectionDeadlineLabel} />
-                      <Stat label="Deadline Time" value="12:00 AM" />
-                      <Stat label="Season Complete" value={offseasonCalendar?.seasonComplete ? "YES" : "NO"} />
+                      <Stat label="Status" value={pretty(draftState.status)} />
+                      <Stat label="Format" value="Dynasty Startup" />
+                      <Stat label="Rounds" value={draftState.rounds ?? "—"} />
+                      <Stat
+                        label="Timer"
+                        value={
+                          (draftState.secondsPerPick ?? 90) === 0
+                            ? "No Timer"
+                            : `${draftState.secondsPerPick ?? 90} sec`
+                        }
+                      />
+                      <Stat label="Picks Made" value={draftState.pickCount ?? 0} />
+                      <Stat label="Total Picks" value={draftState.totalPicks ?? "—"} />
                     </div>
 
-                    <div className="g365-nhl-actions" style={styles.actions}>
-                      {settings.dynasty_protection_status === "protection_closed" ? (
-                        <Button
-                          disabled={saving || !offseasonCalendar?.seasonComplete}
-                          onClick={() => void manageProtectionPeriod("open")}
-                        >
-                          OPEN PLAYER PROTECTION
-                        </Button>
-                      ) : null}
-
-                      {settings.dynasty_protection_status === "protection_open" ? (
-                        <>
-                          <Button
-                            secondary
-                            disabled={saving}
-                            onClick={() => void manageProtectionPeriod("set_deadline")}
-                          >
-                            RECALCULATE DEADLINE
-                          </Button>
-                          <Button
-                            disabled={saving}
-                            onClick={() => void manageProtectionPeriod("lock")}
-                          >
-                            LOCK PLAYER PROTECTION
-                          </Button>
-                          <Button
-                            secondary
-                            disabled={saving}
-                            onClick={() => void manageProtectionPeriod("close")}
-                          >
-                            CLOSE WINDOW
-                          </Button>
-                        </>
-                      ) : null}
-
-                      {settings.dynasty_protection_status === "protection_locked" ? (
-                        <>
-                          <Button
-                            secondary
-                            disabled={saving}
-                            onClick={() => void manageProtectionPeriod("reopen")}
-                          >
-                            REOPEN PLAYER PROTECTION
-                          </Button>
-                          <Button
-                            disabled={saving}
-                            onClick={() => void finalizeProtectedRosters()}
-                          >
-                            FINALIZE PROTECTED ROSTERS
-                          </Button>
-                        </>
-                      ) : null}
-                    </div>
-
-                    {!offseasonCalendar?.seasonComplete ? (
-                      <div style={styles.inlineHelp}>
-                        Player protection can be configured now, but it cannot be opened until the current G365 fantasy season is complete.
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div style={styles.setupGroup}>
-                    <div style={styles.setupGroupHead}>
-                      <div>
-                        <div style={styles.subsectionTitle}>TEAM PROTECTION PROGRESS</div>
-                        <div style={styles.setupGroupText}>
-                          Current protection count for each active franchise. An unmanaged team is a franchise
-                          with no owner or whose owner is no longer a league member.
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={styles.protectionTeamList}>
-                      {teams
-                        .filter((team) => team.active)
-                        .slice(0, settings.max_teams)
-                        .map((team) => {
-                          const teamRows = protectionSelections.filter(
-                            (row) =>
-                              row.fantasy_team_id === team.id &&
-                              row.source_season === Number(settings.season) &&
-                              row.target_season === Number(settings.season) + 1 &&
-                              ["selected", "locked", "carried_over"].includes(row.status)
-                          );
-                          const protectedCount = teamRows.length;
-                          const carriedCount = teamRows.filter(
-                            (row) => row.status === "carried_over"
-                          ).length;
-                          const lockedCount = teamRows.filter(
-                            (row) => row.status === "locked"
-                          ).length;
-                          const ownerIsMember =
-                            !!team.owner_id &&
-                            members.some((member) => member.user_id === team.owner_id);
-                          const unmanaged = !team.owner_id || !ownerIsMember;
-                          const complete =
-                            protectedCount === settings.dynasty_protected_players;
-
-                          return (
-                            <div key={team.id} style={styles.protectionTeamRow}>
-                              <div style={styles.protectionTeamIdentity}>
-                                <strong>{team.team_name}</strong>
-                                <span>
-                                  {unmanaged
-                                    ? "UNMANAGED / ORPHAN"
-                                    : team.is_cpu
-                                      ? "CPU TEAM"
-                                      : "OWNER ASSIGNED"}
-                                </span>
-                              </div>
-
-                              <div style={styles.protectionCount}>
-                                {protectedCount} / {settings.dynasty_protected_players}
-                              </div>
-
-                              <div
-                                style={{
-                                  ...styles.protectionStatusBadge,
-                                  ...(complete
-                                    ? styles.protectionStatusComplete
-                                    : styles.protectionStatusPending),
-                                }}
-                              >
-                                {carriedCount > 0
-                                  ? "FINALIZED"
-                                  : lockedCount === protectedCount && protectedCount > 0
-                                    ? "LOCKED"
-                                    : complete
-                                      ? "READY"
-                                      : "PENDING"}
-                              </div>
-                            </div>
-                          );
-                        })}
-                    </div>
-
-                    {protectionSelections.length === 0 ? (
-                      <div style={styles.inlineHelp}>
-                        No protection selections are currently visible. This is normal before owners begin
-                        selecting players. If selections exist but RLS hides direct rows, the lifecycle RPCs
-                        remain authoritative and will enforce the exact team counts before league lock.
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div style={styles.notice}>
-                    <strong>ANNUAL DRAFT GATE</strong>
-                    <span>
-                      The {annualDraftSeason} Annual Dynasty Draft becomes available after every active franchise has exactly {settings.dynasty_protected_players} finalized protected players.
-                    </span>
-                  </div>
-
-                  <div style={styles.divider} />
-
-                  <div style={styles.dynastyDraftBlock}>
-                    <div style={styles.dynastyDraftHead}>
-                      <div>
-                        <div style={styles.dynastyDraftEyebrow}>ANNUAL DYNASTY DRAFT</div>
-                        <div style={styles.dynastyDraftTitle}>{annualDraftSeason} ANNUAL DYNASTY DRAFT</div>
-                        <div style={styles.setupGroupText}>
-                          Annual Dynasty drafts are linear. The same original franchise-slot order repeats every round. A traded pick stays in its original slot but is made by its current owner.
-                        </div>
-                      </div>
-                      <div style={styles.dynastyDraftBadge}>LINEAR DRAFT</div>
-                    </div>
-
-                    {!annualDraft ? (
-                      <div style={styles.notice}>
-                        <strong>ANNUAL DRAFT NOT PREPARED</strong>
-                        <span>
-                          {annualProtectionFinalized
-                            ? "Protected rosters are finalized. The Annual Dynasty Draft can now be prepared."
-                            : "Finalize every active franchise's protected roster before preparing the Annual Dynasty Draft."}
-                        </span>
-                        <div className="g365-nhl-actions" style={styles.actions}>
-                          <Button disabled={saving || !annualProtectionFinalized} onClick={() => void prepareAnnualDynastyDraft()}>
-                            PREPARE {annualDraftSeason} ANNUAL DRAFT
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
+                    {draftState.status === "setup" ||
+                    draftState.status === "ready" ? (
                       <>
-                        <div className="g365-nhl-stats" style={styles.stats}>
-                          <Stat label="Season" value={annualDraftSeason} />
-                          <Stat label="Status" value={pretty(annualDraft.status)} />
-                          <Stat label="Format" value="Annual Dynasty" />
-                          <Stat label="Draft Style" value="Linear" />
-                          <Stat label="Rounds" value={annualDraft.rounds ?? "—"} />
-                          <Stat label="Order Method" value={pretty(annualDraft.draft_order_method)} />
+                        <div
+                          className="g365-nhl-dynasty-choice-grid"
+                          style={styles.dynastyChoiceGrid}
+                        >
+                          <div style={styles.dynastyChoiceCard}>
+                            <span style={styles.dynastyChoiceNumber}>OPTION 1</span>
+                            <strong style={styles.dynastyChoiceTitle}>
+                              OFFICIAL DRAFT LOTTERY
+                            </strong>
+                            <span style={styles.dynastyChoiceText}>
+                              Run the beginning-season lottery, then refresh the
+                              numbered order below. The commissioner can review the
+                              final 1 through {draftOrder.length || activeTeams} order
+                              before saving it into the draft.
+                            </span>
+                            <Button
+                              secondary
+                              disabled={saving}
+                              onClick={() =>
+                                router.push(
+                                  `/league/${leagueId}/nhl/draft-lottery`
+                                )
+                              }
+                            >
+                              OPEN DRAFT LOTTERY PAGE
+                            </Button>
+                          </div>
+
+                          <div style={styles.dynastyChoiceCard}>
+                            <span style={styles.dynastyChoiceNumber}>OPTION 2</span>
+                            <strong style={styles.dynastyChoiceTitle}>
+                              MANUAL DRAFT ORDER
+                            </strong>
+                            <span style={styles.dynastyChoiceText}>
+                              Set the complete Round 1 startup order manually. The
+                              numbered slots below run from 1 through the number of
+                              active teams in the league.
+                            </span>
+                            <Button
+                              secondary
+                              disabled={saving}
+                              onClick={() => void chooseDynastyStartupManual()}
+                            >
+                              USE MANUAL DRAFT ORDER
+                            </Button>
+                          </div>
                         </div>
 
-                        {annualDraft.status === "setup" || annualDraft.status === "ready" ? (
-                          <>
-                            <div className="g365-nhl-dynasty-choice-grid" style={styles.dynastyChoiceGrid}>
-                              <div style={styles.dynastyChoiceCard}>
-                                <span style={styles.dynastyChoiceNumber}>OPTION 1</span>
-                                <strong style={styles.dynastyChoiceTitle}>DYNASTY DRAFT LOTTERY</strong>
-                                <span style={styles.dynastyChoiceText}>
-                                  Run the official league lottery for the annual franchise-slot order. The resulting order repeats unchanged in every round.
-                                </span>
-                                <Button secondary disabled={saving} onClick={() => router.push(`/league/${leagueId}/nhl/draft-lottery`)}>
-                                  OPEN DRAFT LOTTERY
-                                </Button>
-                              </div>
+                        <NhlDynastyLotteryOfficial
+                          leagueId={leagueId}
+                          draftSeason={Number(settings.season)}
+                        />
 
-                              <div style={styles.dynastyChoiceCard}>
-                                <span style={styles.dynastyChoiceNumber}>OPTION 2</span>
-                                <strong style={styles.dynastyChoiceTitle}>REVERSE FINAL STANDINGS</strong>
-                                <span style={styles.dynastyChoiceText}>
-                                  Use the prior season's final standings, with the lowest-finishing franchise receiving Slot 1.
-                                </span>
-                                <Button disabled={saving} onClick={() => void applyAnnualReverseStandings()}>
-                                  APPLY REVERSE STANDINGS
-                                </Button>
-                              </div>
-                            </div>
-
-                            <NhlDynastyLotteryOfficial leagueId={leagueId} draftSeason={annualDraftSeason} />
-                          </>
-                        ) : (
-                          <div style={styles.notice}>
-                            <strong>ANNUAL DRAFT ORDER LOCKED</strong>
-                            <span>The Annual Dynasty Draft is {pretty(annualDraft.status)}. Its official order is no longer editable.</span>
-                          </div>
-                        )}
+                        <div style={styles.divider} />
 
                         <div style={styles.draftToolbar}>
                           <div>
-                            <div style={styles.subsectionTitle}>OFFICIAL ANNUAL DYNASTY FRANCHISE ORDER</div>
-                            <div style={styles.setupGroupText}>
-                              This exact original-franchise order repeats in every round. It never reverses.
+                            <div style={styles.subsectionTitle}>
+                              STARTUP ROUND 1 DRAFT ORDER
                             </div>
+                            <div style={styles.setupGroupText}>
+                              This is the order that will be saved into the actual
+                              Dynasty draft. After running the lottery, use Refresh
+                              Lottery Order to pull the result into this list. You can
+                              also arrange the order manually before saving.
+                            </div>
+                          </div>
+
+                          <div
+                            className="g365-nhl-actions"
+                            style={styles.actions}
+                          >
+                            <Button
+                              secondary
+                              disabled={saving}
+                              onClick={() => void load(false)}
+                            >
+                              REFRESH LOTTERY ORDER
+                            </Button>
                           </div>
                         </div>
 
-                        {annualOrder.length > 0 ? (
-                          <div style={styles.draftOrderList}>
-                            {annualOrder.map((draftTeam) => {
-                              const team = teams.find((row) => row.id === draftTeam.fantasy_team_id);
-                              return (
-                                <div key={draftTeam.id} className="g365-nhl-draft-order-row" style={styles.draftOrderRow}>
-                                  <div style={styles.draftSlotNumber}>{draftTeam.draft_slot}</div>
-                                  <div style={styles.draftTeamName}>
-                                    <strong>{team?.team_name ?? `Team ${draftTeam.fantasy_team_id}`}</strong>
-                                    <span>ORIGINAL FRANCHISE SLOT {draftTeam.draft_slot}</span>
-                                  </div>
+                        <div style={styles.draftOrderList}>
+                          {draftOrder.map((teamId, index) => {
+                            const team = teams.find(
+                              (row) => row.id === teamId
+                            );
+                            const draftTeam = draftTeams.find(
+                              (row) => row.fantasy_team_id === teamId
+                            );
+
+                            return (
+                              <div
+                                key={teamId}
+                                className="g365-nhl-draft-order-row"
+                                style={styles.draftOrderRow}
+                              >
+                                <div style={styles.draftSlotNumber}>
+                                  {index + 1}
                                 </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div style={styles.inlineHelp}>Choose and complete an annual draft-order method to populate the official franchise order.</div>
-                        )}
 
-                        {annualOrder.length > 0 ? (
-                          <div style={styles.snakePreview}>
-                            <strong>LINEAR ORDER PREVIEW</strong>
-                            <span>Round 1: {annualOrder.map((row) => teams.find((team) => team.id === row.fantasy_team_id)?.team_name ?? `Team ${row.fantasy_team_id}`).join(" → ")}</span>
-                            <span>Round 2: {annualOrder.map((row) => teams.find((team) => team.id === row.fantasy_team_id)?.team_name ?? `Team ${row.fantasy_team_id}`).join(" → ")}</span>
-                            <span>Every later round repeats this same franchise-slot order.</span>
-                          </div>
-                        ) : null}
+                                <div style={styles.draftTeamName}>
+                                  <strong>
+                                    {team?.team_name ?? `Team ${teamId}`}
+                                  </strong>
+                                  <span>
+                                    {draftTeam?.is_cpu || team?.is_cpu
+                                      ? "CPU TEAM"
+                                      : team?.owner_id
+                                        ? "OWNER ASSIGNED"
+                                        : "OPEN TEAM"}
+                                  </span>
+                                </div>
 
-                        {annualAssets.length > 0 ? (
-                          <div style={styles.setupGroup}>
-                            <div style={styles.setupGroupHead}>
-                              <div>
-                                <div style={styles.subsectionTitle}>ANNUAL DRAFT PICK OWNERSHIP</div>
-                                <div style={styles.setupGroupText}>
-                                  Pick slots belong to the original franchise position. Current owner shows who actually makes the pick after trades.
+                                <label style={styles.draftSlotField}>
+                                  <span style={styles.fieldLabel}>SLOT</span>
+                                  <select
+                                    value={index + 1}
+                                    onChange={(e) =>
+                                      assignDraftSlot(
+                                        teamId,
+                                        Number(e.target.value)
+                                      )
+                                    }
+                                    style={styles.input}
+                                  >
+                                    {draftOrder.map((_, slotIndex) => (
+                                      <option
+                                        key={slotIndex + 1}
+                                        value={slotIndex + 1}
+                                      >
+                                        {slotIndex + 1}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+
+                                <div style={styles.draftMoveButtons}>
+                                  <Button
+                                    secondary
+                                    disabled={saving || index === 0}
+                                    onClick={() =>
+                                      moveDraftTeam(teamId, -1)
+                                    }
+                                  >
+                                    MOVE UP
+                                  </Button>
+
+                                  <Button
+                                    secondary
+                                    disabled={
+                                      saving ||
+                                      index === draftOrder.length - 1
+                                    }
+                                    onClick={() =>
+                                      moveDraftTeam(teamId, 1)
+                                    }
+                                  >
+                                    MOVE DOWN
+                                  </Button>
                                 </div>
                               </div>
-                            </div>
-                            <div style={styles.draftOrderList}>
-                              {annualAssets.map((asset) => {
-                                const original = teams.find((team) => team.id === asset.original_fantasy_team_id);
-                                const current = teams.find((team) => team.id === asset.current_fantasy_team_id);
-                                const traded = asset.original_fantasy_team_id !== asset.current_fantasy_team_id;
-                                return (
-                                  <div key={asset.id} className="g365-nhl-draft-order-row" style={styles.draftOrderRow}>
-                                    <div style={styles.draftSlotNumber}>{asset.overall_pick ?? "—"}</div>
-                                    <div style={styles.draftTeamName}>
-                                      <strong>ROUND {asset.round_number} • PICK {asset.pick_number ?? "—"}</strong>
-                                      <span>Original: {original?.team_name ?? `Team ${asset.original_fantasy_team_id}`}</span>
-                                      <span>{traded ? `CURRENT OWNER: ${current?.team_name ?? `Team ${asset.current_fantasy_team_id}`} • TRADED PICK` : `Owner: ${current?.team_name ?? `Team ${asset.current_fantasy_team_id}`}`}</span>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ) : null}
+                            );
+                          })}
+                        </div>
 
-                        <div className="g365-nhl-actions" style={styles.actions}>
-                          <Button secondary disabled={saving} onClick={() => router.push(`/league/${leagueId}/nhl/draft`)}>
+                        <div style={styles.snakePreview}>
+                          <strong>OFFICIAL STARTUP SNAKE ORDER</strong>
+                          <span>
+                            Round 1:{" "}
+                            {draftOrder
+                              .map(
+                                (id) =>
+                                  teams.find((team) => team.id === id)
+                                    ?.team_name ?? `Team ${id}`
+                              )
+                              .join(" → ") || "—"}
+                          </span>
+                          <span>
+                            Round 2:{" "}
+                            {[...draftOrder]
+                              .reverse()
+                              .map(
+                                (id) =>
+                                  teams.find((team) => team.id === id)
+                                    ?.team_name ?? `Team ${id}`
+                              )
+                              .join(" → ") || "—"}
+                          </span>
+                        </div>
+
+                        <div
+                          className="g365-nhl-actions"
+                          style={styles.actions}
+                        >
+                          <Button
+                            disabled={saving || draftOrder.length === 0}
+                            onClick={() => void saveManualDraftOrder()}
+                          >
+                            SAVE ORDER TO DRAFT
+                          </Button>
+
+                          <Button
+                            secondary
+                            disabled={saving}
+                            onClick={() =>
+                              router.push(`/league/${leagueId}/nhl/draft`)
+                            }
+                          >
+                            OPEN LIVE DRAFT
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div style={styles.notice}>
+                          <strong>DRAFT ORDER LOCKED</strong>
+                          <span>
+                            The Dynasty startup draft is {pretty(draftState.status)}.
+                            Its official order is no longer editable.
+                          </span>
+                        </div>
+
+                        <div style={styles.draftOrderList}>
+                          {draftOrder.map((teamId, index) => {
+                            const team = teams.find(
+                              (row) => row.id === teamId
+                            );
+
+                            return (
+                              <div
+                                key={teamId}
+                                className="g365-nhl-draft-order-row"
+                                style={styles.draftOrderRow}
+                              >
+                                <div style={styles.draftSlotNumber}>
+                                  {index + 1}
+                                </div>
+                                <div style={styles.draftTeamName}>
+                                  <strong>
+                                    {team?.team_name ?? `Team ${teamId}`}
+                                  </strong>
+                                  <span>OFFICIAL DRAFT SLOT</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div
+                          className="g365-nhl-actions"
+                          style={styles.actions}
+                        >
+                          <Button
+                            secondary
+                            disabled={saving}
+                            onClick={() =>
+                              router.push(`/league/${leagueId}/nhl/draft`)
+                            }
+                          >
                             OPEN LIVE DRAFT
                           </Button>
                         </div>
                       </>
                     )}
-                  </div>
-                  </> : null}
-                </div>
-
-                <div style={styles.divider} />
-
-                <div style={styles.notice}>
-                  <strong>DYNASTY SETTINGS</strong>
-                  <span>Annual Dynasty rules, protected-player count, future pick years, roster carryover, and the protection deadline are configured under League Setup.</span>
-                </div>
+                  </>
+                )}
               </>
             ) : (
               <>

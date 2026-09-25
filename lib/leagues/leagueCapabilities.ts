@@ -29,6 +29,7 @@ export type LeagueCapabilityKey =
   | "leagueTeams"
   | "recap"
   | "trophyCase"
+  | "offseason"
   | "picks"
   | "leaguePicks"
   | "games"
@@ -68,6 +69,7 @@ const none: LeagueCapabilities = {
   leagueTeams: false,
   recap: false,
   trophyCase: false,
+  offseason: false,
   picks: false,
   leaguePicks: false,
   games: false,
@@ -83,11 +85,6 @@ export function getLeagueCapabilities({
   playoffsEnabled = false,
   isCommissioner = false,
 }: GetLeagueCapabilitiesArgs): LeagueCapabilities {
-  /*
-   * =========================================
-   * NFL TRADITIONAL
-   * =========================================
-   */
   if (leagueType === "traditional") {
     return {
       ...none,
@@ -109,83 +106,40 @@ export function getLeagueCapabilities({
     };
   }
 
-  /*
-   * =========================================
-   * NHL TRADITIONAL
-   *
-   * Shared capabilities for:
-   * - Redraft
-   * - Dynasty
-   *
-   * Player acquisition is handled through
-   * the Waivers / Add Players page.
-   *
-   * Separate Players and Teams pages are
-   * no longer exposed in NHL navigation.
-   * =========================================
-   */
   if (leagueType === "nhl_traditional") {
     return {
       ...none,
-
       home: true,
-
       myTeam: true,
-
-      /*
-       * NHL Traditional no longer exposes
-       * separate Teams or Players pages.
-       */
-      leagueTeams: false,
-      players: false,
-
       rankings: true,
-
       matchups: true,
       standings: true,
-
-      /*
-       * Waivers is now the NHL Traditional
-       * Add Players / Free Agents / Claims
-       * player-pool page.
-       */
       waivers: true,
       trades: true,
-
-      draft: true,
-      draftLottery: true,
       playoffs: true,
 
-      recap: true,
-      trophyCase: true,
+      // Startup/current-season draft pages remain available
+      // during the season for NHL Traditional leagues.
+      draft: true,
+      draftLottery: true,
 
-      /*
-       * NHL uses the dedicated Recap route
-       * rather than NFL Traditional's
-       * seasonRecap route.
-       */
+      settings: true,
+
+      leagueTeams: false,
+      players: false,
+      draftGrades: false,
+      recap: false,
+      trophyCase: false,
       seasonRecap: false,
-
-      /*
-       * We are not exposing separate NHL
-       * History or Settings tabs at this
-       * stage.
-       */
       history: false,
-      settings: false,
 
-      /*
-       * Commissioner remains permission-based.
-       */
+      // LeagueNav/lifecycle controls actual visibility.
+      offseason: true,
+
       commissioner: isCommissioner,
     };
   }
 
-  /*
-   * =========================================
-   * SEASON-LONG
-   * =========================================
-   */
   if (leagueType === "season_long") {
     const isHeadToHead =
       competitionFormat === "head_to_head";
@@ -207,11 +161,6 @@ export function getLeagueCapabilities({
     };
   }
 
-  /*
-   * =========================================
-   * NFL PLAYOFFS
-   * =========================================
-   */
   if (leagueType === "nfl_playoffs") {
     return {
       ...none,
@@ -227,11 +176,6 @@ export function getLeagueCapabilities({
     };
   }
 
-  /*
-   * =========================================
-   * G365 PICK'EM
-   * =========================================
-   */
   if (leagueType === "pickem") {
     return {
       ...none,
@@ -246,11 +190,6 @@ export function getLeagueCapabilities({
     };
   }
 
-  /*
-   * =========================================
-   * GREYHOUND RACING
-   * =========================================
-   */
   if (leagueType === "greyhound") {
     return {
       ...none,

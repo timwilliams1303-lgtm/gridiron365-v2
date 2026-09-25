@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 
+import NhlInjuryBadge from "@/components/nhl-traditional/NhlInjuryBadge";
+
 type Props = {
   leagueId: string;
 };
@@ -38,6 +40,9 @@ type PlayerRow = {
   position_group: string | null;
   team_id: number | null;
   injury_status: string | null;
+  injury_detail: string | null;
+  injury_return_date: string | null;
+  injury_source: string | null;
   headshot_url: string | null;
 };
 
@@ -222,7 +227,7 @@ export default function NhlTraditionalTrades({ leagueId }: Props) {
         supabase
           .from("nhl_players")
           .select(
-            "id,display_name,first_name,last_name,position,position_group,team_id,injury_status,headshot_url"
+            "id,display_name,first_name,last_name,position,position_group,team_id,injury_status,injury_detail,injury_return_date,injury_source,headshot_url"
           )
           .eq("active", true)
           .order("display_name"),
@@ -1006,15 +1011,17 @@ function TradeSide({
                           )}
 
                           <span className="asset-main">
-                            <strong>{playerName(player)}</strong>
+                            <span className="trade-player-name-line">
+                              <strong>{playerName(player)}</strong>
+                              <NhlInjuryBadge
+                                status={player.injury_status}
+                                detail={player.injury_detail}
+                                returnDate={player.injury_return_date}
+                                source={player.injury_source}
+                              />
+                            </span>
                             <small>
                               {normalizePosition(player)} • {teamLabel}
-                              {player.injury_status &&
-                              !["active", "healthy"].includes(
-                                player.injury_status.toLowerCase()
-                              )
-                                ? ` • ${player.injury_status}`
-                                : ""}
                             </small>
                           </span>
                         </button>
@@ -1121,8 +1128,16 @@ function AssetSummary({
       ) : (
         <>
           {players.map((player) => (
-            <span key={`player-${player.id}`}>
-              {playerName(player)} • {normalizePosition(player)}
+            <span className="summary-player-row" key={`player-${player.id}`}>
+              <span>
+                {playerName(player)} • {normalizePosition(player)}
+              </span>
+              <NhlInjuryBadge
+                status={player.injury_status}
+                detail={player.injury_detail}
+                returnDate={player.injury_return_date}
+                source={player.injury_source}
+              />
             </span>
           ))}
           {picks.map((pick) => (
@@ -1430,6 +1445,15 @@ const styles = `
   }
 
   .asset-main { min-width: 0; display: grid; gap: 4px; }
+  .trade-player-name-line {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .trade-player-name-line > strong {
+    min-width: 0;
+  }
   .asset-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .asset-main small { color: #9298a3; font-size: 11px; }
 
@@ -1581,6 +1605,14 @@ const styles = `
 
   .summary-box > strong { color: #ff8b36; font-size: 11px; text-transform: uppercase; }
   .summary-box > span { font-size: 12px; overflow-wrap: anywhere; }
+  .summary-player-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .summary-player-row > span:first-child {
+    min-width: 0;
+  }
 
   .offer-message {
     margin-top: 12px;

@@ -128,6 +128,9 @@ type LineupPlayer = {
 
   matchupRank:
     number | null;
+
+  matchupDifficulty:
+    string | null;
 };
 
 
@@ -161,6 +164,9 @@ type PoolPlayer = {
 
   matchupRank:
     number | null;
+
+  matchupDifficulty:
+    string | null;
 
   gameStartAt:
     string | null;
@@ -556,8 +562,55 @@ function getMatchupLabel(
 
 
 function getMatchupDifficulty(
+  difficulty: string | null,
   rank: number | null
 ) {
+  const normalized =
+    difficulty
+      ?.trim()
+      .toLowerCase() ??
+    "";
+
+  if (
+    normalized === "tough" ||
+    normalized === "hard"
+  ) {
+    return {
+      label: "HARD",
+      detail: rank
+        ? `Hard matchup · #${rank} vs position`
+        : "Hard matchup",
+      style: styles.matchupHard,
+    };
+  }
+
+  if (
+    normalized === "average" ||
+    normalized === "medium" ||
+    normalized === "neutral"
+  ) {
+    return {
+      label: "MEDIUM",
+      detail: rank
+        ? `Medium matchup · #${rank} vs position`
+        : "Medium matchup",
+      style: styles.matchupMedium,
+    };
+  }
+
+  if (
+    normalized === "favorable" ||
+    normalized === "easy"
+  ) {
+    return {
+      label: "EASY",
+      detail: rank
+        ? `Easy matchup · #${rank} vs position`
+        : "Easy matchup",
+      style: styles.matchupEasy,
+    };
+  }
+
   if (!rank) {
     return {
       label: "N/A",
@@ -2921,16 +2974,19 @@ export default function SeasonLongWeeklyLineup({
                                   <strong
                                     style={
                                       getMatchupDifficulty(
+                                        player.matchupDifficulty,
                                         player.matchupRank
                                       ).style
                                     }
                                     title={
                                       getMatchupDifficulty(
+                                        player.matchupDifficulty,
                                         player.matchupRank
                                       ).detail
                                     }
                                   >
                                     {getMatchupDifficulty(
+                                      player.matchupDifficulty,
                                       player.matchupRank
                                     ).label}
                                     {player.matchupRank
@@ -3386,18 +3442,21 @@ export default function SeasonLongWeeklyLineup({
                                 <strong
                                   style={
                                     getMatchupDifficulty(
+                                      player.matchupDifficulty,
                                       player.matchupRank
                                     ).style
                                   }
                                   title={
                                     getMatchupDifficulty(
+                                      player.matchupDifficulty,
                                       player.matchupRank
                                     ).detail
                                   }
                                 >
                                   {getMatchupDifficulty(
-                                    player.matchupRank
-                                  ).label}
+                                      player.matchupDifficulty,
+                                      player.matchupRank
+                                    ).label}
                                   {player.matchupRank
                                     ? ` · #${player.matchupRank}`
                                     : ""}
@@ -5033,4 +5092,5 @@ const styles = {
   },
 
 };
+
 

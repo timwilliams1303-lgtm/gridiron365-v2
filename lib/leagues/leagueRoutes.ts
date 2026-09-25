@@ -202,9 +202,24 @@ export function getLeagueNavItems({
    * Players and Teams are intentionally
    * removed from NHL navigation.
    *
-   * Waivers now serves as the complete
+   * Waivers serves as the complete
    * Add Players / Free Agents / Waiver
    * acquisition page.
+   *
+   * Offseason-only features are grouped
+   * beneath the Offseason workspace:
+   *
+   * - Season Recap
+   * - Trophy Case
+   * - Dynasty Keepers
+   * - Dynasty Draft Lottery
+   * - Annual Draft
+   * - Draft Results
+   * - New Season
+   *
+   * LeagueNav is responsible for hiding
+   * Offseason until the NHL lifecycle is
+   * actually in the offseason phase.
    * =========================================
    */
   if (leagueType === "nhl_traditional") {
@@ -255,6 +270,12 @@ export function getLeagueNavItems({
         href: `${nhlBase}/trades`,
       },
       {
+        key: "playoffs",
+        label: "Playoffs",
+        mobileLabel: "Playoffs",
+        href: `${nhlBase}/playoffs`,
+      },
+      {
         key: "draft",
         label: "Draft",
         mobileLabel: "Draft",
@@ -267,25 +288,34 @@ export function getLeagueNavItems({
         href: `${nhlBase}/draft-lottery`,
       },
       {
-        key: "playoffs",
-        label: "Playoffs",
-        mobileLabel: "Playoffs",
-        href: `${nhlBase}/playoffs`,
+        key: "settings",
+        label: "Settings",
+        mobileLabel: "Settings",
+        href: `${nhlBase}/settings`,
       },
+
+      /*
+       * Offseason is the single top-level entry
+       * point for NHL offseason functionality.
+       *
+       * IMPORTANT:
+       * This route exists in the route registry,
+       * but LeagueNav will hide it unless the
+       * NHL lifecycle phase is "offseason".
+       */
       {
-        key: "recap",
-        label: "Recap",
-        mobileLabel: "Recap",
-        href: `${nhlBase}/recap`,
-      },
-      {
-        key: "trophyCase",
-        label: "Trophy Case",
-        mobileLabel: "Trophies",
-        href: `${nhlBase}/trophy-case`,
+        key: "offseason",
+        label: "Offseason",
+        mobileLabel: "Offseason",
+        href: `${nhlBase}/offseason`,
       },
     ];
 
+    /*
+     * Commissioner remains a separate,
+     * permanent permission-based top-level
+     * navigation destination.
+     */
     if (isCommissioner) {
       items.push({
         key: "commissioner",
@@ -348,7 +378,10 @@ export function getLeagueNavItems({
       href: `${seasonLongBase}/standings`,
     });
 
-    if (isHeadToHead && playoffsEnabled) {
+    if (
+      isHeadToHead &&
+      playoffsEnabled
+    ) {
       items.push({
         key: "playoffs",
         label: "Playoffs",
@@ -396,7 +429,8 @@ export function getLeagueNavItems({
    * =========================================
    */
   if (leagueType === "nfl_playoffs") {
-    const playoffBase = `${base}/nfl-playoffs`;
+    const playoffBase =
+      `${base}/nfl-playoffs`;
 
     const items: LeagueNavItem[] = [
       {
@@ -468,7 +502,8 @@ export function getLeagueNavItems({
    * =========================================
    */
   if (leagueType === "pickem") {
-    const pickemBase = `${base}/pickem`;
+    const pickemBase =
+      `${base}/pickem`;
 
     const items: LeagueNavItem[] = [
       {
@@ -534,7 +569,8 @@ export function getLeagueNavItems({
    * =========================================
    */
   if (leagueType === "greyhound") {
-    const greyhoundBase = `${base}/greyhound`;
+    const greyhoundBase =
+      `${base}/greyhound`;
 
     const items: LeagueNavItem[] = [
       {

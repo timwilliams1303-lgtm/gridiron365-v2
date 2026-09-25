@@ -134,6 +134,13 @@ export default function LeagueNav({
 
 
   const [
+    nhlOffseasonActive,
+    setNhlOffseasonActive,
+  ] =
+    useState(false);
+
+
+  const [
     leagueChoices,
     setLeagueChoices,
   ] =
@@ -255,6 +262,122 @@ export default function LeagueNav({
     };
   }, [
     leagueId,
+    leagueType,
+  ]);
+
+
+  /*
+   * ============================================================
+   * NHL OFFSEASON AVAILABILITY
+   * ============================================================
+   *
+   * Offseason is not a permanent NHL navigation destination.
+   *
+   * It becomes available only when the current NHL Traditional
+   * season-state row has entered the "offseason" lifecycle phase.
+   */
+  useEffect(() => {
+    if (
+      leagueType !==
+        "nhl_traditional" ||
+      leagueSeason == null
+    ) {
+      setNhlOffseasonActive(
+        false
+      );
+
+      return;
+    }
+
+
+    let cancelled =
+      false;
+
+
+    const supabase =
+      createSupabaseBrowserClient();
+
+
+    async function loadOffseasonAvailability() {
+      const {
+        data,
+        error,
+      } =
+        await supabase
+          .from(
+            "nhl_traditional_season_state"
+          )
+          .select(
+            "phase"
+          )
+          .eq(
+            "league_id",
+            leagueId
+          )
+          .eq(
+            "season",
+            leagueSeason
+          )
+          .maybeSingle();
+
+
+      if (
+        cancelled
+      ) {
+        return;
+      }
+
+
+      if (
+        error
+      ) {
+        setNhlOffseasonActive(
+          false
+        );
+
+        return;
+      }
+
+
+      const phase =
+        String(
+          data?.phase ??
+            ""
+        )
+          .trim()
+          .toLowerCase();
+
+
+      setNhlOffseasonActive(
+        phase ===
+          "offseason"
+      );
+    }
+
+
+    void loadOffseasonAvailability();
+
+
+    const timer =
+      window.setInterval(
+        () => {
+          void loadOffseasonAvailability();
+        },
+        15000
+      );
+
+
+    return () => {
+      cancelled =
+        true;
+
+      window.clearInterval(
+        timer
+      );
+    };
+  }, [
+    leagueId,
+    leagueSeason,
     leagueType,
   ]);
 
@@ -464,10 +587,31 @@ export default function LeagueNav({
     }).filter(
       (
         item
-      ) =>
-        capabilities[
-          item.key
-        ]
+      ) => {
+        if (
+          !capabilities[
+            item.key
+          ]
+        ) {
+          return false;
+        }
+
+
+        /*
+         * NHL Offseason is lifecycle-controlled.
+         */
+        if (
+          leagueType ===
+            "nhl_traditional" &&
+          item.key ===
+            "offseason"
+        ) {
+          return nhlOffseasonActive;
+        }
+
+
+        return true;
+      }
     );
 
 

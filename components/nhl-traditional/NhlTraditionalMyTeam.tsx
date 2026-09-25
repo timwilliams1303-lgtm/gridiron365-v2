@@ -18,6 +18,19 @@ type NhlSettingsRow = {
   player_lock_mode: string | null;
 };
 
+type MatchupAcquisitionSummary = {
+  leagueId: string;
+  fantasyTeamId: number;
+  season: number;
+  week: number | null;
+  limit: number | null;
+  unlimited: boolean;
+  counted: number;
+  pending: number;
+  usedForLimit: number;
+  remaining: number | null;
+};
+
 type RosterSettingsRow = {
   starting_c: number | null;
   starting_lw: number | null;
@@ -54,6 +67,9 @@ type NhlPlayerStatusRow = {
   team_id: number | null;
   jersey_number: string | null;
   injury_status: string | null;
+  injury_detail: string | null;
+  injury_return_date: string | null;
+  injury_source: string | null;
 };
 
 type ProjectionRow = {
@@ -224,6 +240,43 @@ async function activatePlayerFromIrAction(formData: FormData) {
   revalidatePath(`/league/${leagueId}/nhl/my-team`);
 }
 
+async function dropPlayerAction(formData: FormData) {
+  "use server";
+
+  const leagueId = String(formData.get("leagueId") ?? "");
+  const fantasyTeamId = Number(formData.get("fantasyTeamId"));
+  const nhlPlayerId = Number(formData.get("nhlPlayerId"));
+
+  if (!leagueId || !Number.isFinite(fantasyTeamId) || !Number.isFinite(nhlPlayerId)) {
+    throw new Error("Invalid player drop request.");
+  }
+
+  const access = await requireLeagueMember(leagueId);
+
+  if (Number(access.fantasyTeam?.id ?? 0) !== fantasyTeamId) {
+    throw new Error("You can only drop players from your own fantasy team.");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("drop_nhl_traditional_player", {
+    p_league_id: leagueId,
+    p_fantasy_team_id: fantasyTeamId,
+    p_nhl_player_id: nhlPlayerId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/league/${leagueId}`, "layout");
+  revalidatePath(`/league/${leagueId}/nhl`);
+  revalidatePath(`/league/${leagueId}/nhl/my-team`);
+  revalidatePath(`/league/${leagueId}/nhl/waivers`);
+  revalidatePath(`/league/${leagueId}/nhl/matchups`);
+  revalidatePath(`/league/${leagueId}/nhl/standings`);
+  revalidatePath(`/league/${leagueId}/nhl/trades`);
+}
+
 async function startActivePlayersAction(formData: FormData) {
   "use server";
 
@@ -309,8 +362,84 @@ async function moveLineupPlayerAction(formData: FormData) {
 }
 
 function isIrEligibleStatus(value: string | null | undefined) {
-  const status = String(value ?? "").trim().toUpperCase();
-  return status === "INJURY_RESERVE" || status === "OUT" || status === "SUSPENSION";
+  const status = String(value ?? "").trim().toLowerCase();
+  return (
+    status === "injured_reserve" ||
+    status === "injury_reserve" ||
+    status === "out" ||
+    status === "suspension" ||
+    status === "suspended"
+  );
+}
+
+function injuryStatusLabel(value: string | null | undefined) {
+  const status = String(value ?? "").trim().toLowerCase();
+
+  if (!status) return null;
+  if (status === "injured_reserve" || status === "injury_reserve") return "IR";
+  if (status === "out") return "OUT";
+  if (status === "day_to_day") return "DAY-TO-DAY";
+  if (status === "suspension" || status === "suspended") return "SUSPENDED";
+
+  return titleCase(status).toUpperCase();
+}
+
+function injuryBadgeLabel(value: string | null | undefined) {
+  const status = String(value ?? "").trim().toLowerCase();
+
+  if (!status) return null;
+  if (status === "injured_reserve" || status === "injury_reserve") return "IR";
+  if (status === "out") return "O";
+  if (status === "day_to_day") return "DTD";
+  if (status === "suspension" || status === "suspended") return "SUS";
+
+  return "INJ";
+}
+
+function eligibleMoveLabels(
+  player: NhlPlayerStatusRow | undefined,
+  positionMode: string
+) {
+  const raw = String(player?.position ?? player?.position_group ?? "")
+    .toUpperCase()
+    .replaceAll(" ", "");
+  const positions = raw.split(/[\/,-]/).filter(Boolean);
+  const labels = new Set<string>();
+
+  if (positionMode === "fdg") {
+    if (positions.some((position) => ["C", "LW", "RW", "F"].includes(position))) {
+      labels.add("F");
+    }
+    if (positions.includes("D")) labels.add("D");
+    if (positions.includes("G")) labels.add("G");
+  } else {
+    if (positions.includes("C")) labels.add("C");
+    if (positions.includes("LW")) labels.add("LW");
+    if (positions.includes("RW")) labels.add("RW");
+    if (positions.includes("D")) labels.add("D");
+    if (positions.includes("G")) labels.add("G");
+
+    const isSkater = positions.some((position) =>
+      ["C", "LW", "RW", "D", "F"].includes(position)
+    );
+    if (isSkater) labels.add("UTIL");
+  }
+
+  labels.add("BN");
+  return labels;
+}
+
+function injuryReturnLabel(value: string | null | undefined) {
+  if (!value) return null;
+
+  const parsed = new Date(`${value}T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(parsed);
 }
 
 function asNumber(value: number | string | null | undefined) {
@@ -563,7 +692,9 @@ export default async function NhlTraditionalMyTeam({
   if (rosterPlayerIds.length > 0) {
     const playerStatusResult = await supabase
       .from("nhl_players")
-      .select("id, display_name, position, position_group, team_id, jersey_number, injury_status")
+      .select(
+        "id, display_name, position, position_group, team_id, jersey_number, injury_status, injury_detail, injury_return_date, injury_source"
+      )
       .in("id", rosterPlayerIds);
 
     if (playerStatusResult.error) {
@@ -614,6 +745,34 @@ export default async function NhlTraditionalMyTeam({
   const activeWeek = Number(
     seasonState?.active_week ?? 1
   );
+
+  const acquisitionSummaryResult = await supabase.rpc(
+    "get_nhl_traditional_matchup_acquisition_summary",
+    {
+      p_league_id: leagueId,
+      p_fantasy_team_id: fantasyTeamId,
+      p_season: season,
+      p_week: activeWeek,
+    }
+  );
+
+  if (acquisitionSummaryResult.error) {
+    throw new Error(
+      `Unable to load matchup acquisitions: ${acquisitionSummaryResult.error.message}`
+    );
+  }
+
+  const acquisitionSummary =
+    acquisitionSummaryResult.data as MatchupAcquisitionSummary | null;
+
+  const acquisitionLimit = acquisitionSummary?.limit ?? null;
+  const acquisitionUsed = Number(acquisitionSummary?.usedForLimit ?? 0);
+  const acquisitionCounted = Number(acquisitionSummary?.counted ?? 0);
+  const acquisitionPending = Number(acquisitionSummary?.pending ?? 0);
+  const acquisitionRemaining =
+    acquisitionSummary?.remaining == null
+      ? null
+      : Number(acquisitionSummary.remaining);
 
   const wins = Number(
     standing?.wins ?? 0
@@ -842,6 +1001,41 @@ export default async function NhlTraditionalMyTeam({
           />
         </section>
 
+        <section className="g365-nhl-acquisition-card" aria-label="Matchup acquisitions">
+          <div className="g365-nhl-acquisition-copy">
+            <p className="g365-nhl-small-label">WEEK {activeWeek} ROSTER MOVES</p>
+            <h2>Matchup Acquisitions</h2>
+            <p>
+              Successful free-agent and waiver additions count toward this matchup.
+              Pending same-day pickups reserve a spot until they are refunded or counted.
+            </p>
+          </div>
+
+          <div className="g365-nhl-acquisition-total">
+            <strong>{acquisitionUsed}</strong>
+            <span>
+              / {acquisitionLimit == null ? "UNLIMITED" : acquisitionLimit} USED
+            </span>
+          </div>
+
+          <div className="g365-nhl-acquisition-stats">
+            <div>
+              <span>COUNTED</span>
+              <strong>{acquisitionCounted}</strong>
+            </div>
+            <div>
+              <span>PENDING</span>
+              <strong>{acquisitionPending}</strong>
+            </div>
+            <div>
+              <span>REMAINING</span>
+              <strong>
+                {acquisitionRemaining == null ? "∞" : acquisitionRemaining}
+              </strong>
+            </div>
+          </div>
+        </section>
+
         <section className="g365-nhl-lineup-manager">
           <div className="g365-nhl-section-heading g365-nhl-lineup-heading">
             <div className="g365-nhl-section-title-block">
@@ -938,7 +1132,9 @@ export default async function NhlTraditionalMyTeam({
                                   fantasyTeamId={Number(fantasyTeamId)}
                                   lineupDate={date}
                                   targets={allMoveTargets}
+                                  positionMode={positionMode}
                                   gameTimeLabel={gameTime(row?.game_start_at)}
+                                  irSlotAvailable={irRoster.length < irSlots}
                                 />
                               );
                             })}
@@ -997,7 +1193,9 @@ function NhlLineupTableRow({
   fantasyTeamId,
   lineupDate,
   targets,
+  positionMode,
   gameTimeLabel,
+  irSlotAvailable,
 }: {
   label: string;
   slotIndex: number;
@@ -1009,7 +1207,9 @@ function NhlLineupTableRow({
   fantasyTeamId: number;
   lineupDate: string;
   targets: Array<{ label: string; slotIndex: number }>;
+  positionMode: string;
   gameTimeLabel: string;
+  irSlotAvailable: boolean;
 }) {
   const started =
     row?.game_start_at != null && new Date(row.game_start_at).getTime() <= Date.now();
@@ -1017,19 +1217,62 @@ function NhlLineupTableRow({
   const hasGame = row?.nhl_game_id != null;
   const positionText = player?.position ?? player?.position_group ?? "—";
   const jerseyText = player?.jersey_number ? `#${player.jersey_number}` : null;
-  const injuryStatus = String(player?.injury_status ?? "").trim();
+  const injuryLabel = injuryStatusLabel(player?.injury_status);
+  const injuryBadge = injuryBadgeLabel(player?.injury_status);
+  const injuryEligible = isIrEligibleStatus(player?.injury_status);
+  const returnLabel = injuryReturnLabel(player?.injury_return_date);
+  const allowedLabels = eligibleMoveLabels(player, positionMode);
+
+  const moveTargets = Array.from(allowedLabels)
+    .map((targetLabel) => {
+      const matchingTargets = targets.filter((target) => target.label === targetLabel);
+      if (matchingTargets.length === 0) return null;
+
+      const currentTarget = matchingTargets.find(
+        (target) =>
+          target.label === String(row?.lineup_slot ?? "").toUpperCase() &&
+          target.slotIndex === Number(row?.slot_index ?? 1)
+      );
+
+      return currentTarget ?? matchingTargets[0];
+    })
+    .filter((target): target is { label: string; slotIndex: number } => target != null);
 
   return (
     <tr className={locked ? "g365-nhl-lineup-row locked" : "g365-nhl-lineup-row"}>
       <td className="pos-cell">
         <span className="g365-nhl-table-pos">{label}</span>
-        <small>{slotIndex}</small>
       </td>
 
       <td className="player-cell">
         {row ? (
           <>
-            <strong>{player?.display_name ?? `Player #${row.nhl_player_id}`}</strong>
+            <div className="g365-nhl-player-name-line">
+              <strong>{player?.display_name ?? `Player #${row.nhl_player_id}`}</strong>
+              {injuryBadge ? (
+                <details className="g365-nhl-injury-popover">
+                  <summary
+                    className="g365-nhl-injury-circle"
+                    aria-label={`Show injury information for ${player?.display_name ?? "player"}`}
+                    title={injuryLabel ?? "Injury information"}
+                  >
+                    {injuryBadge}
+                  </summary>
+                  <div className="g365-nhl-injury-panel">
+                    <strong>{injuryLabel ?? "INJURY"}</strong>
+                    {player?.injury_detail ? <span>{player.injury_detail}</span> : null}
+                    {returnLabel ? <span>Expected return: {returnLabel}</span> : null}
+                    {player?.injury_source ? (
+                      <small>Source: {player.injury_source}</small>
+                    ) : null}
+                    {!player?.injury_detail && !returnLabel ? (
+                      <span>No additional injury information available.</span>
+                    ) : null}
+                  </div>
+                </details>
+              ) : null}
+
+            </div>
             <small>
               {positionText}
               {jerseyText ? ` • ${jerseyText}` : ""}
@@ -1062,7 +1305,7 @@ function NhlLineupTableRow({
                   : "g365-nhl-table-status"
             }
           >
-            {locked ? "LOCKED" : hasGame ? "PLAYING" : injuryStatus || "OFF DAY"}
+            {locked ? "LOCKED" : hasGame ? "PLAYING" : "OFF DAY"}
           </span>
         ) : (
           <span className="g365-nhl-table-status">EMPTY</span>
@@ -1078,30 +1321,77 @@ function NhlLineupTableRow({
       </td>
 
       <td className="action-cell">
-        {row && !locked ? (
-          <form action={moveLineupPlayerAction} className="g365-nhl-table-move-form">
-            <input type="hidden" name="leagueId" value={leagueId} />
-            <input type="hidden" name="fantasyTeamId" value={fantasyTeamId} />
-            <input type="hidden" name="nhlPlayerId" value={row.nhl_player_id} />
-            <input type="hidden" name="lineupDate" value={lineupDate} />
-            <select
-              name="target"
-              defaultValue={`${String(row.lineup_slot ?? "BN").toUpperCase()}|${Number(row.slot_index ?? 1)}`}
-              aria-label={`Move ${player?.display_name ?? "player"}`}
-            >
-              {targets.map((target) => (
-                <option
-                  key={`${target.label}-${target.slotIndex}`}
-                  value={`${target.label}|${target.slotIndex}`}
+        {row ? (
+          locked ? (
+            <span className="g365-nhl-action-locked">LOCKED</span>
+          ) : (
+            <div className="g365-nhl-position-actions" aria-label={`Move ${player?.display_name ?? "player"}`}>
+              {moveTargets.map((target) => {
+                const isCurrent =
+                  target.label === String(row.lineup_slot ?? "").toUpperCase() &&
+                  target.slotIndex === Number(row.slot_index ?? 1);
+
+                return (
+                  <form action={moveLineupPlayerAction} key={target.label}>
+                    <input type="hidden" name="leagueId" value={leagueId} />
+                    <input type="hidden" name="fantasyTeamId" value={fantasyTeamId} />
+                    <input type="hidden" name="nhlPlayerId" value={row.nhl_player_id} />
+                    <input type="hidden" name="lineupDate" value={lineupDate} />
+                    <input
+                      type="hidden"
+                      name="target"
+                      value={`${target.label}|${target.slotIndex}`}
+                    />
+                    <button
+                      type="submit"
+                      className={`g365-nhl-position-button${isCurrent ? " current" : ""}`}
+                      disabled={isCurrent}
+                      aria-label={
+                        isCurrent
+                          ? `${player?.display_name ?? "Player"} is currently at ${target.label}`
+                          : `Move ${player?.display_name ?? "player"} to ${target.label}`
+                      }
+                    >
+                      {target.label}
+                    </button>
+                  </form>
+                );
+              })}
+
+              <form action={dropPlayerAction}>
+                <input type="hidden" name="leagueId" value={leagueId} />
+                <input type="hidden" name="fantasyTeamId" value={fantasyTeamId} />
+                <input type="hidden" name="nhlPlayerId" value={row.nhl_player_id} />
+                <button
+                  type="submit"
+                  className="g365-nhl-position-button drop"
+                  aria-label={`Drop ${player?.display_name ?? "player"}`}
+                  title={`Drop ${player?.display_name ?? "player"}`}
                 >
-                  {target.label} {target.slotIndex}
-                </option>
-              ))}
-            </select>
-            <button type="submit">MOVE</button>
-          </form>
-        ) : row ? (
-          <span className="g365-nhl-action-locked">LOCKED</span>
+                  DROP
+                </button>
+              </form>
+
+              {injuryEligible ? (
+                irSlotAvailable ? (
+                  <form action={movePlayerToIrAction}>
+                    <input type="hidden" name="leagueId" value={leagueId} />
+                    <input type="hidden" name="fantasyTeamId" value={fantasyTeamId} />
+                    <input type="hidden" name="nhlPlayerId" value={row.nhl_player_id} />
+                    <button
+                      type="submit"
+                      className="g365-nhl-position-button ir"
+                      aria-label={`Move ${player?.display_name ?? "player"} to IR`}
+                    >
+                      IR
+                    </button>
+                  </form>
+                ) : (
+                  <span className="g365-nhl-ir-full">IR FULL</span>
+                )
+              ) : null}
+            </div>
+          )
         ) : (
           <span>—</span>
         )}
@@ -1125,16 +1415,41 @@ function NhlIrTableRow({
   leagueId: string;
   fantasyTeamId: number;
 }) {
+  const injuryLabel = injuryStatusLabel(player?.injury_status);
+  const injuryBadge = injuryBadgeLabel(player?.injury_status);
+  const returnLabel = injuryReturnLabel(player?.injury_return_date);
+
   return (
     <tr className="g365-nhl-lineup-row ir-row">
       <td className="pos-cell">
         <span className="g365-nhl-table-pos ir">{label}</span>
-        <small>{slotIndex}</small>
       </td>
       <td className="player-cell">
         {rosterRow ? (
           <>
-            <strong>{player?.display_name ?? `Player #${rosterRow.nhl_player_id}`}</strong>
+            <div className="g365-nhl-player-name-line">
+              <strong>{player?.display_name ?? `Player #${rosterRow.nhl_player_id}`}</strong>
+              {injuryBadge ? (
+                <details className="g365-nhl-injury-popover">
+                  <summary
+                    className="g365-nhl-injury-circle"
+                    aria-label={`Show injury information for ${player?.display_name ?? "player"}`}
+                    title={injuryLabel ?? "Injury information"}
+                  >
+                    {injuryBadge}
+                  </summary>
+                  <div className="g365-nhl-injury-panel">
+                    <strong>{injuryLabel ?? "INJURY"}</strong>
+                    {player?.injury_detail ? <span>{player.injury_detail}</span> : null}
+                    {returnLabel ? <span>Expected return: {returnLabel}</span> : null}
+                    {player?.injury_source ? <small>Source: {player.injury_source}</small> : null}
+                    {!player?.injury_detail && !returnLabel ? (
+                      <span>No additional injury information available.</span>
+                    ) : null}
+                  </div>
+                </details>
+              ) : null}
+            </div>
             <small>{player?.position ?? player?.position_group ?? "—"}</small>
           </>
         ) : (
@@ -1144,18 +1459,25 @@ function NhlIrTableRow({
       <td className="game-cell"><span>—</span></td>
       <td className="status-cell">
         <span className="g365-nhl-table-status ir">
-          {rosterRow ? player?.injury_status ?? "IR" : "EMPTY"}
+          {rosterRow ? "IR" : "EMPTY"}
         </span>
       </td>
       <td className="numeric">—</td>
       <td className="numeric">—</td>
       <td className="action-cell">
         {rosterRow ? (
-          <form action={activatePlayerFromIrAction}>
+          <form action={activatePlayerFromIrAction} className="g365-nhl-position-actions">
             <input type="hidden" name="leagueId" value={leagueId} />
             <input type="hidden" name="fantasyTeamId" value={fantasyTeamId} />
             <input type="hidden" name="nhlPlayerId" value={rosterRow.nhl_player_id} />
-            <button type="submit" className="g365-nhl-ir-activate">ACTIVATE</button>
+            <button
+              type="submit"
+              className="g365-nhl-position-button"
+              aria-label={`Activate ${player?.display_name ?? "player"} from IR to bench`}
+              title="Activate from IR"
+            >
+              BN
+            </button>
           </form>
         ) : (
           <span>—</span>
@@ -1310,6 +1632,110 @@ const baseStyles = `
         #ff7900
       );
     color: #ffffff;
+  }
+
+  .g365-nhl-acquisition-card {
+    margin-top: 14px;
+    padding: 18px 20px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 18px;
+    border: 1px solid rgba(255, 101, 0, 0.24);
+    border-radius: 14px;
+    background:
+      linear-gradient(135deg, rgba(207, 24, 24, 0.13), rgba(255, 76, 0, 0.055) 46%, rgba(8, 8, 8, 0.97));
+  }
+
+  .g365-nhl-acquisition-copy {
+    min-width: 0;
+  }
+
+  .g365-nhl-acquisition-copy h2 {
+    margin: 5px 0 0;
+    color: #ffffff;
+    font-size: 20px;
+    line-height: 1.1;
+  }
+
+  .g365-nhl-acquisition-copy > p:last-child {
+    max-width: 620px;
+    margin: 7px 0 0;
+    color: #8e949e;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .g365-nhl-acquisition-total {
+    min-width: 126px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 5px;
+    border: 1px solid rgba(255, 116, 20, 0.28);
+    border-radius: 12px;
+    background: rgba(255, 92, 0, 0.07);
+    white-space: nowrap;
+  }
+
+  .g365-nhl-acquisition-total strong {
+    color: #ffffff;
+    font-size: 27px;
+    line-height: 1;
+  }
+
+  .g365-nhl-acquisition-total span {
+    color: #ff8a3d;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.05em;
+  }
+
+  .g365-nhl-acquisition-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(68px, 1fr));
+    gap: 7px;
+  }
+
+  .g365-nhl-acquisition-stats > div {
+    min-width: 68px;
+    padding: 9px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.025);
+    text-align: center;
+  }
+
+  .g365-nhl-acquisition-stats span {
+    display: block;
+    color: #777e89;
+    font-size: 7px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+  }
+
+  .g365-nhl-acquisition-stats strong {
+    display: block;
+    margin-top: 4px;
+    color: #ffffff;
+    font-size: 16px;
+  }
+
+  @media (max-width: 800px) {
+    .g365-nhl-acquisition-card {
+      grid-template-columns: 1fr;
+      gap: 12px;
+      padding: 15px;
+    }
+
+    .g365-nhl-acquisition-total {
+      justify-content: flex-start;
+    }
+
+    .g365-nhl-acquisition-stats {
+      width: 100%;
+    }
   }
 
   .g365-nhl-team-hero {
@@ -2069,7 +2495,9 @@ const baseStyles = `
   .g365-nhl-lineup-table { width:100%; min-width:900px; border-collapse:collapse; }
   .g365-nhl-lineup-table th { padding:11px 10px; border-bottom:1px solid rgba(255,119,0,.18); color:#ff8a3d; font-size:8px; font-weight:900; letter-spacing:.08em; text-align:left; white-space:nowrap; }
   .g365-nhl-lineup-table th.numeric, .g365-nhl-lineup-table td.numeric { text-align:right; }
-  .g365-nhl-lineup-row td { padding:11px 10px; border-bottom:1px solid rgba(255,255,255,.055); vertical-align:middle; }
+  .g365-nhl-lineup-row td { position:relative; padding:11px 10px; border-bottom:1px solid rgba(255,255,255,.055); vertical-align:middle; }
+  .g365-nhl-lineup-row:has(.g365-nhl-injury-popover[open]) { position:relative; z-index:9997; }
+  .g365-nhl-lineup-row .player-cell:has(.g365-nhl-injury-popover[open]) { z-index:9998; overflow:visible; }
   .g365-nhl-lineup-row:last-child td { border-bottom:0; }
   .g365-nhl-lineup-row.locked { background:rgba(255,255,255,.018); }
   .g365-nhl-lineup-row.ir-row { background:rgba(255,255,255,.012); }
@@ -2087,9 +2515,35 @@ const baseStyles = `
   .g365-nhl-table-status.playing { background:rgba(255,92,0,.1); color:#ff8a3d; }
   .g365-nhl-table-status.locked { background:rgba(255,255,255,.07); color:#c0c4ca; }
   .g365-nhl-table-status.ir { background:rgba(255,255,255,.05); color:#a7adb6; }
+  .g365-nhl-table-status.injury { border:1px solid rgba(255,92,0,.28); background:rgba(255,92,0,.09); color:#ff8a3d; }
+  .g365-nhl-player-name-line { display:flex; align-items:center; gap:7px; min-width:0; }
+  .g365-nhl-player-name-line > strong { min-width:0; }
+  .g365-nhl-injury-popover { position:relative; z-index:20; flex:0 0 auto; overflow:visible; }
+  .g365-nhl-injury-popover[open] { z-index:9999; }
+  .g365-nhl-injury-popover > summary { list-style:none; }
+  .g365-nhl-injury-popover > summary::-webkit-details-marker { display:none; }
+  .g365-nhl-injury-circle { width:25px; height:25px; padding:0; display:inline-flex; align-items:center; justify-content:center; border:1px solid rgba(255,92,0,.58); border-radius:999px; background:rgba(255,92,0,.12); color:#ff8a3d; cursor:pointer; font-size:7px; font-weight:900; line-height:1; letter-spacing:-.01em; user-select:none; }
+  .g365-nhl-injury-circle:focus-visible { outline:2px solid #ff7a18; outline-offset:2px; }
+  .g365-nhl-injury-panel { position:absolute; z-index:10000; top:calc(100% + 7px); left:0; width:min(280px, calc(100vw - 48px)); padding:10px 11px; display:grid; gap:5px; border:1px solid rgba(255,119,0,.28); border-radius:9px; background:#111214; box-shadow:0 12px 30px rgba(0,0,0,.48); text-align:left; white-space:normal; }
+  .g365-nhl-injury-panel strong { color:#ff8a3d; font-size:9px; }
+  .g365-nhl-injury-panel span { color:#d2d5da; font-size:9px; line-height:1.4; }
+  .g365-nhl-injury-panel small { margin:0; color:#858b95; font-size:8px; line-height:1.35; }
+  .g365-nhl-table-actions { display:flex; flex-direction:column; align-items:stretch; gap:6px; }
+  .g365-nhl-ir-move-form { display:flex; justify-content:flex-end; }
+  .g365-nhl-ir-move { min-height:32px; padding:0 10px; border:1px solid rgba(255,92,0,.45); border-radius:6px; background:rgba(255,92,0,.08); color:#ff8a3d; font-size:8px; font-weight:900; cursor:pointer; }
+  .g365-nhl-ir-full { align-self:flex-end; color:#858b95; font-size:8px; font-weight:900; }
   .proj-cell, .fpts-cell { width:72px; color:#fff; font-size:11px; font-weight:900; }
   .fpts-cell { color:#ff9a50; }
-  .action-cell { min-width:190px; }
+  .g365-nhl-lineup-table th:last-child { text-align:right; padding-right:12px; }
+  .action-cell { min-width:220px; text-align:right; }
+  .g365-nhl-position-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:5px; }
+  .g365-nhl-position-actions form { margin:0; }
+  .g365-nhl-position-button { min-width:38px; min-height:36px; padding:0 8px; display:inline-flex; align-items:center; justify-content:center; border:1px solid rgba(255,92,0,.48); border-radius:7px; background:rgba(255,92,0,.08); color:#ff8a3d; cursor:pointer; font-size:8px; font-weight:900; line-height:1; letter-spacing:.03em; }
+  .g365-nhl-position-button:hover:not(:disabled), .g365-nhl-position-button:focus-visible { border-color:rgba(255,122,24,.8); background:rgba(255,92,0,.18); color:#fff; }
+  .g365-nhl-position-button.current, .g365-nhl-position-button:disabled { border-color:rgba(255,255,255,.09); background:rgba(255,255,255,.045); color:#737983; cursor:default; }
+  .g365-nhl-position-button.ir { border-color:rgba(255,92,0,.7); background:linear-gradient(135deg,rgba(217,29,29,.28),rgba(255,75,0,.2)); color:#fff; }
+  .g365-nhl-position-button.drop { min-width:52px; border-color:rgba(239,68,68,.72); background:rgba(127,29,29,.2); color:#ff8b8b; }
+  .g365-nhl-position-button.drop:hover, .g365-nhl-position-button.drop:focus-visible { border-color:rgba(248,113,113,.95); background:rgba(185,28,28,.32); color:#fff; }
   .g365-nhl-table-move-form { display:flex; align-items:center; justify-content:flex-end; gap:6px; }
   .g365-nhl-table-move-form select { min-height:34px; max-width:92px; padding:0 7px; border:1px solid rgba(255,119,0,.18); border-radius:6px; background:#111; color:#fff; font-size:8px; font-weight:800; }
   .g365-nhl-table-move-form button, .g365-nhl-ir-activate { min-height:34px; padding:0 10px; border:1px solid rgba(255,92,0,.5); border-radius:6px; background:linear-gradient(135deg,#d91d1d,#ff4b00,#ff7900); color:#fff; font-size:8px; font-weight:900; cursor:pointer; }
@@ -2245,9 +2699,15 @@ const baseStyles = `
     .g365-nhl-lineup-row .fpts-cell { grid-column:3; grid-row:3; text-align:right; }
     .g365-nhl-lineup-row .fpts-cell::before { content:'FPTS '; color:#858b95; font-size:7px; margin-right:4px; }
     .g365-nhl-lineup-row .action-cell { grid-column:2 / 4; grid-row:4; }
+    .g365-nhl-position-actions { justify-content:flex-start; }
+    .g365-nhl-position-button { min-width:42px; min-height:42px; }
+    .g365-nhl-injury-panel { left:auto; right:0; }
+    .g365-nhl-table-actions { width:100%; }
     .g365-nhl-table-move-form { justify-content:stretch; }
     .g365-nhl-table-move-form select { flex:1; max-width:none; }
-    .g365-nhl-table-move-form button, .g365-nhl-ir-activate { min-height:38px; }
+    .g365-nhl-table-move-form button, .g365-nhl-ir-activate, .g365-nhl-ir-move { min-height:38px; }
+    .g365-nhl-ir-move-form, .g365-nhl-ir-move { width:100%; }
+    .g365-nhl-ir-full { align-self:stretch; min-height:34px; display:flex; align-items:center; justify-content:center; border:1px solid rgba(255,255,255,.07); border-radius:6px; }
   }
 
   @media (max-width: 520px) {
