@@ -1,8 +1,6 @@
 "use client";
-
 import { ChangeEvent, useRef, useState } from "react";
 import { createWorker, PSM } from "tesseract.js";
-
 type EntryRow = {
   raceNumber: number;
   trapNumber: number;
@@ -11,12 +9,10 @@ type EntryRow = {
   kennel: string | null;
   weight: number | null;
 };
-
 type VacantBox = {
   raceNumber: number;
   trapNumber: number;
 };
-
 type Props = {
   leagueId: string;
   onImported?: (payload: {
@@ -24,11 +20,9 @@ type Props = {
     entries: EntryRow[];
   }) => void;
 };
-
 function clean(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
-
 function normalizeDogNameSpacing(value: string) {
   // Keep the proven Entries OCR/parser intact. Only correct the two
   // character substitutions we know are invalid in greyhound names:
@@ -51,31 +45,45 @@ function normalizeDogNameSpacing(value: string) {
     .replace(/\s+/g, " ")
     .trim();
 }
-
+function normalizeMorningLineOdds(value: string | null | undefined) {
+  if (!value) return null;
+  const normalized = clean(value)
+    .toUpperCase()
+    .replace(/[()]/g, "")
+    .replace(/[–—]/g, "-")
+    .replace(/[OQ]/g, "0")
+    .replace(/[IL|]/g, "1")
+    .replace(/\s+/g, "");
+  const standard = normalized.match(/^(\d{1,2})-(\d{1,2})$/);
+  if (standard) return `${Number(standard[1])}-${Number(standard[2])}`;
+  if (/^\d{2,3}$/.test(normalized)) {
+    const denominator = normalized.slice(-1);
+    const numerator = normalized.slice(0, -1);
+    if (["1", "2", "5"].includes(denominator) && Number(numerator) > 0) {
+      return `${Number(numerator)}-${Number(denominator)}`;
+    }
+  }
+  return null;
+}
 function parseEntriesMetadata(text: string) {
   const normalized = text.replace(/\r/g, " ").replace(/\s+/g, " ");
-
   // Official header example:
   // Entries for Tuesday Evening, 09/15/26, Post Time: 6:00PM
   const match = normalized.match(
     /Entries\s+for\s+[^,]*?\b(Morning|Afternoon|Evening)\s*,?\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s*,?\s*Post\s*Time\s*:\s*([0-9]{1,2}:[0-9]{2}\s*[AP]M)/i,
   );
-
   if (!match) {
     return null;
   }
-
   const month = Number(match[2]);
   const day = Number(match[3]);
   let year = Number(match[4]);
   if (year < 100) year += 2000;
-
   const raceDate = [
     String(year).padStart(4, "0"),
     String(month).padStart(2, "0"),
     String(day).padStart(2, "0"),
   ].join("-");
-
   const upper = normalized.toUpperCase();
   const trackCode: "GWD" | "GTS" | null =
     upper.includes("WHEELING")
@@ -83,7 +91,6 @@ function parseEntriesMetadata(text: string) {
       : upper.includes("TRI-STATE") || upper.includes("TRISTATE")
         ? "GTS"
         : null;
-
   return {
     raceDate,
     session: match[1].toLowerCase(),
@@ -91,38 +98,31 @@ function parseEntriesMetadata(text: string) {
     trackCode,
   };
 }
-
 function normalizeVacancyText(value: string) {
   return clean(value)
     .toUpperCase()
-    .replace(/[~`^_=|:;,.·•…“”‘’\\/\-–—]/g, " ")
+    .replace(/[~`^_=|:;,.·•…“”‘’\\\/\-–—]/g, " ")
     .replace(/0/g, "O")
     .replace(/\s+/g, " ")
     .trim();
 }
-
 function isVacantDogLabel(value: string) {
   const normalized = normalizeVacancyText(value);
-
   if (normalized === "VACANT" || normalized === "EMPTY") {
     return true;
   }
-
   // Official Wheeling vacant boxes are printed as NO GREYHOUND. OCR can
   // append a stray 1/I/L, so compare the compact prefix rather than requiring
   // an exact end-of-string match.
   const compact = normalized.replace(/\s+/g, "");
   return compact.startsWith("NOGREYHOUND");
 }
-
 function parseEntriesText(text: string): EntryRow[] {
   const rows: EntryRow[] = [];
   let raceNumber: number | null = null;
-
   for (const raw of text.replace(/\r/g, "").split("\n")) {
     const line = clean(raw);
     if (!line) continue;
-
     const race = line.match(/\b(\d{1,2})(?:ST|ND|RD|TH)\s+Grade\b/i);
     if (race) {
       const n = Number(race[1]);
@@ -130,7 +130,6 @@ function parseEntriesText(text: string): EntryRow[] {
       continue;
     }
     if (!raceNumber) continue;
-
     /*
      * Official Entries OCR can slightly damage the kennel/weight columns.
      * Race + Box + Dog identity is authoritative; odds/kennel/weight are
@@ -139,20 +138,21 @@ function parseEntriesText(text: string): EntryRow[] {
      */
     const boxMatch = line.match(/^\s*([1-8])[\s.)-]+(.+)$/);
     if (!boxMatch) continue;
-
     const trapNumber = Number(boxMatch[1]);
     let remainder = clean(boxMatch[2]);
-
-    // The first parenthetical after the dog is the morning-line odds.
-    const oddsMatch = remainder.match(/\s+\(([^)]+)\)/);
+    // Parse morning-line odds independently from the dog name. Both official
+    // layouts can lose a parenthesis or the dash during OCR.
+    const oddsMatch = remainder.match(
+      /\s+\(?\s*((?:\d{1,2}\s*[-–—]\s*\d{1,2})|(?:\d{2,3}))\s*\)?/,
+    );
     if (!oddsMatch || oddsMatch.index === undefined) continue;
-
+    const odds = normalizeMorningLineOdds(oddsMatch[1]);
+    if (!odds) continue;
     const dogName = normalizeDogNameSpacing(
       clean(remainder.slice(0, oddsMatch.index))
-        .replace(/^[—–_-]+\s*/, "")
+        .replace(/^[—–\_-]+\s*/, "")
         .trim(),
     );
-
     if (
       !dogName ||
       dogName.length < 2 ||
@@ -164,14 +164,7 @@ function parseEntriesText(text: string): EntryRow[] {
     ) {
       continue;
     }
-
-    const odds = clean(oddsMatch[1]) || null;
-    remainder = clean(
-      remainder.slice(
-        oddsMatch.index + oddsMatch[0].length,
-      ),
-    );
-
+    remainder = clean(remainder.slice(oddsMatch.index + oddsMatch[0].length));
     const weightMatch = remainder.match(/\((\d{2,3})\)\s*$/);
     const weight = weightMatch ? Number(weightMatch[1]) || null : null;
     const kennel = clean(
@@ -179,7 +172,6 @@ function parseEntriesText(text: string): EntryRow[] {
         ? remainder.slice(0, weightMatch.index)
         : remainder,
     ) || null;
-
     rows.push({
       raceNumber,
       trapNumber,
@@ -189,7 +181,6 @@ function parseEntriesText(text: string): EntryRow[] {
       weight,
     });
   }
-
   const unique = new Map<string, EntryRow>();
   for (const row of rows) {
     unique.set(`${row.raceNumber}:${row.trapNumber}`, row);
@@ -198,15 +189,12 @@ function parseEntriesText(text: string): EntryRow[] {
     (a, b) => a.raceNumber - b.raceNumber || a.trapNumber - b.trapNumber,
   );
 }
-
 function parseVacantBoxes(text: string): VacantBox[] {
   const rows: VacantBox[] = [];
   let raceNumber: number | null = null;
-
   for (const raw of text.replace(/\r/g, "").split("\n")) {
     const line = clean(raw);
     if (!line) continue;
-
     const race = line.match(/\b(\d{1,2})(?:ST|ND|RD|TH)\s+Grade\b/i);
     if (race) {
       const n = Number(race[1]);
@@ -214,13 +202,10 @@ function parseVacantBoxes(text: string): VacantBox[] {
       continue;
     }
     if (!raceNumber) continue;
-
     const boxMatch = line.match(/^\s*([1-8])[\s.)-]+(.+)$/);
     if (!boxMatch) continue;
-
     const trapNumber = Number(boxMatch[1]);
     const remainder = clean(boxMatch[2]);
-
     // A vacant row has no odds/kennel payload, but OCR may render the printed
     // NO GREYHOUND label with odd spacing/punctuation. Read only the leading
     // label so unrelated text later in the crop cannot create a vacancy.
@@ -228,22 +213,17 @@ function parseVacantBoxes(text: string): VacantBox[] {
       .replace(/\s+\([^)]*\).*$/, "")
       .replace(/\s{2,}.*$/, "")
       .trim();
-
     if (isVacantDogLabel(leadingLabel) || isVacantDogLabel(remainder)) {
       rows.push({ raceNumber, trapNumber });
     }
   }
-
   const unique = new Map<string, VacantBox>();
   for (const row of rows) unique.set(`${row.raceNumber}:${row.trapNumber}`, row);
   return [...unique.values()];
 }
-
-
 function removeDuplicateWheelingDogs(entries: EntryRow[]) {
   const firstByIdentity = new Map<string, EntryRow>();
   const duplicateKeys = new Set<string>();
-
   for (const entry of [...entries].sort(
     (a, b) => a.raceNumber - b.raceNumber || a.trapNumber - b.trapNumber,
   )) {
@@ -251,33 +231,26 @@ function removeDuplicateWheelingDogs(entries: EntryRow[]) {
       .toUpperCase()
       .replace(/[^A-Z0-9]+/g, "");
     if (!identity) continue;
-
     const prior = firstByIdentity.get(identity);
     if (!prior) {
       firstByIdentity.set(identity, entry);
       continue;
     }
-
     // A dog cannot occupy two boxes on the same official card. Broad OCR
     // race bands can leak a runner from the preceding race into the next
     // band. Keep the first occurrence and reject the later leaked duplicate.
     duplicateKeys.add(`${entry.raceNumber}:${entry.trapNumber}`);
   }
-
   return entries.filter(
     (entry) => !duplicateKeys.has(`${entry.raceNumber}:${entry.trapNumber}`),
   );
 }
-
-
 type EmbeddedNameField = {
   raceNumber: number;
   trapNumber: number;
   dogName: string;
 };
-
 type PdfMatrix = [number, number, number, number, number, number];
-
 function multiplyPdfMatrix(a: PdfMatrix, b: PdfMatrix): PdfMatrix {
   return [
     a[0] * b[0] + a[2] * b[1],
@@ -288,7 +261,6 @@ function multiplyPdfMatrix(a: PdfMatrix, b: PdfMatrix): PdfMatrix {
     a[1] * b[4] + a[3] * b[5] + a[5],
   ];
 }
-
 export default function GreyhoundEntriesImporter({
   leagueId,
   onImported,
@@ -304,7 +276,6 @@ export default function GreyhoundEntriesImporter({
   const [session, setSession] = useState("");
   const [firstPostTime, setFirstPostTime] = useState("");
   const [trackCode, setTrackCode] = useState<"GWD" | "GTS" | "">("");
-
   async function readEntriesPdf(file: File) {
     setBusy(true);
     setError("");
@@ -316,18 +287,15 @@ export default function GreyhoundEntriesImporter({
     setSession("");
     setFirstPostTime("");
     setTrackCode("");
-
     try {
       const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
       if (!pdfjs.GlobalWorkerOptions.workerSrc) {
         pdfjs.GlobalWorkerOptions.workerSrc =
-          `https://unpkg.com/pdfjs-dist@${pdfjs.version}/legacy/build/pdf.worker.min.mjs`;
+          `https\://unpkg.com/pdfjs-dist@${pdfjs.version}/legacy/build/pdf.worker.min.mjs`;
       }
-
       const pdf = await pdfjs.getDocument({
         data: new Uint8Array(await file.arrayBuffer()),
       }).promise;
-
       const worker = await createWorker("eng");
       const chunks: string[] = [];
       const nativeTextChunks: string[] = [];
@@ -335,7 +303,6 @@ export default function GreyhoundEntriesImporter({
       const embeddedVacantBoxes: VacantBox[] = [];
       const noGreyhound1Races = new Set<number>();
       const wheelingRaceOcrText = new Map<number, string>();
-
       // The Entries header is native PDF text. Read it directly before OCRing
       // the graphical runner rows.
       for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
@@ -349,7 +316,6 @@ export default function GreyhoundEntriesImporter({
             .join(" "),
         );
       }
-
       try {
         await worker.setParameters({
           // IMPORTANT: the official Tri-State Entries sheet is a table.
@@ -359,7 +325,6 @@ export default function GreyhoundEntriesImporter({
           tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
           preserve_interword_spaces: "1",
         });
-
         for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
           const page = await pdf.getPage(pageNo);
           const viewport = page.getViewport({ scale: 3 });
@@ -368,11 +333,9 @@ export default function GreyhoundEntriesImporter({
           canvas.height = Math.ceil(viewport.height);
           const ctx = canvas.getContext("2d", { alpha: false });
           if (!ctx) throw new Error("Could not render Entries PDF.");
-
           ctx.fillStyle = "#fff";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           await page.render({ canvas, canvasContext: ctx, viewport }).promise;
-
           /*
            * Entries PDFs use two different official layouts.
            *
@@ -394,7 +357,6 @@ export default function GreyhoundEntriesImporter({
            */
           const xScale = canvas.width / 612;
           const yScale = canvas.height / 792;
-
           type RaceRegion = {
             raceNumber: number;
             x: number;
@@ -402,15 +364,12 @@ export default function GreyhoundEntriesImporter({
             width: number;
             height: number;
           };
-
           const nativeHeader = nativeTextChunks.join(" ").toUpperCase();
           const isWheeling = nativeHeader.includes("WHEELING");
           const leftX = isWheeling ? 6 : 28;
           const rightX = isWheeling ? 306 : 322;
           const columnWidth = isWheeling ? 300 : 284;
-
           let regions: RaceRegion[] = [];
-
           if (isWheeling) {
             // Broad race bands measured from the official Wheeling Entries
             // sheet. These intentionally include the race heading and wager
@@ -420,7 +379,6 @@ export default function GreyhoundEntriesImporter({
             // overlap is safer than clipping Box 1 or Box 8.
             const bandY = [48, 232, 422, 570];
             const bandH = [205, 211, 210, 222];
-
             if (pageNo === 1) {
               regions = [
                 { raceNumber: 1, x: leftX,  y: bandY[0], width: columnWidth, height: bandH[0] },
@@ -465,7 +423,6 @@ export default function GreyhoundEntriesImporter({
             const triLeftX = 6;
             const triRightX = 306;
             const triColumnWidth = 300;
-
             if (pageNo === 1) {
               regions = [
                 { raceNumber: 1, x: triLeftX,  y: 45,    width: triColumnWidth, height: 165 },
@@ -488,13 +445,12 @@ export default function GreyhoundEntriesImporter({
               ];
             }
           }
-
           /*
            * AUTHORITATIVE DOG-NAME PASS
            *
            * The official Entries PDFs store every runner cell as a tiny image
-           * XObject. The Greyhound-name cell is placed at PDF x ~= 56 on the
-           * left column and x ~= 350 on the right column. Rather than OCRing a
+           * XObject. The Greyhound-name cell is placed at PDF x \~= 56 on the
+           * left column and x \~= 350 on the right column. Rather than OCRing a
            * whole race band and then trying to repair spacing, use the PDF
            * operator list to locate each embedded name image and OCR only the
            * visible Greyhound column. Race ownership comes from the same broad
@@ -513,11 +469,9 @@ export default function GreyhoundEntriesImporter({
             width: number;
             height: number;
           }> = [];
-
           for (let opIndex = 0; opIndex < operatorList.fnArray.length; opIndex += 1) {
             const fn = operatorList.fnArray[opIndex];
             const args = operatorList.argsArray[opIndex] ?? [];
-
             if (fn === ops.save) {
               ctmStack.push([...ctm] as PdfMatrix);
               continue;
@@ -534,25 +488,21 @@ export default function GreyhoundEntriesImporter({
               ctm = multiplyPdfMatrix(ctm, next);
               continue;
             }
-
             const isImagePaint =
               fn === ops.paintImageXObject ||
               fn === ops.paintInlineImageXObject ||
               fn === ops.paintImageMaskXObject;
             if (!isImagePaint) continue;
-
             const x = ctm[4];
             const y = ctm[5];
             const placedWidth = Math.abs(ctm[0]);
             const placedHeight = Math.abs(ctm[3]);
-
             // Official runner-name image placement. Use tolerant geometry so
             // minor generator/layout shifts do not make this card-specific.
             const isLeftName = x >= 52 && x <= 62 && placedWidth >= 180;
             const isRightName = x >= 344 && x <= 356 && placedWidth >= 180;
             if (!isLeftName && !isRightName) continue;
             if (placedHeight < 5 || placedHeight > 15) continue;
-
             namePlacements.push({
               x,
               yTop: 792 - (y + placedHeight),
@@ -562,7 +512,6 @@ export default function GreyhoundEntriesImporter({
               height: Math.max(9, placedHeight),
             });
           }
-
           /*
            * EMBEDDED NAME -> RACE/BOX MAPPING
            *
@@ -587,7 +536,6 @@ export default function GreyhoundEntriesImporter({
                   : region.x >= 306,
               )
               .sort((a, b) => a.raceNumber - b.raceNumber);
-
           const placementsByColumn = (side: "left" | "right") =>
             namePlacements
               .filter((placement) =>
@@ -596,18 +544,15 @@ export default function GreyhoundEntriesImporter({
                   : placement.x >= 306,
               )
               .sort((a, b) => a.yTop - b.yTop);
-
           for (const side of ["left", "right"] as const) {
             const columnRegions = regionsByColumn(side);
             const columnPlacements = placementsByColumn(side);
-
             for (let raceIndex = 0; raceIndex < columnRegions.length; raceIndex += 1) {
               const region = columnRegions[raceIndex];
               const regionNames = columnPlacements.slice(
                 raceIndex * 8,
                 raceIndex * 8 + 8,
               );
-
               for (let rowIndex = 0; rowIndex < regionNames.length; rowIndex += 1) {
                 const placement = regionNames[rowIndex];
                 const sxName = Math.max(0, Math.floor(placement.x * xScale));
@@ -620,14 +565,12 @@ export default function GreyhoundEntriesImporter({
                   canvas.height - syName,
                   Math.ceil(placement.height * yScale),
                 );
-
                 const nameScale = 4;
                 const nameCanvas = document.createElement("canvas");
                 nameCanvas.width = Math.max(1, Math.round(swName * nameScale));
                 nameCanvas.height = Math.max(1, Math.round(shName * nameScale));
                 const nameContext = nameCanvas.getContext("2d", { alpha: false });
                 if (!nameContext) continue;
-
                 nameContext.fillStyle = "#fff";
                 nameContext.fillRect(0, 0, nameCanvas.width, nameCanvas.height);
                 nameContext.imageSmoothingEnabled = false;
@@ -642,14 +585,12 @@ export default function GreyhoundEntriesImporter({
                   nameCanvas.width,
                   nameCanvas.height,
                 );
-
                 await worker.setParameters({
                   tessedit_pageseg_mode: PSM.SINGLE_LINE,
                   preserve_interword_spaces: "1",
                 });
                 const nameResult = await worker.recognize(nameCanvas);
                 const isolatedName = normalizeDogNameSpacing(nameResult.data.text ?? "");
-
                 if (isolatedName && isVacantDogLabel(isolatedName)) {
                   // Vacancies use the same embedded runner-name placement as
                   // ordinary dogs. This preserves Race + Box even when the
@@ -669,13 +610,11 @@ export default function GreyhoundEntriesImporter({
                     dogName: isolatedName,
                   });
                 }
-
                 nameCanvas.width = 1;
                 nameCanvas.height = 1;
               }
             }
           }
-
           for (const region of regions) {
             const sx = Math.max(0, Math.round(region.x * xScale));
             const sy = Math.max(0, Math.round(region.y * yScale));
@@ -687,15 +626,12 @@ export default function GreyhoundEntriesImporter({
               canvas.height - sy,
               Math.round(region.height * yScale),
             );
-
             const upscale = isWheeling ? 1.65 : 2;
             const raceCanvas = document.createElement("canvas");
             raceCanvas.width = Math.max(1, Math.round(sw * upscale));
             raceCanvas.height = Math.max(1, Math.round(sh * upscale));
-
             const raceContext = raceCanvas.getContext("2d", { alpha: false });
             if (!raceContext) continue;
-
             raceContext.fillStyle = "#fff";
             raceContext.fillRect(0, 0, raceCanvas.width, raceCanvas.height);
             raceContext.imageSmoothingEnabled = true;
@@ -710,15 +646,12 @@ export default function GreyhoundEntriesImporter({
               raceCanvas.width,
               raceCanvas.height,
             );
-
             await worker.setParameters({
               tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
               preserve_interword_spaces: "1",
             });
-
             let recognized = await worker.recognize(raceCanvas);
             let raceText = recognized.data.text ?? "";
-
             /*
              * Wheeling retry chain. Its entries sheet is much tighter than
              * Tri-State and Box 1 is especially close to the wager copy.
@@ -732,7 +665,6 @@ export default function GreyhoundEntriesImporter({
               });
               recognized = await worker.recognize(raceCanvas);
               raceText += `\n${recognized.data.text ?? ""}`;
-
               // Do not treat a line that merely starts with a box number as a
               // successfully recovered runner. Wheeling OCR can preserve the
               // leading 1-8 while damaging the dog/odds portion enough that the
@@ -743,7 +675,6 @@ export default function GreyhoundEntriesImporter({
               const parsedAfterColumn = parseEntriesText(
                 `${region.raceNumber}TH Grade\n${raceText}`,
               ).filter((entry) => entry.raceNumber === region.raceNumber);
-
               if (parsedAfterColumn.length < 8) {
                 await worker.setParameters({
                   tessedit_pageseg_mode: PSM.SPARSE_TEXT,
@@ -770,11 +701,9 @@ export default function GreyhoundEntriesImporter({
               });
               recognized = await worker.recognize(raceCanvas);
               raceText += `\n${recognized.data.text ?? ""}`;
-
               const parsedAfterColumn = parseEntriesText(
                 `${region.raceNumber}TH Grade\n${raceText}`,
               ).filter((entry) => entry.raceNumber === region.raceNumber);
-
               if (parsedAfterColumn.length < 8) {
                 await worker.setParameters({
                   tessedit_pageseg_mode: PSM.SPARSE_TEXT,
@@ -784,7 +713,6 @@ export default function GreyhoundEntriesImporter({
                 raceText += `\n${recognized.data.text ?? ""}`;
               }
             }
-
             // Some Wheeling cards literally render a vacant runner cell as
             // NO GREYHOUND1. Keep that signal attached to this race while we
             // still know the crop's race ownership. Later, if normal parsing
@@ -792,7 +720,6 @@ export default function GreyhoundEntriesImporter({
             // the vacancy. This avoids guessing from global OCR text.
             if (isWheeling) {
               wheelingRaceOcrText.set(region.raceNumber, raceText);
-
               if (
                 /NO\s*GREY\s*HOUND\s*1\b/i.test(
                   normalizeVacancyText(raceText),
@@ -801,9 +728,7 @@ export default function GreyhoundEntriesImporter({
                 noGreyhound1Races.add(region.raceNumber);
               }
             }
-
             chunks.push(`${region.raceNumber}TH Grade\n${raceText}`);
-
             raceCanvas.width = 1;
             raceCanvas.height = 1;
           }
@@ -813,36 +738,28 @@ export default function GreyhoundEntriesImporter({
       } finally {
         await worker.terminate();
       }
-
       const fullOcrText = chunks.join("\n");
-
       // Prefer native PDF text for card metadata. OCR is only the fallback.
       const metadata =
         parseEntriesMetadata(nativeTextChunks.join(" ")) ??
         parseEntriesMetadata(fullOcrText);
-
       if (!metadata) {
         throw new Error(
           "Could not read the official Entries date/session header. Expected a header such as: Entries for Wednesday Afternoon, 09/16/26, Post Time: 1:00PM.",
         );
       }
-
       setRaceDate(metadata.raceDate);
       setSession(metadata.session);
       setFirstPostTime(metadata.firstPostTime);
-
       const detectedTrack =
         metadata.trackCode ??
         (nativeTextChunks.join(" ").toUpperCase().includes("WHEELING")
           ? "GWD"
           : "GTS");
       setTrackCode(detectedTrack);
-
       const expectedRaces = detectedTrack === "GWD" ? 17 : 14;
       const expectedEntries = expectedRaces * 8;
-
       const parsedEntriesFromRows = parseEntriesText(fullOcrText);
-
       // Keep the proven full-row parser authoritative for Race + Box, odds,
       // kennel, weight, completeness and vacancy safety. Only replace dogName
       // when the isolated embedded Greyhound field produced a value for the
@@ -855,19 +772,13 @@ export default function GreyhoundEntriesImporter({
       );
       const parsedEntries = parsedEntriesFromRows.map((entry) => ({
         ...entry,
-        // Wheeling's full-row OCR already preserves all actual dog Race + Box
-        // positions on this layout. Do NOT replace those names with the
-        // sequential embedded-image pass: vacancies mean a race does not
-        // necessarily contribute eight dog-name images, which can shift later
-        // races (for example Race 7). Keep embedded-name replacement only for
-        // Tri-State, where that recovery path is still needed.
+        // Isolated embedded names are authoritative for BOTH official tracks.
+        // Full-row OCR remains the fallback and supplies kennel/weight.
         dogName:
-          detectedTrack === "GTS"
-            ? embeddedNameByKey.get(`${entry.raceNumber}:${entry.trapNumber}`) ??
-              entry.dogName
-            : entry.dogName,
+          embeddedNameByKey.get(`${entry.raceNumber}:${entry.trapNumber}`) ??
+          entry.dogName,
+        odds: normalizeMorningLineOdds(entry.odds),
       }));
-
       /*
        * WHEELING VACANCIES
        *
@@ -880,8 +791,14 @@ export default function GreyhoundEntriesImporter({
        * "NO GREYHOUND1" when the broad OCR loses the leading box number.
        * No race number, date, dog name, or vacancy count is hard-coded.
        */
-      let vacancies: VacantBox[] = [];
-
+      let vacancies: VacantBox[] = Array.from(
+        new Map(
+          embeddedVacantBoxes.map((vacancy) => [
+            `${vacancy.raceNumber}:${vacancy.trapNumber}`,
+            vacancy,
+          ]),
+        ).values(),
+      );
       if (detectedTrack === "GWD") {
         /*
          * WHEELING VACANCY OWNERSHIP
@@ -897,14 +814,11 @@ export default function GreyhoundEntriesImporter({
         for (let raceNumber = 1; raceNumber <= expectedRaces; raceNumber += 1) {
           const raceText = wheelingRaceOcrText.get(raceNumber) ?? "";
           if (!raceText) continue;
-
           const raceVacancies = parseVacantBoxes(
             `${raceNumber}TH Grade\n${raceText}`,
           ).filter((vacancy) => vacancy.raceNumber === raceNumber);
-
           vacancies.push(...raceVacancies);
         }
-
         vacancies = Array.from(
           new Map(
             vacancies.map((vacancy) => [
@@ -918,7 +832,6 @@ export default function GreyhoundEntriesImporter({
             a.trapNumber - b.trapNumber,
         );
       }
-
       /*
        * NO GREYHOUND1 RECOVERY
        *
@@ -945,12 +858,10 @@ export default function GreyhoundEntriesImporter({
               .filter((vacancy) => vacancy.raceNumber === raceNumber)
               .map((vacancy) => vacancy.trapNumber),
           ]);
-
           const missingBoxes = Array.from(
             { length: 8 },
             (_, index) => index + 1,
           ).filter((box) => !accounted.has(box));
-
           if (missingBoxes.length === 1) {
             vacancies.push({
               raceNumber,
@@ -958,7 +869,6 @@ export default function GreyhoundEntriesImporter({
             });
           }
         }
-
         vacancies = Array.from(
           new Map(
             vacancies.map((vacancy) => [
@@ -972,7 +882,6 @@ export default function GreyhoundEntriesImporter({
             a.trapNumber - b.trapNumber,
         );
       }
-
       // A legitimate vacancy owns its Race + Box. OCR retries can hallucinate
       // nearby text as a dog at that same position, so remove every overlap
       // before preview, validation, or import.
@@ -999,43 +908,34 @@ export default function GreyhoundEntriesImporter({
       const parsedKeys = new Set(
         parsedEntries.map((entry) => `${entry.raceNumber}:${entry.trapNumber}`),
       );
-
-      const embeddedRecoveredEntries: EntryRow[] =
-        detectedTrack === "GTS"
-          ? embeddedNameFields
-              .filter((field) => {
-                const key = `${field.raceNumber}:${field.trapNumber}`;
-                return !parsedKeys.has(key) && !vacancyKeys.has(key);
-              })
-              .map((field) => ({
-                raceNumber: field.raceNumber,
-                trapNumber: field.trapNumber,
-                dogName: field.dogName,
-                odds: null,
-                kennel: null,
-                weight: null,
-              }))
-          : [];
-
+      const embeddedRecoveredEntries: EntryRow[] = embeddedNameFields
+        .filter((field) => {
+          const key = `${field.raceNumber}:${field.trapNumber}`;
+          return !parsedKeys.has(key) && !vacancyKeys.has(key);
+        })
+        .map((field) => ({
+          raceNumber: field.raceNumber,
+          trapNumber: field.trapNumber,
+          dogName: field.dogName,
+          odds: null,
+          kennel: null,
+          weight: null,
+        }));
       const entriesWithEmbeddedRecovery = [
         ...parsedEntries,
         ...embeddedRecoveredEntries,
       ];
-
       const identityCleanEntries =
         detectedTrack === "GWD"
           ? removeDuplicateWheelingDogs(entriesWithEmbeddedRecovery)
           : entriesWithEmbeddedRecovery;
-
       const entries = identityCleanEntries.filter(
         (entry) => !vacancyKeys.has(`${entry.raceNumber}:${entry.trapNumber}`),
       );
-
       const raceCount = new Set([
         ...entries.map((entry) => entry.raceNumber),
         ...vacancies.map((vacancy) => vacancy.raceNumber),
       ]).size;
-
       const missing: string[] = [];
       for (let race = 1; race <= expectedRaces; race += 1) {
         for (let box = 1; box <= 8; box += 1) {
@@ -1049,10 +949,8 @@ export default function GreyhoundEntriesImporter({
           if (!hasDog && !isVacant) missing.push(`R${race}-B${box}`);
         }
       }
-
       setPreview(entries);
       setVacantBoxes(vacancies);
-
       const accountedKeys = new Set([
         ...entries.map(
           (entry) => `${entry.raceNumber}:${entry.trapNumber}`,
@@ -1062,9 +960,7 @@ export default function GreyhoundEntriesImporter({
         ),
       ]);
       const accountedBoxes = accountedKeys.size;
-
       const expectedDogCount = expectedEntries - vacancies.length;
-
       if (
         raceCount !== expectedRaces ||
         accountedBoxes !== expectedEntries ||
@@ -1090,13 +986,10 @@ export default function GreyhoundEntriesImporter({
       setBusy(false);
     }
   }
-
   async function importEntries() {
     if (!preview.length) return;
-
     const expectedRaces = trackCode === "GWD" ? 17 : 14;
     const expectedEntries = expectedRaces * 8;
-
     const missing: string[] = [];
     for (let race = 1; race <= expectedRaces; race += 1) {
       for (let box = 1; box <= 8; box += 1) {
@@ -1110,7 +1003,6 @@ export default function GreyhoundEntriesImporter({
         if (!hasDog && !isVacant) missing.push(`R${race}-B${box}`);
       }
     }
-
     const accountedKeys = new Set([
       ...preview.map(
         (entry) => `${entry.raceNumber}:${entry.trapNumber}`,
@@ -1120,9 +1012,7 @@ export default function GreyhoundEntriesImporter({
       ),
     ]);
     const accountedBoxes = accountedKeys.size;
-
     const expectedDogCount = expectedEntries - vacantBoxes.length;
-
     if (
       accountedBoxes !== expectedEntries ||
       preview.length !== expectedDogCount ||
@@ -1136,18 +1026,15 @@ export default function GreyhoundEntriesImporter({
       );
       return;
     }
-
     if (!trackCode || !raceDate || !session) {
       setError(
         "Entries track/date/session is missing. Re-upload the official Entries PDF before importing.",
       );
       return;
     }
-
     setBusy(true);
     setError("");
     setMessage("");
-
     try {
       const response = await fetch("/api/greyhound/entries/import", {
         method: "POST",
@@ -1162,12 +1049,10 @@ export default function GreyhoundEntriesImporter({
           entries: preview,
         }),
       });
-
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(body?.error || `Entries import failed with HTTP ${response.status}.`);
       }
-
       setMessage(
         `Imported ${body?.entriesImported ?? preview.length} ${
           trackCode === "GWD" ? "Wheeling" : "Tri-State"
@@ -1184,7 +1069,6 @@ export default function GreyhoundEntriesImporter({
       setBusy(false);
     }
   }
-
   async function onFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -1195,9 +1079,7 @@ export default function GreyhoundEntriesImporter({
     }
     await readEntriesPdf(file);
   }
-
   const races = new Set(preview.map((x) => x.raceNumber)).size;
-
   return (
     <section className="entries-card">
       <input
@@ -1207,7 +1089,6 @@ export default function GreyhoundEntriesImporter({
         hidden
         onChange={onFile}
       />
-
       <div className="entries-head">
         <div>
           <div className="eyebrow">GREYHOUND ENTRIES · COMMISSIONER</div>
@@ -1227,10 +1108,8 @@ export default function GreyhoundEntriesImporter({
           {busy ? "READING…" : preview.length ? "REPLACE ENTRIES PDF" : "UPLOAD ENTRIES PDF"}
         </button>
       </div>
-
       {error && <div className="notice error">{error}</div>}
       {message && <div className="notice success">{message}</div>}
-
       {preview.length > 0 && (
         <>
           <div className="summary">
@@ -1243,7 +1122,6 @@ export default function GreyhoundEntriesImporter({
             <span>{firstPostTime || "Post time missing"}</span>
             <span>Names ready</span>
           </div>
-
           <div className="preview">
             {preview.map((entry) => (
               <div className="entry" key={`${entry.raceNumber}:${entry.trapNumber}`}>
@@ -1254,7 +1132,6 @@ export default function GreyhoundEntriesImporter({
               </div>
             ))}
           </div>
-
           <button
             type="button"
             className="primary save"
@@ -1265,7 +1142,6 @@ export default function GreyhoundEntriesImporter({
           </button>
         </>
       )}
-
       <style jsx>{`
         .entries-card{border:1px solid #542319;border-radius:16px;background:#121214;padding:16px;color:#fff}
         .entries-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
