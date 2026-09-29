@@ -3,856 +3,1571 @@ import { NextResponse } from "next/server";
 import { requireLeagueMember } from "@/lib/leagues/requireLeagueMember";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getAmtoteRaces, type AmtoteTrackId } from "@/lib/greyhound/amtote";
 
 export const dynamic = "force-dynamic";
 
 type WagerType =
+
   | "win"
+
   | "place"
+
   | "show"
+
   | "exacta"
+
   | "quinella"
+
   | "trifecta"
+
   | "superfecta";
 
 type WagerStructure =
+
   | "straight"
+
   | "key"
+
   | "box";
 
 type RequestBody = {
+
   leagueId?: string;
+
   raceId?: number;
+
   wagerType?: string;
+
   wagerStructure?: string;
+
   denomination?: number;
+
   combinationJson?: number[][];
+
   alternate1EntryId?: number | null;
+
   alternate2EntryId?: number | null;
+
+  fantasyTeamId?: number | null;
+
 };
 
 const ALLOWED_WAGER_TYPES = new Set<WagerType>([
+
   "win",
+
   "place",
+
   "show",
+
   "exacta",
+
   "quinella",
+
   "trifecta",
+
   "superfecta",
+
 ]);
 
 const ALLOWED_STRUCTURES = new Set<WagerStructure>([
+
   "straight",
+
   "key",
+
   "box",
+
 ]);
 
 const REQUIRED_LEGS: Record<WagerType, number> = {
+
   win: 1,
+
   place: 1,
+
   show: 1,
+
   exacta: 2,
+
   quinella: 2,
+
   trifecta: 3,
+
   superfecta: 4,
+
 };
 
 const MINIMUM_DENOMINATION: Record<WagerType, number> = {
+
   win: 2,
+
   place: 2,
+
   show: 2,
+
   exacta: 1,
+
   quinella: 1,
+
   trifecta: 0.5,
+
   superfecta: 0.1,
+
 };
 
 function jsonError(
+
   error: string,
+
   status: number
+
 ) {
+
   return NextResponse.json(
+
     {
+
       success: false,
+
       error,
+
     },
+
     {
+
       status,
+
       headers: {
+
         "Cache-Control":
+
           "no-store, max-age=0",
+
       },
+
     }
+
   );
+
 }
 
 function roundMoney(
+
   value: number
+
 ) {
+
   return Math.round(
+
     (value + Number.EPSILON) *
+
       100
+
   ) / 100;
+
 }
 
 function normalizeOptionalEntryId(
+
   value:
+
     | number
+
     | null
+
     | undefined
+
 ) {
+
   if (
+
     value === null ||
+
     value === undefined
+
   ) {
+
     return null;
+
   }
 
   const id = Number(
+
     value
+
   );
 
   if (
+
     !Number.isInteger(id) ||
+
     id <= 0
+
   ) {
+
     throw new Error(
+
       "Alternate entry IDs must be valid positive integers."
+
     );
+
   }
 
   return id;
+
+}
+
+function amtoteTrackId(trackCode: string): AmtoteTrackId | null {
+  const code = trackCode.trim().toUpperCase();
+  if (code === "GWD") return "WEM";
+  if (code === "GTS") return "TSE";
+  return null;
+}
+
+async function enforceLiveBankrollMtp(params: { wageringStyle: string; trackCode: string; raceDate: string; raceNumber: number }) {
+  if (params.wageringStyle !== "live_bankroll") return;
+  const trackId = amtoteTrackId(params.trackCode);
+  if (!trackId) throw new Error("This Greyhound track is not supported by the live AmTote wagering lock.");
+  const card = await getAmtoteRaces(trackId);
+  if (card.raceDate !== params.raceDate) throw new Error("Live wagering is unavailable because the AmTote racing date does not match this card.");
+  const race = card.races.find((item) => item.raceNumber === params.raceNumber);
+  if (!race) throw new Error("Live wagering is unavailable because this race was not found in the current AmTote card.");
+  if (race.minutesToPost === null) throw new Error("Live wagering is unavailable because AmTote minutes-to-post is not available.");
+  if (race.minutesToPost <= 0) throw new Error("Live wagering is closed because this race has reached 0 minutes to post.");
 }
 
 export async function POST(
+
   request: Request
+
 ) {
+
   try {
+
     const body =
+
       (await request
+
         .json()
+
         .catch(() => null)) as
+
         | RequestBody
+
         | null;
 
     const leagueId =
+
       typeof body?.leagueId ===
+
       "string"
+
         ? body.leagueId.trim()
+
         : "";
 
     const raceId = Number(
+
       body?.raceId
+
     );
 
     const rawWagerType =
+
       typeof body?.wagerType ===
+
       "string"
+
         ? body.wagerType
+
             .trim()
+
             .toLowerCase()
+
         : "";
 
     const rawWagerStructure =
+
       typeof body?.wagerStructure ===
+
       "string"
+
         ? body.wagerStructure
+
             .trim()
+
             .toLowerCase()
+
         : "";
 
     const denomination =
+
       roundMoney(
+
         Number(
+
           body?.denomination
+
         )
+
       );
 
     if (!leagueId) {
+
       return jsonError(
+
         "leagueId is required.",
+
         400
+
       );
+
     }
 
     if (
+
       !Number.isInteger(
+
         raceId
+
       ) ||
+
       raceId <= 0
+
     ) {
+
       return jsonError(
+
         "A valid raceId is required.",
+
         400
+
       );
+
     }
 
     if (
+
       rawWagerType ===
+
       "perfecta"
+
     ) {
+
       return jsonError(
+
         "Perfecta wagering is not supported.",
+
         400
+
       );
+
     }
 
     if (
+
       !ALLOWED_WAGER_TYPES.has(
+
         rawWagerType as WagerType
+
       )
+
     ) {
+
       return jsonError(
+
         "Invalid Greyhound wager type.",
+
         400
+
       );
+
     }
 
     if (
+
       !ALLOWED_STRUCTURES.has(
+
         rawWagerStructure as WagerStructure
+
       )
+
     ) {
+
       return jsonError(
+
         "Invalid Greyhound wager structure.",
+
         400
+
       );
+
     }
 
     const wagerType =
+
       rawWagerType as WagerType;
 
     const wagerStructure =
+
       rawWagerStructure as WagerStructure;
 
     if (
+
       !Number.isFinite(
+
         denomination
+
       ) ||
+
       denomination <= 0
+
     ) {
+
       return jsonError(
+
         "A positive denomination is required.",
+
         400
+
       );
+
     }
 
     const minimum =
+
       MINIMUM_DENOMINATION[
+
         wagerType
+
       ];
 
     if (
+
       denomination <
+
       minimum
+
     ) {
+
       return jsonError(
+
         `${wagerType
+
           .replaceAll(
+
             "_",
+
             " "
+
           )
+
           .toUpperCase()} has a minimum wager of $${minimum.toFixed(
+
           2
+
         )}.`,
+
         400
+
       );
+
     }
 
     if (
+
       !Array.isArray(
+
         body?.combinationJson
+
       ) ||
+
       body.combinationJson
+
         .length === 0
+
     ) {
+
       return jsonError(
+
         "At least one wager combination is required.",
+
         400
+
       );
+
     }
 
     const requiredLegs =
+
       REQUIRED_LEGS[
+
         wagerType
+
       ];
 
     const combinationJson =
+
       body.combinationJson.map(
+
         (
+
           combo,
+
           comboIndex
+
         ) => {
+
           if (
+
             !Array.isArray(
+
               combo
+
             )
+
           ) {
+
             throw new Error(
+
               `Combination ${
+
                 comboIndex + 1
+
               } is invalid.`
+
             );
+
           }
 
           if (
+
             combo.length !==
+
             requiredLegs
+
           ) {
+
             throw new Error(
+
               `${wagerType.toUpperCase()} requires exactly ${requiredLegs} runner${
+
                 requiredLegs === 1
+
                   ? ""
+
                   : "s"
+
               } per combination.`
+
             );
+
           }
 
           const normalized =
+
             combo.map(
+
               (
+
                 value
+
               ) => {
+
                 const id =
+
                   Number(
+
                     value
+
                   );
 
                 if (
+
                   !Number.isInteger(
+
                     id
+
                   ) ||
+
                   id <= 0
+
                 ) {
+
                   throw new Error(
+
                     "Wager combinations contain an invalid entry ID."
+
                   );
+
                 }
 
                 return id;
+
               }
+
             );
 
           if (
+
             new Set(
+
               normalized
+
             ).size !==
+
             normalized.length
+
           ) {
+
             throw new Error(
+
               "The same Greyhound cannot occupy multiple finishing positions in one combination."
+
             );
+
           }
 
           return normalized;
+
         }
+
       );
 
     /*
+
      * Remove duplicate generated combinations.
+
      *
+
      * A box/key UI can theoretically produce duplicates if
+
      * state is clicked rapidly or rebuilt. We reject them
+
      * instead of charging the member twice.
+
      */
+
     const uniqueKeys =
+
       new Set<string>();
 
     for (
+
       const combo of combinationJson
+
     ) {
+
       /*
+
        * Quinella is unordered.
+
        *
+
        * 1-2 and 2-1 represent the same wager.
+
        */
+
       const key =
+
         wagerType ===
+
         "quinella"
+
           ? [...combo]
+
               .sort(
+
                 (a, b) =>
+
                   a - b
+
               )
+
               .join("-")
+
           : combo.join(
+
               "-"
+
             );
 
       if (
+
         uniqueKeys.has(
+
           key
+
         )
+
       ) {
+
         return jsonError(
+
           "Duplicate wager combinations are not allowed.",
+
           400
+
         );
+
       }
 
       uniqueKeys.add(
+
         key
+
       );
+
     }
 
     /*
+
      * Win, Place and Show are single-runner wagers.
+
      * There is no meaningful Key or Box version.
+
      */
+
     if (
+
       (
+
         wagerType ===
+
           "win" ||
+
         wagerType ===
+
           "place" ||
+
         wagerType ===
+
           "show"
+
       ) &&
+
       wagerStructure !==
+
         "straight"
+
     ) {
+
       return jsonError(
+
         `${wagerType.toUpperCase()} wagers must use the straight structure.`,
+
         400
+
       );
+
     }
 
     const alternate1EntryId =
+
       normalizeOptionalEntryId(
+
         body?.alternate1EntryId
+
       );
 
     const alternate2EntryId =
+
       normalizeOptionalEntryId(
+
         body?.alternate2EntryId
+
       );
 
     if (
+
       alternate1EntryId !==
+
         null &&
+
       alternate2EntryId !==
+
         null &&
+
       alternate1EntryId ===
+
         alternate2EntryId
+
     ) {
+
       return jsonError(
+
         "Alternate Greyhounds must be different runners.",
+
         400
+
       );
+
     }
 
     const access =
+
       await requireLeagueMember(
+
         leagueId
+
       );
 
     if (
+
       String(
+
         access.league
+
           .leagueType
+
       ) !== "greyhound"
+
     ) {
+
       return jsonError(
+
         "This endpoint is only available for Greyhound leagues.",
+
         400
+
       );
+
     }
 
     const admin =
+
       createSupabaseAdminClient();
 
+    const requestedFantasyTeamId = body?.fantasyTeamId == null ? null : Number(body.fantasyTeamId);
+
+    if (requestedFantasyTeamId !== null && (!Number.isInteger(requestedFantasyTeamId) || requestedFantasyTeamId <= 0)) return jsonError("fantasyTeamId must be a positive integer.", 400);
+
+    const { data: ownTeamData, error: ownTeamError } = await admin.from("fantasy_teams").select("id").eq("league_id", leagueId).eq("owner_id", access.userId).eq("active", true).maybeSingle();
+
+    if (ownTeamError) return jsonError(ownTeamError.message, 500);
+
+    const ownFantasyTeamId = ownTeamData ? Number(ownTeamData.id) : null;
+
+    const targetFantasyTeamId = requestedFantasyTeamId ?? ownFantasyTeamId;
+
+    if (!targetFantasyTeamId) return jsonError("No active Greyhound team was found for this member.", 409);
+
+    const placingForAnotherTeam = ownFantasyTeamId === null || targetFantasyTeamId !== ownFantasyTeamId;
+
+    if (placingForAnotherTeam) {
+
+      const { data: membership, error: membershipError } = await admin.from("league_members").select("role").eq("league_id", leagueId).eq("user_id", access.userId).maybeSingle();
+
+      if (membershipError) return jsonError(membershipError.message, 500);
+
+      if (String(membership?.role ?? "").toLowerCase() !== "commissioner") return jsonError("Only the league commissioner can place a wager for another team.", 403);
+
+      const { data: targetTeam, error: targetTeamError } = await admin.from("fantasy_teams").select("id").eq("id", targetFantasyTeamId).eq("league_id", leagueId).eq("active", true).maybeSingle();
+
+      if (targetTeamError) return jsonError(targetTeamError.message, 500);
+
+      if (!targetTeam) return jsonError("The selected Greyhound team is not active in this league.", 404);
+
+    }
+
     /*
+
      * ==========================================================
+
      * G365 WAGERING STYLE
+
      * ==========================================================
+
      *
+
      * whole_card:
+
      *   Preserve the existing card-wide lock exactly.
+
      *
+
      * live_bankroll:
+
      *   The database Live Bankroll engine is authoritative for:
+
      *   - current-race-only wagering
+
      *   - individual race lock
+
      *   - busted bankroll
+
      *   - race requirement snapshots
+
      * ==========================================================
+
      */
 
     const {
+
       data: wageringSettings,
+
       error: wageringSettingsError,
+
     } = await admin
+
       .from(
+
         "greyhound_league_settings"
+
       )
+
       .select(
+
         "wagering_style"
+
       )
+
       .eq(
+
         "league_id",
+
         leagueId
+
       )
+
       .order(
+
         "id",
+
         { ascending: true }
+
       )
+
       .limit(1)
+
       .maybeSingle();
 
     if (wageringSettingsError) {
+
       return jsonError(
+
         wageringSettingsError.message,
+
         500
+
       );
+
     }
 
     const wageringStyle =
+
       String(
+
         wageringSettings
+
           ?.wagering_style ??
+
         "whole_card"
+
       )
+
         .trim()
+
         .toLowerCase();
 
     if (
+
       wageringStyle !==
+
         "whole_card" &&
+
       wageringStyle !==
+
         "live_bankroll"
+
     ) {
+
       return jsonError(
+
         `Unsupported Greyhound wagering style: ${wageringStyle}.`,
+
         500
+
       );
+
     }
 
     /*
+
      * ==========================================================
+
      * G365 WHOLE-CARD WAGER LOCK
+
      * ==========================================================
+
      *
+
      * Wheeling and Tri-State use the same rule:
+
      *
+
      *   The ENTIRE racing card locks 5 minutes before Race 1.
+
      *
+
      * Once the card is locked, no wagers may be submitted for
+
      * any later race on that card.
+
      *
+
      * This server-side check is intentionally performed again
+
      * immediately before the wager RPC so a stale browser cannot
+
      * bypass the card lock.
+
      * ==========================================================
+
      */
 
     const {
+
       data: raceLockData,
+
       error: raceLockError,
+
     } = await admin
+
       .from(
+
         "greyhound_races"
+
       )
+
       .select(
-        "id, card_id, race_status"
+
+        "id, card_id, race_number, race_status"
+
       )
+
       .eq(
+
         "id",
+
         raceId
+
       )
+
       .maybeSingle();
 
     if (raceLockError) {
+
       return jsonError(
+
         raceLockError.message,
+
         500
+
       );
+
     }
 
     if (!raceLockData) {
+
       return jsonError(
+
         "Greyhound race was not found.",
+
         404
+
       );
+
     }
 
     const cardId =
+
       Number(
+
         raceLockData.card_id
+
       );
 
     const {
+
       data: cardLockData,
+
       error: cardLockError,
+
     } = await admin
+
       .from(
+
         "greyhound_cards"
+
       )
+
       .select(`
+
         id,
+
+        race_date,
+        track_id,
         card_status,
+
         scheduled_first_post,
+
         lock_at,
+
         commissioner_confirmed_at
+
       `)
+
       .eq(
+
         "id",
+
         cardId
+
       )
+
       .maybeSingle();
 
     if (cardLockError) {
+
       return jsonError(
+
         cardLockError.message,
+
         500
+
       );
+
     }
 
     if (!cardLockData) {
+
       return jsonError(
+
         "Greyhound racing card was not found.",
+
         404
+
       );
+
     }
 
     /*
+
      * Official AmTote cards are auto-confirmed after a clean import.
+
      * Manual / backup cards must still be confirmed through the
+
      * commissioner workflow.
+
      */
+
     if (
+
       !cardLockData
+
         .commissioner_confirmed_at
+
     ) {
+
       return jsonError(
+
         "This Greyhound card is not open for wagering yet.",
+
         409
+
       );
+
     }
 
     const cardStatus =
+
       String(
+
         cardLockData
+
           .card_status ??
+
         ""
+
       )
+
         .trim()
+
         .toLowerCase();
 
     const nowMs =
+
       Date.now();
 
     const persistedLockAtMs =
+
       cardLockData.lock_at
+
         ? new Date(
+
             cardLockData
+
               .lock_at
+
           ).getTime()
+
         : null;
 
     /*
+
      * Safety fallback:
+
      *
+
      * If lock_at has not been written yet but a first-post timestamp
+
      * exists, independently calculate the same whole-card cutoff:
+
      *
+
      *     Race 1 post time - 5 minutes
+
      */
+
     const firstPostMs =
+
       cardLockData
+
         .scheduled_first_post
+
         ? new Date(
+
             cardLockData
+
               .scheduled_first_post
+
           ).getTime()
+
         : null;
 
     const calculatedLockAtMs =
+
       firstPostMs !== null &&
+
       Number.isFinite(
+
         firstPostMs
+
       )
+
         ? firstPostMs -
+
           5 * 60 * 1000
+
         : null;
 
     const persistedLockReached =
+
       persistedLockAtMs !==
+
         null &&
+
       Number.isFinite(
+
         persistedLockAtMs
+
       ) &&
+
       persistedLockAtMs <=
+
         nowMs;
 
     const calculatedLockReached =
+
       calculatedLockAtMs !==
+
         null &&
+
       calculatedLockAtMs <=
+
         nowMs;
 
     const terminalOrLocked =
+
       [
+
         "locked",
+
         "in_progress",
+
         "final",
+
         "cancelled",
+
       ].includes(
+
         cardStatus
+
       );
 
     if (
+
       wageringStyle ===
+
         "whole_card" &&
+
       (
+
         terminalOrLocked ||
+
         persistedLockReached ||
+
         calculatedLockReached
+
       )
+
     ) {
+
       return jsonError(
+
         "Wagering is closed for this Greyhound card. The entire card locks 5 minutes before Race 1.",
+
         409
+
       );
+
     }
 
     const raceStatus =
+
       String(
+
         raceLockData
+
           .race_status ??
+
         ""
+
       )
+
         .trim()
+
         .toLowerCase();
 
     if (
+
       ![
+
         "scheduled",
+
         "upcoming",
+
       ].includes(
+
         raceStatus
+
       )
+
     ) {
+
       return jsonError(
+
         "Wagering is closed for this Greyhound race.",
+
         409
+
       );
+
     }
 
-    const {
-      data,
-      error,
-    } = await admin.rpc(
-      "place_greyhound_wager_v2",
-      {
-        p_league_id:
-          leagueId,
-
-        p_user_id:
-          access.userId,
-
-        p_race_id:
-          raceId,
-
-        p_wager_type:
-          wagerType,
-
-        p_wager_structure:
-          wagerStructure,
-
-        p_denomination:
-          denomination,
-
-        p_combination_json:
-          combinationJson,
-
-        p_alternate_1_entry_id:
-          alternate1EntryId,
-
-        p_alternate_2_entry_id:
-          alternate2EntryId,
+    if (wageringStyle === "live_bankroll") {
+      const { data: trackData, error: trackError } = await admin.from("greyhound_tracks").select("code").eq("id", Number(cardLockData.track_id)).maybeSingle();
+      if (trackError) return jsonError(trackError.message, 500);
+      if (!trackData) return jsonError("Greyhound track was not found.", 404);
+      try {
+        await enforceLiveBankrollMtp({
+          wageringStyle,
+          trackCode: String(trackData.code ?? ""),
+          raceDate: String(cardLockData.race_date ?? ""),
+          raceNumber: Number(raceLockData.race_number),
+        });
+      } catch (error) {
+        return jsonError(error instanceof Error ? error.message : "Unable to verify AmTote minutes to post.", 409);
       }
-    );
+    }
+
+    const { data, error } = placingForAnotherTeam
+
+      ? await admin.rpc("commissioner_place_greyhound_wager", {
+
+          p_league_id: leagueId, p_commissioner_user_id: access.userId, p_fantasy_team_id: targetFantasyTeamId,
+
+          p_race_id: raceId, p_wager_type: wagerType, p_wager_structure: wagerStructure, p_denomination: denomination,
+
+          p_combination_json: combinationJson, p_alternate_1_entry_id: alternate1EntryId, p_alternate_2_entry_id: alternate2EntryId,
+
+        })
+
+      : await admin.rpc("place_greyhound_wager_v2", {
+
+          p_league_id: leagueId, p_user_id: access.userId, p_race_id: raceId, p_wager_type: wagerType,
+
+          p_wager_structure: wagerStructure, p_denomination: denomination, p_combination_json: combinationJson,
+
+          p_alternate_1_entry_id: alternate1EntryId, p_alternate_2_entry_id: alternate2EntryId,
+
+        });
 
     if (error) {
+
       const message =
+
         error.message ??
+
         "Unable to place Greyhound wager.";
 
       const lower =
+
         message.toLowerCase();
 
       const status =
+
         lower.includes(
+
           "insufficient bankroll"
+
         ) ||
+
         lower.includes(
+
           "closed"
+
         ) ||
+
         lower.includes(
+
           "locked"
+
         ) ||
+
         lower.includes(
+
           "post time"
+
         ) ||
+
         lower.includes(
+
           "scratched"
+
         ) ||
+
         lower.includes(
+
           "inactive"
+
         ) ||
+
         lower.includes(
+
           "disabled"
+
         ) ||
+
         lower.includes(
+
           "already started"
+
         ) ||
+
         lower.includes(
+
           "live bankroll"
+
         ) ||
+
         lower.includes(
+
           "not available yet"
+
         ) ||
+
         lower.includes(
+
           "not currently open"
+
         ) ||
+
         lower.includes(
+
           "busted"
+
         ) ||
+
         lower.includes(
+
           "no remaining live races"
+
         )
+
           ? 409
+
           : 400;
 
       return jsonError(
+
         message,
+
         status
+
       );
+
     }
 
     return NextResponse.json(
+
       {
+
         success: true,
+
         wager: data,
+
       },
+
       {
+
         headers: {
+
           "Cache-Control":
+
             "no-store, max-age=0",
+
         },
+
       }
+
     );
+
   } catch (error) {
+
     console.error(
+
       "Greyhound wager placement failed:",
+
       error
+
     );
 
     return jsonError(
+
       error instanceof Error
+
         ? error.message
+
         : "Unable to place Greyhound wager.",
+
       500
+
     );
+
   }
+
 }
