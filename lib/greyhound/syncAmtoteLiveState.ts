@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   getAmtoteRaces,
   getAmtoteToteState,
+  getAmtoteUSOControlTrackStates,
   g365TrackCodeForAmtote,
   type AmtoteRace,
   type AmtoteTrackId,
@@ -533,13 +534,60 @@ export async function syncAmtoteGreyhoundLiveState(
 ): Promise<SyncAmtoteLiveStateResult> {
   const tracks: LiveTrackResult[] = [];
 
+  let availableTrackIds: Set<AmtoteTrackId> | null = null;
+
+  try {
+    const availableStates =
+      await getAmtoteUSOControlTrackStates(trackIds);
+
+    availableTrackIds = new Set(
+      availableStates.map((state) => state.trackId),
+    );
+  } catch (error) {
+    console.error(
+      "[greyhound/live-state] AmTote track availability check failed; falling back to direct track polling.",
+      error,
+    );
+  }
+
   for (const trackId of trackIds) {
+    const trackCode = g365TrackCodeForAmtote(trackId);
+
+    if (
+      availableTrackIds !== null &&
+      !availableTrackIds.has(trackId)
+    ) {
+      tracks.push({
+        trackId,
+        trackCode,
+        raceDate: "",
+        session: trackId === "TSE" ? "evening" : "afternoon",
+        currentRaceNumber: null,
+        currentRaceMtp: null,
+        currentRaceScheduledPostTime: null,
+        currentRaceProjectedPostTime: null,
+        delayMinutes: null,
+        isDelayed: false,
+        cardFound: false,
+        racesChecked: 0,
+        raceStatusesUpdated: 0,
+        scratchesApplied: 0,
+        skipped: true,
+        skipReason:
+          "Track is not available in today's AmTote USO Control feed.",
+        failed: false,
+        errorMessage: null,
+      });
+
+      continue;
+    }
+
     try {
       tracks.push(await syncOneTrack(trackId));
     } catch (error) {
       tracks.push({
         trackId,
-        trackCode: g365TrackCodeForAmtote(trackId),
+        trackCode,
         raceDate: "",
         session: trackId === "TSE" ? "evening" : "afternoon",
         currentRaceNumber: null,

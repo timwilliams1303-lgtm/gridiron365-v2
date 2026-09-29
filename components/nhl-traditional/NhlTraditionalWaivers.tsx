@@ -613,20 +613,52 @@ export default function NhlTraditionalWaivers({ leagueId }: Props) {
 
   const addPlayer = async (player: PlayerView) => {
     if (!myTeam) return;
+
     setActionId(player.id);
     setError("");
     setMessage("");
+
     try {
-      const { error: rpcError } = await supabase.rpc("add_nhl_traditional_free_agent", {
-        p_league_id: leagueId,
-        p_fantasy_team_id: myTeam.id,
-        p_nhl_player_id: player.id,
-      });
-      if (rpcError) throw rpcError;
+      const { data, error: rpcError } = await supabase.rpc(
+        "add_nhl_traditional_free_agent",
+        {
+          p_league_id: leagueId,
+          p_fantasy_team_id: myTeam.id,
+          p_nhl_player_id: player.id,
+        }
+      );
+
+      if (rpcError) {
+        console.error("add_nhl_traditional_free_agent failed", {
+          code: rpcError.code,
+          message: rpcError.message,
+          details: rpcError.details,
+          hint: rpcError.hint,
+          leagueId,
+          fantasyTeamId: myTeam.id,
+          nhlPlayerId: player.id,
+        });
+
+        const parts = [
+          rpcError.message,
+          rpcError.details,
+          rpcError.hint,
+          rpcError.code ? `Code: ${rpcError.code}` : null,
+        ].filter(Boolean);
+
+        throw new Error(parts.join(" • "));
+      }
+
+      console.log("add_nhl_traditional_free_agent success", data);
       setMessage(`${player.display_name} added to your roster.`);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to add free agent.");
+      console.error("Free-agent add failed:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to add free agent."
+      );
     } finally {
       setActionId(null);
     }

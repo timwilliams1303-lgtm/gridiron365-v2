@@ -1,14 +1,11 @@
 "use client";
-
 import {
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
-
 import styles from "./GreyhoundMyWagers.module.css";
-
 type Selection = {
   entryId: number;
   dogId: number | null;
@@ -16,18 +13,34 @@ type Selection = {
   boxNumber: number | null;
   entryStatus: string | null;
 };
-
+type RaceView = {
+  id: number;
+  raceNumber: number;
+  grade: string | null;
+  distanceYards: number | null;
+  scheduledPostTime: string | null;
+  actualPostTime: string | null;
+  status: string;
+};
+type MultiRaceLeg = {
+  legNumber: number;
+  race: RaceView | null;
+  entryIds: number[];
+  selections: Selection[];
+};
+type MultiRaceDetail = {
+  poolId: number;
+  poolStatus: string | null;
+  legCount: number;
+  startRace: RaceView | null;
+  legs: MultiRaceLeg[];
+  resultSnapshot: unknown;
+  payoutSnapshot: unknown;
+};
 type Wager = {
   id: number;
-  race: {
-    id: number;
-    raceNumber: number;
-    grade: string | null;
-    distanceYards: number | null;
-    scheduledPostTime: string | null;
-    actualPostTime: string | null;
-    status: string;
-  } | null;
+  ticketKind?: "standard" | "multi_race";
+  race: RaceView | null;
   wagerType: string;
   wagerStructure: string;
   denomination: number;
@@ -43,10 +56,12 @@ type Wager = {
   officialReturn: number;
   refundReason: string | null;
   gradedAt: string | null;
+  lastRegradedAt?: string | null;
+  gradeRevision?: number | null;
   createdAt: string;
   updatedAt: string;
+  multiRace?: MultiRaceDetail | null;
 };
-
 type CardGroup = {
   bankrollCardId: number;
   card: {
@@ -80,7 +95,6 @@ type CardGroup = {
   };
   wagers: Wager[];
 };
-
 type ApiResponse = {
   success: boolean;
   error?: string;
@@ -113,20 +127,17 @@ type ApiResponse = {
   currentCards?: CardGroup[];
   completedCards?: CardGroup[];
 };
-
 type Props = {
   leagueId: string;
   embedded?: boolean;
   onSelectTrack?: (trackCode: "GWD" | "GTS") => void;
 };
-
 type Filter =
   | "all"
   | "pending"
   | "winner"
   | "loser"
   | "refunded";
-
 const FILTER_LABELS: Record<Filter, string> = {
   all: "All",
   pending: "Pending",
@@ -134,7 +145,6 @@ const FILTER_LABELS: Record<Filter, string> = {
   loser: "Lost",
   refunded: "Refunded / Void / Cancelled",
 };
-
 function money(value: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -143,28 +153,22 @@ function money(value: number) {
     maximumFractionDigits: 2,
   }).format(Number.isFinite(value) ? value : 0);
 }
-
 function titleCase(value: string | null | undefined) {
   if (!value) {
     return "—";
   }
-
   return value
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
-
 function dateOnly(value: string | null | undefined) {
   if (!value) {
     return "Date TBD";
   }
-
   const parsed = new Date(`${value}T12:00:00`);
-
   if (Number.isNaN(parsed.getTime())) {
     return value;
   }
-
   return parsed.toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
@@ -172,18 +176,14 @@ function dateOnly(value: string | null | undefined) {
     year: "numeric",
   });
 }
-
 function dateTime(value: string | null | undefined) {
   if (!value) {
     return "—";
   }
-
   const parsed = new Date(value);
-
   if (Number.isNaN(parsed.getTime())) {
     return value;
   }
-
   return parsed.toLocaleString(undefined, {
     month: "short",
     day: "numeric",
@@ -192,18 +192,14 @@ function dateTime(value: string | null | undefined) {
     minute: "2-digit",
   });
 }
-
 function wagerStatusGroup(wager: Wager): Exclude<Filter, "all"> {
   const status = String(wager.wagerStatus ?? "").toLowerCase();
-
   if (status === "winner") {
     return "winner";
   }
-
   if (status === "loser") {
     return "loser";
   }
-
   if (
     status === "refunded" ||
     status === "no_action" ||
@@ -212,54 +208,62 @@ function wagerStatusGroup(wager: Wager): Exclude<Filter, "all"> {
   ) {
     return "refunded";
   }
-
   return "pending";
 }
-
 function statusText(wager: Wager) {
   const status = wagerStatusGroup(wager);
-
   if (status === "winner") {
     return "Won";
   }
-
   if (status === "loser") {
     return "Lost";
   }
-
   if (status === "refunded") {
     const rawStatus = String(wager.wagerStatus ?? "").toLowerCase();
     const refundReason = String(wager.refundReason ?? "").toLowerCase();
-
     if (rawStatus === "cancelled" || refundReason.startsWith("cancelled by member")) {
       return "Cancelled";
     }
-
     return rawStatus === "no_action"
       ? "No Action"
       : "Refunded";
   }
-
   if (String(wager.wagerStatus).toLowerCase() === "locked") {
     return "Locked";
   }
-
   return "Pending";
 }
-
 function profitLoss(wager: Wager) {
   if (wagerStatusGroup(wager) === "pending") {
     return null;
   }
-
   return wager.officialReturn - wager.totalCost;
 }
-
+function isMultiRaceWager(wager: Wager) {
+  return wager.ticketKind === "multi_race" || wager.wagerType === "pick4" || wager.wagerType === "pick5" || Boolean(wager.multiRace);
+}
+function wagerKey(wager: Wager) {
+  return `${isMultiRaceWager(wager) ? "multi" : "standard"}:${wager.id}`;
+}
+function wagerTypeLabel(wager: Wager) {
+  if (wager.wagerType === "pick4") return "Pick 4";
+  if (wager.wagerType === "pick5") return "Pick 5";
+  return titleCase(wager.wagerType);
+}
+function orderedSelections(selections: Selection[]) {
+  return [...selections].sort((a,b) => (a.boxNumber ?? Number.MAX_SAFE_INTEGER) - (b.boxNumber ?? Number.MAX_SAFE_INTEGER) || a.entryId - b.entryId);
+}
+function multiRaceRange(wager: Wager) {
+  const legs=wager.multiRace?.legs ?? [];
+  const first=legs[0]?.race?.raceNumber ?? wager.race?.raceNumber;
+  const last=legs[legs.length-1]?.race?.raceNumber;
+  return first && last && first !== last ? `Races ${first}–${last}` : `Race ${first ?? "—"}`;
+}
 function canCancelWager(wager: Wager, cardGroup: CardGroup) {
+  if (isMultiRaceWager(wager)) return false;
   if (String(wager.wagerStatus ?? "").toLowerCase() !== "pending") {
     return false;
   }
-
   const cardStatus = String(cardGroup.card?.status ?? "").toLowerCase();
   const bankrollStatus = String(cardGroup.bankroll.status ?? "").toLowerCase();
   const closedStatuses = new Set([
@@ -268,45 +272,50 @@ function canCancelWager(wager: Wager, cardGroup: CardGroup) {
     "final",
     "cancelled",
   ]);
-
   if (closedStatuses.has(cardStatus) || closedStatuses.has(bankrollStatus)) {
     return false;
   }
-
   const lockAt = cardGroup.card?.lockAt ?? cardGroup.bankroll.lockedAt;
-
   if (lockAt) {
     const lockMs = new Date(lockAt).getTime();
-
     if (Number.isFinite(lockMs) && lockMs <= Date.now()) {
       return false;
     }
   }
-
   return true;
 }
-
 function selectionLabel(selection: Selection) {
   const box =
     selection.boxNumber !== null
       ? `#${selection.boxNumber}`
       : "Trap —";
-
   return `${box} ${selection.dogName ?? "Runner"}`;
 }
-
+function orderedTicketSelections(wager: Wager) {
+  return orderedSelections(wager.selections);
+}
+function isBoxWager(wager: Wager) {
+  return String(wager.wagerStructure ?? "").toLowerCase() === "box";
+}
+function boxSelectionLine(wager: Wager) {
+  return orderedTicketSelections(wager)
+    .map((selection) =>
+      selection.boxNumber !== null
+        ? String(selection.boxNumber)
+        : String(selection.entryId),
+    )
+    .join(" - ");
+}
 function combinationLines(wager: Wager) {
   if (!Array.isArray(wager.combinationJson)) {
     return [];
   }
-
   const selectionByEntryId = new Map(
     wager.selections.map((selection) => [
       selection.entryId,
       selection,
     ]),
   );
-
   return wager.combinationJson
     .filter((value): value is unknown[] => Array.isArray(value))
     .map((combo) =>
@@ -314,7 +323,6 @@ function combinationLines(wager: Wager) {
         .map((value) => {
           const id = Number(value);
           const selection = selectionByEntryId.get(id);
-
           return selection
             ? selectionLabel(selection)
             : `Entry ${id}`;
@@ -322,7 +330,6 @@ function combinationLines(wager: Wager) {
         .join(" → "),
     );
 }
-
 export default function GreyhoundMyWagers({
   leagueId,
   embedded = false,
@@ -330,40 +337,28 @@ export default function GreyhoundMyWagers({
 }: Props) {
   const [data, setData] =
     useState<ApiResponse | null>(null);
-
   const [loading, setLoading] =
     useState(true);
-
   const [refreshing, setRefreshing] =
     useState(false);
-
   const [error, setError] =
     useState<string | null>(null);
-
   const [filter, setFilter] =
     useState<Filter>("all");
-
   const [nameDraft, setNameDraft] =
     useState("");
-
   const [editingName, setEditingName] =
     useState(false);
-
   const [savingName, setSavingName] =
     useState(false);
-
   const [nameMessage, setNameMessage] =
     useState<string | null>(null);
-
   const [wagerMessage, setWagerMessage] =
     useState<string | null>(null);
-
   const [cancellingWagerId, setCancellingWagerId] =
     useState<number | null>(null);
-
   const [expandedIds, setExpandedIds] =
-    useState<Set<number>>(new Set());
-
+    useState<Set<string>>(new Set());
   const load = useCallback(
     async (silent = false) => {
       if (silent) {
@@ -371,9 +366,7 @@ export default function GreyhoundMyWagers({
       } else {
         setLoading(true);
       }
-
       setError(null);
-
       try {
         const response = await fetch(
           `/api/greyhound/my-wagers?leagueId=${encodeURIComponent(
@@ -384,24 +377,19 @@ export default function GreyhoundMyWagers({
             cache: "no-store",
           },
         );
-
         const payload =
           (await response.json()) as ApiResponse;
-
         if (!response.ok || !payload.success) {
           throw new Error(
             payload.error ??
               "Unable to load your Greyhound wagers.",
           );
         }
-
         setData(payload);
-
         const participantName =
           payload.participant?.namingMode === "team"
             ? payload.participant.teamName
             : payload.participant?.entryName;
-
         setNameDraft(participantName ?? "");
       } catch (loadError) {
         setError(
@@ -416,11 +404,9 @@ export default function GreyhoundMyWagers({
     },
     [leagueId],
   );
-
   useEffect(() => {
     void load(false);
   }, [load]);
-
   const allCards = useMemo(
     () => [
       ...(data?.currentCards ?? []),
@@ -428,7 +414,6 @@ export default function GreyhoundMyWagers({
     ],
     [data?.currentCards, data?.completedCards],
   );
-
   const hasPendingWagers = useMemo(
     () =>
       allCards.some((card) =>
@@ -439,19 +424,15 @@ export default function GreyhoundMyWagers({
       ),
     [allCards],
   );
-
   useEffect(() => {
     if (!hasPendingWagers) {
       return;
     }
-
     const interval = window.setInterval(() => {
       void load(true);
     }, 30000);
-
     return () => window.clearInterval(interval);
   }, [hasPendingWagers, load]);
-
   const summary = data?.summary ?? {
     totalCards: 0,
     totalWagers: 0,
@@ -463,7 +444,6 @@ export default function GreyhoundMyWagers({
     losingWagers: 0,
     refundedWagers: 0,
   };
-
   const filteredCards = useMemo(
     () =>
       allCards
@@ -480,24 +460,18 @@ export default function GreyhoundMyWagers({
         .filter((card) => card.wagers.length > 0),
     [allCards, filter],
   );
-
-
   async function saveParticipantName() {
     if (!data?.participant?.canEditName) {
       return;
     }
-
     const name = nameDraft.replace(/\s+/g, " ").trim();
-
     if (name.length < 2) {
       setError("Name must be at least 2 characters.");
       return;
     }
-
     setSavingName(true);
     setError(null);
     setNameMessage(null);
-
     try {
       const response = await fetch(
         "/api/greyhound/my-wagers",
@@ -511,19 +485,16 @@ export default function GreyhoundMyWagers({
           }),
         },
       );
-
       const payload = (await response.json()) as {
         success?: boolean;
         error?: string;
         participant?: ApiResponse["participant"];
       };
-
       if (!response.ok || !payload.success || !payload.participant) {
         throw new Error(
           payload.error ?? "Unable to save Greyhound name.",
         );
       }
-
       setData((current) =>
         current
           ? {
@@ -532,12 +503,10 @@ export default function GreyhoundMyWagers({
             }
           : current,
       );
-
       const savedName =
         payload.participant.namingMode === "team"
           ? payload.participant.teamName
           : payload.participant.entryName;
-
       setNameDraft(savedName ?? name);
       setEditingName(false);
       setNameMessage(
@@ -555,26 +524,19 @@ export default function GreyhoundMyWagers({
       setSavingName(false);
     }
   }
-
   async function cancelWager(wager: Wager) {
     if (cancellingWagerId !== null) {
       return;
     }
-
     const confirmed = window.confirm(
-      `Cancel this ${money(wager.totalCost)} ${titleCase(
-        wager.wagerType,
-      )} wager? The amount will be restored to your available bankroll.`,
+      `Cancel this ${money(wager.totalCost)} ${wagerTypeLabel(wager)} wager? The amount will be restored to your available bankroll.`,
     );
-
     if (!confirmed) {
       return;
     }
-
     setCancellingWagerId(wager.id);
     setError(null);
     setWagerMessage(null);
-
     try {
       const response = await fetch(
         "/api/greyhound/my-wagers",
@@ -588,30 +550,25 @@ export default function GreyhoundMyWagers({
           }),
         },
       );
-
       const payload = (await response.json()) as {
         success?: boolean;
         error?: string;
         message?: string;
       };
-
       if (!response.ok || !payload.success) {
         throw new Error(
           payload.error ?? "Unable to cancel Greyhound wager.",
         );
       }
-
       setWagerMessage(
         payload.message ??
           `${money(wager.totalCost)} restored to your available bankroll.`,
       );
-
       setExpandedIds((current) => {
         const next = new Set(current);
-        next.delete(wager.id);
+        next.delete(wagerKey(wager));
         return next;
       });
-
       await load(true);
     } catch (cancelError) {
       setError(
@@ -623,21 +580,17 @@ export default function GreyhoundMyWagers({
       setCancellingWagerId(null);
     }
   }
-
-  function toggleExpanded(wagerId: number) {
+  function toggleExpanded(wagerId: string) {
     setExpandedIds((current) => {
       const next = new Set(current);
-
       if (next.has(wagerId)) {
         next.delete(wagerId);
       } else {
         next.add(wagerId);
       }
-
       return next;
     });
   }
-
   if (loading && !data) {
     return (
       <div className={styles.loadingCard}>
@@ -645,7 +598,6 @@ export default function GreyhoundMyWagers({
       </div>
     );
   }
-
   return (
     <section className={styles.page}>
       {embedded ? (
@@ -659,7 +611,6 @@ export default function GreyhoundMyWagers({
               Pending tickets move here automatically as races are graded.
             </p>
           </div>
-
           <button
             type="button"
             className={styles.refreshButton}
@@ -675,15 +626,12 @@ export default function GreyhoundMyWagers({
             <div className={styles.eyebrow}>
               G365 Greyhound Racing
             </div>
-
             <h1>My Wagers</h1>
-
             <p>
               Review pending tickets, official results,
               payouts, refunds, and bankroll impact.
             </p>
           </div>
-
           <button
             type="button"
             className={styles.refreshButton}
@@ -694,19 +642,16 @@ export default function GreyhoundMyWagers({
           </button>
         </header>
       )}
-
       {error ? (
         <div className={styles.errorBar}>
           {error}
         </div>
       ) : null}
-
       {wagerMessage ? (
         <div className={styles.successBar}>
           {wagerMessage}
         </div>
       ) : null}
-
       {data?.participant ? (
         <div className={styles.identityCard}>
           <div className={styles.identityCopy}>
@@ -715,7 +660,6 @@ export default function GreyhoundMyWagers({
                 ? "Greyhound Team"
                 : "Greyhound Entry"}
             </span>
-
             <div className={styles.identityTitleRow}>
               <strong>
                 {data.participant.namingMode === "team"
@@ -726,20 +670,17 @@ export default function GreyhoundMyWagers({
                   : data.participant.entryName ||
                     "Entry Name Not Set"}
               </strong>
-
               {data.participant.namingMode === "team" &&
               data.participant.teamNumber ? (
                 <small>TEAM {data.participant.teamNumber}</small>
               ) : null}
             </div>
-
             <p>
               {data.participant.namingMode === "team"
                 ? "This shared Team Name is used anywhere your Greyhound competition team is shown."
                 : "This Entry Name is your display identity for this Greyhound league."}
             </p>
           </div>
-
           {editingName ? (
             <div className={styles.identityEditor}>
               <label htmlFor="greyhound-entry-name">
@@ -747,7 +688,6 @@ export default function GreyhoundMyWagers({
                   ? "Team Name"
                   : "Entry Name"}
               </label>
-
               <input
                 id="greyhound-entry-name"
                 type="text"
@@ -762,7 +702,6 @@ export default function GreyhoundMyWagers({
                     event.preventDefault();
                     void saveParticipantName();
                   }
-
                   if (event.key === "Escape") {
                     setEditingName(false);
                     setNameDraft(
@@ -773,7 +712,6 @@ export default function GreyhoundMyWagers({
                   }
                 }}
               />
-
               <div className={styles.identityActions}>
                 <button
                   type="button"
@@ -790,7 +728,6 @@ export default function GreyhoundMyWagers({
                 >
                   Cancel
                 </button>
-
                 <button
                   type="button"
                   className={styles.identitySave}
@@ -811,7 +748,6 @@ export default function GreyhoundMyWagers({
                   {nameMessage}
                 </span>
               ) : null}
-
               <button
                 type="button"
                 className={styles.identityEdit}
@@ -829,7 +765,6 @@ export default function GreyhoundMyWagers({
                     ? "Edit Entry Name"
                     : "Create Entry Name"}
               </button>
-
               {!data.participant.canEditName ? (
                 <small className={styles.identityHelp}>
                   {data.participant.namingMode === "team"
@@ -841,7 +776,6 @@ export default function GreyhoundMyWagers({
           )}
         </div>
       ) : null}
-
       {embedded && onSelectTrack ? (
         <div className={styles.trackBetBar}>
           <div>
@@ -858,7 +792,6 @@ export default function GreyhoundMyWagers({
           </div>
         </div>
       ) : null}
-
       {!data?.participant ? (
         <div className={styles.emptyCard}>
           <strong>No Greyhound entry found</strong>
@@ -876,14 +809,12 @@ export default function GreyhoundMyWagers({
                 {money(summary.totalStaked)}
               </strong>
             </div>
-
             <div className={styles.summaryCard}>
               <span>Total Returned</span>
               <strong>
                 {money(summary.totalReturned)}
               </strong>
             </div>
-
             <div className={styles.summaryCard}>
               <span>Net</span>
               <strong
@@ -899,21 +830,18 @@ export default function GreyhoundMyWagers({
                 {money(summary.net)}
               </strong>
             </div>
-
             <div className={styles.summaryCard}>
               <span>Pending</span>
               <strong>
                 {summary.pendingWagers}
               </strong>
             </div>
-
             <div className={styles.summaryCard}>
               <span>Won</span>
               <strong className={styles.positive}>
                 {summary.winningWagers}
               </strong>
             </div>
-
             <div className={styles.summaryCard}>
               <span>Lost</span>
               <strong className={styles.negative}>
@@ -921,7 +849,6 @@ export default function GreyhoundMyWagers({
               </strong>
             </div>
           </div>
-
           <div className={styles.filterBar}>
             {(Object.keys(FILTER_LABELS) as Filter[]).map(
               (option) => (
@@ -940,7 +867,6 @@ export default function GreyhoundMyWagers({
               ),
             )}
           </div>
-
           {filteredCards.length === 0 ? (
             <div className={styles.emptyCard}>
               <strong>No wagers to show</strong>
@@ -959,7 +885,6 @@ export default function GreyhoundMyWagers({
                   cardGroup.track?.name ??
                   cardGroup.track?.code ??
                   "Greyhound Track";
-
                 return (
                   <article
                     key={cardGroup.bankrollCardId}
@@ -970,14 +895,12 @@ export default function GreyhoundMyWagers({
                         <div className={styles.cardTrack}>
                           {trackName}
                         </div>
-
                         <div className={styles.cardMeta}>
                           <span>
                             {dateOnly(
                               cardGroup.card?.raceDate,
                             )}
                           </span>
-
                           {cardGroup.card?.session ? (
                             <span>
                               {titleCase(
@@ -985,7 +908,6 @@ export default function GreyhoundMyWagers({
                               )}
                             </span>
                           ) : null}
-
                           <span>
                             {titleCase(
                               cardGroup.card?.status ??
@@ -994,7 +916,6 @@ export default function GreyhoundMyWagers({
                           </span>
                         </div>
                       </div>
-
                       <div className={styles.cardTotals}>
                         <div>
                           <span>Wagered</span>
@@ -1004,7 +925,6 @@ export default function GreyhoundMyWagers({
                             )}
                           </strong>
                         </div>
-
                         <div>
                           <span>Returned</span>
                           <strong>
@@ -1014,7 +934,6 @@ export default function GreyhoundMyWagers({
                             )}
                           </strong>
                         </div>
-
                         <div>
                           <span>Net</span>
                           <strong
@@ -1036,44 +955,37 @@ export default function GreyhoundMyWagers({
                         </div>
                       </div>
                     </div>
-
                     <div className={styles.ticketList}>
                       {cardGroup.wagers.map((wager) => {
                         const status =
                           wagerStatusGroup(wager);
-
+                        const ticketKey = wagerKey(wager);
+                        const isMultiRace = isMultiRaceWager(wager);
                         const expanded =
-                          expandedIds.has(wager.id);
-
+                          expandedIds.has(ticketKey);
                         const net =
                           profitLoss(wager);
-
                         const combinations =
                           combinationLines(wager);
-
                         const cancellable =
                           canCancelWager(wager, cardGroup);
-
                         return (
                           <div
-                            key={wager.id}
+                            key={ticketKey}
                             className={styles.ticket}
                           >
                             <button
                               type="button"
                               className={styles.ticketMain}
                               onClick={() =>
-                                toggleExpanded(wager.id)
+                                toggleExpanded(ticketKey)
                               }
                               aria-expanded={expanded}
                             >
                               <div className={styles.ticketRace}>
                                 <span>
-                                  Race{" "}
-                                  {wager.race?.raceNumber ??
-                                    "—"}
+                                  {isMultiRace ? multiRaceRange(wager) : <>Race{" "}{wager.race?.raceNumber ?? "—"}</>}
                                 </span>
-
                                 <small>
                                   {wager.race?.grade
                                     ? `${wager.race.grade} • `
@@ -1084,44 +996,32 @@ export default function GreyhoundMyWagers({
                                     : "Distance —"}
                                 </small>
                               </div>
-
                               <div className={styles.ticketType}>
                                 <strong>
                                   {titleCase(
                                     wager.wagerType,
                                   )}
                                 </strong>
-
                                 <small>
-                                  {titleCase(
-                                    wager.wagerStructure,
-                                  )}
+                                  {isMultiRace ? `${wager.multiRace?.legCount ?? (wager.wagerType === "pick5" ? 5 : 4)} Races` : titleCase(wager.wagerStructure)}
                                 </small>
                               </div>
-
                               <div className={styles.ticketSelections}>
-                                {wager.selections.length > 0 ? (
-                                  wager.selections.map(
-                                    (selection) => (
-                                      <span
-                                        key={
-                                          selection.entryId
-                                        }
-                                      >
-                                        {selectionLabel(
-                                          selection,
-                                        )}
-                                      </span>
-                                    ),
-                                  )
+                                {isMultiRace ? (
+                                  (wager.multiRace?.legs ?? []).map((leg) => (
+                                    <span key={`${ticketKey}-leg-${leg.legNumber}`}>
+                                      R{leg.race?.raceNumber ?? "—"}:{" "}
+                                      {orderedSelections(leg.selections).length ? orderedSelections(leg.selections).map(selectionLabel).join(", ") : "Selection unavailable"}
+                                    </span>
+                                  ))
+                                ) : wager.selections.length > 0 ? (
+                                  orderedTicketSelections(wager).map((selection) => (
+                                    <span key={selection.entryId}>{selectionLabel(selection)}</span>
+                                  ))
                                 ) : (
-                                  <span>
-                                    Selection details
-                                    unavailable
-                                  </span>
+                                  <span>Selection details unavailable</span>
                                 )}
                               </div>
-
                               <div className={styles.ticketMoney}>
                                 <span>
                                   {money(wager.totalCost)}
@@ -1138,7 +1038,6 @@ export default function GreyhoundMyWagers({
                                   )}
                                 </small>
                               </div>
-
                               <div
                                 className={`${styles.statusBadge} ${
                                   status === "winner"
@@ -1153,12 +1052,10 @@ export default function GreyhoundMyWagers({
                               >
                                 {statusText(wager)}
                               </div>
-
                               <div className={styles.chevron}>
                                 {expanded ? "−" : "+"}
                               </div>
                             </button>
-
                             {expanded ? (
                               <div
                                 className={
@@ -1180,7 +1077,6 @@ export default function GreyhoundMyWagers({
                                       )}
                                     </strong>
                                   </div>
-
                                   <div>
                                     <span>
                                       Race Post
@@ -1192,7 +1088,6 @@ export default function GreyhoundMyWagers({
                                       )}
                                     </strong>
                                   </div>
-
                                   <div>
                                     <span>
                                       Grading
@@ -1203,7 +1098,6 @@ export default function GreyhoundMyWagers({
                                       )}
                                     </strong>
                                   </div>
-
                                   <div>
                                     <span>
                                       Official Return
@@ -1214,7 +1108,6 @@ export default function GreyhoundMyWagers({
                                       )}
                                     </strong>
                                   </div>
-
                                   <div>
                                     <span>
                                       Profit / Loss
@@ -1239,7 +1132,6 @@ export default function GreyhoundMyWagers({
                                           }${money(net)}`}
                                     </strong>
                                   </div>
-
                                   <div>
                                     <span>
                                       Graded
@@ -1251,8 +1143,44 @@ export default function GreyhoundMyWagers({
                                     </strong>
                                   </div>
                                 </div>
-
-                                {combinations.length > 0 ? (
+                                {isMultiRace && wager.multiRace ? (
+                                <div className={styles.combinationBox}>
+                                  <div className={styles.detailLabel}>{wagerTypeLabel(wager)} Selections</div>
+                                  <div className={styles.combinationList}>
+                                    {wager.multiRace.legs.map((leg) => (
+                                      <div key={`${ticketKey}-detail-leg-${leg.legNumber}`}>
+                                        <span>Leg {leg.legNumber} • Race {leg.race?.raceNumber ?? "—"}</span>
+                                        <strong>{orderedSelections(leg.selections).length ? orderedSelections(leg.selections).map(selectionLabel).join(" • ") : "Selection unavailable"}</strong>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+                              {!isMultiRace && isBoxWager(wager) && wager.selections.length > 0 ? (
+                                  <div
+                                    className={
+                                      styles.combinationBox
+                                    }
+                                  >
+                                    <div
+                                      className={
+                                        styles.detailLabel
+                                      }
+                                    >
+                                      Box Selection
+                                    </div>
+                                    <div
+                                      className={
+                                        styles.combinationList
+                                      }
+                                    >
+                                      <div>
+                                        <span>Box</span>
+                                        <strong>{boxSelectionLine(wager)}</strong>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : !isMultiRace && combinations.length > 0 ? (
                                   <div
                                     className={
                                       styles.combinationBox
@@ -1265,7 +1193,6 @@ export default function GreyhoundMyWagers({
                                     >
                                       Ticket Combinations
                                     </div>
-
                                     <div
                                       className={
                                         styles.combinationList
@@ -1293,7 +1220,6 @@ export default function GreyhoundMyWagers({
                                     </div>
                                   </div>
                                 ) : null}
-
                                 {wager.alternate1 ||
                                 wager.alternate2 ? (
                                   <div
@@ -1308,7 +1234,6 @@ export default function GreyhoundMyWagers({
                                     >
                                       Alternates
                                     </div>
-
                                     {wager.alternate1 ? (
                                       <span>
                                         1.{" "}
@@ -1317,7 +1242,6 @@ export default function GreyhoundMyWagers({
                                         )}
                                       </span>
                                     ) : null}
-
                                     {wager.alternate2 ? (
                                       <span>
                                         2.{" "}
@@ -1328,7 +1252,6 @@ export default function GreyhoundMyWagers({
                                     ) : null}
                                   </div>
                                 ) : null}
-
                                 {wager.refundReason ? (
                                   <div
                                     className={
@@ -1351,7 +1274,6 @@ export default function GreyhoundMyWagers({
                                     </span>
                                   </div>
                                 ) : null}
-
                                 {cancellable ? (
                                   <div className={styles.cancelWagerBox}>
                                     <div>
@@ -1360,7 +1282,6 @@ export default function GreyhoundMyWagers({
                                         Available only before the whole card locks 5 minutes before Race 1.
                                       </span>
                                     </div>
-
                                     <button
                                       type="button"
                                       className={styles.cancelWagerButton}
@@ -1385,7 +1306,6 @@ export default function GreyhoundMyWagers({
                         );
                       })}
                     </div>
-
                     <div className={styles.bankrollFooter}>
                       <div>
                         <span>Starting Bankroll</span>
@@ -1396,7 +1316,6 @@ export default function GreyhoundMyWagers({
                           )}
                         </strong>
                       </div>
-
                       <div>
                         <span>Wagered</span>
                         <strong>
@@ -1406,7 +1325,6 @@ export default function GreyhoundMyWagers({
                           )}
                         </strong>
                       </div>
-
                       <div>
                         <span>Available</span>
                         <strong>
@@ -1416,7 +1334,6 @@ export default function GreyhoundMyWagers({
                           )}
                         </strong>
                       </div>
-
                       <div>
                         <span>Official Return</span>
                         <strong>
@@ -1432,7 +1349,6 @@ export default function GreyhoundMyWagers({
               })}
             </div>
           )}
-
           {hasPendingWagers ? (
             <div className={styles.liveNote}>
               Pending tickets refresh automatically every 30

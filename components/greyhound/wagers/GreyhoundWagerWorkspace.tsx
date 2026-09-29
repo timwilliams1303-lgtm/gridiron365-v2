@@ -13,7 +13,6 @@ import GreyhoundMyWagers from "@/components/greyhound/wagers/GreyhoundMyWagers";
 import GreyhoundDailySurvivorPanel from "@/components/greyhound/wagers/GreyhoundDailySurvivorPanel";
 import styles from "./GreyhoundWagerWorkspace.module.css";
 
-
 type BaseWagerType =
   | "win"
   | "place"
@@ -23,7 +22,6 @@ type BaseWagerType =
   | "trifecta"
   | "superfecta";
 
-
 type WagerType =
   | BaseWagerType
   | "win_place"
@@ -31,12 +29,10 @@ type WagerType =
   | "place_show"
   | "win_place_show";
 
-
 type WagerStructure =
   | "straight"
   | "key"
   | "box";
-
 
 type Entry = {
   id: number;
@@ -51,7 +47,6 @@ type Entry = {
   entryStatus: string;
 };
 
-
 type Race = {
   id: number;
   raceNumber: number;
@@ -64,7 +59,6 @@ type Race = {
   liveRaceState?: string | null;
   entries: Entry[];
 };
-
 
 type AvailableCard = {
   id: number;
@@ -80,7 +74,6 @@ type AvailableCard = {
     name: string | null;
   } | null;
 };
-
 
 type WorkspaceData = {
   success: boolean;
@@ -148,13 +141,56 @@ type WorkspaceData = {
     settledAt: string | null;
   } | null;
   races?: Race[];
+  multiRacePools?: MultiRacePool[];
+  viewer?: {
+    userId: string;
+    fantasyTeamId: number;
+    isCommissioner: boolean;
+    selectedFantasyTeamId: number;
+  };
+  bettingTeams?: BettingTeam[];
 };
 
+type BettingTeam = {
+  fantasyTeamId: number;
+  teamName: string;
+  entryName: string | null;
+  commissionerManaged: boolean;
+  isCpu: boolean;
+  bankroll: WorkspaceData["bankroll"];
+  liveBankroll: {
+    currentRaceId: number | null;
+    currentRaceNumber: number | null;
+    raceState: string | null;
+    openingBankroll: number;
+    minimumRequired: number;
+    qualifyingWagerTotal: number;
+    remainingRequired: number;
+    requirementSatisfied: boolean;
+  } | null;
+};
+
+type MultiRacePoolLeg = {
+  legNumber: number;
+  raceId: number;
+  raceNumber: number;
+};
+
+type MultiRacePool = {
+  id: number;
+  wagerType: "pick4" | "pick5";
+  legCount: number;
+  startRaceId: number;
+  startRaceNumber: number;
+  minimumDenomination: number;
+  poolStatus: string;
+  source?: string | null;
+  legs: MultiRacePoolLeg[];
+};
 
 type Props = {
   leagueId: string;
 };
-
 
 const WAGER_LABELS: Record<WagerType, string> = {
   win: "Win",
@@ -170,7 +206,6 @@ const WAGER_LABELS: Record<WagerType, string> = {
   superfecta: "Superfecta",
 };
 
-
 const LEG_COUNTS: Record<WagerType, number> = {
   win: 1,
   place: 1,
@@ -184,7 +219,6 @@ const LEG_COUNTS: Record<WagerType, number> = {
   trifecta: 3,
   superfecta: 4,
 };
-
 
 const DENOMINATIONS: Record<WagerType, number[]> = {
   win: [2, 5, 10, 20],
@@ -200,7 +234,6 @@ const DENOMINATIONS: Record<WagerType, number[]> = {
   superfecta: [0.1, 0.2, 0.5, 1, 2],
 };
 
-
 const MIN_DENOMINATION: Record<WagerType, number> = {
   win: 2,
   place: 2,
@@ -215,14 +248,12 @@ const MIN_DENOMINATION: Record<WagerType, number> = {
   superfecta: 0.1,
 };
 
-
 const COMBINED_WAGER_PARTS: Partial<Record<WagerType, BaseWagerType[]>> = {
   win_place: ["win", "place"],
   win_show: ["win", "show"],
   place_show: ["place", "show"],
   win_place_show: ["win", "place", "show"],
 };
-
 
 const STRAIGHT_WAGERS: WagerType[] = [
   "win",
@@ -234,11 +265,9 @@ const STRAIGHT_WAGERS: WagerType[] = [
   "win_place_show",
 ];
 
-
 function isStraightWager(type: WagerType) {
   return STRAIGHT_WAGERS.includes(type);
 }
-
 
 function isWagerAllowed(
   type: WagerType,
@@ -256,7 +285,6 @@ function isWagerAllowed(
 
   return Boolean(allowed[type]);
 }
-
 
 function money(
   value:
@@ -278,7 +306,6 @@ function money(
     value
   );
 }
-
 
 function dateLabel(
   value:
@@ -316,7 +343,6 @@ function dateLabel(
   );
 }
 
-
 function dateOnlyLabel(
   value:
     string | null | undefined
@@ -352,7 +378,6 @@ function dateOnlyLabel(
     }
   );
 }
-
 
 function easternTodayIsoDate() {
   const parts =
@@ -397,7 +422,6 @@ function easternTodayIsoDate() {
         .slice(0, 10);
 }
 
-
 function parseCompetitionDate(
   value: string
 ) {
@@ -412,7 +436,6 @@ function parseCompetitionDate(
     ? null
     : parsed;
 }
-
 
 function normalizedCompetitionDays(
   settings:
@@ -453,7 +476,6 @@ function normalizedCompetitionDays(
       ];
 }
 
-
 function addCompetitionDays(
   value: string,
   days: number
@@ -476,7 +498,6 @@ function addCompetitionDays(
     .toISOString()
     .slice(0, 10);
 }
-
 
 function isCompetitionDate(
   value: string,
@@ -539,7 +560,6 @@ function isCompetitionDate(
   );
 }
 
-
 function currentOrNextCompetitionDate(
   value: string,
   settings:
@@ -595,7 +615,6 @@ function currentOrNextCompetitionDate(
   return candidate;
 }
 
-
 function nextCompetitionDate(
   value: string,
   settings:
@@ -631,12 +650,9 @@ function nextCompetitionDate(
   return candidate;
 }
 
-
-
 type SupportedGreyhoundTrack =
   | "GWD"
   | "GTS";
-
 
 function regularTrackRaceDay(
   value: string,
@@ -683,7 +699,6 @@ function regularTrackRaceDay(
   );
 }
 
-
 function publishedTrackCardExists(
   cards:
     AvailableCard[],
@@ -707,7 +722,6 @@ function publishedTrackCardExists(
         "cancelled"
   );
 }
-
 
 function isTrackRaceDate(
   value: string,
@@ -737,7 +751,6 @@ function isTrackRaceDate(
   );
 }
 
-
 function expectedTracksForDate(
   value: string,
   settings:
@@ -762,7 +775,6 @@ function expectedTracksForDate(
       )
   );
 }
-
 
 function currentOrNextTrackRacingDate(
   value: string,
@@ -807,7 +819,6 @@ function currentOrNextTrackRacingDate(
   return candidate;
 }
 
-
 function nextTrackRacingDate(
   value: string,
   settings:
@@ -824,7 +835,6 @@ function nextTrackRacingDate(
     cards
   );
 }
-
 
 function expectedTrackSessionLabel(
   value: string,
@@ -860,7 +870,6 @@ function expectedTrackSessionLabel(
   return "Greyhound";
 }
 
-
 function expectedTrackLabel(
   value: string,
   settings:
@@ -895,7 +904,6 @@ function expectedTrackLabel(
   return "Greyhound";
 }
 
-
 function displayRaceStatus(
   raceStatus: string,
   cardStatus:
@@ -916,7 +924,6 @@ function displayRaceStatus(
 
   return raceStatus;
 }
-
 
 function permutations(
   values:
@@ -982,7 +989,6 @@ function permutations(
   return output;
 }
 
-
 function combinations(
   values:
     number[],
@@ -1040,7 +1046,6 @@ function combinations(
 
   return output;
 }
-
 
 function trapStyle(
   box:
@@ -1127,7 +1132,6 @@ function trapStyle(
   }
 }
 
-
 function countdownLabel(
   target: string | null | undefined,
   nowMs: number
@@ -1150,7 +1154,6 @@ function countdownLabel(
     : `${minutes}m ${String(seconds).padStart(2, "0")}s`;
 }
 
-
 function liveRaceLockAt(
   race: Race | null,
   minutesBeforePost: number
@@ -1164,7 +1167,6 @@ function liveRaceLockAt(
     postMs - Math.max(0, minutesBeforePost) * 60 * 1000
   ).toISOString();
 }
-
 
 function isRaceOpen(
   race:
@@ -1231,7 +1233,6 @@ function isRaceOpen(
 
   return true;
 }
-
 
 export default function GreyhoundWagerWorkspace({
   leagueId,
@@ -1332,7 +1333,6 @@ export default function GreyhoundWagerWorkspace({
   ] =
     useState<Array<number | null>>([]);
 
-
   const [
     keyEntryId,
     setKeyEntryId,
@@ -1343,7 +1343,6 @@ export default function GreyhoundWagerWorkspace({
     >(
       null
     );
-
 
   const [
     alternate1EntryId,
@@ -1356,7 +1355,6 @@ export default function GreyhoundWagerWorkspace({
       null
     );
 
-
   const [
     alternate2EntryId,
     setAlternate2EntryId,
@@ -1368,7 +1366,6 @@ export default function GreyhoundWagerWorkspace({
       null
     );
 
-
   const [
     placing,
     setPlacing,
@@ -1377,6 +1374,9 @@ export default function GreyhoundWagerWorkspace({
       false
     );
 
+  const [selectedMultiRacePoolId, setSelectedMultiRacePoolId] = useState<number | null>(null);
+  const [multiRaceSelections, setMultiRaceSelections] = useState<Record<number, number[]>>({});
+  const [positionEntryPools, setPositionEntryPools] = useState<number[][]>([]);
 
   const [
     liveClockMs,
@@ -1388,7 +1388,6 @@ export default function GreyhoundWagerWorkspace({
     setSavingAutoSelection,
   ] = useState(false);
 
-
   const [
     activeView,
     setActiveView,
@@ -1396,13 +1395,13 @@ export default function GreyhoundWagerWorkspace({
     "betting" | "my_wagers"
   >("betting");
 
-
   const [selectedTrackCode, setSelectedTrackCode] =
     useState<"GWD" | "GTS" | null>(null);
 
   const [selectedCardId, setSelectedCardId] =
     useState<number | null>(null);
-
+  const [selectedBettingTeamId, setSelectedBettingTeamId] =
+    useState<number | null>(null);
 
   const load =
     useCallback(
@@ -1418,6 +1417,9 @@ export default function GreyhoundWagerWorkspace({
 
           if (selectedCardId) {
             query.set("cardId", String(selectedCardId));
+          }
+          if (selectedBettingTeamId) {
+            query.set("fantasyTeamId", String(selectedBettingTeamId));
           }
 
           const response = await fetch(
@@ -1437,6 +1439,12 @@ export default function GreyhoundWagerWorkspace({
           }
 
           setData(payload);
+          if (
+            payload.viewer?.selectedFantasyTeamId &&
+            payload.viewer.selectedFantasyTeamId !== selectedBettingTeamId
+          ) {
+            setSelectedBettingTeamId(payload.viewer.selectedFantasyTeamId);
+          }
 
           if (!selectedCardId && payload.card?.id) {
             setSelectedCardId(payload.card.id);
@@ -1496,9 +1504,9 @@ export default function GreyhoundWagerWorkspace({
       [
         leagueId,
         selectedCardId,
+        selectedBettingTeamId,
       ]
     );
-
 
   useEffect(
     () => {
@@ -1511,7 +1519,6 @@ export default function GreyhoundWagerWorkspace({
     ]
   );
 
-
   useEffect(() => {
     const interval = window.setInterval(
       () => setLiveClockMs(Date.now()),
@@ -1520,7 +1527,6 @@ export default function GreyhoundWagerWorkspace({
 
     return () => window.clearInterval(interval);
   }, []);
-
 
   useEffect(
     () => {
@@ -1544,11 +1550,9 @@ export default function GreyhoundWagerWorkspace({
     ]
   );
 
-
   const races =
     data?.races ??
     [];
-
 
   const availableCards =
     data?.availableCards ??
@@ -1571,7 +1575,6 @@ export default function GreyhoundWagerWorkspace({
       [availableCards]
     );
 
-
   const wageringStyle =
     data?.settings?.wageringStyle === "live_bankroll"
       ? "live_bankroll"
@@ -1585,7 +1588,6 @@ export default function GreyhoundWagerWorkspace({
 
   const liveRaceLockMinutes =
     data?.settings?.liveRaceLockMinutesBeforePost ?? 5;
-
 
   const selectedRace =
     useMemo(
@@ -1604,11 +1606,45 @@ export default function GreyhoundWagerWorkspace({
       ]
     );
 
-
   const allowedWagers =
     data?.settings
       ?.allowedWagers;
 
+  const multiRacePools = data?.multiRacePools ?? [];
+  const availableMultiRacePools = useMemo(
+    () => multiRacePools.filter((pool) => pool.poolStatus === "open"),
+    [multiRacePools]
+  );
+  const selectedMultiRacePool = useMemo(
+    () => multiRacePools.find((pool) => pool.id === selectedMultiRacePoolId) ?? null,
+    [multiRacePools, selectedMultiRacePoolId]
+  );
+  const isMultiRaceWager = selectedMultiRacePool !== null;
+  const selectedMultiRaceStartRace = useMemo(
+    () => selectedMultiRacePool
+      ? races.find((race) => race.id === selectedMultiRacePool.startRaceId) ?? null
+      : null,
+    [races, selectedMultiRacePool]
+  );
+  const multiRaceSelectionOpen = selectedMultiRacePool
+    ? isRaceOpen(
+        selectedMultiRaceStartRace,
+        data?.card?.cardStatus,
+        data?.card?.lockAt,
+        wageringStyle
+      )
+    : false;
+  const multiRaceCombinationCount = useMemo(() => {
+    if (!selectedMultiRacePool) return 0;
+    let count = 1;
+    for (const leg of selectedMultiRacePool.legs) {
+      const selected = multiRaceSelections[leg.raceId] ?? [];
+      if (selected.length === 0) return 0;
+      count *= selected.length;
+    }
+    return count;
+  }, [selectedMultiRacePool, multiRaceSelections]);
+  const multiRaceTotalCost = isMultiRaceWager ? multiRaceCombinationCount * denomination : 0;
 
   useEffect(
     () => {
@@ -1654,13 +1690,13 @@ export default function GreyhoundWagerWorkspace({
     ]
   );
 
-
   useEffect(
     () => {
       setSelectedEntryIds(
         []
       );
       setPositionEntryIds([]);
+      setPositionEntryPools([]);
       setKeyEntryId(
         null
       );
@@ -1690,12 +1726,17 @@ export default function GreyhoundWagerWorkspace({
     ]
   );
 
+  useEffect(() => {
+    if (selectedMultiRacePoolId && !availableMultiRacePools.some((pool) => pool.id === selectedMultiRacePoolId)) {
+      setSelectedMultiRacePoolId(null);
+      setMultiRaceSelections({});
+    }
+  }, [selectedMultiRacePoolId, availableMultiRacePools]);
 
   const requiredLegs =
     LEG_COUNTS[
       wagerType
     ];
-
 
   const combinationJson =
     useMemo(
@@ -1746,27 +1787,32 @@ export default function GreyhoundWagerWorkspace({
         }
 
         if (
+          structure ===
+          "straight"
+        ) {
+          const pools = Array.from({ length: requiredLegs }, (_, index) => {
+            const pooled = positionEntryPools[index] ?? [];
+            if (pooled.length > 0) return pooled;
+            const single = positionEntryIds[index] ?? null;
+            return single !== null ? [single] : [];
+          });
+          if (pools.some((pool) => pool.length === 0)) return [];
+          let rows: number[][] = [[]];
+          for (const pool of pools) {
+            rows = rows.flatMap((row) =>
+              pool
+                .filter((entryId) => !row.includes(entryId))
+                .map((entryId) => [...row, entryId])
+            );
+          }
+          return rows;
+        }
+
+        if (
           selectedEntryIds.length ===
           0
         ) {
           return [];
-        }
-
-        if (
-          structure ===
-          "straight"
-        ) {
-          const orderedPositions =
-            positionEntryIds.slice(0, requiredLegs);
-
-          return (
-            orderedPositions.length === requiredLegs &&
-            orderedPositions.every(
-              (entryId): entryId is number => entryId !== null
-            )
-              ? [[...orderedPositions]]
-              : []
-          );
         }
 
         if (
@@ -1794,6 +1840,7 @@ export default function GreyhoundWagerWorkspace({
       [
         keyEntryId,
         positionEntryIds,
+        positionEntryPools,
         requiredLegs,
         selectedEntryIds,
         structure,
@@ -1801,18 +1848,17 @@ export default function GreyhoundWagerWorkspace({
       ]
     );
 
-
   const wagerPartCount =
     COMBINED_WAGER_PARTS[
       wagerType
     ]?.length ?? 1;
 
-
-  const totalCost =
+  const singleRaceTotalCost =
     combinationJson.length *
     denomination *
     wagerPartCount;
 
+  const totalCost = isMultiRaceWager ? multiRaceTotalCost : singleRaceTotalCost;
 
   const raceOpen =
     isRaceOpen(
@@ -1823,7 +1869,6 @@ export default function GreyhoundWagerWorkspace({
         ?.lockAt,
       wageringStyle
     );
-
 
   const currentLiveRace =
     isLiveBankroll && liveBankroll?.currentRaceId
@@ -1922,7 +1967,6 @@ export default function GreyhoundWagerWorkspace({
     }
   }
 
-
   const primaryEntryIds =
     useMemo(
       () =>
@@ -1932,6 +1976,7 @@ export default function GreyhoundWagerWorkspace({
             ...positionEntryIds.filter(
               (entryId): entryId is number => entryId !== null
             ),
+            ...positionEntryPools.flat(),
             ...(keyEntryId !== null
               ? [keyEntryId]
               : []),
@@ -1940,10 +1985,10 @@ export default function GreyhoundWagerWorkspace({
       [
         selectedEntryIds,
         positionEntryIds,
+        positionEntryPools,
         keyEntryId,
       ]
     );
-
 
   const eligibleAlternateEntries =
     useMemo(
@@ -1975,7 +2020,6 @@ export default function GreyhoundWagerWorkspace({
       ]
     );
 
-
   useEffect(
     () => {
       const eligibleIds =
@@ -2006,7 +2050,6 @@ export default function GreyhoundWagerWorkspace({
       eligibleAlternateEntries,
     ]
   );
-
 
   function selectEntryForColumn(
     entry: Entry,
@@ -2061,30 +2104,27 @@ export default function GreyhoundWagerWorkspace({
       return;
     }
 
-    // Straight exotic: every finishing-position bubble owns its exact slot.
-    // Keep empty slots so choosing 2nd before 1st never moves that dog to 1st.
+    // Straight exotic: each finishing-position column can contain one or more dogs.
+    // This supports an ALL button in any position while keeping only valid,
+    // non-duplicated finishing-order combinations.
     setKeyEntryId(null);
     setSelectedEntryIds([]);
+    setPositionEntryPools((current) => {
+      const next = Array.from({ length: requiredLegs }, (_, index) => [
+        ...(current[index] ?? (positionEntryIds[index] ? [positionEntryIds[index] as number] : [])),
+      ]);
+      const currentPool = next[columnIndex] ?? [];
+      next[columnIndex] = currentPool.includes(entry.id)
+        ? currentPool.filter((id) => id !== entry.id)
+        : [...currentPool, entry.id];
+      return next;
+    });
     setPositionEntryIds((current) => {
-      const next: Array<number | null> = Array.from(
-        { length: requiredLegs },
-        (_, index) => current[index] ?? null
-      );
-
-      // A greyhound cannot occupy two finishing positions on one ticket.
-      for (let index = 0; index < next.length; index += 1) {
-        if (index !== columnIndex && next[index] === entry.id) {
-          next[index] = null;
-        }
-      }
-
-      next[columnIndex] =
-        next[columnIndex] === entry.id ? null : entry.id;
-
+      const next = Array.from({ length: requiredLegs }, (_, index) => current[index] ?? null);
+      next[columnIndex] = null;
       return next;
     });
   }
-
 
   function openCard(card: AvailableCard) {
     if (card.wageringOpen === false) {
@@ -2099,13 +2139,13 @@ export default function GreyhoundWagerWorkspace({
     setSelectedRaceId(null);
     setSelectedEntryIds([]);
     setPositionEntryIds([]);
+      setPositionEntryPools([]);
     setKeyEntryId(null);
     setAlternate1EntryId(null);
     setAlternate2EntryId(null);
     setError(null);
     setSuccess(null);
   }
-
 
   function openTrack(trackCode: "GWD" | "GTS") {
     const matchingCard = weeklyCards.find(
@@ -2124,6 +2164,36 @@ export default function GreyhoundWagerWorkspace({
     openCard(matchingCard);
   }
 
+  async function placeMultiRaceWager() {
+    if (!selectedMultiRacePool || !selectedRace) { setError("Select an available Pick 4 or Pick 5 pool first."); return; }
+    if (!raceOpen) { setError("The starting race is no longer open for wagering."); return; }
+    if (multiRaceCombinationCount <= 0) { setError(`Select at least one active dog in every ${selectedMultiRacePool.wagerType === "pick4" ? "Pick 4" : "Pick 5"} leg.`); return; }
+    if (!Number.isFinite(denomination) || denomination < 0.25) { setError("Pick 4 and Pick 5 have a minimum denomination of $0.25."); return; }
+    if (!data?.bankroll || multiRaceTotalCost > data.bankroll.amountUnallocated) { setError("This wager costs more than your remaining bankroll."); return; }
+    setPlacing(true); setError(null); setSuccess(null);
+    try {
+      const legSelections = selectedMultiRacePool.legs.map((leg) => ({ raceId: leg.raceId, entryIds: multiRaceSelections[leg.raceId] ?? [] }));
+      const response = await fetch("/api/greyhound/multi-race-wagers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          leagueId,
+          poolId: selectedMultiRacePool.id,
+          denomination,
+          legSelections,
+          fantasyTeamId: selectedBettingTeamId ?? data?.viewer?.fantasyTeamId ?? null,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) throw new Error(payload.error ?? "Unable to place Pick 4 or Pick 5 wager.");
+      const label = selectedMultiRacePool.wagerType === "pick4" ? "Pick 4" : "Pick 5";
+      setSuccess(`Bet Confirmed — ${label} wager placed for ${money(multiRaceTotalCost)}.`);
+      setMultiRaceSelections({});
+      await load(true);
+    } catch (placeError) {
+      setError(placeError instanceof Error ? placeError.message : "Unable to place Pick 4 or Pick 5 wager.");
+    } finally { setPlacing(false); }
+  }
 
   async function placeWager() {
     if (
@@ -2241,6 +2311,10 @@ export default function GreyhoundWagerWorkspace({
                   combinationJson,
                   alternate1EntryId,
                   alternate2EntryId,
+                  fantasyTeamId:
+                    selectedBettingTeamId ??
+                    data?.viewer?.fantasyTeamId ??
+                    null,
                 }),
             }
           );
@@ -2275,6 +2349,7 @@ export default function GreyhoundWagerWorkspace({
         []
       );
       setPositionEntryIds([]);
+      setPositionEntryPools([]);
 
       setAlternate1EntryId(
         null
@@ -2302,13 +2377,18 @@ export default function GreyhoundWagerWorkspace({
     }
   }
 
-
   const ticketPositionEntries =
     Array.from({ length: requiredLegs }, (_, index) => {
-      const entryId = positionEntryIds[index] ?? null;
-      return entryId
-        ? selectedRace?.entries.find((entry) => entry.id === entryId) ?? null
-        : null;
+      const pooledIds = positionEntryPools[index] ?? [];
+      const ids = pooledIds.length > 0
+        ? pooledIds
+        : positionEntryIds[index] !== null && positionEntryIds[index] !== undefined
+          ? [positionEntryIds[index] as number]
+          : [];
+      return ids
+        .map((entryId) => selectedRace?.entries.find((entry) => entry.id === entryId) ?? null)
+        .filter((entry): entry is Entry => entry !== null)
+        .sort((a, b) => a.boxNumber - b.boxNumber);
     });
 
   const ticketKeyEntry =
@@ -2321,7 +2401,8 @@ export default function GreyhoundWagerWorkspace({
       .map((entryId) =>
         selectedRace?.entries.find((entry) => entry.id === entryId) ?? null
       )
-      .filter((entry): entry is Entry => entry !== null);
+      .filter((entry): entry is Entry => entry !== null)
+      .sort((a, b) => a.boxNumber - b.boxNumber);
 
   const ticketAlternate1 =
     alternate1EntryId !== null
@@ -2333,6 +2414,12 @@ export default function GreyhoundWagerWorkspace({
       ? selectedRace?.entries.find((entry) => entry.id === alternate2EntryId) ?? null
       : null;
 
+  const selectionColumnCount =
+    isMultiRaceWager
+      ? 1
+      : structure === "box"
+        ? 1
+        : requiredLegs;
 
   const selectedEntryLabels =
     selectedEntryIds.map(
@@ -2356,7 +2443,6 @@ export default function GreyhoundWagerWorkspace({
       }
     );
 
-
   if (
     loading &&
     !data
@@ -2368,7 +2454,6 @@ export default function GreyhoundWagerWorkspace({
     );
   }
 
-
   const availableBankroll =
     data?.bankroll?.amountUnallocated ??
     0;
@@ -2379,7 +2464,6 @@ export default function GreyhoundWagerWorkspace({
       availableBankroll -
         totalCost
     );
-
 
   return (
     <section className={styles.workspace}>
@@ -3039,13 +3123,13 @@ export default function GreyhoundWagerWorkspace({
                   <div
                     className={styles.runnersTable}
                     style={{
-                      minWidth: `${500 + requiredLegs * 50}px`,
+                      minWidth: `${500 + selectionColumnCount * 50}px`,
                     }}
                   >
                     <div
                       className={styles.runnersHead}
                       style={{
-                        gridTemplateColumns: `56px minmax(170px, 1fr) 68px 72px 84px repeat(${requiredLegs}, 48px)`,
+                        gridTemplateColumns: `56px minmax(170px, 1fr) 68px 72px 84px repeat(${selectionColumnCount}, 48px)`,
                       }}
                     >
                       <div>Trap</div>
@@ -3054,25 +3138,79 @@ export default function GreyhoundWagerWorkspace({
                       <div>Weight</div>
                       <div>Status</div>
 
-                      {Array.from({ length: requiredLegs }).map((_, columnIndex) => (
-                        <div
-                          key={`race-card-head-${columnIndex}`}
-                          style={{ textAlign: "center" }}
-                        >
-                          {isStraightWager(wagerType)
-                            ? "Pick"
-                            : structure === "key" && columnIndex === 0
-                              ? "Key"
-                              : ["1st", "2nd", "3rd", "4th"][columnIndex]}
-                        </div>
-                      ))}
+                      {Array.from({ length: selectionColumnCount }).map((_, columnIndex) => {
+                        const activeIds = selectedRace.entries
+                          .filter((entry) => entry.entryStatus === "active")
+                          .map((entry) => entry.id);
+                        const positionIds = positionEntryPools[columnIndex] ?? [];
+                        const allPositionSelected =
+                          activeIds.length > 0 &&
+                          activeIds.every((id) => positionIds.includes(id));
+                        return (
+                          <div
+                            key={`race-card-head-${columnIndex}`}
+                            style={{ textAlign: "center", display: "grid", gap: 4, justifyItems: "center" }}
+                          >
+                            <span>
+                              {isMultiRaceWager
+                                ? "Pick"
+                                : isStraightWager(wagerType)
+                                  ? "Pick"
+                                  : structure === "box"
+                                    ? "Pick"
+                                    : structure === "key" && columnIndex === 0
+                                      ? "Key"
+                                      : ["1st", "2nd", "3rd", "4th"][columnIndex]}
+                            </span>
+                            {!isMultiRaceWager && !isStraightWager(wagerType) && structure === "straight" ? (
+                              <button
+                                type="button"
+                                disabled={!raceOpen || activeIds.length === 0}
+                                onClick={() => {
+                                  setError(null);
+                                  setSuccess(null);
+                                  setPositionEntryIds((current) =>
+                                    Array.from({ length: requiredLegs }, (_, index) =>
+                                      index === columnIndex ? null : current[index] ?? null
+                                    )
+                                  );
+                                  setPositionEntryPools((current) =>
+                                    Array.from({ length: requiredLegs }, (_, index) =>
+                                      index === columnIndex
+                                        ? (allPositionSelected ? [] : [...activeIds])
+                                        : [...(current[index] ?? [])]
+                                    )
+                                  );
+                                }}
+                                style={{
+                                  minWidth: 34,
+                                  minHeight: 24,
+                                  padding: "0 6px",
+                                  borderRadius: 7,
+                                  border: "1px solid rgba(255,122,26,.62)",
+                                  background: allPositionSelected ? "rgba(255,122,26,.24)" : "rgba(255,122,26,.09)",
+                                  color: "#fff",
+                                  fontSize: 9,
+                                  fontWeight: 950,
+                                  cursor: raceOpen ? "pointer" : "not-allowed",
+                                }}
+                              >
+                                ALL
+                              </button>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {selectedRace.entries.map((entry) => {
                       const selected =
-                        selectedEntryIds.includes(entry.id) ||
-                        positionEntryIds.includes(entry.id) ||
-                        keyEntryId === entry.id;
+                        (isMultiRaceWager
+                          ? (multiRaceSelections[selectedRace.id] ?? []).includes(entry.id)
+                          : selectedEntryIds.includes(entry.id) ||
+                            positionEntryIds.includes(entry.id) ||
+                            positionEntryPools.some((pool) => pool.includes(entry.id)) ||
+                            keyEntryId === entry.id);
 
                       const active = entry.entryStatus === "active";
 
@@ -3083,7 +3221,7 @@ export default function GreyhoundWagerWorkspace({
                             selected ? styles.runnerSelected : ""
                           } ${!active ? styles.runnerInactive : ""}`}
                           style={{
-                            gridTemplateColumns: `56px minmax(170px, 1fr) 68px 72px 84px repeat(${requiredLegs}, 48px)`,
+                            gridTemplateColumns: `56px minmax(170px, 1fr) 68px 72px 84px repeat(${selectionColumnCount}, 48px)`,
                           }}
                         >
                           <div
@@ -3137,10 +3275,12 @@ export default function GreyhoundWagerWorkspace({
                             {entry.entryStatus.replaceAll("_", " ")}
                           </div>
 
-                          {Array.from({ length: requiredLegs }).map((_, columnIndex) => {
+                          {Array.from({ length: selectionColumnCount }).map((_, columnIndex) => {
                             let checked = false;
 
-                            if (isStraightWager(wagerType)) {
+                            if (isMultiRaceWager) {
+                              checked = (multiRaceSelections[selectedRace.id] ?? []).includes(entry.id);
+                            } else if (isStraightWager(wagerType)) {
                               checked = selectedEntryIds[0] === entry.id;
                             } else if (structure === "key") {
                               checked =
@@ -3150,7 +3290,9 @@ export default function GreyhoundWagerWorkspace({
                             } else if (structure === "box") {
                               checked = selectedEntryIds.includes(entry.id);
                             } else {
-                              checked = positionEntryIds[columnIndex] === entry.id;
+                              checked =
+                                (positionEntryPools[columnIndex] ?? []).includes(entry.id) ||
+                                positionEntryIds[columnIndex] === entry.id;
                             }
 
                             return (
@@ -3164,12 +3306,33 @@ export default function GreyhoundWagerWorkspace({
                               >
                                 <button
                                   type="button"
-                                  disabled={!active || !raceOpen}
-                                  onClick={() => selectEntryForColumn(entry, columnIndex)}
+                                  disabled={!active || !(isMultiRaceWager ? multiRaceSelectionOpen : raceOpen)}
+                                  onClick={() => {
+                                    if (isMultiRaceWager) {
+                                      if (!multiRaceSelectionOpen) return;
+                                      setError(null);
+                                      setSuccess(null);
+                                      setMultiRaceSelections((current) => {
+                                        const ids = current[selectedRace.id] ?? [];
+                                        return {
+                                          ...current,
+                                          [selectedRace.id]: ids.includes(entry.id)
+                                            ? ids.filter((id) => id !== entry.id)
+                                            : [...ids, entry.id],
+                                        };
+                                      });
+                                      return;
+                                    }
+                                    selectEntryForColumn(entry, columnIndex);
+                                  }}
                                   aria-label={`Select trap ${entry.boxNumber} for ${
                                     isStraightWager(wagerType)
                                       ? WAGER_LABELS[wagerType]
-                                      : ["1st", "2nd", "3rd", "4th"][columnIndex]
+                                      : structure === "box"
+                                        ? `${WAGER_LABELS[wagerType]} box`
+                                        : structure === "key" && columnIndex === 0
+                                          ? "key"
+                                          : ["1st", "2nd", "3rd", "4th"][columnIndex]
                                   }`}
                                   aria-pressed={checked}
                                   style={{
@@ -3186,8 +3349,8 @@ export default function GreyhoundWagerWorkspace({
                                     boxShadow: checked
                                       ? "0 0 0 2px rgba(255,122,26,.16)"
                                       : "none",
-                                    cursor: active && raceOpen ? "pointer" : "not-allowed",
-                                    opacity: active && raceOpen ? 1 : 0.35,
+                                    cursor: active && (isMultiRaceWager ? multiRaceSelectionOpen : raceOpen) ? "pointer" : "not-allowed",
+                                    opacity: active && (isMultiRaceWager ? multiRaceSelectionOpen : raceOpen) ? 1 : 0.35,
                                   }}
                                 />
                               </div>
@@ -3318,6 +3481,64 @@ export default function GreyhoundWagerWorkspace({
             </div>
 
             <div className={styles.betPadBody}>
+              {data?.viewer?.isCommissioner && (data?.bettingTeams?.length ?? 0) > 0 ? (
+                <div
+                  style={{
+                    marginBottom: 12,
+                    padding: 12,
+                    border: "1px solid rgba(255,122,26,.35)",
+                    borderRadius: 10,
+                    background: "rgba(227,93,21,.07)",
+                  }}
+                >
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span className={styles.fieldLabel}>Place Bet For</span>
+                    <select
+                      value={
+                        selectedBettingTeamId ??
+                        data.viewer.selectedFantasyTeamId ??
+                        data.viewer.fantasyTeamId
+                      }
+                      disabled={placing || loading}
+                      onChange={(event) => {
+                        const nextTeamId = Number(event.target.value);
+                        if (!Number.isInteger(nextTeamId) || nextTeamId <= 0) return;
+                        setSelectedBettingTeamId(nextTeamId);
+                        setError(null);
+                        setSuccess(null);
+                      }}
+                      style={{
+                        width: "100%",
+                        minHeight: 42,
+                        borderRadius: 8,
+                        border: "1px solid rgba(255,255,255,.14)",
+                        background: "#111",
+                        color: "#fff",
+                        padding: "0 10px",
+                        fontWeight: 800,
+                      }}
+                    >
+                      {(data.bettingTeams ?? []).map((team) => (
+                        <option key={team.fantasyTeamId} value={team.fantasyTeamId}>
+                          {team.entryName?.trim() || team.teamName}
+                          {team.commissionerManaged ? " — Commissioner Managed" : ""}
+                          {team.bankroll ? ` — ${money(team.bankroll.amountUnallocated)}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div
+                    style={{
+                      marginTop: 7,
+                      color: "#a1a1aa",
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    Wagers and bankroll charges apply to the selected entry/team.
+                  </div>
+                </div>
+              ) : null}
               <div
                 style={{
                   display: "grid",
@@ -3328,13 +3549,32 @@ export default function GreyhoundWagerWorkspace({
                 <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
                   <span className={styles.fieldLabel}>Wager Type</span>
                   <select
-                    value={wagerType}
+                    value={selectedMultiRacePool ? `multi-type:${selectedMultiRacePool.wagerType}` : wagerType}
                     disabled={!data?.card}
                     onChange={(event) => {
-                      const next = event.target.value as WagerType;
+                      const raw = event.target.value;
+                      if (raw.startsWith("multi-type:")) {
+                        const multiType = raw.slice(11) as "pick4" | "pick5";
+                        const pool = availableMultiRacePools.find((item) => item.wagerType === multiType) ?? null;
+                        setSelectedMultiRacePoolId(pool?.id ?? null);
+                        setMultiRaceSelections({});
+                        setDenomination(0.25);
+                        setSelectedEntryIds([]);
+                        setPositionEntryIds([]);
+                        setPositionEntryPools([]);
+                        setKeyEntryId(null);
+                        setAlternate1EntryId(null);
+                        setAlternate2EntryId(null);
+                        if (pool) setSelectedRaceId(pool.startRaceId);
+                        return;
+                      }
+                      const next = raw as WagerType;
+                      setSelectedMultiRacePoolId(null);
+                      setMultiRaceSelections({});
                       setWagerType(next);
                       setSelectedEntryIds([]);
                       setPositionEntryIds([]);
+      setPositionEntryPools([]);
                       setKeyEntryId(null);
                       setAlternate1EntryId(null);
                       setAlternate2EntryId(null);
@@ -3363,24 +3603,40 @@ export default function GreyhoundWagerWorkspace({
                         {WAGER_LABELS[type]}
                       </option>
                     ))}
+                    {(["pick4", "pick5"] as const).map((multiType) =>
+                      availableMultiRacePools.some((pool) => pool.wagerType === multiType) ? (
+                        <option key={multiType} value={`multi-type:${multiType}`}>
+                          {multiType === "pick4" ? "Pick 4" : "Pick 5"}
+                        </option>
+                      ) : null
+                    )}
                   </select>
                 </label>
 
                 <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                  <span className={styles.fieldLabel}>Bet Option</span>
+                  <span className={styles.fieldLabel}>{isMultiRaceWager ? "Start Race" : "Bet Option"}</span>
                   <select
-                    value={isStraightWager(wagerType) ? "straight" : structure}
-                    disabled={!data?.card || isStraightWager(wagerType)}
+                    value={isMultiRaceWager ? String(selectedMultiRacePoolId ?? "") : isStraightWager(wagerType) ? "straight" : structure}
+                    disabled={!data?.card || (!isMultiRaceWager && isStraightWager(wagerType))}
                     onChange={(event) => {
+                      if (isMultiRaceWager) {
+                        const poolId = Number(event.target.value);
+                        const pool = availableMultiRacePools.find((item) => item.id === poolId) ?? null;
+                        setSelectedMultiRacePoolId(pool?.id ?? null);
+                        setMultiRaceSelections({});
+                        if (pool) setSelectedRaceId(pool.startRaceId);
+                        return;
+                      }
                       const option = event.target.value as WagerStructure;
                       setStructure(option);
                       setSelectedEntryIds([]);
                       setPositionEntryIds([]);
+                      setPositionEntryPools([]);
                       setKeyEntryId(null);
                       setAlternate1EntryId(null);
                       setAlternate2EntryId(null);
                     }}
-                    aria-label="Bet Option"
+                    aria-label={isMultiRaceWager ? "Start Race" : "Bet Option"}
                     style={{
                       width: "100%",
                       minWidth: 0,
@@ -3396,9 +3652,21 @@ export default function GreyhoundWagerWorkspace({
                       opacity: isStraightWager(wagerType) ? 0.65 : 1,
                     }}
                   >
-                    <option value="straight">Straight</option>
-                    <option value="key">Key</option>
-                    <option value="box">Box</option>
+                    {isMultiRaceWager ? (
+                      availableMultiRacePools
+                        .filter((pool) => pool.wagerType === selectedMultiRacePool?.wagerType)
+                        .map((pool) => (
+                          <option key={pool.id} value={pool.id}>
+                            Race {pool.startRaceNumber}
+                          </option>
+                        ))
+                    ) : (
+                      <>
+                        <option value="straight">Straight</option>
+                        <option value="key">Key</option>
+                        <option value="box">Box</option>
+                      </>
+                    )}
                   </select>
                 </label>
               </div>
@@ -3408,8 +3676,38 @@ export default function GreyhoundWagerWorkspace({
                   Amount Per Combination
                 </div>
 
+              {selectedMultiRacePool ? (
+                <label style={{ display: "grid", gap: 6, marginTop: 10, minWidth: 0 }}>
+                  <span className={styles.fieldLabel}>Pick Race</span>
+                  <select
+                    value={selectedRaceId ?? ""}
+                    onChange={(event) => setSelectedRaceId(Number(event.target.value))}
+                    aria-label="Pick Race"
+                    style={{
+                      width: "100%",
+                      minWidth: 0,
+                      minHeight: 46,
+                      border: "1px solid rgba(255,122,26,.55)",
+                      borderRadius: 10,
+                      background: "#151515",
+                      color: "#fff",
+                      padding: "0 11px",
+                      fontSize: 13,
+                      fontWeight: 900,
+                      colorScheme: "dark",
+                    }}
+                  >
+                    {selectedMultiRacePool.legs.map((leg) => (
+                      <option key={leg.raceId} value={leg.raceId}>
+                        Leg {leg.legNumber} · Race {leg.raceNumber}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+
                 <div className={styles.denominationGrid}>
-                  {DENOMINATIONS[wagerType].map(
+                  {(isMultiRaceWager ? [0.25, 0.5, 0.75, 1, 2] : DENOMINATIONS[wagerType]).map(
                     (amount) => (
                       <button
                         key={amount}
@@ -3424,7 +3722,17 @@ export default function GreyhoundWagerWorkspace({
                             : ""
                         }`}
                       >
-                        {money(amount)}
+                        {isMultiRaceWager
+                          ? amount === 0.25
+                            ? "25¢"
+                            : amount === 0.5
+                              ? "50¢"
+                              : amount === 0.75
+                                ? "75¢"
+                                : amount === 1
+                                  ? "$1"
+                                  : "$2"
+                          : money(amount)}
                       </button>
                     )
                   )}
@@ -3463,20 +3771,20 @@ export default function GreyhoundWagerWorkspace({
                     <input
                       type="number"
                       inputMode="decimal"
-                      min={MIN_DENOMINATION[wagerType]}
+                      min={isMultiRaceWager ? 0.25 : MIN_DENOMINATION[wagerType]}
                       step={
-                        wagerType === "superfecta"
+                        isMultiRaceWager ? 0.25 : wagerType === "superfecta"
                           ? 0.1
                           : wagerType === "trifecta"
                           ? 0.5
                           : 1
                       }
                       value={
-                        DENOMINATIONS[wagerType].includes(denomination)
+                        (isMultiRaceWager ? [0.25, 0.5, 0.75, 1, 2] : DENOMINATIONS[wagerType]).includes(denomination)
                           ? ""
                           : denomination
                       }
-                      placeholder={String(MIN_DENOMINATION[wagerType])}
+                      placeholder={String(isMultiRaceWager ? 0.25 : MIN_DENOMINATION[wagerType])}
                       disabled={!data?.card}
                       onChange={(event) => {
                         const next = Number(event.target.value);
@@ -3540,9 +3848,11 @@ export default function GreyhoundWagerWorkspace({
                       onClick={() => {
                         setSelectedEntryIds([]);
                         setPositionEntryIds([]);
+      setPositionEntryPools([]);
                         setKeyEntryId(null);
                         setAlternate1EntryId(null);
                         setAlternate2EntryId(null);
+                        setMultiRaceSelections({});
                       }}
                       aria-label="Reset betting ticket"
                       title="Reset betting ticket"
@@ -3585,10 +3895,10 @@ export default function GreyhoundWagerWorkspace({
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
                       <div>
                         <div style={{ color: "#fff", fontSize: 15, fontWeight: 950 }}>
-                          {WAGER_LABELS[wagerType]}
+                          {selectedMultiRacePool ? (selectedMultiRacePool.wagerType === "pick4" ? "Pick 4" : "Pick 5") : WAGER_LABELS[wagerType]}
                         </div>
                         <div style={{ marginTop: 2, color: "#ff8a35", fontSize: 10, fontWeight: 950, textTransform: "uppercase" }}>
-                          {isStraightWager(wagerType) ? "Straight" : structure}
+                          {selectedMultiRacePool ? `${selectedMultiRacePool.legCount} races` : isStraightWager(wagerType) ? "Straight" : structure}
                         </div>
                       </div>
                       <div style={{ textAlign: "right" }}>
@@ -3598,7 +3908,32 @@ export default function GreyhoundWagerWorkspace({
                     </div>
 
                     <div style={{ borderTop: "1px dashed rgba(255,255,255,.13)", paddingTop: 10 }}>
-                      {isStraightWager(wagerType) ? (
+                      {selectedMultiRacePool ? (
+                        <div style={{ display: "grid", gap: 9 }}>
+                          {selectedMultiRacePool.legs.map((leg) => {
+                            const selectedIds = multiRaceSelections[leg.raceId] ?? [];
+                            const legRace = races.find((race) => race.id === leg.raceId);
+                            const selectedEntries = (legRace?.entries ?? [])
+                              .filter((entry) => selectedIds.includes(entry.id))
+                              .sort((a, b) => a.boxNumber - b.boxNumber);
+                            return (
+                              <div key={`ticket-multi-leg-${leg.legNumber}`} style={{ padding: "8px 9px", border: "1px solid rgba(255,255,255,.09)", borderRadius: 10, background: "rgba(255,255,255,.025)" }}>
+                                <div style={{ color: "#ff8a35", fontSize: 10, fontWeight: 950, marginBottom: 6 }}>
+                                  LEG {leg.legNumber} · RACE {leg.raceNumber}
+                                </div>
+                                {selectedEntries.length ? selectedEntries.map((entry) => (
+                                  <div key={`ticket-multi-${leg.legNumber}-${entry.id}`} style={{ display: "flex", alignItems: "center", gap: 9, padding: "4px 0" }}>
+                                    <span style={{ ...trapStyle(entry.boxNumber), width: 28, height: 28, borderRadius: 999, display: "grid", placeItems: "center", fontWeight: 950 }}>{entry.boxNumber}</span>
+                                    <strong>{entry.dogName ?? "Runner"}</strong>
+                                  </div>
+                                )) : (
+                                  <div className={styles.noSelections}>Select dog(s) for this leg.</div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : isStraightWager(wagerType) ? (
                         ticketSelectedEntries.length ? ticketSelectedEntries.map((entry) => (
                           <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
                             <span style={{ ...trapStyle(entry.boxNumber), width: 28, height: 28, borderRadius: 999, display: "grid", placeItems: "center", fontWeight: 950 }}>{entry.boxNumber}</span>
@@ -3606,13 +3941,42 @@ export default function GreyhoundWagerWorkspace({
                           </div>
                         )) : <div className={styles.noSelections}>Select a runner.</div>
                       ) : structure === "straight" ? (
-                        ticketPositionEntries.map((entry, index) => (
-                          <div key={`ticket-position-${index}`} style={{ display: "grid", gridTemplateColumns: "42px 28px minmax(0,1fr)", alignItems: "center", gap: 8, padding: "6px 0" }}>
-                            <span style={{ color: "#ff8a35", fontSize: 10, fontWeight: 950 }}>{["1ST","2ND","3RD","4TH"][index]}</span>
-                            {entry ? <span style={{ ...trapStyle(entry.boxNumber), width: 28, height: 28, borderRadius: 999, display: "grid", placeItems: "center", fontWeight: 950 }}>{entry.boxNumber}</span> : <span style={{ width: 28, height: 28, border: "1px dashed #555", borderRadius: 999 }} />}
-                            <strong style={{ color: entry ? "#fff" : "#666" }}>{entry?.dogName ?? "Select dog"}</strong>
-                          </div>
-                        ))
+                        ticketPositionEntries.map((entries, index) => {
+                          const activeEntries = (selectedRace?.entries ?? [])
+                            .filter((entry) => entry.entryStatus === "active")
+                            .sort((a, b) => a.boxNumber - b.boxNumber);
+                          const selectedActiveIds = new Set(entries.map((entry) => entry.id));
+                          const isAll =
+                            activeEntries.length > 0 &&
+                            activeEntries.every((entry) => selectedActiveIds.has(entry.id));
+                          return (
+                            <div key={`ticket-position-${index}`} style={{ display: "grid", gridTemplateColumns: "42px minmax(0,1fr)", alignItems: "center", gap: 8, padding: "6px 0" }}>
+                              <span style={{ color: "#ff8a35", fontSize: 10, fontWeight: 950 }}>{["1ST","2ND","3RD","4TH"][index]}</span>
+                              {entries.length > 0 ? (
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+                                  {isAll ? (
+                                    <strong style={{ color: "#fff", fontSize: 13 }}>ALL</strong>
+                                  ) : (
+                                    entries.map((entry) => (
+                                      <span
+                                        key={`ticket-position-${index}-${entry.id}`}
+                                        style={{ ...trapStyle(entry.boxNumber), width: 28, height: 28, borderRadius: 999, display: "grid", placeItems: "center", fontWeight: 950 }}
+                                        title={entry.dogName ?? `Trap ${entry.boxNumber}`}
+                                      >
+                                        {entry.boxNumber}
+                                      </span>
+                                    ))
+                                  )}
+                                </div>
+                              ) : (
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <span style={{ width: 28, height: 28, border: "1px dashed #555", borderRadius: 999 }} />
+                                  <strong style={{ color: "#666" }}>Select dog</strong>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
                       ) : structure === "key" ? (
                         <>
                           <div style={{ color: "#ff8a35", fontSize: 9, fontWeight: 950, marginBottom: 5 }}>KEY</div>
@@ -3640,7 +4004,7 @@ export default function GreyhoundWagerWorkspace({
                       )}
                     </div>
 
-                    {(ticketAlternate1 || ticketAlternate2) ? (
+                    {!isMultiRaceWager && (ticketAlternate1 || ticketAlternate2) ? (
                       <div style={{ marginTop: 10, paddingTop: 9, borderTop: "1px dashed rgba(255,255,255,.13)", color: "#aaa", fontSize: 10, fontWeight: 850 }}>
                         {ticketAlternate1 ? <div>ALT 1 · #{ticketAlternate1.boxNumber} {ticketAlternate1.dogName ?? "Runner"}</div> : null}
                         {ticketAlternate2 ? <div style={{ marginTop: 3 }}>ALT 2 · #{ticketAlternate2.boxNumber} {ticketAlternate2.dogName ?? "Runner"}</div> : null}
@@ -3648,7 +4012,7 @@ export default function GreyhoundWagerWorkspace({
                     ) : null}
 
                     <div style={{ marginTop: 11, paddingTop: 10, borderTop: "1px dashed rgba(255,255,255,.16)", display: "grid", gap: 5 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", color: "#aaa", fontSize: 11, fontWeight: 850 }}><span>Combinations</span><strong>{combinationJson.length}</strong></div>
+                      <div style={{ display: "flex", justifyContent: "space-between", color: "#aaa", fontSize: 11, fontWeight: 850 }}><span>Combinations</span><strong>{isMultiRaceWager ? multiRaceCombinationCount : combinationJson.length}</strong></div>
                       <div style={{ display: "flex", justifyContent: "space-between", color: "#fff", fontSize: 14, fontWeight: 950 }}><span>TOTAL WAGER</span><strong style={{ color: "#ff8a35" }}>{money(totalCost)}</strong></div>
                       <div style={{ display: "flex", justifyContent: "space-between", color: "#aaa", fontSize: 11, fontWeight: 850 }}><span>Bankroll After</span><strong>{money(afterWager)}</strong></div>
                     </div>
@@ -4014,17 +4378,16 @@ export default function GreyhoundWagerWorkspace({
                 disabled={
                   placing ||
                   !data?.card ||
-                  !raceOpen ||
+                  !(isMultiRaceWager ? multiRaceSelectionOpen : raceOpen) ||
                   liveBusted ||
-                  combinationJson.length ===
-                    0 ||
+                  (isMultiRaceWager ? multiRaceCombinationCount === 0 : combinationJson.length === 0) ||
                   totalCost <=
                     0 ||
                   totalCost >
                     availableBankroll
                 }
                 onClick={() =>
-                  void placeWager()
+                  void (isMultiRaceWager ? placeMultiRaceWager() : placeWager())
                 }
                 className={styles.placeWagerButton}
               >
@@ -4034,8 +4397,8 @@ export default function GreyhoundWagerWorkspace({
                     ? "Waiting for Race Card"
                     : liveBusted
                       ? "BUSTED"
-                      : raceOpen
-                        ? `Place ${WAGER_LABELS[wagerType]} • ${money(
+                      : (isMultiRaceWager ? multiRaceSelectionOpen : raceOpen)
+                        ? `Place ${isMultiRaceWager ? (selectedMultiRacePool?.wagerType === "pick4" ? "Pick 4" : "Pick 5") : WAGER_LABELS[wagerType]} • ${money(
                             totalCost
                           )}`
                         : isLiveBankroll

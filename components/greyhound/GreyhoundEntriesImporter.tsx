@@ -42,8 +42,9 @@ function normalizeDogNameSpacing(value: string) {
     // Restrict this to that narrow glyph shape/position instead of applying
     // a dangerous global l -> i substitution.
     .replace(/^([A-Z][a-z])l(?=\s)/, "$1i")
-    .replace(/\s+/g, " ")
-    .trim();
+.replace(/^Lii(?=\s)/, "Lil")
+.replace(/\s+/g, " ")
+.trim();
 }
 function normalizeMorningLineOdds(value: string | null | undefined) {
   if (!value) return null;

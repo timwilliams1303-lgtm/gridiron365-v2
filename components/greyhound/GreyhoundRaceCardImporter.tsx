@@ -41,6 +41,12 @@ type GreyhoundRunner = {
   programBlockImageDataUrl?: string | null;
 };
 
+type GreyhoundMultiRaceOffer = {
+  wagerType: "pick4" | "pick5";
+  legCount: 4 | 5;
+  label: string;
+};
+
 type ParsedGreyhoundRace = {
   track: string;
   raceNumber: number;
@@ -51,6 +57,7 @@ type ParsedGreyhoundRace = {
   prizeMoney: string | null;
   weather: string | null;
   trackCondition: string | null;
+  multiRaceOffers: GreyhoundMultiRaceOffer[];
   runners: GreyhoundRunner[];
   rawText: string;
   // Official Full Program: PDF page N is Race N for both GWD and GTS.
@@ -622,6 +629,33 @@ function parseTrackCondition(text: string): string | null {
   );
 
   return match ? cleanLine(match[1]) : null;
+}
+
+function parseMultiRaceOffers(text: string): GreyhoundMultiRaceOffer[] {
+  const normalized = cleanLine(text)
+    .replace(/[–—]/g, "-")
+    .toUpperCase();
+  const offers: GreyhoundMultiRaceOffer[] = [];
+  const add = (
+    wagerType: "pick4" | "pick5",
+    legCount: 4 | 5,
+    label: string,
+  ) => {
+    if (!offers.some((offer) => offer.wagerType === wagerType)) {
+      offers.push({ wagerType, legCount, label });
+    }
+  };
+  const pick4Starts =
+    /\b(?:EARLY\s+|LATE\s+)?PICK\s*[- ]?4\s+(?:STARTS?|BEGINS?)\s+(?:HERE|NOW)\b/i.test(normalized) ||
+    /\b1ST\s+LEG\s+PICK\s*[- ]?4\b/i.test(normalized) ||
+    /\bFIRST\s+LEG\s+PICK\s*[- ]?4\b/i.test(normalized);
+  const pick5Starts =
+    /\b(?:EARLY\s+|LATE\s+)?PICK\s*[- ]?5\s+(?:STARTS?|BEGINS?)\s+(?:HERE|NOW)\b/i.test(normalized) ||
+    /\b1ST\s+LEG\s+PICK\s*[- ]?5\b/i.test(normalized) ||
+    /\bFIRST\s+LEG\s+PICK\s*[- ]?5\b/i.test(normalized);
+  if (pick4Starts) add("pick4", 4, "Pick 4");
+  if (pick5Starts) add("pick5", 5, "Pick 5");
+  return offers;
 }
 
 function detectTrackFromBlock(
@@ -2140,7 +2174,7 @@ function parseTriStateProgramPage(
 ): ParsedGreyhoundRace | null {
   const native = normalizeWhitespace(nativePageText);
   const ocr = normalizeWhitespace(ocrPageText);
-  const metadataText = native || ocr;
+  const metadataText = [native, ocr].filter(Boolean).join("\n");
 
   if (!isTriStateProgramText(metadataText)) {
     return null;
@@ -2191,6 +2225,7 @@ function parseTriStateProgramPage(
     prizeMoney: parsePrizeMoney(metadataText),
     weather: parseWeather(metadataText),
     trackCondition: parseTrackCondition(metadataText),
+    multiRaceOffers: parseMultiRaceOffers(metadataText),
     runners,
     rawText: [
       native,
@@ -3276,7 +3311,7 @@ function parseWheelingProgramPage(
 ): ParsedGreyhoundRace | null {
   const native = normalizeWhitespace(nativePageText);
   const ocr = normalizeWhitespace(ocrPageText);
-  const metadataText = native || ocr;
+  const metadataText = [native, ocr].filter(Boolean).join("\n");
 
   const raceNumber =
     extractRaceNumber(native) ??
@@ -3315,6 +3350,7 @@ function parseWheelingProgramPage(
     prizeMoney: parsePrizeMoney(metadataText),
     weather: parseWeather(metadataText),
     trackCondition: parseTrackCondition(metadataText),
+    multiRaceOffers: parseMultiRaceOffers(metadataText),
     runners: parseWheelingProgramRunners(ocr, native, raceDate),
     rawText: [native, ocr ? `===== OCR PAGE =====\n${ocr}` : ""]
       .filter(Boolean)
@@ -3506,6 +3542,7 @@ function parseRaceCardText(
       trackCondition:
         parseTrackCondition(block) ??
         parseTrackCondition(normalized),
+      multiRaceOffers: parseMultiRaceOffers(block),
       runners,
       rawText: block,
     });
@@ -6230,6 +6267,8 @@ export default function GreyhoundRaceCardImporter({
               weather: selectedRace.weather,
               trackCondition:
                 selectedRace.trackCondition,
+              multiRaceOffers:
+                selectedRace.multiRaceOffers,
               runners:
                 selectedRace.runners.map(
                   (runner) => ({
@@ -6463,6 +6502,7 @@ export default function GreyhoundRaceCardImporter({
                 prizeMoney: race.prizeMoney,
                 weather: race.weather,
                 trackCondition: race.trackCondition,
+                multiRaceOffers: race.multiRaceOffers,
                 runners: race.runners.map((runner) => ({
                   trapNumber: runner.trapNumber,
                   trapColor: runner.trapColor,

@@ -1,14 +1,11 @@
 "use client";
-
 import {
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
-
 import { createBrowserClient } from "@supabase/ssr";
-
 type Participant = {
   participantId: number;
   fantasyTeamId: number;
@@ -20,14 +17,12 @@ type Participant = {
   teamNumber: number | null;
   teamName: string | null;
 };
-
 type CompetitionTeam = {
   id: number;
   teamNumber: number;
   teamName: string;
   active: boolean;
 };
-
 type WorkspaceData = {
   success: true;
   leagueId: string;
@@ -44,18 +39,14 @@ type WorkspaceData = {
   participants: Participant[];
   teams: CompetitionTeam[];
 };
-
 type ErrorResponse = {
   success?: false;
   error?: string;
 };
-
 type ApiResponse = WorkspaceData | ErrorResponse;
-
 type Props = {
   leagueId: string;
 };
-
 const FORMAT_LABELS: Record<WorkspaceData["gameFormat"], string> = {
   team_total_winnings: "Team Season · Total Winnings",
   team_head_to_head: "Team Season · Head-to-Head",
@@ -63,11 +54,9 @@ const FORMAT_LABELS: Record<WorkspaceData["gameFormat"], string> = {
   survivor: "Survivor",
   tournament: "Tournament",
 };
-
 function cleanName(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
-
 export default function GreyhoundTeamsEntries({
   leagueId,
 }: Props) {
@@ -80,26 +69,22 @@ export default function GreyhoundTeamsEntries({
       ),
     [],
   );
-
   const [data, setData] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-
   const [entryNames, setEntryNames] = useState<Record<number, string>>({});
   const [teamNames, setTeamNames] = useState<Record<number, string>>({});
   const [newTeamName, setNewTeamName] = useState("");
+  const [newManagedTeamName, setNewManagedTeamName] = useState("");
   const [randomTeamCount, setRandomTeamCount] = useState(1);
-
   const [inviteFirstName, setInviteFirstName] = useState("");
   const [inviteLastName, setInviteLastName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteWorking, setInviteWorking] = useState(false);
-
   const load = useCallback(async () => {
     setError(null);
-
     try {
       const response = await fetch(
         `/api/greyhound/commissioner/teams-entries?leagueId=${encodeURIComponent(
@@ -110,9 +95,7 @@ export default function GreyhoundTeamsEntries({
           cache: "no-store",
         },
       );
-
       const payload = (await response.json()) as ApiResponse;
-
       if (!response.ok || !("success" in payload) || !payload.success) {
         throw new Error(
           "error" in payload && payload.error
@@ -120,9 +103,7 @@ export default function GreyhoundTeamsEntries({
             : "Unable to load Greyhound teams and entries.",
         );
       }
-
       setData(payload);
-
       setEntryNames(
         Object.fromEntries(
           payload.participants.map((participant) => [
@@ -131,7 +112,6 @@ export default function GreyhoundTeamsEntries({
           ]),
         ),
       );
-
       setTeamNames(
         Object.fromEntries(
           payload.teams.map((team) => [
@@ -140,21 +120,17 @@ export default function GreyhoundTeamsEntries({
           ]),
         ),
       );
-
       setRandomTeamCount((current) => {
         const participantCount = payload.participants.length;
-
         if (participantCount <= 0) {
           return 1;
         }
-
         if (payload.teams.length > 0) {
           return Math.min(
             Math.max(payload.teams.length, 1),
             participantCount,
           );
         }
-
         return Math.min(
           Math.max(current, 1),
           participantCount,
@@ -170,11 +146,9 @@ export default function GreyhoundTeamsEntries({
       setLoading(false);
     }
   }, [leagueId]);
-
   useEffect(() => {
     void load();
   }, [load]);
-
   const act = useCallback(
     async (
       action: string,
@@ -185,7 +159,6 @@ export default function GreyhoundTeamsEntries({
       setWorking(workingKey);
       setError(null);
       setSuccess(null);
-
       try {
         const response = await fetch(
           "/api/greyhound/commissioner/teams-entries",
@@ -201,19 +174,16 @@ export default function GreyhoundTeamsEntries({
             }),
           },
         );
-
         const payload = (await response.json()) as {
           success?: boolean;
           error?: string;
         };
-
         if (!response.ok || !payload.success) {
           throw new Error(
             payload.error ??
               "Unable to update Greyhound teams and entries.",
           );
         }
-
         setSuccess(successMessage);
         await load();
       } catch (actionError) {
@@ -228,23 +198,18 @@ export default function GreyhoundTeamsEntries({
     },
     [leagueId, load],
   );
-
   const membersByTeam = useMemo(() => {
     const map = new Map<number, Participant[]>();
-
     for (const participant of data?.participants ?? []) {
       if (participant.competitionTeamId == null) {
         continue;
       }
-
       const members = map.get(participant.competitionTeamId) ?? [];
       members.push(participant);
       map.set(participant.competitionTeamId, members);
     }
-
     return map;
   }, [data?.participants]);
-
   const unassignedCount = useMemo(
     () =>
       (data?.participants ?? []).filter(
@@ -252,46 +217,36 @@ export default function GreyhoundTeamsEntries({
       ).length,
     [data?.participants],
   );
-
   async function sendInvite() {
     if (inviteWorking) {
       return;
     }
-
     const firstName = cleanName(inviteFirstName);
     const lastName = cleanName(inviteLastName);
     const email = inviteEmail.trim().toLowerCase();
-
     if (!firstName || !lastName || !email) {
       setError("First name, last name and email are required.");
       return;
     }
-
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError("Enter a valid email address.");
       return;
     }
-
     setInviteWorking(true);
     setError(null);
     setSuccess(null);
-
     try {
       const { data: sessionData, error: sessionError } =
         await supabase.auth.getSession();
-
       if (sessionError) {
         throw new Error(sessionError.message);
       }
-
       const accessToken = sessionData.session?.access_token;
-
       if (!accessToken) {
         throw new Error(
           "Your login session is missing. Sign in again and retry.",
         );
       }
-
       const response = await fetch(
         `/api/league/${encodeURIComponent(leagueId)}/invite`,
         {
@@ -308,14 +263,12 @@ export default function GreyhoundTeamsEntries({
           }),
         },
       );
-
       const contentType = response.headers.get("content-type") ?? "";
       let result: {
         success?: boolean;
         message?: string;
         error?: string;
       } = {};
-
       if (contentType.includes("application/json")) {
         result = (await response.json()) as typeof result;
       } else {
@@ -330,13 +283,11 @@ export default function GreyhoundTeamsEntries({
               }`,
         );
       }
-
       if (!response.ok || result.success === false) {
         throw new Error(
           result.error ?? result.message ?? "The invitation could not be sent.",
         );
       }
-
       setSuccess(result.message ?? `Invitation sent to ${email}.`);
       setInviteFirstName("");
       setInviteLastName("");
@@ -352,17 +303,14 @@ export default function GreyhoundTeamsEntries({
       setInviteWorking(false);
     }
   }
-
   async function saveEntryName(participant: Participant) {
     const name = cleanName(
       entryNames[participant.participantId] ?? "",
     );
-
     if (!name) {
       setError("Entry Name cannot be blank.");
       return;
     }
-
     await act(
       "save_entry_name",
       {
@@ -373,10 +321,17 @@ export default function GreyhoundTeamsEntries({
       `Entry Name saved for ${participant.memberName}.`,
     );
   }
-
+  async function createCommissionerManagedTeam() {
+    const name = cleanName(newManagedTeamName);
+    if (!name) {
+      setError("Team / Entry Name cannot be blank.");
+      return;
+    }
+    await act("create_commissioner_managed_team", { teamName: name }, "create-managed-team", `${name} created and initialized.`);
+    setNewManagedTeamName("");
+  }
   async function createTeam() {
     const name = cleanName(newTeamName);
-
     await act(
       "create_team",
       {
@@ -385,18 +340,14 @@ export default function GreyhoundTeamsEntries({
       "create-team",
       "Team created.",
     );
-
     setNewTeamName("");
   }
-
   async function renameTeam(team: CompetitionTeam) {
     const name = cleanName(teamNames[team.id] ?? "");
-
     if (!name) {
       setError("Team Name cannot be blank.");
       return;
     }
-
     await act(
       "rename_team",
       {
@@ -407,16 +358,13 @@ export default function GreyhoundTeamsEntries({
       "Team Name saved.",
     );
   }
-
   async function deleteTeam(team: CompetitionTeam) {
     const confirmed = window.confirm(
       `Delete ${team.teamName}? Its members will become unassigned.`,
     );
-
     if (!confirmed) {
       return;
     }
-
     await act(
       "delete_team",
       {
@@ -426,7 +374,6 @@ export default function GreyhoundTeamsEntries({
       `${team.teamName} deleted.`,
     );
   }
-
   async function assignMember(
     participant: Participant,
     teamId: number | null,
@@ -440,10 +387,8 @@ export default function GreyhoundTeamsEntries({
         `assign-${participant.participantId}`,
         `${participant.memberName} is now unassigned.`,
       );
-
       return;
     }
-
     await act(
       "assign_member",
       {
@@ -454,17 +399,14 @@ export default function GreyhoundTeamsEntries({
       `${participant.memberName} assigned.`,
     );
   }
-
   async function randomizeTeams() {
     if (!data) {
       return;
     }
-
     if (data.participants.length < 1) {
       setError("At least 1 active Greyhound participant is required.");
       return;
     }
-
     if (
       randomTeamCount < 1 ||
       randomTeamCount > data.participants.length
@@ -476,15 +418,12 @@ export default function GreyhoundTeamsEntries({
       );
       return;
     }
-
     const confirmed = window.confirm(
       "Randomizing replaces all current Greyhound team assignments and temporary team names. Continue?",
     );
-
     if (!confirmed) {
       return;
     }
-
     await act(
       "randomize_teams",
       {
@@ -494,7 +433,6 @@ export default function GreyhoundTeamsEntries({
       "Teams randomized and members assigned.",
     );
   }
-
   if (loading && !data) {
     return (
       <main className="gte-page">
@@ -507,11 +445,9 @@ export default function GreyhoundTeamsEntries({
       </main>
     );
   }
-
   return (
     <main className="gte-page">
       <style>{pageStyles}</style>
-
       <div className="gte-shell">
         <section className="gte-hero">
           <div className="gte-hero-inner">
@@ -519,16 +455,13 @@ export default function GreyhoundTeamsEntries({
               <div className="gte-kicker">
                 G365 Greyhound Racing · Commissioner
               </div>
-
               <h1>Teams &amp; Entries</h1>
-
               <p>
                 Manage each member&apos;s personal Entry Name and, for team
                 formats, build the shared competition teams used across League
                 Wagers, Standings, Recap, and Trophy Case.
               </p>
             </div>
-
             <button
               type="button"
               className="gte-secondary-button"
@@ -538,18 +471,14 @@ export default function GreyhoundTeamsEntries({
               Refresh
             </button>
           </div>
-
           <div className="gte-hero-accent" />
         </section>
-
         {error ? (
           <div className="gte-alert error">{error}</div>
         ) : null}
-
         {success ? (
           <div className="gte-alert success">{success}</div>
         ) : null}
-
         {data ? (
           <>
             <section className="gte-summary-grid">
@@ -562,7 +491,6 @@ export default function GreyhoundTeamsEntries({
                     : "Individual Entry Names are active"}
                 </small>
               </article>
-
               <article className="gte-summary-card">
                 <span>SETUP MODE</span>
                 <strong>
@@ -578,13 +506,11 @@ export default function GreyhoundTeamsEntries({
                     : "No shared team assignment required"}
                 </small>
               </article>
-
               <article className="gte-summary-card">
                 <span>PARTICIPANTS</span>
                 <strong>{data.participants.length}</strong>
                 <small>Active Greyhound entries</small>
               </article>
-
               <article className="gte-summary-card">
                 <span>COMPETITION STATUS</span>
                 <strong>
@@ -597,7 +523,6 @@ export default function GreyhoundTeamsEntries({
                 </small>
               </article>
             </section>
-
             <section className="gte-panel gte-invite-panel">
               <div className="gte-panel-head">
                 <div>
@@ -611,10 +536,8 @@ export default function GreyhoundTeamsEntries({
                     Greyhound participant automatically.
                   </p>
                 </div>
-
                 <div className="gte-status-pill">EMAIL INVITE</div>
               </div>
-
               <div className="gte-invite-grid">
                 <label>
                   <span>FIRST NAME</span>
@@ -627,7 +550,6 @@ export default function GreyhoundTeamsEntries({
                     onChange={(event) => setInviteFirstName(event.target.value)}
                   />
                 </label>
-
                 <label>
                   <span>LAST NAME</span>
                   <input
@@ -639,7 +561,6 @@ export default function GreyhoundTeamsEntries({
                     onChange={(event) => setInviteLastName(event.target.value)}
                   />
                 </label>
-
                 <label>
                   <span>EMAIL ADDRESS</span>
                   <input
@@ -651,7 +572,6 @@ export default function GreyhoundTeamsEntries({
                     onChange={(event) => setInviteEmail(event.target.value)}
                   />
                 </label>
-
                 <button
                   type="button"
                   className="gte-primary-button gte-invite-button"
@@ -661,14 +581,32 @@ export default function GreyhoundTeamsEntries({
                   {inviteWorking ? "Sending Invite…" : "Send Invite"}
                 </button>
               </div>
-
               <div className="gte-invite-note">
                 {data.isTeamGame
                   ? "After the invite is accepted, assign the new participant to a shared team below. Random leagues can be randomized again before competition starts; Manual leagues can assign the member directly."
                   : "After the invite is accepted, the member will appear below with an individual Greyhound Entry that can be renamed here."}
               </div>
             </section>
-
+            <section className="gte-panel">
+              <div className="gte-panel-head">
+                <div>
+                  <span className="gte-panel-kicker">COMMISSIONER-MANAGED ENTRIES</span>
+                  <h2>Create Team / Entry</h2>
+                  <p>Create an ownerless Greyhound team that the commissioner can manage and wager for. It receives its own Fantasy Team, Greyhound participant, and bankroll identity.</p>
+                </div>
+                <div className="gte-status-pill">COMMISSIONER MANAGED</div>
+              </div>
+              <div className="gte-create-row">
+                <label>
+                  <span>TEAM / ENTRY NAME</span>
+                  <input type="text" maxLength={50} value={newManagedTeamName} disabled={working != null} placeholder="Commissioner Test Team" onChange={(event) => setNewManagedTeamName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createCommissionerManagedTeam(); }} />
+                </label>
+                <button type="button" className="gte-primary-button" disabled={working != null || !cleanName(newManagedTeamName)} onClick={() => void createCommissionerManagedTeam()}>
+                  {working === "create-managed-team" ? "Creating…" : "Create Team / Entry"}
+                </button>
+              </div>
+              <div className="gte-invite-note">These entries do not require a separate user account. They remain separate from Shared Competition Teams below and can be used as their own wagering and bankroll identity.</div>
+            </section>
             {data.isTeamGame ? (
               <section className="gte-panel">
                 <div className="gte-panel-head">
@@ -686,7 +624,6 @@ export default function GreyhoundTeamsEntries({
                       team competition views.
                     </p>
                   </div>
-
                   <div
                     className={`gte-status-pill${
                       data.competitionStarted ? " locked" : ""
@@ -697,7 +634,6 @@ export default function GreyhoundTeamsEntries({
                       : "ASSIGNMENTS OPEN"}
                   </div>
                 </div>
-
                 {data.teamSetupMode === "random" ? (
                   <div className="gte-random-box">
                     <div>
@@ -707,7 +643,6 @@ export default function GreyhoundTeamsEntries({
                         Initial names are Team 1, Team 2, and so on.
                       </p>
                     </div>
-
                     <div className="gte-random-actions">
                       <label>
                         <span>NUMBER OF TEAMS</span>
@@ -728,7 +663,6 @@ export default function GreyhoundTeamsEntries({
                           }
                         />
                       </label>
-
                       <button
                         type="button"
                         className="gte-primary-button"
@@ -764,7 +698,6 @@ export default function GreyhoundTeamsEntries({
                         }
                       />
                     </label>
-
                     <button
                       type="button"
                       className="gte-primary-button"
@@ -777,7 +710,6 @@ export default function GreyhoundTeamsEntries({
                     </button>
                   </div>
                 )}
-
                 {data.competitionStarted ? (
                   <div className="gte-lock-note">
                     Competition has started. Team creation, deletion,
@@ -785,7 +717,6 @@ export default function GreyhoundTeamsEntries({
                     Commissioner Team Name corrections remain available.
                   </div>
                 ) : null}
-
                 <div className="gte-team-grid">
                   {data.teams.length === 0 ? (
                     <div className="gte-empty">
@@ -799,7 +730,6 @@ export default function GreyhoundTeamsEntries({
                   ) : (
                     data.teams.map((team) => {
                       const members = membersByTeam.get(team.id) ?? [];
-
                       return (
                         <article
                           key={team.id}
@@ -808,7 +738,6 @@ export default function GreyhoundTeamsEntries({
                           <div className="gte-team-number">
                             TEAM {team.teamNumber}
                           </div>
-
                           <div className="gte-team-name-row">
                             <input
                               type="text"
@@ -822,7 +751,6 @@ export default function GreyhoundTeamsEntries({
                                 }))
                               }
                             />
-
                             <button
                               type="button"
                               className="gte-small-button"
@@ -834,12 +762,10 @@ export default function GreyhoundTeamsEntries({
                                 : "Save Name"}
                             </button>
                           </div>
-
                           <div className="gte-member-count">
                             {members.length}{" "}
                             {members.length === 1 ? "member" : "members"}
                           </div>
-
                           <div className="gte-member-chips">
                             {members.length === 0 ? (
                               <span className="gte-muted">
@@ -856,7 +782,6 @@ export default function GreyhoundTeamsEntries({
                               ))
                             )}
                           </div>
-
                           {data.teamSetupMode === "manual" ? (
                             <button
                               type="button"
@@ -878,7 +803,6 @@ export default function GreyhoundTeamsEntries({
                 </div>
               </section>
             ) : null}
-
             <section className="gte-panel">
               <div className="gte-panel-head">
                 <div>
@@ -895,14 +819,12 @@ export default function GreyhoundTeamsEntries({
                     identity even when that member is assigned to a shared team.
                   </p>
                 </div>
-
                 {data.isTeamGame ? (
                   <div className="gte-unassigned">
                     {unassignedCount} UNASSIGNED
                   </div>
                 ) : null}
               </div>
-
               <div className="gte-participant-list">
                 {data.participants.length === 0 ? (
                   <div className="gte-empty">
@@ -924,20 +846,20 @@ export default function GreyhoundTeamsEntries({
                             .slice(0, 2)
                             .toUpperCase()}
                         </div>
-
                         <div>
                           <strong>{participant.memberName}</strong>
                           <span>
-                            {participant.leagueRole === "commissioner"
-                              ? "Commissioner"
-                              : "Member"}
+                            {participant.userId == null
+                              ? "Commissioner Managed"
+                              : participant.leagueRole === "commissioner"
+                                ? "Commissioner"
+                                : "Member"}
                             {participant.teamName
                               ? ` · ${participant.teamName}`
                               : ""}
                           </span>
                         </div>
                       </div>
-
                       <label className="gte-entry-field">
                         <span>ENTRY NAME</span>
                         <div className="gte-inline-field">
@@ -956,7 +878,6 @@ export default function GreyhoundTeamsEntries({
                               }))
                             }
                           />
-
                           <button
                             type="button"
                             className="gte-small-button"
@@ -972,11 +893,9 @@ export default function GreyhoundTeamsEntries({
                           </button>
                         </div>
                       </label>
-
                       {data.isTeamGame ? (
                         <label className="gte-team-field">
                           <span>SHARED TEAM</span>
-
                           {data.teamSetupMode === "manual" ? (
                             <select
                               value={
@@ -997,7 +916,6 @@ export default function GreyhoundTeamsEntries({
                               }
                             >
                               <option value="">Unassigned</option>
-
                               {data.teams.map((team) => (
                                 <option
                                   key={team.id}
@@ -1025,13 +943,11 @@ export default function GreyhoundTeamsEntries({
     </main>
   );
 }
-
 const pageStyles = `
   .gte-page,
-  .gte-page * {
+  .gte-page \* {
     box-sizing: border-box;
   }
-
   .gte-page {
     min-height: 100vh;
     padding: 20px 18px 72px;
@@ -1041,12 +957,10 @@ const pageStyles = `
       linear-gradient(180deg, #07080a 0%, #0b0c0f 46%, #07080a 100%);
     color: #fff;
   }
-
   .gte-shell {
     width: min(1500px, 100%);
     margin: 0 auto;
   }
-
   .gte-loading,
   .gte-empty {
     border: 1px solid #2b2d31;
@@ -1055,23 +969,19 @@ const pageStyles = `
     color: #a3a7ad;
     padding: 24px;
   }
-
   .gte-empty {
     grid-column: 1 / -1;
     display: flex;
     flex-direction: column;
     gap: 5px;
   }
-
   .gte-empty strong {
     color: #fff;
     font-size: 14px;
   }
-
   .gte-empty span {
     font-size: 11px;
   }
-
   .gte-hero {
     overflow: hidden;
     border: 1px solid rgba(255, 107, 34, .30);
@@ -1080,7 +990,6 @@ const pageStyles = `
       linear-gradient(125deg, rgba(125, 19, 14, .60), rgba(70, 18, 12, .46) 34%, rgba(255, 107, 34, .07) 66%, #101114);
     box-shadow: 0 22px 60px rgba(0, 0, 0, .36);
   }
-
   .gte-hero-inner {
     display: flex;
     align-items: flex-start;
@@ -1088,7 +997,6 @@ const pageStyles = `
     gap: 20px;
     padding: 27px 28px 25px;
   }
-
   .gte-kicker,
   .gte-panel-kicker,
   .gte-summary-card > span,
@@ -1103,7 +1011,6 @@ const pageStyles = `
     letter-spacing: .14em;
     text-transform: uppercase;
   }
-
   .gte-hero h1 {
     margin: 7px 0 8px;
     font-size: clamp(30px, 4vw, 46px);
@@ -1111,7 +1018,6 @@ const pageStyles = `
     font-weight: 950;
     letter-spacing: -.04em;
   }
-
   .gte-hero p {
     max-width: 900px;
     margin: 0;
@@ -1120,12 +1026,10 @@ const pageStyles = `
     line-height: 1.7;
     font-weight: 650;
   }
-
   .gte-hero-accent {
     height: 4px;
     background: linear-gradient(90deg, #8f1713, #cb341a 45%, #f26b22 78%, #ff8a3d);
   }
-
   .gte-primary-button,
   .gte-secondary-button,
   .gte-small-button,
@@ -1139,14 +1043,12 @@ const pageStyles = `
     text-transform: uppercase;
     cursor: pointer;
   }
-
   .gte-primary-button {
     border: 1px solid rgba(255, 119, 42, .38);
     background: linear-gradient(90deg, #991d16, #cb341a 52%, #ee641e);
     color: #fff;
     padding: 0 16px;
   }
-
   .gte-secondary-button {
     flex: 0 0 auto;
     border: 1px solid #3a3d42;
@@ -1154,7 +1056,6 @@ const pageStyles = `
     color: #e4e5e7;
     padding: 0 15px;
   }
-
   .gte-small-button {
     min-height: 38px;
     border: 1px solid rgba(240, 102, 37, .34);
@@ -1163,7 +1064,6 @@ const pageStyles = `
     padding: 0 12px;
     white-space: nowrap;
   }
-
   .gte-danger-button {
     width: 100%;
     margin-top: 13px;
@@ -1171,14 +1071,12 @@ const pageStyles = `
     background: rgba(109, 22, 17, .22);
     color: #ef8b82;
   }
-
   button:disabled,
   select:disabled,
   input:disabled {
     cursor: not-allowed !important;
     opacity: .48;
   }
-
   .gte-alert {
     margin-top: 12px;
     padding: 12px 14px;
@@ -1186,26 +1084,22 @@ const pageStyles = `
     font-size: 11px;
     font-weight: 750;
   }
-
   .gte-alert.error {
     border: 1px solid rgba(210, 55, 43, .42);
     background: rgba(112, 24, 19, .30);
     color: #ffb0a8;
   }
-
   .gte-alert.success {
     border: 1px solid rgba(47, 157, 90, .38);
     background: rgba(20, 89, 50, .25);
     color: #99e7b9;
   }
-
   .gte-summary-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 10px;
     margin: 14px 0;
   }
-
   .gte-summary-card {
     min-height: 112px;
     padding: 15px 16px;
@@ -1215,7 +1109,6 @@ const pageStyles = `
       linear-gradient(145deg, rgba(75, 20, 12, .24), transparent 58%),
       #101114;
   }
-
   .gte-summary-card strong {
     display: block;
     margin-top: 8px;
@@ -1224,7 +1117,6 @@ const pageStyles = `
     line-height: 1.15;
     font-weight: 950;
   }
-
   .gte-summary-card small {
     display: block;
     margin-top: 6px;
@@ -1233,7 +1125,6 @@ const pageStyles = `
     line-height: 1.45;
     font-weight: 650;
   }
-
   .gte-panel {
     margin-top: 14px;
     padding: 18px;
@@ -1244,7 +1135,6 @@ const pageStyles = `
       #101113;
     box-shadow: 0 16px 36px rgba(0,0,0,.24);
   }
-
   .gte-panel-head {
     display: flex;
     align-items: flex-start;
@@ -1252,14 +1142,12 @@ const pageStyles = `
     gap: 16px;
     margin-bottom: 15px;
   }
-
   .gte-panel-head h2 {
     margin: 5px 0 0;
     font-size: 23px;
     font-weight: 950;
     letter-spacing: -.025em;
   }
-
   .gte-panel-head p {
     max-width: 820px;
     margin: 5px 0 0;
@@ -1267,7 +1155,6 @@ const pageStyles = `
     font-size: 10px;
     line-height: 1.6;
   }
-
   .gte-status-pill,
   .gte-unassigned {
     flex: 0 0 auto;
@@ -1280,14 +1167,12 @@ const pageStyles = `
     font-weight: 950;
     letter-spacing: .08em;
   }
-
   .gte-status-pill.locked,
   .gte-unassigned {
     border-color: rgba(230, 96, 35, .35);
     background: rgba(99, 35, 13, .25);
     color: #ffad79;
   }
-
   .gte-random-box {
     display: flex;
     align-items: end;
@@ -1299,11 +1184,9 @@ const pageStyles = `
     border-radius: 13px;
     background: #151619;
   }
-
   .gte-random-box strong {
     font-size: 13px;
   }
-
   .gte-random-box p {
     max-width: 700px;
     margin: 5px 0 0;
@@ -1311,33 +1194,27 @@ const pageStyles = `
     font-size: 10px;
     line-height: 1.55;
   }
-
   .gte-random-actions,
   .gte-create-row {
     display: flex;
     align-items: end;
     gap: 10px;
   }
-
   .gte-random-actions label,
   .gte-create-row label {
     display: grid;
     gap: 6px;
   }
-
   .gte-random-actions input {
     width: 105px;
   }
-
   .gte-create-row {
     margin-bottom: 15px;
   }
-
   .gte-create-row label {
     flex: 1;
     max-width: 480px;
   }
-
   .gte-page input,
   .gte-page select,
   .gte-assignment-display {
@@ -1353,31 +1230,26 @@ const pageStyles = `
     font-size: 11px;
     font-weight: 700;
   }
-
   .gte-page input:focus,
   .gte-page select:focus {
     border-color: #e25a24;
     box-shadow: 0 0 0 3px rgba(226, 90, 36, .10);
   }
-
   .gte-invite-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
     align-items: end;
     gap: 10px;
   }
-
   .gte-invite-grid label {
     display: grid;
     gap: 6px;
     min-width: 0;
   }
-
   .gte-invite-button {
     min-height: 40px;
     white-space: nowrap;
   }
-
   .gte-invite-note {
     margin-top: 11px;
     padding: 10px 12px;
@@ -1389,7 +1261,6 @@ const pageStyles = `
     line-height: 1.55;
     font-weight: 700;
   }
-
   .gte-lock-note {
     margin-bottom: 14px;
     padding: 10px 12px;
@@ -1401,13 +1272,11 @@ const pageStyles = `
     line-height: 1.5;
     font-weight: 700;
   }
-
   .gte-team-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 11px;
   }
-
   .gte-team-card {
     min-width: 0;
     padding: 14px;
@@ -1415,31 +1284,26 @@ const pageStyles = `
     border-radius: 14px;
     background: #151619;
   }
-
   .gte-team-number {
     color: #e76227;
     font-size: 8px;
     font-weight: 950;
     letter-spacing: .13em;
   }
-
   .gte-team-name-row,
   .gte-inline-field {
     display: flex;
     align-items: center;
     gap: 8px;
   }
-
   .gte-team-name-row {
     margin-top: 8px;
   }
-
   .gte-team-name-row input,
   .gte-inline-field input {
     min-width: 0;
     flex: 1;
   }
-
   .gte-member-count {
     margin-top: 13px;
     color: #777c83;
@@ -1448,14 +1312,12 @@ const pageStyles = `
     text-transform: uppercase;
     letter-spacing: .06em;
   }
-
   .gte-member-chips {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     margin-top: 8px;
   }
-
   .gte-member-chip {
     display: inline-flex;
     min-height: 28px;
@@ -1468,17 +1330,14 @@ const pageStyles = `
     font-size: 9px;
     font-weight: 750;
   }
-
   .gte-muted {
     color: #666b73;
     font-size: 9px;
   }
-
   .gte-participant-list {
     display: grid;
     gap: 8px;
   }
-
   .gte-participant-row {
     display: grid;
     grid-template-columns: minmax(220px, .9fr) minmax(280px, 1.2fr) minmax(190px, .7fr);
@@ -1489,14 +1348,12 @@ const pageStyles = `
     border-radius: 12px;
     background: #141518;
   }
-
   .gte-person {
     display: flex;
     align-items: center;
     gap: 10px;
     min-height: 40px;
   }
-
   .gte-avatar {
     display: flex;
     width: 38px;
@@ -1511,12 +1368,10 @@ const pageStyles = `
     font-size: 10px;
     font-weight: 950;
   }
-
   .gte-person strong {
     display: block;
     font-size: 11px;
   }
-
   .gte-person span {
     display: block;
     margin-top: 3px;
@@ -1524,52 +1379,42 @@ const pageStyles = `
     font-size: 8px;
     font-weight: 700;
   }
-
   .gte-entry-field,
   .gte-team-field {
     display: grid;
     gap: 6px;
   }
-
   .gte-assignment-display {
     display: flex;
     align-items: center;
     color: #b7bac0;
   }
-
   @media (max-width: 1050px) {
     .gte-summary-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-
     .gte-team-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-
     .gte-participant-row {
       grid-template-columns: 1fr 1fr;
     }
-
     .gte-person {
       grid-column: 1 / -1;
     }
   }
-
   @media (max-width: 700px) {
     .gte-page {
       padding: 12px 10px 70px;
     }
-
     .gte-hero-inner,
     .gte-panel-head,
     .gte-random-box {
       flex-direction: column;
     }
-
     .gte-hero-inner {
       padding: 19px 16px;
     }
-
     .gte-secondary-button,
     .gte-status-pill,
     .gte-unassigned {
@@ -1577,82 +1422,66 @@ const pageStyles = `
       text-align: center;
       justify-content: center;
     }
-
     .gte-summary-grid,
     .gte-team-grid,
     .gte-participant-row {
       grid-template-columns: 1fr;
     }
-
     .gte-panel {
       padding: 14px 12px;
     }
-
     .gte-random-actions,
     .gte-create-row,
     .gte-team-name-row,
     .gte-inline-field {
       width: 100%;
     }
-
     .gte-random-actions,
     .gte-create-row {
       align-items: stretch;
       flex-direction: column;
     }
-
     .gte-random-actions input {
       width: 100%;
     }
-
     .gte-create-row label {
       max-width: none;
     }
-
     .gte-team-name-row,
     .gte-inline-field {
       align-items: stretch;
       flex-direction: column;
     }
-
     .gte-small-button,
     .gte-primary-button {
       width: 100%;
     }
-
     .gte-person {
       grid-column: auto;
     }
   }
-
   @media (max-width: 430px) {
     .gte-summary-grid {
       grid-template-columns: 1fr;
     }
   }
-
-
   @media (max-width: 860px) {
     .gte-invite-grid {
       grid-template-columns: 1fr 1fr;
     }
-
     .gte-invite-grid label:nth-child(3),
     .gte-invite-button {
       grid-column: 1 / -1;
     }
-
     .gte-invite-button {
       width: 100%;
       min-height: 48px;
     }
   }
-
   @media (max-width: 560px) {
     .gte-invite-grid {
       grid-template-columns: 1fr;
     }
-
     .gte-invite-grid label,
     .gte-invite-grid label:nth-child(3),
     .gte-invite-button {

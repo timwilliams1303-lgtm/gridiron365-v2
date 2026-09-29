@@ -1071,11 +1071,30 @@ export default async function NhlTraditionalMyTeam({
                   ])
                 );
 
+                // Always show every configured starter spot, including empty starters.
+                // Bench rows are different: only render bench spots that currently contain
+                // a player for this date. Empty BN placeholders stay available as move
+                // destinations, but they do not appear as extra rows in the lineup table.
+                const occupiedBenchSpotIndexes = Array.from(
+                  new Set(
+                    dayRows
+                      .filter(
+                        (row) =>
+                          String(row.lineup_slot ?? "").toUpperCase() === "BN"
+                      )
+                      .map((row) => Number(row.slot_index ?? 1))
+                      .filter(
+                        (slotIndex) =>
+                          Number.isFinite(slotIndex) && slotIndex > 0
+                      )
+                  )
+                ).sort((a, b) => a - b);
+
                 const tableSpots = [
                   ...starterSpotDefinitions,
-                  ...Array.from({ length: benchSlots }, (_, index) => ({
+                  ...occupiedBenchSpotIndexes.map((slotIndex) => ({
                     label: "BN",
-                    slotIndex: index + 1,
+                    slotIndex,
                   })),
                 ];
 
@@ -1223,25 +1242,82 @@ function NhlLineupTableRow({
   const returnLabel = injuryReturnLabel(player?.injury_return_date);
   const allowedLabels = eligibleMoveLabels(player, positionMode);
 
-  const moveTargets = Array.from(allowedLabels)
-    .map((targetLabel) => {
-      const matchingTargets = targets.filter((target) => target.label === targetLabel);
-      if (matchingTargets.length === 0) return null;
-
-      const currentTarget = matchingTargets.find(
-        (target) =>
-          target.label === String(row?.lineup_slot ?? "").toUpperCase() &&
-          target.slotIndex === Number(row?.slot_index ?? 1)
-      );
-
-      return currentTarget ?? matchingTargets[0];
-    })
-    .filter((target): target is { label: string; slotIndex: number } => target != null);
+  // Keep every configured slot for every position the player is eligible for.
+  // Example: if the league has RW1 and RW2, a bench RW can choose either spot.
+  const moveTargets = targets.filter((target) =>
+    allowedLabels.has(target.label)
+  );
 
   return (
     <tr className={locked ? "g365-nhl-lineup-row locked" : "g365-nhl-lineup-row"}>
       <td className="pos-cell">
-        <span className="g365-nhl-table-pos">{label}</span>
+        {row && !locked ? (
+          <details className="g365-nhl-pos-move-menu">
+            <summary
+              className="g365-nhl-table-pos clickable"
+              aria-label={`Move ${player?.display_name ?? "player"} from ${label}${slotIndex}`}
+              title="Click to move player"
+            >
+              {label}
+            </summary>
+
+            <div className="g365-nhl-pos-move-popover">
+              <span className="g365-nhl-pos-move-title">MOVE TO</span>
+
+              <div className="g365-nhl-pos-move-options">
+                {moveTargets.map((target) => {
+                  const isCurrent =
+                    target.label === String(row.lineup_slot ?? "").toUpperCase() &&
+                    target.slotIndex === Number(row.slot_index ?? 1);
+                  const sameLabelTargetCount = moveTargets.filter(
+                    (candidate) => candidate.label === target.label
+                  ).length;
+                  const targetDisplayLabel =
+                    sameLabelTargetCount > 1
+                      ? `${target.label}${target.slotIndex}`
+                      : target.label;
+
+                  if (isCurrent) {
+                    return (
+                      <span
+                        key={`${target.label}-${target.slotIndex}`}
+                        className="g365-nhl-pos-move-option current"
+                      >
+                        {targetDisplayLabel}
+                      </span>
+                    );
+                  }
+
+                  return (
+                    <form
+                      action={moveLineupPlayerAction}
+                      key={`${target.label}-${target.slotIndex}`}
+                    >
+                      <input type="hidden" name="leagueId" value={leagueId} />
+                      <input type="hidden" name="fantasyTeamId" value={fantasyTeamId} />
+                      <input type="hidden" name="nhlPlayerId" value={row.nhl_player_id} />
+                      <input type="hidden" name="lineupDate" value={lineupDate} />
+                      <input
+                        type="hidden"
+                        name="target"
+                        value={`${target.label}|${target.slotIndex}`}
+                      />
+                      <button
+                        type="submit"
+                        className="g365-nhl-pos-move-option"
+                        aria-label={`Move ${player?.display_name ?? "player"} to ${targetDisplayLabel}`}
+                      >
+                        {targetDisplayLabel}
+                      </button>
+                    </form>
+                  );
+                })}
+              </div>
+            </div>
+          </details>
+        ) : (
+          <span className="g365-nhl-table-pos">{label}</span>
+        )}
       </td>
 
       <td className="player-cell">
@@ -1325,39 +1401,7 @@ function NhlLineupTableRow({
           locked ? (
             <span className="g365-nhl-action-locked">LOCKED</span>
           ) : (
-            <div className="g365-nhl-position-actions" aria-label={`Move ${player?.display_name ?? "player"}`}>
-              {moveTargets.map((target) => {
-                const isCurrent =
-                  target.label === String(row.lineup_slot ?? "").toUpperCase() &&
-                  target.slotIndex === Number(row.slot_index ?? 1);
-
-                return (
-                  <form action={moveLineupPlayerAction} key={target.label}>
-                    <input type="hidden" name="leagueId" value={leagueId} />
-                    <input type="hidden" name="fantasyTeamId" value={fantasyTeamId} />
-                    <input type="hidden" name="nhlPlayerId" value={row.nhl_player_id} />
-                    <input type="hidden" name="lineupDate" value={lineupDate} />
-                    <input
-                      type="hidden"
-                      name="target"
-                      value={`${target.label}|${target.slotIndex}`}
-                    />
-                    <button
-                      type="submit"
-                      className={`g365-nhl-position-button${isCurrent ? " current" : ""}`}
-                      disabled={isCurrent}
-                      aria-label={
-                        isCurrent
-                          ? `${player?.display_name ?? "Player"} is currently at ${target.label}`
-                          : `Move ${player?.display_name ?? "player"} to ${target.label}`
-                      }
-                    >
-                      {target.label}
-                    </button>
-                  </form>
-                );
-              })}
-
+            <div className="g365-nhl-position-actions" aria-label={`Manage ${player?.display_name ?? "player"}`}>
               <form action={dropPlayerAction}>
                 <input type="hidden" name="leagueId" value={leagueId} />
                 <input type="hidden" name="fantasyTeamId" value={fantasyTeamId} />
@@ -2545,7 +2589,7 @@ const baseStyles = `
   .g365-nhl-position-button.drop { min-width:52px; border-color:rgba(239,68,68,.72); background:rgba(127,29,29,.2); color:#ff8b8b; }
   .g365-nhl-position-button.drop:hover, .g365-nhl-position-button.drop:focus-visible { border-color:rgba(248,113,113,.95); background:rgba(185,28,28,.32); color:#fff; }
   .g365-nhl-table-move-form { display:flex; align-items:center; justify-content:flex-end; gap:6px; }
-  .g365-nhl-table-move-form select { min-height:34px; max-width:92px; padding:0 7px; border:1px solid rgba(255,119,0,.18); border-radius:6px; background:#111; color:#fff; font-size:8px; font-weight:800; }
+  .g365-nhl-table-move-form select { min-height:34px; width:108px; max-width:108px; padding:0 7px; border:1px solid rgba(255,119,0,.18); border-radius:6px; background:#111; color:#fff; font-size:8px; font-weight:800; }
   .g365-nhl-table-move-form button, .g365-nhl-ir-activate { min-height:34px; padding:0 10px; border:1px solid rgba(255,92,0,.5); border-radius:6px; background:linear-gradient(135deg,#d91d1d,#ff4b00,#ff7900); color:#fff; font-size:8px; font-weight:900; cursor:pointer; }
   .g365-nhl-action-locked { color:#858b95; font-size:8px; font-weight:900; }
   @media (max-width: 900px) {
@@ -2843,4 +2887,93 @@ const baseStyles = `
       width: 100%;
     }
   }
+  .g365-nhl-pos-move-menu {
+    position: relative;
+    display: inline-block;
+  }
+
+  .g365-nhl-pos-move-menu > summary {
+    list-style: none;
+  }
+
+  .g365-nhl-pos-move-menu > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .g365-nhl-table-pos.clickable {
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+  }
+
+  .g365-nhl-table-pos.clickable:hover,
+  .g365-nhl-pos-move-menu[open] > .g365-nhl-table-pos.clickable {
+    border-color: #ff6a00;
+    background: rgba(255, 92, 0, 0.16);
+    transform: translateY(-1px);
+  }
+
+  .g365-nhl-pos-move-popover {
+    position: absolute;
+    z-index: 50;
+    top: calc(100% + 7px);
+    left: 0;
+    width: max-content;
+    min-width: 150px;
+    max-width: min(310px, 80vw);
+    padding: 10px;
+    border: 1px solid rgba(255, 103, 0, 0.5);
+    border-radius: 10px;
+    background: #101010;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
+  }
+
+  .g365-nhl-pos-move-title {
+    display: block;
+    margin-bottom: 7px;
+    color: #8f96a3;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+  }
+
+  .g365-nhl-pos-move-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .g365-nhl-pos-move-options form {
+    margin: 0;
+  }
+
+  .g365-nhl-pos-move-option {
+    min-width: 42px;
+    min-height: 32px;
+    padding: 0 9px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 105, 0, 0.55);
+    border-radius: 7px;
+    background: rgba(255, 92, 0, 0.08);
+    color: #ff7a18;
+    font: inherit;
+    font-size: 9px;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .g365-nhl-pos-move-option:hover {
+    background: linear-gradient(135deg, #e32900, #ff6a00);
+    color: #fff;
+  }
+
+  .g365-nhl-pos-move-option.current {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: #17191d;
+    color: #646b76;
+    cursor: default;
+  }
+
 `;

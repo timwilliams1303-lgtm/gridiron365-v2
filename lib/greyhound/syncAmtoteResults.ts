@@ -1,5 +1,4 @@
 import "server-only";
-
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   archiveCompletedGreyhoundCompetitions,
@@ -13,13 +12,13 @@ import {
   getAmtoteRaceResult,
   getAmtoteRaceResults,
   getAmtoteRaces,
+  getAmtoteUSOControlTrackStates,
   g365TrackCodeForAmtote,
   type AmtoteDetailedRaceResult,
   type AmtoteRaceResultRow,
   type AmtoteTrackId,
   type G365GreyhoundTrackCode,
 } from "@/lib/greyhound/amtote";
-
 type SupportedWagerType =
   | "win"
   | "place"
@@ -29,7 +28,6 @@ type SupportedWagerType =
   | "quinella"
   | "trifecta"
   | "superfecta";
-
 type ResultTrackSync = {
   trackId: AmtoteTrackId;
   trackCode: G365GreyhoundTrackCode;
@@ -48,7 +46,6 @@ type ResultTrackSync = {
   failed: boolean;
   errorMessage: string | null;
 };
-
 export type SyncAmtoteGreyhoundResultsResult = {
   success: boolean;
   syncedAt: string;
@@ -132,7 +129,6 @@ export type SyncAmtoteGreyhoundResultsResult = {
     }>;
   } | null;
 };
-
 type PayoutRecord = {
   wagerType: SupportedWagerType;
   combination: string;
@@ -140,7 +136,6 @@ type PayoutRecord = {
   payout: number;
   sourceKey: string;
 };
-
 type GreyhoundCardRow = {
   id: number;
   race_date: string;
@@ -150,23 +145,19 @@ type GreyhoundCardRow = {
   automation_enabled: boolean;
   commissioner_confirmed_at: string | null;
 };
-
 function normalizeCombination(value: string): string {
   return value
     .trim()
     .replace(/[^0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
-
 function numericBox(value: string | null): number | null {
   if (!value) return null;
   const parsed = Number(value.trim());
-
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 8
     ? parsed
     : null;
 }
-
 function detailedTopFour(
   result: AmtoteDetailedRaceResult,
 ): Array<{ box: number; finish: number; row: AmtoteRaceResultRow }> {
@@ -193,25 +184,28 @@ function detailedTopFour(
     )
     .sort((a, b) => a.finish - b.finish);
 }
-
 function arraysEqual(a: number[], b: number[]) {
   return (
     a.length === b.length &&
     a.every((value, index) => value === b[index])
   );
 }
-
 function exoticWagerType(
   template: string | null,
 ): SupportedWagerType | null {
   const normalized = (template ?? "").trim().toLowerCase();
-
   if (normalized === "exacta") return "exacta";
   if (normalized === "perfecta") return "perfecta";
   if (normalized === "quinella") return "quinella";
   if (normalized === "trifecta") return "trifecta";
   if (normalized === "superfecta") return "superfecta";
-
+  return null;
+}
+function multiRaceWagerType(row: AmtoteRaceResultRow): "pick4" | "pick5" | null {
+  const poolCode = (row.poolCode ?? "").trim().toUpperCase();
+  const template = (row.template ?? "").trim().toUpperCase().replace(/[\s_-]+/g, "");
+  if (poolCode === "P4" || template === "PICK4") return "pick4";
+  if (poolCode === "P5" || template === "PICK5") return "pick5";
   return null;
 }
 
@@ -222,18 +216,14 @@ function buildPayoutRecords(args: {
   result: AmtoteDetailedRaceResult;
 }): PayoutRecord[] {
   const payouts: PayoutRecord[] = [];
-
   for (const row of args.result.rows) {
     const sortKey = row.sort ?? 999;
     const template = (row.template ?? "").trim().toLowerCase();
-
     if (template === "winplacshow") {
       const box = numericBox(row.text);
       if (box === null) continue;
-
       // AmTote's US W/P/S fields are the published $2 return.
       const wpsBase = 2;
-
       if (row.winPayout !== null && row.winPayout > 0) {
         payouts.push({
           wagerType: "win",
@@ -244,7 +234,6 @@ function buildPayoutRecords(args: {
             `amtote:${args.trackId}:${args.raceDate}:${args.raceNumber}:row:${sortKey}:win`,
         });
       }
-
       if (row.placePayout !== null && row.placePayout > 0) {
         payouts.push({
           wagerType: "place",
@@ -255,7 +244,6 @@ function buildPayoutRecords(args: {
             `amtote:${args.trackId}:${args.raceDate}:${args.raceNumber}:row:${sortKey}:place`,
         });
       }
-
       if (row.showPayout !== null && row.showPayout > 0) {
         payouts.push({
           wagerType: "show",
@@ -266,28 +254,21 @@ function buildPayoutRecords(args: {
             `amtote:${args.trackId}:${args.raceDate}:${args.raceNumber}:row:${sortKey}:show`,
         });
       }
-
       continue;
     }
-
     const wagerType = exoticWagerType(row.template);
     if (!wagerType) continue;
-
     const rawCombination = (row.text ?? "").trim();
-
     // AmTote sometimes publishes an informational "BOX" payout row in
     // addition to the actual winning combination. G365 grades the user's
     // generated combinations, so the informational BOX row is ignored.
     if (!rawCombination || rawCombination.toUpperCase() === "BOX") {
       continue;
     }
-
     const combination = normalizeCombination(rawCombination);
-
     if (!combination) continue;
     if (row.baseAmount === null || row.baseAmount <= 0) continue;
     if (row.payout === null || row.payout < 0) continue;
-
     payouts.push({
       wagerType,
       combination,
@@ -297,37 +278,30 @@ function buildPayoutRecords(args: {
         `amtote:${args.trackId}:${args.raceDate}:${args.raceNumber}:row:${sortKey}:${wagerType}`,
     });
   }
-
   return payouts;
 }
-
 async function syncOneTrackResults(
   trackId: AmtoteTrackId,
 ): Promise<ResultTrackSync> {
   const supabase = createSupabaseAdminClient();
   const trackCode = g365TrackCodeForAmtote(trackId);
-
   // GetRaces is still used to identify the feed's current date.
   // We do NOT assume that the current feed date is the only card that may
   // still need results. AmTote can advance to the next card while the prior
   // G365 card still needs final result/payout processing.
   const feedCard = await getAmtoteRaces(trackId);
-
   const { data: track, error: trackError } = await supabase
     .from("greyhound_tracks")
     .select("id, code")
     .eq("code", trackCode)
     .eq("active", true)
     .maybeSingle();
-
   if (trackError) throw trackError;
-
   if (!track) {
     throw new Error(
       `Active G365 Greyhound track ${trackCode} was not found.`,
     );
   }
-
   // Prefer the oldest confirmed, automation-enabled, non-terminal card for
   // this track up through the current AmTote feed date. This allows a prior
   // card to finish settling even after GetRaces has advanced to the next day.
@@ -345,14 +319,11 @@ async function syncOneTrackResults(
     .order("race_date", { ascending: true })
     .order("id", { ascending: true })
     .limit(1);
-
   if (unfinishedError) throw unfinishedError;
-
   let card: GreyhoundCardRow | null =
     unfinishedCards && unfinishedCards.length > 0
       ? (unfinishedCards[0] as GreyhoundCardRow)
       : null;
-
   // If there is no unfinished card, fall back to the exact card represented
   // by GetRaces. This preserves the terminal "Card is final" fast-stop path.
   if (!card) {
@@ -365,12 +336,9 @@ async function syncOneTrackResults(
       .eq("race_date", feedCard.raceDate)
       .eq("session", feedCard.session)
       .maybeSingle();
-
     if (currentCardError) throw currentCardError;
-
     card = currentCard as GreyhoundCardRow | null;
   }
-
   if (!card) {
     return {
       trackId,
@@ -392,10 +360,8 @@ async function syncOneTrackResults(
       errorMessage: null,
     };
   }
-
   const targetRaceDate = String(card.race_date);
   const targetSession = String(card.session);
-
   // Final is terminal for the results worker. Once a card is final,
   // do not call GetRaceResults/GetRaceResult again and do not re-run
   // settlement, payout upserts, dog-result upserts, or bankroll refreshes.
@@ -419,7 +385,6 @@ async function syncOneTrackResults(
       errorMessage: null,
     };
   }
-
   if (card.card_status === "cancelled") {
     return {
       trackId,
@@ -440,7 +405,6 @@ async function syncOneTrackResults(
       errorMessage: null,
     };
   }
-
   if (!["imported", "updated"].includes(card.import_status)) {
     return {
       trackId,
@@ -461,7 +425,6 @@ async function syncOneTrackResults(
       errorMessage: null,
     };
   }
-
   // Query results for the stored G365 card date, not blindly for the current
   // GetRaces date. GetRaceResults supports historical dates and this is what
   // prevents an unfinished card from being stranded after feed rollover.
@@ -469,27 +432,22 @@ async function syncOneTrackResults(
     trackId,
     targetRaceDate,
   );
-
   if (summary.raceDate !== targetRaceDate) {
     throw new Error(
       `${trackCode} date safety check failed. Target=${targetRaceDate}, GetRaceResults=${summary.raceDate}.`,
     );
   }
-
   const { data: savedRaces, error: racesError } = await supabase
     .from("greyhound_races")
     .select("id, race_number, race_status")
     .eq("card_id", card.id)
     .order("race_number", { ascending: true });
-
   if (racesError) throw racesError;
-
   const savedRaceByNumber = new Map<number, {
     id: number;
     race_number: number;
     race_status: string;
   }>();
-
   for (const race of savedRaces ?? []) {
     savedRaceByNumber.set(Number(race.race_number), {
       id: Number(race.id),
@@ -497,29 +455,24 @@ async function syncOneTrackResults(
       race_status: String(race.race_status),
     });
   }
-
   let racesProcessed = 0;
   let raceResultRowsUpserted = 0;
   let dogResultRowsUpserted = 0;
   let payoutsUpserted = 0;
   let racesSettled = 0;
   let skippedRaces = 0;
-
   for (const summaryRace of summary.rows) {
     if (summaryRace.topFour.length < 4) {
       skippedRaces += 1;
       continue;
     }
-
     const savedRace = savedRaceByNumber.get(
       summaryRace.raceNumber,
     );
-
     if (!savedRace) {
       skippedRaces += 1;
       continue;
     }
-
     if (
       savedRace.race_status === "cancelled" ||
       savedRace.race_status === "no_contest"
@@ -527,33 +480,27 @@ async function syncOneTrackResults(
       skippedRaces += 1;
       continue;
     }
-
     const detailed = await getAmtoteRaceResult(
       trackId,
       targetRaceDate,
       summaryRace.raceNumber,
     );
-
     if (detailed.raceDate !== targetRaceDate) {
       throw new Error(
         `${trackCode} Race ${summaryRace.raceNumber} detailed result date mismatch. Expected ${targetRaceDate}, got ${detailed.raceDate}.`,
       );
     }
-
     if (detailed.raceNumber !== summaryRace.raceNumber) {
       throw new Error(
         `${trackCode} detailed result race mismatch. Expected Race ${summaryRace.raceNumber}, got Race ${detailed.raceNumber}.`,
       );
     }
-
     if (!detailed.reportReady) {
       skippedRaces += 1;
       continue;
     }
-
     const topFourRows = detailedTopFour(detailed);
     const detailedBoxes = topFourRows.map((item) => item.box);
-
     if (
       topFourRows.length < 4 ||
       !arraysEqual(
@@ -565,11 +512,9 @@ async function syncOneTrackResults(
         `${trackCode} Race ${summaryRace.raceNumber} result cross-check failed. Summary=${summaryRace.topFour.join("-")}, Detailed=${detailedBoxes.join("-") || "none"}.`,
       );
     }
-
     for (const item of topFourRows) {
       const sourceResultKey =
         `amtote:${trackId}:${targetRaceDate}:${summaryRace.raceNumber}:finish:${item.finish}`;
-
       const { error: resultError } = await supabase.rpc(
         "upsert_greyhound_race_result",
         {
@@ -584,15 +529,12 @@ async function syncOneTrackResults(
           p_source_result_key: sourceResultKey,
         },
       );
-
       if (resultError) {
         throw new Error(
           `${trackCode} Race ${summaryRace.raceNumber} Box ${item.box} result upsert failed: ${resultError.message}`,
         );
       }
-
       raceResultRowsUpserted += 1;
-
       const { error: dogResultError } = await supabase.rpc(
         "upsert_greyhound_dog_result_from_race",
         {
@@ -600,23 +542,19 @@ async function syncOneTrackResults(
           p_box_number: item.box,
         },
       );
-
       if (dogResultError) {
         throw new Error(
           `${trackCode} Race ${summaryRace.raceNumber} Box ${item.box} dog-result upsert failed: ${dogResultError.message}`,
         );
       }
-
       dogResultRowsUpserted += 1;
     }
-
     const payouts = buildPayoutRecords({
       trackId,
       raceDate: targetRaceDate,
       raceNumber: summaryRace.raceNumber,
       result: detailed,
     });
-
     for (const payout of payouts) {
       const { error: payoutError } = await supabase.rpc(
         "upsert_greyhound_mutuel_payout",
@@ -631,14 +569,160 @@ async function syncOneTrackResults(
           p_payout_status: "official",
         },
       );
-
       if (payoutError) {
         throw new Error(
           `${trackCode} Race ${summaryRace.raceNumber} ${payout.wagerType} payout upsert failed: ${payoutError.message}`,
         );
       }
-
       payoutsUpserted += 1;
+    }
+    const multiRaceRows = detailed.rows.filter((row) => {
+      const wagerType = multiRaceWagerType(row);
+      return (
+        wagerType !== null &&
+        row.baseAmount !== null &&
+        row.baseAmount > 0 &&
+        Boolean(normalizeCombination(row.text ?? "")) &&
+        row.multiRacePayout !== null &&
+        row.rawPay !== null
+      );
+    });
+
+    if (multiRaceRows.length > 0) {
+      const { data: finalLegRows, error: finalLegError } = await supabase
+        .from("greyhound_multi_race_pool_legs")
+        .select("pool_id, leg_number")
+        .eq("race_id", savedRace.id);
+
+      if (finalLegError) {
+        throw new Error(
+          `${trackCode} Race ${summaryRace.raceNumber} multi-race leg lookup failed: ${finalLegError.message}`,
+        );
+      }
+
+      const poolIds = [
+        ...new Set((finalLegRows ?? []).map((leg) => Number(leg.pool_id))),
+      ].filter((poolId) => Number.isInteger(poolId) && poolId > 0);
+
+      if (poolIds.length > 0) {
+        const { data: poolRows, error: poolRowsError } = await supabase
+          .from("greyhound_multi_race_pools")
+          .select("id, wager_type, leg_count")
+          .in("id", poolIds);
+
+        if (poolRowsError) {
+          throw new Error(
+            `${trackCode} Race ${summaryRace.raceNumber} multi-race pool lookup failed: ${poolRowsError.message}`,
+          );
+        }
+
+        for (const row of multiRaceRows) {
+          const wagerType = multiRaceWagerType(row);
+          const parsed = row.multiRacePayout;
+          const combination = normalizeCombination(row.text ?? "");
+          if (!wagerType || !parsed || !combination || !row.rawPay || row.baseAmount === null) continue;
+
+          const matchingPools = (poolRows ?? []).filter((pool) => {
+            const finalLeg = (finalLegRows ?? []).find(
+              (leg) => Number(leg.pool_id) === Number(pool.id),
+            );
+            return (
+              String(pool.wager_type) === wagerType &&
+              Number(pool.leg_count) === parsed.legCount &&
+              Number(finalLeg?.leg_number) === Number(pool.leg_count)
+            );
+          });
+
+          if (matchingPools.length > 1) {
+            throw new Error(
+              `${trackCode} Race ${summaryRace.raceNumber} ${wagerType} matched multiple final-leg pools (${matchingPools.map((pool) => pool.id).join(", ")}).`,
+            );
+          }
+
+          const pool = matchingPools[0];
+          if (!pool) continue;
+
+          const sortKey = row.sort ?? 999;
+          const sourceKey = `amtote:${trackId}:${targetRaceDate}:race:${summaryRace.raceNumber}:row:${sortKey}:${wagerType}:pool:${pool.id}:tier:${parsed.hitsRequired}of${parsed.legCount}`;
+          const { data: existingPayout, error: existingPayoutError } = await supabase
+            .from("greyhound_multi_race_payouts")
+            .select("id, winning_combination, published_base_amount, published_payout, payout_status, hits_required, leg_count, raw_pay, revision_number")
+            .eq("source_payout_key", sourceKey)
+            .maybeSingle();
+
+          if (existingPayoutError) {
+            throw new Error(
+              `${trackCode} Race ${summaryRace.raceNumber} ${wagerType} existing payout lookup failed: ${existingPayoutError.message}`,
+            );
+          }
+
+          const payoutValues = {
+            pool_id: Number(pool.id),
+            winning_combination: combination,
+            published_base_amount: row.baseAmount,
+            published_payout: parsed.payout,
+            payout_status: "official",
+            source: "amtote",
+            source_payout_key: sourceKey,
+            hits_required: parsed.hitsRequired,
+            leg_count: parsed.legCount,
+            raw_pay: row.rawPay,
+            updated_at: new Date().toISOString(),
+          };
+
+          if (!existingPayout) {
+            const { error: insertError } = await supabase
+              .from("greyhound_multi_race_payouts")
+              .insert({ ...payoutValues, revision_number: 1 });
+            if (insertError) {
+              throw new Error(
+                `${trackCode} Race ${summaryRace.raceNumber} ${wagerType} payout insert failed: ${insertError.message}`,
+              );
+            }
+            payoutsUpserted += 1;
+            continue;
+          }
+
+          const changed =
+            String(existingPayout.winning_combination) !== combination ||
+            Number(existingPayout.published_base_amount) !== Number(row.baseAmount) ||
+            Number(existingPayout.published_payout) !== Number(parsed.payout) ||
+            String(existingPayout.payout_status) !== "official" ||
+            Number(existingPayout.hits_required) !== parsed.hitsRequired ||
+            Number(existingPayout.leg_count) !== parsed.legCount ||
+            String(existingPayout.raw_pay ?? "") !== row.rawPay;
+
+          if (changed) {
+            const { error: updateError } = await supabase
+              .from("greyhound_multi_race_payouts")
+              .update({
+                ...payoutValues,
+                revision_number: Number(existingPayout.revision_number ?? 1) + 1,
+                corrected_at: new Date().toISOString(),
+                correction_reason: "AmTote multi-race payout changed on a later sync.",
+              })
+              .eq("id", existingPayout.id);
+            if (updateError) {
+              throw new Error(
+                `${trackCode} Race ${summaryRace.raceNumber} ${wagerType} payout update failed: ${updateError.message}`,
+              );
+            }
+            payoutsUpserted += 1;
+          }
+        }
+      }
+    }
+
+    const { error: multiRaceSettleError } = await supabase.rpc(
+      "settle_greyhound_multi_race_pools_for_race",
+      {
+        p_race_id: savedRace.id,
+      },
+    );
+    if (multiRaceSettleError) {
+      throw new Error(
+        `${trackCode} Race ${summaryRace.raceNumber} multi-race settlement failed: ${multiRaceSettleError.message}`,
+      );
     }
 
     const { error: settleError } = await supabase.rpc(
@@ -647,13 +731,11 @@ async function syncOneTrackResults(
         p_race_id: savedRace.id,
       },
     );
-
     if (settleError) {
       throw new Error(
         `${trackCode} Race ${summaryRace.raceNumber} settlement failed: ${settleError.message}`,
       );
     }
-
     try {
       await processGreyhoundDailySurvivorRace(savedRace.id);
     } catch (error) {
@@ -662,11 +744,9 @@ async function syncOneTrackResults(
         error,
       );
     }
-
     racesProcessed += 1;
     racesSettled += 1;
   }
-
   return {
     trackId,
     trackCode,
@@ -686,19 +766,56 @@ async function syncOneTrackResults(
     errorMessage: null,
   };
 }
-
 export async function syncAmtoteGreyhoundResults(
   trackIds: AmtoteTrackId[] = ["WEM", "TSE"],
 ): Promise<SyncAmtoteGreyhoundResultsResult> {
   const tracks: ResultTrackSync[] = [];
-
+  let availableTrackIds: Set<AmtoteTrackId> | null = null;
+  try {
+    const availableStates =
+      await getAmtoteUSOControlTrackStates(trackIds);
+    availableTrackIds = new Set(
+      availableStates.map((state) => state.trackId),
+    );
+  } catch (error) {
+    console.error(
+      "[greyhound/results-sync] AmTote track availability check failed; falling back to direct track polling.",
+      error,
+    );
+  }
   for (const trackId of trackIds) {
+    const trackCode = g365TrackCodeForAmtote(trackId);
+    if (
+      availableTrackIds !== null &&
+      !availableTrackIds.has(trackId)
+    ) {
+      tracks.push({
+        trackId,
+        trackCode,
+        raceDate: "",
+        session: trackId === "TSE" ? "evening" : "afternoon",
+        cardId: null,
+        racesAvailable: 0,
+        racesProcessed: 0,
+        raceResultRowsUpserted: 0,
+        dogResultRowsUpserted: 0,
+        payoutsUpserted: 0,
+        racesSettled: 0,
+        skippedRaces: 0,
+        skipped: true,
+        skipReason:
+          "Track is not available in today's AmTote USO Control feed.",
+        failed: false,
+        errorMessage: null,
+      });
+      continue;
+    }
     try {
       tracks.push(await syncOneTrackResults(trackId));
     } catch (error) {
       tracks.push({
         trackId,
-        trackCode: g365TrackCodeForAmtote(trackId),
+        trackCode,
         raceDate: "",
         session:
           trackId === "TSE" ? "evening" : "afternoon",
@@ -720,14 +837,12 @@ export async function syncAmtoteGreyhoundResults(
       });
     }
   }
-
   let competitionArchives: GreyhoundArchiveResult[] = [];
   let h2hRefresh: SyncAmtoteGreyhoundResultsResult["h2hRefresh"] = null;
   let roundSurvivorRefresh:
     SyncAmtoteGreyhoundResultsResult["roundSurvivorRefresh"] = null;
   let tournamentRefresh:
     SyncAmtoteGreyhoundResultsResult["tournamentRefresh"] = null;
-
   try {
     h2hRefresh = await refreshAllGreyhoundH2HMatchups();
   } catch (error) {
@@ -736,7 +851,6 @@ export async function syncAmtoteGreyhoundResults(
       error,
     );
   }
-
   try {
     roundSurvivorRefresh =
       await refreshAllGreyhoundRoundSurvivorRounds();
@@ -746,7 +860,6 @@ export async function syncAmtoteGreyhoundResults(
       error,
     );
   }
-
   try {
     tournamentRefresh =
       await refreshAllGreyhoundTournamentRounds();
@@ -756,7 +869,6 @@ export async function syncAmtoteGreyhoundResults(
       error,
     );
   }
-
   try {
     competitionArchives =
       await archiveCompletedGreyhoundCompetitions();
@@ -773,7 +885,6 @@ export async function syncAmtoteGreyhoundResults(
       },
     ];
   }
-
   return {
     success: tracks.every((track) => !track.failed),
     syncedAt: new Date().toISOString(),

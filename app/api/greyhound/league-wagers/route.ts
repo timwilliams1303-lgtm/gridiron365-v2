@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-
 import { requireLeagueMember } from "@/lib/leagues/requireLeagueMember";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-
 export const dynamic = "force-dynamic";
-
 type DisplayRow = {
   wager_id: number;
   league_id: string;
@@ -32,13 +29,24 @@ type DisplayRow = {
   created_at: string;
   updated_at: string;
 };
-
+type MultiWagerRow = {
+  id:number; bankroll_card_id:number; pool_id:number; wager_type:string; denomination:number|string;
+  leg_selections:unknown; combination_count:number; total_cost:number|string; wager_status:string;
+  grading_status:string|null; official_return:number|string; refund_reason:string|null;
+  result_snapshot:unknown; payout_snapshot:unknown; graded_at:string|null; last_regraded_at:string|null;
+  grade_revision:number|null; created_at:string; updated_at:string;
+};
+type BankrollRow = { id:number; fantasy_team_id:number; racing_card_id:number };
+type PoolRow = { id:number; card_id:number; start_race_id:number; wager_type:string; leg_count:number; pool_status:string };
+type PoolLegRow = { pool_id:number; leg_number:number; race_id:number };
+type RaceRow = { id:number; race_number:number; race_status:string|null };
+type EntryRow = { id:number; race_id:number; dog_id:number|null; box_number:number|null; entry_status:string|null };
+type DogRow = { id:number; display_name:string|null };
 type TeamRow = {
   id: number;
   team_name: string | null;
   active: boolean;
 };
-
 type CardRow = {
   id: number;
   track_id: number;
@@ -48,32 +56,26 @@ type CardRow = {
   lock_at: string | null;
   finalized_at: string | null;
 };
-
 type TrackRow = {
   id: number;
   code: string;
   name: string | null;
 };
-
 type SettingsRow = {
   game_format: string | null;
   wagering_style: string | null;
 };
-
 type IdentityRow = Record<string, unknown>;
-
 type RosterIdentity = {
   key: number;
   fantasyTeamIds: number[];
   name: string;
   active: boolean;
 };
-
 function numberValue(value: number | string | null | undefined) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
 }
-
 function uniqueNumbers(values: Array<number | null | undefined>) {
   return Array.from(
     new Set(
@@ -84,17 +86,14 @@ function uniqueNumbers(values: Array<number | null | undefined>) {
     ),
   );
 }
-
 function stringValue(value: unknown) {
   if (typeof value !== "string") return "";
   return value.trim();
 }
-
 function nullableNumber(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
-
 function firstNonEmpty(...values: unknown[]) {
   for (const value of values) {
     const text = stringValue(value);
@@ -102,7 +101,6 @@ function firstNonEmpty(...values: unknown[]) {
   }
   return "";
 }
-
 function participantFallbackName(
   row: IdentityRow,
   fantasyTeamName: string | null | undefined,
@@ -111,7 +109,6 @@ function participantFallbackName(
   const firstName = stringValue(row.first_name);
   const lastName = stringValue(row.last_name);
   const fullName = [firstName, lastName].filter(Boolean).join(" ");
-
   return (
     firstNonEmpty(
       row.entry_name,
@@ -123,7 +120,6 @@ function participantFallbackName(
     ) || `Entry ${fantasyTeamId}`
   );
 }
-
 function competitionTeamName(row: IdentityRow, competitionTeamId: number) {
   return (
     firstNonEmpty(
@@ -133,7 +129,6 @@ function competitionTeamName(row: IdentityRow, competitionTeamId: number) {
     ) || `Team ${competitionTeamId}`
   );
 }
-
 function teamGroupKey(competitionTeamId: number) {
   /*
    * Leaderboard/filter IDs are numbers in the existing client.
@@ -142,20 +137,16 @@ function teamGroupKey(competitionTeamId: number) {
    */
   return -1_000_000_000 - competitionTeamId;
 }
-
 export async function GET(request: NextRequest) {
   try {
     const leagueId = request.nextUrl.searchParams.get("leagueId")?.trim();
-
     if (!leagueId) {
       return NextResponse.json(
         { success: false, error: "leagueId is required." },
         { status: 400 },
       );
     }
-
     const access = await requireLeagueMember(leagueId);
-
     if (String(access.league.leagueType) !== "greyhound") {
       return NextResponse.json(
         {
@@ -165,21 +156,17 @@ export async function GET(request: NextRequest) {
         { status: 400 },
       );
     }
-
     const supabase = createSupabaseAdminClient();
-
     const { data: settingsRaw, error: settingsError } = await supabase
       .from("greyhound_league_settings")
       .select("game_format, wagering_style")
       .eq("league_id", leagueId)
       .maybeSingle();
-
     if (settingsError) {
       throw new Error(
         `Unable to load Greyhound league settings: ${settingsError.message}`,
       );
     }
-
     const settings = settingsRaw as SettingsRow | null;
     const gameFormat = String(settings?.game_format ?? "bankroll");
     const wageringStyle =
@@ -187,11 +174,9 @@ export async function GET(request: NextRequest) {
       "live_bankroll"
         ? "live_bankroll"
         : "whole_card";
-
     const isSharedTeamFormat =
       gameFormat === "team_total_winnings" ||
       gameFormat === "team_head_to_head";
-
     /*
      * Keep the Greyhound participant roster synchronized with active league
      * fantasy teams before building League Wagers. This makes the board work
@@ -203,13 +188,11 @@ export async function GET(request: NextRequest) {
         p_league_id: leagueId,
       },
     );
-
     if (ensureParticipantsError) {
       throw new Error(
         `Unable to prepare Greyhound participants: ${ensureParticipantsError.message}`,
       );
     }
-
     const [
       { data: identityRowsRaw, error: identityError },
       { data: allTeamRowsRaw, error: allTeamError },
@@ -257,33 +240,42 @@ export async function GET(request: NextRequest) {
         .eq("league_id", leagueId)
         .order("created_at", { ascending: false }),
     ]);
-
     if (identityError) {
       throw new Error(
         `Unable to load Greyhound participant identity: ${identityError.message}`,
       );
     }
-
     if (allTeamError) {
       throw new Error(
         `Unable to load Greyhound league members: ${allTeamError.message}`,
       );
     }
-
     if (wagerError) {
-      throw new Error(
-        `Unable to load league wagers: ${wagerError.message}`,
-      );
+      throw new Error(`Unable to load league wagers: ${wagerError.message}`);
     }
-
+    const { data: bankrollRowsRaw, error: bankrollError } = await supabase
+      .from("greyhound_bankroll_cards")
+      .select("id, fantasy_team_id, racing_card_id")
+      .eq("league_id", leagueId);
+    if (bankrollError) throw new Error(`Unable to load Greyhound bankroll cards: ${bankrollError.message}`);
+    const bankrollRows = (bankrollRowsRaw ?? []) as BankrollRow[];
+    const bankrollIds = bankrollRows.map((row) => Number(row.id)).filter(Number.isFinite);
+    let multiRows: MultiWagerRow[] = [];
+    if (bankrollIds.length > 0) {
+      const { data, error } = await supabase
+        .from("greyhound_multi_race_wagers")
+        .select("id, bankroll_card_id, pool_id, wager_type, denomination, leg_selections, combination_count, total_cost, wager_status, grading_status, official_return, refund_reason, result_snapshot, payout_snapshot, graded_at, last_regraded_at, grade_revision, created_at, updated_at")
+        .in("bankroll_card_id", bankrollIds)
+        .order("created_at", { ascending: false });
+      if (error) throw new Error(`Unable to load Pick 4 / Pick 5 wagers: ${error.message}`);
+      multiRows = (data ?? []) as MultiWagerRow[];
+    }
     const identityRows = (identityRowsRaw ?? []) as IdentityRow[];
     const allTeamRows = (allTeamRowsRaw ?? []) as TeamRow[];
     const wagerRows = (wagerRowsRaw ?? []) as unknown as DisplayRow[];
-
     const teamById = new Map(
       allTeamRows.map((row) => [Number(row.id), row] as const),
     );
-
     /*
      * Build the display roster first.
      *
@@ -296,22 +288,16 @@ export async function GET(request: NextRequest) {
      */
     const rosterByKey = new Map<number, RosterIdentity>();
     const rosterKeyByFantasyTeamId = new Map<number, number>();
-
     for (const row of identityRows) {
       const fantasyTeamId = nullableNumber(row.fantasy_team_id);
       if (fantasyTeamId === null) continue;
-
       const fantasyTeam = teamById.get(fantasyTeamId);
       const active = fantasyTeam?.active ?? true;
-
       if (!active) continue;
-
       const competitionTeamId = nullableNumber(row.competition_team_id);
-
       if (isSharedTeamFormat && competitionTeamId !== null) {
         const key = teamGroupKey(competitionTeamId);
         const existing = rosterByKey.get(key);
-
         if (existing) {
           if (!existing.fantasyTeamIds.includes(fantasyTeamId)) {
             existing.fantasyTeamIds.push(fantasyTeamId);
@@ -324,28 +310,23 @@ export async function GET(request: NextRequest) {
             active,
           });
         }
-
         rosterKeyByFantasyTeamId.set(fantasyTeamId, key);
         continue;
       }
-
       const key = fantasyTeamId;
       const name = participantFallbackName(
         row,
         fantasyTeam?.team_name,
         fantasyTeamId,
       );
-
       rosterByKey.set(key, {
         key,
         fantasyTeamIds: [fantasyTeamId],
         name,
         active,
       });
-
       rosterKeyByFantasyTeamId.set(fantasyTeamId, key);
     }
-
     /*
      * Safety fallback: if a league has an active fantasy_team that somehow
      * has not appeared in the identity view yet, still show it immediately.
@@ -354,21 +335,19 @@ export async function GET(request: NextRequest) {
       const fantasyTeamId = Number(team.id);
       if (!Number.isFinite(fantasyTeamId) || !team.active) continue;
       if (rosterKeyByFantasyTeamId.has(fantasyTeamId)) continue;
-
       rosterByKey.set(fantasyTeamId, {
         key: fantasyTeamId,
         fantasyTeamIds: [fantasyTeamId],
         name: team.team_name?.trim() || `Entry ${fantasyTeamId}`,
         active: true,
       });
-
       rosterKeyByFantasyTeamId.set(fantasyTeamId, fantasyTeamId);
     }
-
-    const cardIds = uniqueNumbers(
-      wagerRows.map((row) => Number(row.racing_card_id)),
-    );
-
+    const bankrollById = new Map(bankrollRows.map((row) => [Number(row.id), row] as const));
+    const cardIds = uniqueNumbers([
+      ...wagerRows.map((row) => Number(row.racing_card_id)),
+      ...multiRows.map((row) => Number(bankrollById.get(Number(row.bankroll_card_id))?.racing_card_id)),
+    ]);
     let cardRows: CardRow[] = [];
     if (cardIds.length > 0) {
       const { data, error } = await supabase
@@ -377,52 +356,42 @@ export async function GET(request: NextRequest) {
           "id, track_id, race_date, session, card_status, lock_at, finalized_at",
         )
         .in("id", cardIds);
-
       if (error) {
         throw new Error(
           `Unable to load Greyhound cards: ${error.message}`,
         );
       }
-
       cardRows = (data ?? []) as CardRow[];
     }
-
     const trackIds = uniqueNumbers(
       cardRows.map((row) => Number(row.track_id)),
     );
-
     let trackRows: TrackRow[] = [];
     if (trackIds.length > 0) {
       const { data, error } = await supabase
         .from("greyhound_tracks")
         .select("id, code, name")
         .in("id", trackIds);
-
       if (error) {
         throw new Error(
           `Unable to load Greyhound tracks: ${error.message}`,
         );
       }
-
       trackRows = (data ?? []) as TrackRow[];
     }
-
     const cardById = new Map(
       cardRows.map((row) => [Number(row.id), row] as const),
     );
     const trackById = new Map(
       trackRows.map((row) => [Number(row.id), row] as const),
     );
-
     const nowMs = Date.now();
-
     function shouldRevealWager(row: DisplayRow, card: CardRow | undefined) {
       if (wageringStyle === "whole_card") {
         if (!card?.lock_at) return false;
         const lockMs = new Date(card.lock_at).getTime();
         return Number.isFinite(lockMs) && lockMs <= nowMs;
       }
-
       const raceStatus = String(row.race_status ?? "").toLowerCase();
       return [
         "locked",
@@ -434,28 +403,23 @@ export async function GET(request: NextRequest) {
         "cancelled",
       ].includes(raceStatus);
     }
-
-    const wagers = wagerRows.map((row) => {
+    const standardWagers = wagerRows.map((row) => {
       const sourceFantasyTeamId = Number(row.fantasy_team_id);
       const rosterKey =
         rosterKeyByFantasyTeamId.get(sourceFantasyTeamId) ??
         sourceFantasyTeamId;
-
       const rosterIdentity = rosterByKey.get(rosterKey);
       const fallbackTeam = teamById.get(sourceFantasyTeamId);
-
       const card = cardById.get(Number(row.racing_card_id));
       const track = card
         ? trackById.get(Number(card.track_id))
         : undefined;
-
       const totalCost = numberValue(row.total_cost);
       const officialReturn = numberValue(row.official_return);
       const picksRevealed = shouldRevealWager(row, card);
-
       return {
         id: Number(row.wager_id),
-
+        ticketKind: "standard" as const,
         /*
          * The client groups/filter cards by fantasyTeamId. For shared-team
          * formats this is intentionally the shared Greyhound roster key so
@@ -468,7 +432,6 @@ export async function GET(request: NextRequest) {
           fallbackTeam?.team_name ??
           `Entry ${sourceFantasyTeamId}`,
         teamActive: rosterIdentity?.active ?? fallbackTeam?.active ?? true,
-
         racingCardId: Number(row.racing_card_id),
         card: card
           ? {
@@ -480,7 +443,6 @@ export async function GET(request: NextRequest) {
               finalizedAt: card.finalized_at,
             }
           : null,
-
         track: track
           ? {
               id: Number(track.id),
@@ -488,22 +450,18 @@ export async function GET(request: NextRequest) {
               name: track.name,
             }
           : null,
-
         raceId: Number(row.race_id),
         raceNumber: Number(row.race_number),
         raceStatus: row.race_status,
-
         wagerType: row.wager_type,
         wagerStructure: row.wager_structure,
         denomination: numberValue(row.denomination),
         combinationCount: Number(row.combination_count ?? 0),
         totalCost,
-
         wagerStatus: row.wager_status,
         gradingStatus: row.grading_status,
         officialReturn,
         bankrollImpact: officialReturn - totalCost,
-
         picksRevealed,
         selectedEntryIds:
           picksRevealed && Array.isArray(row.selected_entry_ids)
@@ -513,15 +471,118 @@ export async function GET(request: NextRequest) {
         alternate1: picksRevealed ? row.alternate_1 : null,
         alternate2: picksRevealed ? row.alternate_2 : null,
         combinationJson: picksRevealed ? row.combination_json : null,
-
         refundReason: row.refund_reason,
         gradedAt: row.graded_at,
         lastRegradedAt: row.last_regraded_at,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        multiRace: null,
       };
     });
-
+    const poolIds = uniqueNumbers(multiRows.map((row) => Number(row.pool_id)));
+    let poolRows: PoolRow[] = [];
+    let poolLegRows: PoolLegRow[] = [];
+    if (poolIds.length > 0) {
+      const [{ data:pools, error:poolsError }, { data:legs, error:legsError }] = await Promise.all([
+        supabase.from("greyhound_multi_race_pools").select("id, card_id, start_race_id, wager_type, leg_count, pool_status").in("id", poolIds),
+        supabase.from("greyhound_multi_race_pool_legs").select("pool_id, leg_number, race_id").in("pool_id", poolIds).order("leg_number", { ascending:true }),
+      ]);
+      if (poolsError) throw new Error(`Unable to load multi-race pools: ${poolsError.message}`);
+      if (legsError) throw new Error(`Unable to load multi-race pool legs: ${legsError.message}`);
+      poolRows=(pools ?? []) as PoolRow[];
+      poolLegRows=(legs ?? []) as PoolLegRow[];
+    }
+    const multiRaceIds=uniqueNumbers(poolLegRows.map((row)=>Number(row.race_id)));
+    let multiRaceRows:RaceRow[]=[];
+    if (multiRaceIds.length>0) {
+      const {data,error}=await supabase.from("greyhound_races").select("id, race_number, race_status").in("id",multiRaceIds);
+      if(error) throw new Error(`Unable to load multi-race races: ${error.message}`);
+      multiRaceRows=(data ?? []) as RaceRow[];
+    }
+    function legSelectionMap(value:unknown) {
+      const map=new Map<number,number[]>();
+      if(!Array.isArray(value)) return map;
+      for(const raw of value) {
+        if(!raw || typeof raw!=="object") continue;
+        const leg=raw as {raceId?:unknown;entryIds?:unknown};
+        const raceId=Number(leg.raceId);
+        if(!Number.isFinite(raceId)||!Array.isArray(leg.entryIds)) continue;
+        map.set(raceId,leg.entryIds.map(Number).filter(Number.isFinite));
+      }
+      return map;
+    }
+    const allSelectedEntryIds=uniqueNumbers(multiRows.flatMap((row)=>Array.from(legSelectionMap(row.leg_selections).values()).flat()));
+    let entryRows:EntryRow[]=[];
+    if(allSelectedEntryIds.length>0) {
+      const {data,error}=await supabase.from("greyhound_entries").select("id, race_id, dog_id, box_number, entry_status").in("id",allSelectedEntryIds);
+      if(error) throw new Error(`Unable to load multi-race selections: ${error.message}`);
+      entryRows=(data ?? []) as EntryRow[];
+    }
+    const dogIds=uniqueNumbers(entryRows.map((row)=>row.dog_id));
+    let dogRows:DogRow[]=[];
+    if(dogIds.length>0) {
+      const {data,error}=await supabase.from("greyhound_dogs").select("id, display_name").in("id",dogIds);
+      if(error) throw new Error(`Unable to load multi-race dogs: ${error.message}`);
+      dogRows=(data ?? []) as DogRow[];
+    }
+    const poolById=new Map(poolRows.map((row)=>[Number(row.id),row] as const));
+    const raceById=new Map(multiRaceRows.map((row)=>[Number(row.id),row] as const));
+    const entryById=new Map(entryRows.map((row)=>[Number(row.id),row] as const));
+    const dogById=new Map(dogRows.map((row)=>[Number(row.id),row] as const));
+    const legsByPool=new Map<number,PoolLegRow[]>();
+    for(const leg of poolLegRows) {
+      const list=legsByPool.get(Number(leg.pool_id)) ?? [];
+      list.push(leg); legsByPool.set(Number(leg.pool_id),list);
+    }
+    const multiWagers=multiRows.flatMap((row)=>{
+      const bankroll=bankrollById.get(Number(row.bankroll_card_id));
+      const pool=poolById.get(Number(row.pool_id));
+      if(!bankroll||!pool) return [];
+      const sourceFantasyTeamId=Number(bankroll.fantasy_team_id);
+      const rosterKey=rosterKeyByFantasyTeamId.get(sourceFantasyTeamId) ?? sourceFantasyTeamId;
+      const rosterIdentity=rosterByKey.get(rosterKey);
+      const fallbackTeam=teamById.get(sourceFantasyTeamId);
+      const card=cardById.get(Number(bankroll.racing_card_id));
+      const track=card ? trackById.get(Number(card.track_id)) : undefined;
+      const startRace=raceById.get(Number(pool.start_race_id));
+      const selections=legSelectionMap(row.leg_selections);
+      const totalCost=numberValue(row.total_cost);
+      const officialReturn=numberValue(row.official_return);
+      const picksRevealed=shouldRevealWager({race_status:startRace?.race_status ?? null} as DisplayRow,card);
+      const legs=[...(legsByPool.get(Number(pool.id)) ?? [])].sort((a,b)=>a.leg_number-b.leg_number).map((leg)=>{
+        const race=raceById.get(Number(leg.race_id));
+        const ids=selections.get(Number(leg.race_id)) ?? [];
+        return {
+          legNumber:Number(leg.leg_number),
+          race:race ? {id:Number(race.id),raceNumber:Number(race.race_number),status:race.race_status} : null,
+          entryIds:picksRevealed ? ids : [],
+          selections:picksRevealed ? ids.map((id)=>{
+            const entry=entryById.get(id);
+            const dog=entry?.dog_id ? dogById.get(Number(entry.dog_id)) : undefined;
+            return {entryId:id,boxNumber:entry?.box_number ?? null,dogName:dog?.display_name ?? "Runner",entryStatus:entry?.entry_status ?? null};
+          }) : [],
+        };
+      });
+      return [{
+        id:Number(row.id), ticketKind:"multi_race" as const, fantasyTeamId:rosterKey, sourceFantasyTeamId,
+        teamName:rosterIdentity?.name ?? fallbackTeam?.team_name ?? `Entry ${sourceFantasyTeamId}`,
+        teamActive:rosterIdentity?.active ?? fallbackTeam?.active ?? true,
+        racingCardId:Number(bankroll.racing_card_id),
+        card:card ? {id:Number(card.id),raceDate:card.race_date,session:card.session,status:card.card_status,lockAt:card.lock_at,finalizedAt:card.finalized_at} : null,
+        track:track ? {id:Number(track.id),code:track.code,name:track.name} : null,
+        raceId:Number(pool.start_race_id), raceNumber:Number(startRace?.race_number ?? 0), raceStatus:startRace?.race_status ?? null,
+        wagerType:row.wager_type, wagerStructure:"multi_race", denomination:numberValue(row.denomination),
+        combinationCount:Number(row.combination_count ?? 0), totalCost, wagerStatus:row.wager_status,
+        gradingStatus:row.grading_status, officialReturn, bankrollImpact:officialReturn-totalCost, picksRevealed,
+        selectedEntryIds:picksRevealed ? Array.from(selections.values()).flat() : [], selectedDogs:null,
+        alternate1:null, alternate2:null, combinationJson:null, refundReason:row.refund_reason,
+        gradedAt:row.graded_at, lastRegradedAt:row.last_regraded_at, createdAt:row.created_at, updatedAt:row.updated_at,
+        multiRace:{poolId:Number(pool.id),poolStatus:pool.pool_status,legCount:Number(pool.leg_count),
+          startRace:startRace ? {id:Number(startRace.id),raceNumber:Number(startRace.race_number),status:startRace.race_status} : null,
+          legs,resultSnapshot:row.result_snapshot,payoutSnapshot:row.payout_snapshot,gradeRevision:row.grade_revision},
+      }];
+    });
+    const wagers=[...standardWagers,...multiWagers];
     const totalStaked = wagers.reduce(
       (sum, wager) => sum + wager.totalCost,
       0,
@@ -530,28 +591,22 @@ export async function GET(request: NextRequest) {
       (sum, wager) => sum + wager.officialReturn,
       0,
     );
-
     const normalizedStatus = (value: string | null | undefined) =>
       String(value ?? "").toLowerCase();
-
     const pending = wagers.filter((wager) => {
       const status = normalizedStatus(wager.wagerStatus);
       return status === "pending" || status === "locked";
     }).length;
-
     const winners = wagers.filter(
       (wager) => normalizedStatus(wager.wagerStatus) === "winner",
     ).length;
-
     const losers = wagers.filter(
       (wager) => normalizedStatus(wager.wagerStatus) === "loser",
     ).length;
-
     const refunded = wagers.filter((wager) => {
       const status = normalizedStatus(wager.wagerStatus);
-      return status === "refunded" || status === "no_action";
+      return ["refunded","no_action","void","cancelled"].includes(status);
     }).length;
-
     type GroupedEntry = {
       fantasyTeamId: number;
       teamName: string;
@@ -567,14 +622,12 @@ export async function GET(request: NextRequest) {
       racesCompleted: Set<number>;
       wagers: typeof wagers;
     };
-
     /*
      * IMPORTANT:
      * Seed the leaderboard from the roster BEFORE reading wagers.
      * This is the behavior that makes every participant/team visible at 0.
      */
     const grouped = new Map<number, GroupedEntry>();
-
     for (const roster of rosterByKey.values()) {
       grouped.set(roster.key, {
         fantasyTeamId: roster.key,
@@ -592,10 +645,8 @@ export async function GET(request: NextRequest) {
         wagers: [],
       });
     }
-
     for (const wager of wagers) {
       let entry = grouped.get(wager.fantasyTeamId);
-
       if (!entry) {
         entry = {
           fantasyTeamId: wager.fantasyTeamId,
@@ -612,28 +663,23 @@ export async function GET(request: NextRequest) {
           racesCompleted: new Set<number>(),
           wagers: [],
         };
-
         grouped.set(wager.fantasyTeamId, entry);
       }
-
       entry.totalWagers += 1;
       entry.totalStaked += wager.totalCost;
       entry.totalReturned += wager.officialReturn;
       entry.net += wager.bankrollImpact;
       entry.wagers.push(wager);
-
       const status = normalizedStatus(wager.wagerStatus);
-
       if (status === "pending" || status === "locked") {
         entry.pending += 1;
       } else if (status === "winner") {
         entry.winners += 1;
       } else if (status === "loser") {
         entry.losers += 1;
-      } else if (status === "refunded" || status === "no_action") {
+      } else if (["refunded","no_action","void","cancelled"].includes(status)) {
         entry.refunded += 1;
       }
-
       if (
         status === "winner" ||
         status === "loser" ||
@@ -643,7 +689,6 @@ export async function GET(request: NextRequest) {
         entry.racesCompleted.add(wager.raceId);
       }
     }
-
     const leaderboardMode =
       gameFormat === "team_total_winnings"
         ? "official_return"
@@ -654,7 +699,6 @@ export async function GET(request: NextRequest) {
             : gameFormat === "tournament"
               ? "tournament_total"
               : "net";
-
     const leaderboardLabel =
       gameFormat === "team_total_winnings"
         ? "Total Winnings"
@@ -665,7 +709,6 @@ export async function GET(request: NextRequest) {
             : gameFormat === "tournament"
               ? "Tournament Live Totals"
               : "Bankroll Performance";
-
     const leaderboard = Array.from(grouped.values())
       .sort((a, b) => {
         if (gameFormat === "team_total_winnings") {
@@ -675,7 +718,6 @@ export async function GET(request: NextRequest) {
             a.teamName.localeCompare(b.teamName)
           );
         }
-
         return (
           b.net - a.net ||
           b.totalReturned - a.totalReturned ||
@@ -703,7 +745,6 @@ export async function GET(request: NextRequest) {
           return b.id - a.id;
         }),
       }));
-
     /*
      * Team/Entry filter is roster-driven too, so names are available before
      * the first wager is placed.
@@ -714,7 +755,6 @@ export async function GET(request: NextRequest) {
         name: entry.teamName,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
-
     const tracks = Array.from(
       new Map(
         wagers
@@ -727,7 +767,6 @@ export async function GET(request: NextRequest) {
     ).sort((a, b) =>
       (a.name ?? a.code).localeCompare(b.name ?? b.code),
     );
-
     return NextResponse.json(
       {
         success: true,
@@ -767,7 +806,6 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("[greyhound/league-wagers] GET failed", error);
-
     return NextResponse.json(
       {
         success: false,

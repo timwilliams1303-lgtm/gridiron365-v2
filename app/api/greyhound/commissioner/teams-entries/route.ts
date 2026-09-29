@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
-
 import { requireLeagueMember } from "@/lib/leagues/requireLeagueMember";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-
 type GameFormat =
   | "team_total_winnings"
   | "team_head_to_head"
   | "bankroll"
   | "survivor"
   | "tournament";
-
 type TeamSetupMode = "random" | "manual" | null;
-
 type RequestBody = {
   leagueId?: string;
   action?: string;
@@ -21,18 +17,15 @@ type RequestBody = {
   entryName?: string | null;
   teamCount?: number;
 };
-
 type SettingsRow = {
   game_format: GameFormat;
   team_setup_mode: TeamSetupMode;
   duration_mode: string;
   competition_start_date: string | null;
 };
-
 type RoundRow = {
   start_date: string;
 };
-
 type IdentityRow = {
   participant_id: number;
   league_id: string;
@@ -45,14 +38,12 @@ type IdentityRow = {
   league_role: string | null;
   member_name: string;
 };
-
 type TeamRow = {
   id: number;
   team_number: number;
   team_name: string;
   active: boolean;
 };
-
 function jsonError(message: string, status: number) {
   return NextResponse.json(
     {
@@ -67,14 +58,12 @@ function jsonError(message: string, status: number) {
     },
   );
 }
-
 function isTeamFormat(gameFormat: string) {
   return (
     gameFormat === "team_total_winnings" ||
     gameFormat === "team_head_to_head"
   );
 }
-
 function cleanName(
   value: unknown,
   label: string,
@@ -83,26 +72,20 @@ function cleanName(
   if (value == null && allowNull) {
     return null;
   }
-
   const cleaned = String(value ?? "")
     .trim()
     .replace(/\s+/g, " ");
-
   if (!cleaned) {
     if (allowNull) {
       return null;
     }
-
     throw new Error(`${label} cannot be blank.`);
   }
-
   if (cleaned.length > 50) {
     throw new Error(`${label} cannot exceed 50 characters.`);
   }
-
   return cleaned;
 }
-
 function easternDateString(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -110,36 +93,28 @@ function easternDateString(date = new Date()) {
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(date);
-
   const year = parts.find((part) => part.type === "year")?.value;
   const month = parts.find((part) => part.type === "month")?.value;
   const day = parts.find((part) => part.type === "day")?.value;
-
   if (!year || !month || !day) {
     throw new Error("Unable to determine the current Eastern date.");
   }
-
   return `${year}-${month}-${day}`;
 }
-
 async function requireGreyhoundCommissioner(leagueId: string) {
   const access = await requireLeagueMember(leagueId);
-
   if (String(access.league.leagueType) !== "greyhound") {
     throw new Error(
       "This endpoint is only available for Greyhound leagues.",
     );
   }
-
   if (!access.isCommissioner) {
     throw new Error(
       "Only the league commissioner can manage Greyhound teams and entries.",
     );
   }
-
   return access;
 }
-
 async function loadSettings(
   admin: ReturnType<typeof createSupabaseAdminClient>,
   leagueId: string,
@@ -154,19 +129,14 @@ async function loadSettings(
     `)
     .eq("league_id", leagueId)
     .maybeSingle();
-
   if (settingsError) {
     throw settingsError;
   }
-
   if (!settingsData) {
     throw new Error("Greyhound league settings were not found.");
   }
-
   const settings = settingsData as SettingsRow;
-
   let competitionStartDate = settings.competition_start_date;
-
   if (settings.duration_mode === "rounds") {
     const { data: roundData, error: roundError } = await admin
       .from("greyhound_competition_rounds")
@@ -175,29 +145,24 @@ async function loadSettings(
       .order("round_number", { ascending: true })
       .limit(1)
       .maybeSingle();
-
     if (roundError) {
       throw roundError;
     }
-
     competitionStartDate =
       (roundData as RoundRow | null)?.start_date ??
       competitionStartDate;
   }
-
   const today = easternDateString();
   const competitionStarted = Boolean(
     competitionStartDate &&
       today >= competitionStartDate,
   );
-
   return {
     settings,
     competitionStartDate,
     competitionStarted,
   };
 }
-
 async function ensureParticipants(
   admin: ReturnType<typeof createSupabaseAdminClient>,
   leagueId: string,
@@ -208,23 +173,18 @@ async function ensureParticipants(
       p_league_id: leagueId,
     },
   );
-
   if (error) {
     throw error;
   }
 }
-
 async function loadWorkspace(leagueId: string) {
   const admin = createSupabaseAdminClient();
-
   await ensureParticipants(admin, leagueId);
-
   const {
     settings,
     competitionStartDate,
     competitionStarted,
   } = await loadSettings(admin, leagueId);
-
   const [
     { data: identityData, error: identityError },
     { data: teamsData, error: teamsError },
@@ -257,15 +217,12 @@ async function loadWorkspace(leagueId: string) {
       .eq("active", true)
       .order("team_number", { ascending: true }),
   ]);
-
   if (identityError) {
     throw identityError;
   }
-
   if (teamsError) {
     throw teamsError;
   }
-
   const participants = ((identityData ?? []) as IdentityRow[]).map(
     (row) => ({
       participantId: Number(row.participant_id),
@@ -285,14 +242,12 @@ async function loadWorkspace(leagueId: string) {
       teamName: row.team_name,
     }),
   );
-
   const teams = ((teamsData ?? []) as TeamRow[]).map((row) => ({
     id: Number(row.id),
     teamNumber: Number(row.team_number),
     teamName: row.team_name,
     active: Boolean(row.active),
   }));
-
   return {
     success: true as const,
     leagueId,
@@ -305,20 +260,15 @@ async function loadWorkspace(leagueId: string) {
     teams,
   };
 }
-
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const leagueId = (url.searchParams.get("leagueId") ?? "").trim();
-
   if (!leagueId) {
     return jsonError("leagueId is required.", 400);
   }
-
   try {
     await requireGreyhoundCommissioner(leagueId);
-
     const workspace = await loadWorkspace(leagueId);
-
     return NextResponse.json(workspace, {
       headers: {
         "Cache-Control": "no-store, max-age=0",
@@ -329,69 +279,62 @@ export async function GET(request: Request) {
       "Greyhound commissioner teams/entries GET failed:",
       error,
     );
-
     const message =
       error instanceof Error
         ? error.message
         : "Unable to load Greyhound teams and entries.";
-
     const status =
       message.includes("Only the league commissioner")
         ? 403
         : message.includes("only available")
           ? 400
           : 500;
-
     return jsonError(message, status);
   }
 }
-
 export async function POST(request: Request) {
   const body = (await request
     .json()
     .catch(() => null)) as RequestBody | null;
-
   const leagueId =
     typeof body?.leagueId === "string"
       ? body.leagueId.trim()
       : "";
-
   const action =
     typeof body?.action === "string"
       ? body.action.trim()
       : "";
-
   if (!leagueId) {
     return jsonError("leagueId is required.", 400);
   }
-
   if (!action) {
     return jsonError("action is required.", 400);
   }
-
   try {
-    await requireGreyhoundCommissioner(leagueId);
-
+    const access = await requireGreyhoundCommissioner(leagueId);
     const admin = createSupabaseAdminClient();
-
     await ensureParticipants(admin, leagueId);
-
     const {
       settings,
       competitionStarted,
     } = await loadSettings(admin, leagueId);
-
     const teamGame = isTeamFormat(settings.game_format);
-
-    if (action === "save_entry_name") {
+    if (action === "create_commissioner_managed_team") {
+      const teamName = cleanName(body?.teamName, "Team / Entry Name");
+      const commissionerUserId = String((access as { userId?: string }).userId ?? "").trim();
+      if (!commissionerUserId) return jsonError("Authenticated commissioner user ID was not found.", 401);
+      const { error } = await admin.rpc("commissioner_create_greyhound_team", {
+        p_league_id: leagueId,
+        p_commissioner_user_id: commissionerUserId,
+        p_team_name: teamName,
+      });
+      if (error) throw error;
+    } else if (action === "save_entry_name") {
       const participantId = Number(body?.participantId);
-
       if (!Number.isInteger(participantId) || participantId <= 0) {
         return jsonError("A valid participantId is required.", 400);
       }
-
       const entryName = cleanName(body?.entryName, "Entry Name");
-
       const { data, error } = await admin
         .from("greyhound_participants")
         .update({
@@ -402,11 +345,9 @@ export async function POST(request: Request) {
         .eq("id", participantId)
         .select("id")
         .maybeSingle();
-
       if (error) {
         throw error;
       }
-
       if (!data) {
         return jsonError("Greyhound participant was not found.", 404);
       }
@@ -417,15 +358,11 @@ export async function POST(request: Request) {
           400,
         );
       }
-
       const teamId = Number(body?.teamId);
-
       if (!Number.isInteger(teamId) || teamId <= 0) {
         return jsonError("A valid teamId is required.", 400);
       }
-
       const teamName = cleanName(body?.teamName, "Team Name");
-
       const { data, error } = await admin
         .from("greyhound_competition_teams")
         .update({
@@ -436,11 +373,9 @@ export async function POST(request: Request) {
         .eq("id", teamId)
         .select("id")
         .maybeSingle();
-
       if (error) {
         throw error;
       }
-
       if (!data) {
         return jsonError("Greyhound competition team was not found.", 404);
       }
@@ -451,21 +386,18 @@ export async function POST(request: Request) {
           400,
         );
       }
-
       if (settings.team_setup_mode !== "manual") {
         return jsonError(
           "Create Team is only available when Team Setup is Manual.",
           400,
         );
       }
-
       if (competitionStarted) {
         return jsonError(
           "Team structure is locked because the competition has started.",
           409,
         );
       }
-
       const { data: lastTeam, error: lastTeamError } = await admin
         .from("greyhound_competition_teams")
         .select("team_number")
@@ -473,18 +405,14 @@ export async function POST(request: Request) {
         .order("team_number", { ascending: false })
         .limit(1)
         .maybeSingle();
-
       if (lastTeamError) {
         throw lastTeamError;
       }
-
       const nextTeamNumber =
         Number(lastTeam?.team_number ?? 0) + 1;
-
       const teamName =
         cleanName(body?.teamName, "Team Name", true) ??
         `Team ${nextTeamNumber}`;
-
       const { error } = await admin
         .from("greyhound_competition_teams")
         .insert({
@@ -493,7 +421,6 @@ export async function POST(request: Request) {
           team_name: teamName,
           active: true,
         });
-
       if (error) {
         throw error;
       }
@@ -504,33 +431,27 @@ export async function POST(request: Request) {
           400,
         );
       }
-
       if (settings.team_setup_mode !== "manual") {
         return jsonError(
           "Delete Team is only available when Team Setup is Manual.",
           400,
         );
       }
-
       if (competitionStarted) {
         return jsonError(
           "Team structure is locked because the competition has started.",
           409,
         );
       }
-
       const teamId = Number(body?.teamId);
-
       if (!Number.isInteger(teamId) || teamId <= 0) {
         return jsonError("A valid teamId is required.", 400);
       }
-
       const { error } = await admin
         .from("greyhound_competition_teams")
         .delete()
         .eq("league_id", leagueId)
         .eq("id", teamId);
-
       if (error) {
         throw error;
       }
@@ -541,32 +462,26 @@ export async function POST(request: Request) {
           400,
         );
       }
-
       if (settings.team_setup_mode !== "manual") {
         return jsonError(
           "Manual member assignment is only available when Team Setup is Manual.",
           400,
         );
       }
-
       if (competitionStarted) {
         return jsonError(
           "Team assignments are locked because the competition has started.",
           409,
         );
       }
-
       const participantId = Number(body?.participantId);
       const teamId = Number(body?.teamId);
-
       if (!Number.isInteger(participantId) || participantId <= 0) {
         return jsonError("A valid participantId is required.", 400);
       }
-
       if (!Number.isInteger(teamId) || teamId <= 0) {
         return jsonError("A valid teamId is required.", 400);
       }
-
       const [
         { data: participant, error: participantError },
         { data: team, error: teamError },
@@ -585,23 +500,18 @@ export async function POST(request: Request) {
           .eq("active", true)
           .maybeSingle(),
       ]);
-
       if (participantError) {
         throw participantError;
       }
-
       if (teamError) {
         throw teamError;
       }
-
       if (!participant) {
         return jsonError("Greyhound participant was not found.", 404);
       }
-
       if (!team) {
         return jsonError("Greyhound competition team was not found.", 404);
       }
-
       const { error } = await admin
         .from("greyhound_competition_team_members")
         .upsert(
@@ -615,7 +525,6 @@ export async function POST(request: Request) {
             onConflict: "league_id,participant_id",
           },
         );
-
       if (error) {
         throw error;
       }
@@ -626,33 +535,27 @@ export async function POST(request: Request) {
           400,
         );
       }
-
       if (settings.team_setup_mode !== "manual") {
         return jsonError(
           "Manual member assignment is only available when Team Setup is Manual.",
           400,
         );
       }
-
       if (competitionStarted) {
         return jsonError(
           "Team assignments are locked because the competition has started.",
           409,
         );
       }
-
       const participantId = Number(body?.participantId);
-
       if (!Number.isInteger(participantId) || participantId <= 0) {
         return jsonError("A valid participantId is required.", 400);
       }
-
       const { error } = await admin
         .from("greyhound_competition_team_members")
         .delete()
         .eq("league_id", leagueId)
         .eq("participant_id", participantId);
-
       if (error) {
         throw error;
       }
@@ -663,23 +566,19 @@ export async function POST(request: Request) {
           400,
         );
       }
-
       if (settings.team_setup_mode !== "random") {
         return jsonError(
           "Randomize Teams is only available when Team Setup is Random.",
           400,
         );
       }
-
       if (competitionStarted) {
         return jsonError(
           "Team assignments are locked because the competition has started.",
           409,
         );
       }
-
       const teamCount = Number(body?.teamCount);
-
       const {
         data: participantRows,
         error: participantRowsError,
@@ -688,23 +587,19 @@ export async function POST(request: Request) {
         .select("id")
         .eq("league_id", leagueId)
         .order("id", { ascending: true });
-
       if (participantRowsError) {
         throw participantRowsError;
       }
-
       const participantIds = (participantRows ?? []).map((row) =>
         Number(row.id),
       );
       const participantCount = participantIds.length;
-
       if (participantCount < 1) {
         return jsonError(
           "At least 1 active Greyhound participant is required.",
           400,
         );
       }
-
       if (
         !Number.isInteger(teamCount) ||
         teamCount < 1 ||
@@ -717,26 +612,21 @@ export async function POST(request: Request) {
           400,
         );
       }
-
       if (teamCount === 1) {
         const { error: membershipDeleteError } = await admin
           .from("greyhound_competition_team_members")
           .delete()
           .eq("league_id", leagueId);
-
         if (membershipDeleteError) {
           throw membershipDeleteError;
         }
-
         const { error: teamDeleteError } = await admin
           .from("greyhound_competition_teams")
           .delete()
           .eq("league_id", leagueId);
-
         if (teamDeleteError) {
           throw teamDeleteError;
         }
-
         const {
           data: createdTeam,
           error: createTeamError,
@@ -751,24 +641,19 @@ export async function POST(request: Request) {
           })
           .select("id")
           .single();
-
         if (createTeamError) {
           throw createTeamError;
         }
-
         const competitionTeamId = Number(createdTeam.id);
-
         const memberRows = participantIds.map((participantId) => ({
           league_id: leagueId,
           competition_team_id: competitionTeamId,
           participant_id: participantId,
           updated_at: new Date().toISOString(),
         }));
-
         const { error: memberInsertError } = await admin
           .from("greyhound_competition_team_members")
           .insert(memberRows);
-
         if (memberInsertError) {
           throw memberInsertError;
         }
@@ -780,7 +665,6 @@ export async function POST(request: Request) {
             p_team_count: teamCount,
           },
         );
-
         if (error) {
           throw error;
         }
@@ -788,9 +672,7 @@ export async function POST(request: Request) {
     } else {
       return jsonError("Unsupported teams/entries action.", 400);
     }
-
     const workspace = await loadWorkspace(leagueId);
-
     return NextResponse.json(workspace, {
       headers: {
         "Cache-Control": "no-store, max-age=0",
@@ -801,19 +683,16 @@ export async function POST(request: Request) {
       "Greyhound commissioner teams/entries POST failed:",
       error,
     );
-
     const message =
       error instanceof Error
         ? error.message
         : "Unable to update Greyhound teams and entries.";
-
     const status =
       message.includes("Only the league commissioner")
         ? 403
         : message.includes("only available")
           ? 400
           : 500;
-
     return jsonError(message, status);
   }
 }
