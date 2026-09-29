@@ -447,6 +447,18 @@ export default function NhlTraditionalWaivers({ leagueId }: Props) {
 
   useEffect(() => { void load(); }, [load]);
 
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const refresh = () => { if (timer) clearTimeout(timer); timer = setTimeout(() => void load(), 250); };
+    const channel = supabase.channel(`nhl-waivers-${leagueId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "nhl_traditional_rosters", filter: `league_id=eq.${leagueId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "nhl_traditional_waiver_claims", filter: `league_id=eq.${leagueId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "nhl_traditional_transactions", filter: `league_id=eq.${leagueId}` }, refresh)
+      .subscribe();
+    const interval = window.setInterval(refresh, 30000);
+    return () => { if (timer) clearTimeout(timer); window.clearInterval(interval); void supabase.removeChannel(channel); };
+  }, [leagueId, load]);
+
   const myTeam = useMemo(
     () => teams.find(team => team.owner_id === userId) ?? null,
     [teams, userId]

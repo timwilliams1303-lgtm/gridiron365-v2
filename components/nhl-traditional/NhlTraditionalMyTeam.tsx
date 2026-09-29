@@ -5,6 +5,7 @@ import Card from "@/components/ui/Card";
 import { requireLeagueMember } from "@/lib/leagues/requireLeagueMember";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import NhlTraditionalTeamNameEditor from "./NhlTraditionalTeamNameEditor";
+import NhlTraditionalAutoRefresh from "./NhlTraditionalAutoRefresh";
 
 type NhlTraditionalMyTeamProps = {
   leagueId: string;
@@ -119,6 +120,17 @@ type LineupRow = {
   nhl_game_id: number | null;
   game_start_at: string | null;
   is_locked: boolean | null;
+};
+
+type NhlGameRow = {
+  id: number;
+  away_team_id: number;
+  home_team_id: number;
+};
+
+type NhlTeamRow = {
+  id: number;
+  abbreviation: string | null;
 };
 
 
@@ -841,6 +853,57 @@ export default async function NhlTraditionalMyTeam({
     )
   );
 
+  let nhlGames: NhlGameRow[] = [];
+  let nhlTeams: NhlTeamRow[] = [];
+
+  if (lineupGameIds.length > 0) {
+    const gameResult = await supabase
+      .from("nhl_games")
+      .select("id, away_team_id, home_team_id")
+      .in("id", lineupGameIds);
+
+    if (gameResult.error) {
+      throw new Error(`Unable to load NHL games: ${gameResult.error.message}`);
+    }
+
+    nhlGames = (gameResult.data ?? []) as NhlGameRow[];
+
+    const nhlTeamIds = Array.from(
+      new Set(
+        nhlGames.flatMap((game) => [Number(game.away_team_id), Number(game.home_team_id)])
+      )
+    );
+
+    if (nhlTeamIds.length > 0) {
+      const nhlTeamResult = await supabase
+        .from("nhl_teams")
+        .select("id, abbreviation")
+        .in("id", nhlTeamIds);
+
+      if (nhlTeamResult.error) {
+        throw new Error(`Unable to load NHL teams: ${nhlTeamResult.error.message}`);
+      }
+
+      nhlTeams = (nhlTeamResult.data ?? []) as NhlTeamRow[];
+    }
+  }
+
+  const nhlGameById = new Map(nhlGames.map((game) => [Number(game.id), game]));
+  const nhlTeamById = new Map(nhlTeams.map((team) => [Number(team.id), team]));
+
+  function opponentLabel(row: LineupRow | undefined, player: NhlPlayerStatusRow | undefined) {
+    if (!row?.nhl_game_id || !player?.team_id) return null;
+    const game = nhlGameById.get(Number(row.nhl_game_id));
+    if (!game) return null;
+    const playerTeamId = Number(player.team_id);
+    const isHome = Number(game.home_team_id) === playerTeamId;
+    const opponentTeamId = isHome ? Number(game.away_team_id) : Number(game.home_team_id);
+    const opponent = nhlTeamById.get(opponentTeamId);
+    const abbreviation = opponent?.abbreviation?.trim();
+    if (!abbreviation) return null;
+    return `${isHome ? "vs" : "@"} ${abbreviation.toUpperCase()}`;
+  }
+
   let playerGameScores: PlayerGameScoreRow[] = [];
 
   if (lineupGameIds.length > 0 && rosterPlayerIds.length > 0) {
@@ -984,6 +1047,7 @@ export default async function NhlTraditionalMyTeam({
 
   return (
     <main className="g365-nhl-my-team-page">
+      <NhlTraditionalAutoRefresh leagueId={leagueId} />
       <style>{baseStyles}</style>
 
       <section className="g365-nhl-my-team-shell">
@@ -991,6 +1055,10 @@ export default async function NhlTraditionalMyTeam({
           <div className="g365-nhl-team-name-copy">
             <p className="g365-nhl-small-label">YOUR NHL TEAM</p>
             <h1>{team.team_name ?? "My NHL Team"}</h1>
+            <div className="g365-nhl-team-record">
+              <strong>{wins}-{losses}-{ties}</strong>
+              <span>• #{Number(standing?.rank ?? 0) || "—"}</span>
+            </div>
           </div>
 
           <NhlTraditionalTeamNameEditor
@@ -1071,30 +1139,13 @@ export default async function NhlTraditionalMyTeam({
                   ])
                 );
 
-                // Always show every configured starter spot, including empty starters.
-                // Bench rows are different: only render bench spots that currently contain
-                // a player for this date. Empty BN placeholders stay available as move
-                // destinations, but they do not appear as extra rows in the lineup table.
-                const occupiedBenchSpotIndexes = Array.from(
-                  new Set(
-                    dayRows
-                      .filter(
-                        (row) =>
-                          String(row.lineup_slot ?? "").toUpperCase() === "BN"
-                      )
-                      .map((row) => Number(row.slot_index ?? 1))
-                      .filter(
-                        (slotIndex) =>
-                          Number.isFinite(slotIndex) && slotIndex > 0
-                      )
-                  )
-                ).sort((a, b) => a - b);
-
+                // Roster structure is permanent: every configured starter and bench
+                // slot stays visible even when empty after a drop, trade, IR move or add.
                 const tableSpots = [
                   ...starterSpotDefinitions,
-                  ...occupiedBenchSpotIndexes.map((slotIndex) => ({
+                  ...Array.from({ length: benchSlots }, (_, index) => ({
                     label: "BN",
-                    slotIndex,
+                    slotIndex: index + 1,
                   })),
                 ];
 
@@ -1153,6 +1204,10 @@ export default async function NhlTraditionalMyTeam({
                                   targets={allMoveTargets}
                                   positionMode={positionMode}
                                   gameTimeLabel={gameTime(row?.game_start_at)}
+                                  opponentLabel={opponentLabel(
+                                    row,
+                                    row ? playerById.get(Number(row.nhl_player_id)) : undefined
+                                  )}
                                   irSlotAvailable={irRoster.length < irSlots}
                                 />
                               );
@@ -1214,6 +1269,7 @@ function NhlLineupTableRow({
   targets,
   positionMode,
   gameTimeLabel,
+  opponentLabel,
   irSlotAvailable,
 }: {
   label: string;
@@ -1228,6 +1284,7 @@ function NhlLineupTableRow({
   targets: Array<{ label: string; slotIndex: number }>;
   positionMode: string;
   gameTimeLabel: string;
+  opponentLabel: string | null;
   irSlotAvailable: boolean;
 }) {
   const started =
@@ -1362,8 +1419,8 @@ function NhlLineupTableRow({
       <td className="game-cell">
         {row ? (
           <>
-            <strong>{hasGame ? gameTimeLabel : "Off Day"}</strong>
-            <small>{hasGame ? "NHL game scheduled" : "No game today"}</small>
+            <strong>{hasGame ? opponentLabel ?? "Game" : "Off Day"}</strong>
+            <small>{hasGame ? gameTimeLabel : "No game today"}</small>
           </>
         ) : (
           <span>—</span>
@@ -2976,4 +3033,16 @@ const baseStyles = `
     cursor: default;
   }
 
+
+  .g365-nhl-team-record {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 5px;
+    color: #d1d5db;
+    font-size: 0.9rem;
+    line-height: 1.2;
+  }
+  .g365-nhl-team-record strong { color: #fff; font-weight: 900; }
+  .g365-nhl-team-record span { color: #9ca3af; font-weight: 800; }
 `;
