@@ -137,12 +137,11 @@ function normalizeName(value: string) {
   return decodeHtml(value)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[’‘`]/g, "'")
+    .replace(/[\u2019\u2018`]/g, "'")
     .replace(/\b(jr|sr|ii|iii|iv|v)\.?\b/gi, "")
     .replace(/[^a-z0-9]/gi, "")
     .toLowerCase();
 }
-
 function normalizeTeam(value: string | null | undefined) {
   const text = (value ?? "").trim().toUpperCase();
 
@@ -597,11 +596,11 @@ async function getCurrentRegularSeasonWeek(
 
   const { data, error } = await supabase
     .from("nfl_games")
-    .select("week, game_date")
+    .select("week, kickoff_at")
     .eq("season", season)
-    .gte("game_date", lookback)
-    .lte("game_date", lookahead)
-    .order("game_date", { ascending: true });
+    .gte("kickoff_at", lookback)
+    .lte("kickoff_at", lookahead)
+    .order("kickoff_at", { ascending: true });
 
   if (error) {
     throw new Error(
@@ -1180,7 +1179,7 @@ export async function POST(request: Request) {
             ? `${
                 state.injury ??
                 "Injury"
-              } — ${
+              } \u2014 ${
                 state.practiceStatus
               }`
             : state.injury,
