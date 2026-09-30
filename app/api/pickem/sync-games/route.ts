@@ -1838,49 +1838,17 @@ function yyyymmdd(
 
 function collegeScoreboardUrl(
 
-  slateStartsAt:
-
-    string,
-
-  slateEndsAt:
+  isoDate:
 
     string
 
 ) {
 
-  const start =
-
-    new Date(
-
-      slateStartsAt
-
-    );
-
-
-
-  const endExclusive =
-
-    new Date(
-
-      slateEndsAt
-
-    );
-
-
-
   return (
 
     "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard" +
 
-    `?dates=${yyyymmdd(
-
-      start
-
-    )}-${yyyymmdd(
-
-      endExclusive
-
-    )}` +
+    `?dates=${isoDate}` +
 
     "&limit=1000"
 
@@ -1890,17 +1858,13 @@ function collegeScoreboardUrl(
 
 
 
-async function fetchCollegeScoreboard(
+async function fetchCollegeScoreboardDate(
 
-  slateStartsAt:
-
-    string,
-
-  slateEndsAt:
+  isoDate:
 
     string
 
-) {
+): Promise<EspnEvent[]> {
 
   const response =
 
@@ -1908,9 +1872,7 @@ async function fetchCollegeScoreboard(
 
       collegeScoreboardUrl(
 
-        slateStartsAt,
-
-        slateEndsAt
+        isoDate
 
       ),
 
@@ -1962,7 +1924,7 @@ async function fetchCollegeScoreboard(
 
     throw new Error(
 
-      `ESPN NCAAF scoreboard returned HTTP ${response.status}: ${text.slice(
+      `ESPN NCAAF scoreboard ${isoDate} returned HTTP ${response.status}: ${text.slice(
 
         0,
 
@@ -1996,13 +1958,37 @@ async function fetchCollegeScoreboard(
 
     throw new Error(
 
-      "ESPN NCAAF scoreboard returned invalid JSON."
+      `ESPN NCAAF scoreboard ${isoDate} returned invalid JSON.`
 
     );
 
   }
 
 
+
+  return (
+
+    payload.events ??
+
+    []
+
+  );
+
+}
+
+
+
+async function fetchCollegeScoreboard(
+
+  slateStartsAt:
+
+    string,
+
+  slateEndsAt:
+
+    string
+
+) {
 
   const startMs =
 
@@ -2024,11 +2010,251 @@ async function fetchCollegeScoreboard(
 
 
 
-  return (
+  if (
 
-    payload.events ??
+    !Number.isFinite(
 
-    []
+      startMs
+
+    ) ||
+
+    !Number.isFinite(
+
+      endMs
+
+    ) ||
+
+    endMs <= startMs
+
+  ) {
+
+    throw new Error(
+
+      `Invalid NCAAF slate window: ${slateStartsAt} -> ${slateEndsAt}`
+
+    );
+
+  }
+
+
+
+  /*
+
+   * ESPN's college-football scoreboard has proven unreliable
+
+   * when a multi-day date range is supplied. Fetch one UTC
+
+   * calendar date at a time, then combine/dedupe the events.
+
+   */
+
+  const firstDay =
+
+    new Date(
+
+      slateStartsAt
+
+    );
+
+
+
+  firstDay.setUTCHours(
+
+    0,
+
+    0,
+
+    0,
+
+    0
+
+  );
+
+
+
+  const eventsById =
+
+    new Map<
+
+      string,
+
+      EspnEvent
+
+    >();
+
+
+
+  const fetchErrors:
+
+    string[] =
+
+    [];
+
+
+
+  let successfulDates =
+
+    0;
+
+
+
+  for (
+
+    let cursorMs =
+
+      firstDay.getTime();
+
+    cursorMs < endMs;
+
+    cursorMs +=
+
+      24 * 60 * 60 * 1000
+
+  ) {
+
+    const isoDate =
+
+      yyyymmdd(
+
+        new Date(
+
+          cursorMs
+
+        )
+
+      );
+
+
+
+    try {
+
+      const dailyEvents =
+
+        await fetchCollegeScoreboardDate(
+
+          isoDate
+
+        );
+
+
+
+      successfulDates +=
+
+        1;
+
+
+
+      for (
+
+        const event
+
+        of dailyEvents
+
+      ) {
+
+        const eventId =
+
+          String(
+
+            event.id ??
+
+              ""
+
+          ).trim();
+
+
+
+        if (
+
+          eventId
+
+        ) {
+
+          eventsById.set(
+
+            eventId,
+
+            event
+
+          );
+
+        }
+
+      }
+
+    } catch (
+
+      error
+
+    ) {
+
+      const message =
+
+        error instanceof Error
+
+          ? error.message
+
+          : String(
+
+              error
+
+            );
+
+
+
+      fetchErrors.push(
+
+        message
+
+      );
+
+
+
+      console.error(
+
+        "NCAAF daily scoreboard fetch failed:",
+
+        message
+
+      );
+
+    }
+
+  }
+
+
+
+  if (
+
+    successfulDates ===
+
+    0
+
+  ) {
+
+    throw new Error(
+
+      `All ESPN NCAAF daily scoreboard requests failed for ${slateStartsAt} -> ${slateEndsAt}: ${fetchErrors.join(
+
+        " | "
+
+      ).slice(
+
+        0,
+
+        900
+
+      )}`
+
+    );
+
+  }
+
+
+
+  return Array.from(
+
+    eventsById.values()
 
   ).filter(
 
@@ -2123,8 +2349,6 @@ async function fetchCollegeScoreboard(
   );
 
 }
-
-
 
 /*
 
@@ -5180,6 +5404,8 @@ export async function POST(
 
       ) {
 
+        try {
+
         const lifecycleSport:
 
           PickemSport =
@@ -6003,6 +6229,94 @@ export async function POST(
             cleanup.preserved,
 
         });
+
+        } catch (sportError) {
+
+          gamesSkipped +=
+
+            1;
+
+
+
+          const sportErrorMessage =
+
+            sportError instanceof Error
+
+              ? sportError.message
+
+              : String(
+
+                  sportError
+
+                );
+
+
+
+          console.error(
+
+            `Pick'em ${sport.toUpperCase()} sync failed for league ${pickemWeek.league_id}, season ${pickemWeek.season}, week ${pickemWeek.week}:`,
+
+            sportErrorMessage
+
+          );
+
+
+
+          details.push({
+
+            leagueId:
+
+              pickemWeek.league_id,
+
+
+
+            season:
+
+              pickemWeek.season,
+
+
+
+            week:
+
+              pickemWeek.week,
+
+
+
+            sport,
+
+
+
+            source:
+
+              `ERROR: ${sportErrorMessage}`,
+
+
+
+            games:
+
+              0,
+
+
+
+            staleCandidates:
+
+              0,
+
+
+
+            staleDeleted:
+
+              0,
+
+
+
+            stalePreserved:
+
+              0,
+
+          });
+
+        }
 
       }
 
