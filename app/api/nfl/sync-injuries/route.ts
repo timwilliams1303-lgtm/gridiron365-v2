@@ -62,7 +62,11 @@ type CurrentOfficialState = {
 function getAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Missing Supabase server environment variables.");
+
+  if (!url || !key) {
+    throw new Error("Missing Supabase server environment variables.");
+  }
+
   return createClient(url, key, {
     auth: {
       persistSession: false,
@@ -74,6 +78,7 @@ function getAdminClient() {
 
 function authorizeSync(request: Request) {
   const supplied = request.headers.get("x-gridiron-sync-secret");
+
   const secrets = [
     process.env.GRIDIRON_SYNC_SECRET,
     process.env.NFL_SYNC_SECRET,
@@ -81,14 +86,20 @@ function authorizeSync(request: Request) {
 
   if (!secrets.length) {
     return NextResponse.json(
-      { success: false, error: "No Gridiron365 sync secret is configured on the server." },
+      {
+        success: false,
+        error: "No Gridiron365 sync secret is configured on the server.",
+      },
       { status: 500 }
     );
   }
 
   if (!supplied || !secrets.includes(supplied)) {
     return NextResponse.json(
-      { success: false, error: "Unauthorized injury sync request." },
+      {
+        success: false,
+        error: "Unauthorized injury sync request.",
+      },
       { status: 401 }
     );
   }
@@ -103,7 +114,9 @@ function decodeHtml(value: string) {
     .replace(/&amp;/gi, "&")
     .replace(/&nbsp;/gi, " ")
     .replace(/&#x2F;/gi, "/")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#(\d+);/g, (_, code) =>
+      String.fromCharCode(Number(code))
+    )
     .replace(/&#x([0-9a-f]+);/gi, (_, code) =>
       String.fromCharCode(parseInt(code, 16))
     );
@@ -132,6 +145,7 @@ function normalizeName(value: string) {
 
 function normalizeTeam(value: string | null | undefined) {
   const text = (value ?? "").trim().toUpperCase();
+
   if (!text) return null;
 
   const aliases: Record<string, string> = {
@@ -206,26 +220,34 @@ function normalizeTeam(value: string | null | undefined) {
 
 function normalizePosition(value: string | null | undefined) {
   const position = (value ?? "").trim().toUpperCase();
+
   if (position === "PK") return "K";
   if (position === "FB") return "RB";
+
   return position || null;
 }
 
 function normalizeGameStatus(value: string | null | undefined) {
   const text = (value ?? "").trim().toLowerCase();
+
   if (text === "out") return "Out";
   if (text === "doubtful") return "Doubtful";
   if (text === "questionable") return "Questionable";
+
   return null;
 }
 
 function normalizePracticeStatus(value: string | null | undefined) {
   const text = (value ?? "").trim();
+
   if (!text) return null;
+
   const lower = text.toLowerCase();
+
   if (lower.includes("did not participate")) return "DNP";
   if (lower.includes("limited participation")) return "Limited";
   if (lower.includes("full participation")) return "Full";
+
   return text;
 }
 
@@ -236,22 +258,30 @@ function normalizeTransactionStatus(transaction: string) {
     text.includes("reserve/injured") ||
     text.includes("reserve injured") ||
     text.includes("injured reserve")
-  ) return "IR";
+  ) {
+    return "IR";
+  }
 
   if (
     text.includes("physically unable to perform") ||
     text.includes("reserve/pup") ||
     /\bpup\b/.test(text)
-  ) return "PUP";
+  ) {
+    return "PUP";
+  }
 
   if (
     text.includes("non-football injury") ||
     text.includes("non football injury") ||
     text.includes("reserve/nfi") ||
     /\bnfi\b/.test(text)
-  ) return "NFI";
+  ) {
+    return "NFI";
+  }
 
-  if (text.includes("suspend")) return "Suspended";
+  if (text.includes("suspend")) {
+    return "Suspended";
+  }
 
   return null;
 }
@@ -274,11 +304,13 @@ function transactionClearsReserve(transaction: string) {
 function currentStatus(state: CurrentOfficialState) {
   if (state.rosterStatus) return state.rosterStatus;
   if (state.gameStatus) return state.gameStatus;
+
   return null;
 }
 
 function parseTransactionDate(value: string, season: number) {
   const match = value.match(/^(\d{1,2})\/(\d{1,2})$/);
+
   if (!match) return null;
 
   const month = Number(match[1]);
@@ -286,7 +318,10 @@ function parseTransactionDate(value: string, season: number) {
 
   if (!month || !day) return null;
 
-  return `${season}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  return `${season}-${String(month).padStart(2, "0")}-${String(day).padStart(
+    2,
+    "0"
+  )}`;
 }
 
 function findPlayer(
@@ -296,35 +331,61 @@ function findPlayer(
   position?: string | null
 ) {
   const candidates = playersByName.get(normalizeName(name)) ?? [];
+
   if (!candidates.length) return null;
-  if (candidates.length === 1) return candidates[0];
+
+  /*
+   * An exact normalized name with one database player is enough.
+   * This is important for NFL transaction rows where NFL.com may
+   * not expose the team cleanly in the parsed table.
+   */
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
 
   const normalizedTeam = normalizeTeam(team);
+
   if (normalizedTeam) {
     const teamMatches = candidates.filter(
-      (player) => normalizeTeam(player.team_abbreviation) === normalizedTeam
+      (player) =>
+        normalizeTeam(player.team_abbreviation) === normalizedTeam
     );
-    if (teamMatches.length === 1) return teamMatches[0];
+
+    if (teamMatches.length === 1) {
+      return teamMatches[0];
+    }
 
     const normalizedPosition = normalizePosition(position);
+
     if (normalizedPosition) {
       const exact = teamMatches.filter(
         (player) =>
           normalizePosition(player.primary_position) === normalizedPosition
       );
-      if (exact.length === 1) return exact[0];
+
+      if (exact.length === 1) {
+        return exact[0];
+      }
     }
   }
 
   const normalizedPosition = normalizePosition(position);
+
   if (normalizedPosition) {
     const positionMatches = candidates.filter(
       (player) =>
         normalizePosition(player.primary_position) === normalizedPosition
     );
-    if (positionMatches.length === 1) return positionMatches[0];
+
+    if (positionMatches.length === 1) {
+      return positionMatches[0];
+    }
   }
 
+  /*
+   * Multiple database players still match and we cannot safely
+   * disambiguate them. Do not guess.
+   */
   return null;
 }
 
@@ -336,6 +397,7 @@ function extractRows(html: string) {
 
   while ((trMatch = trRegex.exec(html))) {
     const cells: string[] = [];
+
     const cellRegex = /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi;
     let cellMatch: RegExpExecArray | null;
 
@@ -343,7 +405,9 @@ function extractRows(html: string) {
       cells.push(stripHtml(cellMatch[1]));
     }
 
-    if (cells.length) rows.push(cells);
+    if (cells.length) {
+      rows.push(cells);
+    }
   }
 
   return rows;
@@ -354,11 +418,16 @@ function parseInjuryReport(html: string): InjuryReportRecord[] {
   const records: InjuryReportRecord[] = [];
 
   for (const cells of rows) {
-    const cleaned = cells.map((cell) => cell.trim()).filter(Boolean);
+    const cleaned = cells
+      .map((cell) => cell.trim())
+      .filter(Boolean);
+
     if (cleaned.length < 3) continue;
 
     const positionIndex = cleaned.findIndex((cell) =>
-      /^(QB|RB|FB|WR|TE|K|PK|C|G|T|OL|DL|DE|DT|LB|CB|S|DB|LS)$/i.test(cell)
+      /^(QB|RB|FB|WR|TE|K|PK|C|G|T|OL|DL|DE|DT|LB|CB|S|DB|LS)$/i.test(
+        cell
+      )
     );
 
     if (positionIndex <= 0) continue;
@@ -371,7 +440,9 @@ function parseInjuryReport(html: string): InjuryReportRecord[] {
     const after = cleaned.slice(positionIndex + 1);
 
     const practiceIndex = after.findIndex((cell) =>
-      /did not participate|limited participation|full participation/i.test(cell)
+      /did not participate|limited participation|full participation/i.test(
+        cell
+      )
     );
 
     const gameIndex = after.findIndex((cell) =>
@@ -391,6 +462,7 @@ function parseInjuryReport(html: string): InjuryReportRecord[] {
 
     for (let i = 0; i < positionIndex - 1; i++) {
       const candidate = normalizeTeam(cleaned[i]);
+
       if (candidate && candidate.length <= 3) {
         team = candidate;
         break;
@@ -416,35 +488,53 @@ function parseInjuryReport(html: string): InjuryReportRecord[] {
   return records;
 }
 
-function parseTransactions(html: string, season: number): TransactionRecord[] {
+function parseTransactions(
+  html: string,
+  season: number
+): TransactionRecord[] {
   const rows = extractRows(html);
   const records: TransactionRecord[] = [];
 
   for (const cells of rows) {
-    const cleaned = cells.map((cell) => cell.trim()).filter(Boolean);
+    const cleaned = cells
+      .map((cell) => cell.trim())
+      .filter(Boolean);
+
     const dateIndex = cleaned.findIndex((cell) =>
       /^\d{1,2}\/\d{1,2}$/.test(cell)
     );
 
-    if (dateIndex < 0 || cleaned.length < dateIndex + 3) continue;
+    if (dateIndex < 0 || cleaned.length < dateIndex + 3) {
+      continue;
+    }
 
     const date = parseTransactionDate(cleaned[dateIndex], season);
+
     if (!date) continue;
 
     const name = cleaned[dateIndex + 1];
-    const transaction = cleaned.slice(dateIndex + 2).join(" ").trim();
+    const transaction = cleaned
+      .slice(dateIndex + 2)
+      .join(" ")
+      .trim();
 
     if (!name || !transaction) continue;
 
-    const rosterStatus = normalizeTransactionStatus(transaction);
-    const clearsReserve = transactionClearsReserve(transaction);
+    const rosterStatus =
+      normalizeTransactionStatus(transaction);
 
-    if (!rosterStatus && !clearsReserve) continue;
+    const clearsReserve =
+      transactionClearsReserve(transaction);
+
+    if (!rosterStatus && !clearsReserve) {
+      continue;
+    }
 
     let team: string | null = null;
 
     for (let i = 0; i < dateIndex; i++) {
       const candidate = normalizeTeam(cleaned[i]);
+
       if (candidate && candidate.length <= 3) {
         team = candidate;
         break;
@@ -475,48 +565,116 @@ async function fetchHtml(url: string) {
   });
 
   if (!response.ok) {
-    throw new Error(`NFL.com returned HTTP ${response.status} for ${url}`);
+    throw new Error(
+      `NFL.com returned HTTP ${response.status} for ${url}`
+    );
   }
 
   return response.text();
 }
 
-async function getCurrentRegularSeasonWeek(season: number) {
-  for (let week = 1; week <= 18; week++) {
-    const url = `https://www.nfl.com/injuries/league/${season}/reg${week}`;
+/*
+ * Determine the current NFL regular-season week from the G365
+ * schedule instead of probing NFL.com future-week URLs.
+ *
+ * We use a window that includes the recently completed games
+ * plus the upcoming games. The week represented by the most
+ * games in that window is treated as the current fantasy week.
+ */
+async function getCurrentRegularSeasonWeek(
+  supabase: ReturnType<typeof getAdminClient>,
+  season: number
+) {
+  const now = new Date();
 
-    try {
-      const html = await fetchHtml(url);
-      const records = parseInjuryReport(html);
+  const lookback = new Date(
+    now.getTime() - 4 * 24 * 60 * 60 * 1000
+  ).toISOString();
 
-      if (records.length) {
-        const nextUrl =
-          week < 18
-            ? `https://www.nfl.com/injuries/league/${season}/reg${week + 1}`
-            : null;
+  const lookahead = new Date(
+    now.getTime() + 7 * 24 * 60 * 60 * 1000
+  ).toISOString();
 
-        if (nextUrl) {
-          try {
-            const nextHtml = await fetchHtml(nextUrl);
-            const nextRecords = parseInjuryReport(nextHtml);
+  const { data, error } = await supabase
+    .from("nfl_games")
+    .select("week, game_date")
+    .eq("season", season)
+    .gte("game_date", lookback)
+    .lte("game_date", lookahead)
+    .order("game_date", { ascending: true });
 
-            if (nextRecords.length) continue;
-          } catch {
-            // Current week found.
-          }
-        }
-
-        return { week, url, html, records };
-      }
-    } catch {
-      // Try next week.
-    }
+  if (error) {
+    throw new Error(
+      `Unable to determine current NFL week: ${error.message}`
+    );
   }
 
-  throw new Error("Unable to locate a current official NFL injury report.");
+  const games = data ?? [];
+
+  if (!games.length) {
+    throw new Error(
+      "No NFL games found near the current date."
+    );
+  }
+
+  const weekCounts = new Map<number, number>();
+
+  for (const game of games) {
+    const week = Number(game.week);
+
+    if (
+      !Number.isFinite(week) ||
+      week < 1 ||
+      week > 18
+    ) {
+      continue;
+    }
+
+    weekCounts.set(
+      week,
+      (weekCounts.get(week) ?? 0) + 1
+    );
+  }
+
+  const week = Array.from(weekCounts.entries())
+    .sort((a, b) => {
+      if (b[1] !== a[1]) {
+        return b[1] - a[1];
+      }
+
+      return b[0] - a[0];
+    })[0]?.[0];
+
+  if (!week) {
+    throw new Error(
+      "Unable to determine current NFL regular-season week."
+    );
+  }
+
+  const url =
+    `https://www.nfl.com/injuries/league/${season}/reg${week}`;
+
+  const html = await fetchHtml(url);
+
+  const records = parseInjuryReport(html);
+
+  if (!records.length) {
+    throw new Error(
+      `NFL.com returned no usable injury records for season ${season}, week ${week}.`
+    );
+  }
+
+  return {
+    week,
+    url,
+    html,
+    records,
+  };
 }
 
-function injuryFingerprint(state: CurrentOfficialState) {
+function injuryFingerprint(
+  state: CurrentOfficialState
+) {
   return JSON.stringify({
     status: currentStatus(state),
     rosterStatus: state.rosterStatus,
@@ -528,7 +686,9 @@ function injuryFingerprint(state: CurrentOfficialState) {
   });
 }
 
-function existingFingerprint(row: ExistingInjury) {
+function existingFingerprint(
+  row: ExistingInjury
+) {
   return JSON.stringify({
     status: row.status,
     rosterStatus: row.official_roster_status,
@@ -542,7 +702,10 @@ function existingFingerprint(row: ExistingInjury) {
 
 export async function POST(request: Request) {
   const unauthorized = authorizeSync(request);
-  if (unauthorized) return unauthorized;
+
+  if (unauthorized) {
+    return unauthorized;
+  }
 
   const startedAt = Date.now();
   const now = new Date().toISOString();
@@ -550,52 +713,106 @@ export async function POST(request: Request) {
   const supabase = getAdminClient();
 
   try {
-    const { data: playerRows, error: playerError } = await supabase
+    const {
+      data: playerRows,
+      error: playerError,
+    } = await supabase
       .from("nfl_players")
       .select(
         "id, espn_player_id, full_name, primary_position, team_abbreviation"
       );
 
     if (playerError) {
-      throw new Error(`Unable to load NFL players: ${playerError.message}`);
+      throw new Error(
+        `Unable to load NFL players: ${playerError.message}`
+      );
     }
 
-    const players: NflPlayer[] = (playerRows ?? []).map((row) => ({
+    const players: NflPlayer[] = (
+      playerRows ?? []
+    ).map((row) => ({
       id: Number(row.id),
       espn_player_id: row.espn_player_id
         ? String(row.espn_player_id)
         : null,
       full_name: String(row.full_name ?? ""),
-      primary_position: String(row.primary_position ?? ""),
-      team_abbreviation: row.team_abbreviation
-        ? String(row.team_abbreviation)
-        : null,
+      primary_position: String(
+        row.primary_position ?? ""
+      ),
+      team_abbreviation:
+        row.team_abbreviation
+          ? String(row.team_abbreviation)
+          : null,
     }));
 
-    const fantasyPositions = new Set(["QB", "RB", "WR", "TE", "K"]);
+    /*
+     * These are the positions whose nfl_players.status field
+     * feeds the fantasy interface.
+     */
+    const fantasyPositions = new Set([
+      "QB",
+      "RB",
+      "WR",
+      "TE",
+      "K",
+    ]);
 
-    const fantasyPlayers = players.filter((player) =>
-      fantasyPositions.has(
-        normalizePosition(player.primary_position) ?? ""
-      )
+    const fantasyPlayers = players.filter(
+      (player) =>
+        fantasyPositions.has(
+          normalizePosition(
+            player.primary_position
+          ) ?? ""
+        )
     );
 
-    const playersByName = new Map<string, NflPlayer[]>();
+    /*
+     * IMPORTANT:
+     * Match NFL.com records against ALL NFL players.
+     *
+     * The previous version indexed fantasyPlayers only.
+     * Official NFL transactions should not depend on that
+     * filter, and unique normalized names can safely match
+     * even when NFL.com does not provide a parsed team.
+     */
+    const playersByName =
+      new Map<string, NflPlayer[]>();
 
-    for (const player of fantasyPlayers) {
-      const key = normalizeName(player.full_name);
-      const list = playersByName.get(key) ?? [];
+    for (const player of players) {
+      const key = normalizeName(
+        player.full_name
+      );
+
+      if (!key) continue;
+
+      const list =
+        playersByName.get(key) ?? [];
+
       list.push(player);
-      playersByName.set(key, list);
+
+      playersByName.set(
+        key,
+        list
+      );
     }
 
-    const injuryReport = await getCurrentRegularSeasonWeek(season);
+    const injuryReport =
+      await getCurrentRegularSeasonWeek(
+        supabase,
+        season
+      );
 
     const transactionUrl =
       `https://www.nfl.com/transactions/league/reserve-list/${season}/${new Date().getMonth() + 1}`;
 
-    const transactionHtml = await fetchHtml(transactionUrl);
-    const transactions = parseTransactions(transactionHtml, season);
+    const transactionHtml =
+      await fetchHtml(transactionUrl);
+
+    const transactions =
+      parseTransactions(
+        transactionHtml,
+        season
+      );
 
     if (!injuryReport.records.length) {
       throw new Error(
@@ -603,11 +820,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const states = new Map<number, CurrentOfficialState>();
-    const unmatchedInjuries: InjuryReportRecord[] = [];
-    const unmatchedTransactions: TransactionRecord[] = [];
+    const states =
+      new Map<
+        number,
+        CurrentOfficialState
+      >();
 
-    for (const record of injuryReport.records) {
+    const unmatchedInjuries:
+      InjuryReportRecord[] = [];
+
+    const unmatchedTransactions:
+      TransactionRecord[] = [];
+
+    /*
+     * Build weekly injury-report state.
+     */
+    for (
+      const record of
+      injuryReport.records
+    ) {
       const player = findPlayer(
         playersByName,
         record.name,
@@ -616,7 +847,10 @@ export async function POST(request: Request) {
       );
 
       if (!player) {
-        unmatchedInjuries.push(record);
+        unmatchedInjuries.push(
+          record
+        );
+
         continue;
       }
 
@@ -628,26 +862,45 @@ export async function POST(request: Request) {
         continue;
       }
 
-      const existing = states.get(player.id);
+      const existing =
+        states.get(player.id);
 
       states.set(player.id, {
         player,
-        rosterStatus: existing?.rosterStatus ?? null,
-        gameStatus: record.gameStatus,
-        practiceStatus: record.practiceStatus,
-        injury: record.injury,
-        transactionType: existing?.transactionType ?? null,
-        transactionDate: existing?.transactionDate ?? null,
-        source: "NFL.com Official Injury Report",
+        rosterStatus:
+          existing?.rosterStatus ??
+          null,
+        gameStatus:
+          record.gameStatus,
+        practiceStatus:
+          record.practiceStatus,
+        injury:
+          record.injury,
+        transactionType:
+          existing?.transactionType ??
+          null,
+        transactionDate:
+          existing?.transactionDate ??
+          null,
+        source:
+          "NFL.com Official Injury Report",
       });
     }
 
-    const latestTransactionByPlayer = new Map<
-      number,
-      TransactionRecord
-    >();
+    /*
+     * Match the latest reserve-list transaction for each
+     * NFL player.
+     */
+    const latestTransactionByPlayer =
+      new Map<
+        number,
+        TransactionRecord
+      >();
 
-    for (const transaction of transactions) {
+    for (
+      const transaction of
+      transactions
+    ) {
       const player = findPlayer(
         playersByName,
         transaction.name,
@@ -655,15 +908,22 @@ export async function POST(request: Request) {
       );
 
       if (!player) {
-        unmatchedTransactions.push(transaction);
+        unmatchedTransactions.push(
+          transaction
+        );
+
         continue;
       }
 
-      const previous = latestTransactionByPlayer.get(player.id);
+      const previous =
+        latestTransactionByPlayer.get(
+          player.id
+        );
 
       if (
         !previous ||
-        transaction.date > previous.date
+        transaction.date >
+          previous.date
       ) {
         latestTransactionByPlayer.set(
           player.id,
@@ -672,67 +932,103 @@ export async function POST(request: Request) {
       }
     }
 
-    for (const [playerId, transaction] of latestTransactionByPlayer) {
-      const player = fantasyPlayers.find(
-        (item) => item.id === playerId
-      );
+    /*
+     * Merge official transactions over the weekly report.
+     *
+     * Use ALL players here rather than fantasyPlayers.
+     */
+    for (
+      const [
+        playerId,
+        transaction,
+      ] of
+      latestTransactionByPlayer
+    ) {
+      const player =
+        players.find(
+          (item) =>
+            item.id === playerId
+        );
 
       if (!player) continue;
 
-      const existing = states.get(playerId);
+      const existing =
+        states.get(playerId);
 
-      if (transaction.clearsReserve) {
+      if (
+        transaction.clearsReserve
+      ) {
         if (existing) {
           states.set(playerId, {
             ...existing,
             rosterStatus: null,
-            transactionType: transaction.transaction,
-            transactionDate: transaction.date,
+            transactionType:
+              transaction.transaction,
+            transactionDate:
+              transaction.date,
             source:
               "NFL.com Official Transactions + Official Injury Report",
           });
         }
+
         continue;
       }
 
-      if (!transaction.rosterStatus) continue;
+      if (
+        !transaction.rosterStatus
+      ) {
+        continue;
+      }
 
       states.set(playerId, {
         player,
-        rosterStatus: transaction.rosterStatus,
-        gameStatus: existing?.gameStatus ?? null,
-        practiceStatus: existing?.practiceStatus ?? null,
-        injury: existing?.injury ?? null,
-        transactionType: transaction.transaction,
-        transactionDate: transaction.date,
+        rosterStatus:
+          transaction.rosterStatus,
+        gameStatus:
+          existing?.gameStatus ??
+          null,
+        practiceStatus:
+          existing?.practiceStatus ??
+          null,
+        injury:
+          existing?.injury ??
+          null,
+        transactionType:
+          transaction.transaction,
+        transactionDate:
+          transaction.date,
         source: existing
           ? "NFL.com Official Transactions + Official Injury Report"
           : "NFL.com Official Transactions",
       });
     }
 
-    const { data: existingRows, error: existingError } =
-      await supabase
-        .from("nfl_player_injuries")
-        .select(`
-          id,
-          nfl_player_id,
-          status,
-          injury_type,
-          injury_location,
-          injury_detail,
-          injury_date,
-          return_date,
-          official_roster_status,
-          official_game_status,
-          official_practice_status,
-          official_injury,
-          official_source,
-          official_transaction_type,
-          official_transaction_date
-        `)
-        .eq("season", season)
-        .eq("is_active", true);
+    const {
+      data: existingRows,
+      error: existingError,
+    } = await supabase
+      .from(
+        "nfl_player_injuries"
+      )
+      .select(`
+        id,
+        nfl_player_id,
+        status,
+        injury_type,
+        injury_location,
+        injury_detail,
+        injury_date,
+        return_date,
+        official_roster_status,
+        official_game_status,
+        official_practice_status,
+        official_injury,
+        official_source,
+        official_transaction_type,
+        official_transaction_date
+      `)
+      .eq("season", season)
+      .eq("is_active", true);
 
     if (existingError) {
       throw new Error(
@@ -740,57 +1036,102 @@ export async function POST(request: Request) {
       );
     }
 
-    const existingByPlayer = new Map<number, ExistingInjury>();
+    const existingByPlayer =
+      new Map<
+        number,
+        ExistingInjury
+      >();
 
-    for (const row of existingRows ?? []) {
-      existingByPlayer.set(Number(row.nfl_player_id), {
-        id: Number(row.id),
-        nfl_player_id: Number(row.nfl_player_id),
-        status: row.status ? String(row.status) : null,
-        injury_type: row.injury_type
-          ? String(row.injury_type)
-          : null,
-        injury_location: row.injury_location
-          ? String(row.injury_location)
-          : null,
-        injury_detail: row.injury_detail
-          ? String(row.injury_detail)
-          : null,
-        injury_date: row.injury_date
-          ? String(row.injury_date)
-          : null,
-        return_date: row.return_date
-          ? String(row.return_date)
-          : null,
-        official_roster_status:
-          row.official_roster_status
-            ? String(row.official_roster_status)
+    for (
+      const row of
+      existingRows ?? []
+    ) {
+      existingByPlayer.set(
+        Number(
+          row.nfl_player_id
+        ),
+        {
+          id: Number(row.id),
+          nfl_player_id: Number(
+            row.nfl_player_id
+          ),
+          status: row.status
+            ? String(row.status)
             : null,
-        official_game_status:
-          row.official_game_status
-            ? String(row.official_game_status)
-            : null,
-        official_practice_status:
-          row.official_practice_status
-            ? String(row.official_practice_status)
-            : null,
-        official_injury:
-          row.official_injury
-            ? String(row.official_injury)
-            : null,
-        official_source:
-          row.official_source
-            ? String(row.official_source)
-            : null,
-        official_transaction_type:
-          row.official_transaction_type
-            ? String(row.official_transaction_type)
-            : null,
-        official_transaction_date:
-          row.official_transaction_date
-            ? String(row.official_transaction_date)
-            : null,
-      });
+          injury_type:
+            row.injury_type
+              ? String(
+                  row.injury_type
+                )
+              : null,
+          injury_location:
+            row.injury_location
+              ? String(
+                  row.injury_location
+                )
+              : null,
+          injury_detail:
+            row.injury_detail
+              ? String(
+                  row.injury_detail
+                )
+              : null,
+          injury_date:
+            row.injury_date
+              ? String(
+                  row.injury_date
+                )
+              : null,
+          return_date:
+            row.return_date
+              ? String(
+                  row.return_date
+                )
+              : null,
+          official_roster_status:
+            row.official_roster_status
+              ? String(
+                  row.official_roster_status
+                )
+              : null,
+          official_game_status:
+            row.official_game_status
+              ? String(
+                  row.official_game_status
+                )
+              : null,
+          official_practice_status:
+            row.official_practice_status
+              ? String(
+                  row.official_practice_status
+                )
+              : null,
+          official_injury:
+            row.official_injury
+              ? String(
+                  row.official_injury
+                )
+              : null,
+          official_source:
+            row.official_source
+              ? String(
+                  row.official_source
+                )
+              : null,
+          official_transaction_type:
+            row.official_transaction_type
+              ? String(
+                  row.official_transaction_type
+                )
+              : null,
+          official_transaction_date:
+            row.official_transaction_date
+              ? String(
+                  row.official_transaction_date
+                )
+              : null,
+        }
+      );
     }
 
     let inserted = 0;
@@ -798,23 +1139,36 @@ export async function POST(request: Request) {
     let unchanged = 0;
     let cleared = 0;
 
-    const activeOfficialPlayerIds = new Set<number>();
+    const activeOfficialPlayerIds =
+      new Set<number>();
 
-    for (const state of states.values()) {
-      const status = currentStatus(state);
+    /*
+     * Write current official injury state.
+     */
+    for (
+      const state of
+      states.values()
+    ) {
+      const status =
+        currentStatus(state);
 
       if (!status) continue;
 
-      activeOfficialPlayerIds.add(state.player.id);
-
-      const existing = existingByPlayer.get(
+      activeOfficialPlayerIds.add(
         state.player.id
       );
 
+      const existing =
+        existingByPlayer.get(
+          state.player.id
+        );
+
       const payload = {
-        nfl_player_id: state.player.id,
+        nfl_player_id:
+          state.player.id,
         espn_player_id:
-          state.player.espn_player_id,
+          state.player
+            .espn_player_id,
         season,
         status,
         injury_type:
@@ -823,12 +1177,18 @@ export async function POST(request: Request) {
           state.injury,
         injury_detail:
           state.practiceStatus
-            ? `${state.injury ?? "Injury"} — ${state.practiceStatus}`
+            ? `${
+                state.injury ??
+                "Injury"
+              } — ${
+                state.practiceStatus
+              }`
             : state.injury,
         injury_date:
           state.transactionDate,
         return_date: null,
-        source_updated_at: now,
+        source_updated_at:
+          now,
         official_roster_status:
           state.rosterStatus,
         official_game_status:
@@ -848,16 +1208,23 @@ export async function POST(request: Request) {
       };
 
       if (!existing) {
-        const { error } = await supabase
-          .from("nfl_player_injuries")
-          .insert({
-            ...payload,
-            is_active: true,
-            first_seen_at: now,
-            last_seen_at: now,
-            created_at: now,
-            updated_at: now,
-          });
+        const { error } =
+          await supabase
+            .from(
+              "nfl_player_injuries"
+            )
+            .insert({
+              ...payload,
+              is_active: true,
+              first_seen_at:
+                now,
+              last_seen_at:
+                now,
+              created_at:
+                now,
+              updated_at:
+                now,
+            });
 
         if (error) {
           throw new Error(
@@ -866,23 +1233,37 @@ export async function POST(request: Request) {
         }
 
         inserted++;
+
         continue;
       }
 
       if (
-        existingFingerprint(existing) ===
+        existingFingerprint(
+          existing
+        ) ===
         injuryFingerprint(state)
       ) {
-        const { error } = await supabase
-          .from("nfl_player_injuries")
-          .update({
-            last_seen_at: now,
-            source_updated_at: now,
-            official_last_synced_at: now,
-            official_source: state.source,
-            updated_at: now,
-          })
-          .eq("id", existing.id);
+        const { error } =
+          await supabase
+            .from(
+              "nfl_player_injuries"
+            )
+            .update({
+              last_seen_at:
+                now,
+              source_updated_at:
+                now,
+              official_last_synced_at:
+                now,
+              official_source:
+                state.source,
+              updated_at:
+                now,
+            })
+            .eq(
+              "id",
+              existing.id
+            );
 
         if (error) {
           throw new Error(
@@ -891,17 +1272,25 @@ export async function POST(request: Request) {
         }
 
         unchanged++;
+
         continue;
       }
 
-      const { error: closeError } = await supabase
-        .from("nfl_player_injuries")
+      const {
+        error: closeError,
+      } = await supabase
+        .from(
+          "nfl_player_injuries"
+        )
         .update({
           is_active: false,
           last_seen_at: now,
           updated_at: now,
         })
-        .eq("id", existing.id);
+        .eq(
+          "id",
+          existing.id
+        );
 
       if (closeError) {
         throw new Error(
@@ -909,15 +1298,23 @@ export async function POST(request: Request) {
         );
       }
 
-      const { error: insertError } = await supabase
-        .from("nfl_player_injuries")
+      const {
+        error: insertError,
+      } = await supabase
+        .from(
+          "nfl_player_injuries"
+        )
         .insert({
           ...payload,
           is_active: true,
-          first_seen_at: now,
-          last_seen_at: now,
-          created_at: now,
-          updated_at: now,
+          first_seen_at:
+            now,
+          last_seen_at:
+            now,
+          created_at:
+            now,
+          updated_at:
+            now,
         });
 
       if (insertError) {
@@ -933,11 +1330,13 @@ export async function POST(request: Request) {
      * Clear ONLY official weekly statuses that disappeared
      * from the current NFL injury report.
      *
-     * Reserve-list statuses are NOT cleared by absence from
-     * the weekly injury report. They are controlled by NFL
-     * transaction activity.
+     * Reserve-list statuses are NOT cleared simply because
+     * they are absent from the weekly injury report.
      */
-    for (const existing of existingByPlayer.values()) {
+    for (
+      const existing of
+      existingByPlayer.values()
+    ) {
       if (
         activeOfficialPlayerIds.has(
           existing.nfl_player_id
@@ -962,15 +1361,24 @@ export async function POST(request: Request) {
         continue;
       }
 
-      const { error } = await supabase
-        .from("nfl_player_injuries")
-        .update({
-          is_active: false,
-          last_seen_at: now,
-          official_last_synced_at: now,
-          updated_at: now,
-        })
-        .eq("id", existing.id);
+      const { error } =
+        await supabase
+          .from(
+            "nfl_player_injuries"
+          )
+          .update({
+            is_active: false,
+            last_seen_at:
+              now,
+            official_last_synced_at:
+              now,
+            updated_at:
+              now,
+          })
+          .eq(
+            "id",
+            existing.id
+          );
 
       if (error) {
         throw new Error(
@@ -982,25 +1390,34 @@ export async function POST(request: Request) {
     }
 
     /*
-     * Update nfl_players.status so every existing UI that
-     * already consumes that field immediately sees the
-     * authoritative designation.
+     * Update the status consumed by the existing fantasy UI.
+     *
+     * Keep this restricted to fantasy-relevant positions.
      */
-    for (const player of fantasyPlayers) {
-      const state = states.get(player.id);
+    for (
+      const player of
+      fantasyPlayers
+    ) {
+      const state =
+        states.get(player.id);
+
       const status = state
         ? currentStatus(state)
         : null;
 
       if (!status) continue;
 
-      const { error } = await supabase
-        .from("nfl_players")
-        .update({
-          status,
-          updated_at: now,
-        })
-        .eq("id", player.id);
+      const { error } =
+        await supabase
+          .from("nfl_players")
+          .update({
+            status,
+            updated_at: now,
+          })
+          .eq(
+            "id",
+            player.id
+          );
 
       if (error) {
         throw new Error(
@@ -1014,53 +1431,78 @@ export async function POST(request: Request) {
       provider: "NFL.com",
       automatic: true,
       season,
-      week: injuryReport.week,
+      week:
+        injuryReport.week,
+
       sources: {
         injuryReport:
           injuryReport.url,
         transactions:
           transactionUrl,
       },
+
       injuryReport: {
         rows:
-          injuryReport.records.length,
+          injuryReport.records
+            .length,
         unmatched:
-          unmatchedInjuries.length,
+          unmatchedInjuries
+            .length,
         unmatchedSample:
-          unmatchedInjuries.slice(0, 20),
+          unmatchedInjuries.slice(
+            0,
+            20
+          ),
       },
+
       transactions: {
         rows:
           transactions.length,
         matchedPlayers:
-          latestTransactionByPlayer.size,
+          latestTransactionByPlayer
+            .size,
         unmatched:
-          unmatchedTransactions.length,
+          unmatchedTransactions
+            .length,
         unmatchedSample:
-          unmatchedTransactions.slice(0, 20),
+          unmatchedTransactions.slice(
+            0,
+            20
+          ),
       },
+
       database: {
         currentOfficialInjuries:
-          activeOfficialPlayerIds.size,
+          activeOfficialPlayerIds
+            .size,
         inserted,
         changed,
         unchanged,
         cleared,
       },
+
       achane:
-        Array.from(states.values())
+        Array.from(
+          states.values()
+        )
           .filter((state) =>
             normalizeName(
-              state.player.full_name
-            ).includes("devonachane")
+              state.player
+                .full_name
+            ).includes(
+              "devonachane"
+            )
           )
           .map((state) => ({
             playerId:
               state.player.id,
             name:
-              state.player.full_name,
+              state.player
+                .full_name,
             status:
-              currentStatus(state),
+              currentStatus(
+                state
+              ),
             rosterStatus:
               state.rosterStatus,
             gameStatus:
@@ -1076,8 +1518,13 @@ export async function POST(request: Request) {
             source:
               state.source,
           })),
-      completedAt: new Date().toISOString(),
-      durationMs: Date.now() - startedAt,
+
+      completedAt:
+        new Date().toISOString(),
+
+      durationMs:
+        Date.now() -
+        startedAt,
     });
   } catch (error) {
     console.error(
@@ -1094,9 +1541,12 @@ export async function POST(request: Request) {
             ? error.message
             : "Official NFL injury sync failed.",
         durationMs:
-          Date.now() - startedAt,
+          Date.now() -
+          startedAt,
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
