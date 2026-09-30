@@ -6,10 +6,13 @@ import {
   createClient,
 } from "@supabase/supabase-js";
 
+
 export const dynamic =
   "force-dynamic";
 
-export const maxDuration = 300;
+export const maxDuration =
+  300;
+
 
 type NhlGameRow = {
   id: number;
@@ -17,6 +20,7 @@ type NhlGameRow = {
   start_time: string;
   status_completed: boolean;
 };
+
 
 function createAdminClient() {
   const supabaseUrl =
@@ -41,13 +45,17 @@ function createAdminClient() {
     serviceRoleKey,
     {
       auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
+        persistSession:
+          false,
+        autoRefreshToken:
+          false,
+        detectSessionInUrl:
+          false,
       },
     }
   );
 }
+
 
 function isAuthorized(
   request: Request
@@ -59,6 +67,11 @@ function isAuthorized(
     return true;
   }
 
+  /*
+   * This public cron/orchestrator endpoint
+   * is authenticated with the NHL-specific
+   * synchronization secret.
+   */
   const expectedSecret =
     process.env.NHL_SYNC_SECRET;
 
@@ -91,6 +104,7 @@ function isAuthorized(
   );
 }
 
+
 function errorResponse(
   message: string,
   status = 500,
@@ -112,6 +126,7 @@ function errorResponse(
   );
 }
 
+
 function getBaseUrl(
   request: Request
 ) {
@@ -132,6 +147,7 @@ function getBaseUrl(
     request.url
   ).origin;
 }
+
 
 async function callInternalRoute(
   url: string,
@@ -179,6 +195,7 @@ async function callInternalRoute(
   };
 }
 
+
 export async function POST(
   request: Request
 ) {
@@ -196,16 +213,46 @@ export async function POST(
     const baseUrl =
       getBaseUrl(request);
 
-    const nhlSyncSecret =
-      process.env.NHL_SYNC_SECRET;
-
+    /*
+     * IMPORTANT:
+     *
+     * The orchestrator itself uses
+     * NHL_SYNC_SECRET.
+     *
+     * Internal shared synchronization
+     * routes such as:
+     *
+     *   /api/nhl/sync-live-games
+     *   /api/nhl/sync-game-stats
+     *
+     * authenticate against:
+     *
+     *   GRIDIRON_SYNC_SECRET
+     *      ??
+     *   NFL_SYNC_SECRET
+     *
+     * Therefore internal calls must use
+     * this shared secret rather than
+     * NHL_SYNC_SECRET.
+     */
     const gridironSyncSecret =
-      process.env.GRIDIRON_SYNC_SECRET ??
-      process.env.NFL_SYNC_SECRET;
+      process.env
+        .GRIDIRON_SYNC_SECRET ??
+      process.env
+        .NFL_SYNC_SECRET;
+
+    if (!gridironSyncSecret) {
+      return errorResponse(
+        "GRIDIRON_SYNC_SECRET or NFL_SYNC_SECRET is required for internal NHL synchronization.",
+        500
+      );
+    }
+
 
     /*
      * --------------------------------------------------
      * STEP 1
+     *
      * Refresh ESPN live-state data for games that
      * already exist in public.nhl_games.
      *
@@ -222,9 +269,11 @@ export async function POST(
         {}
       );
 
+
     /*
      * --------------------------------------------------
      * STEP 2
+     *
      * Find games that are inside the useful official
      * Gamecenter synchronization window.
      *
@@ -247,13 +296,18 @@ export async function POST(
     const windowStart =
       new Date(
         now.getTime() -
-        6 * 60 * 60 * 1000
+          6 *
+            60 *
+            60 *
+            1000
       );
 
     const windowEnd =
       new Date(
         now.getTime() +
-        30 * 60 * 1000
+          30 *
+            60 *
+            1000
       );
 
     const {
@@ -311,6 +365,7 @@ export async function POST(
       (gameRows ?? []) as
         NhlGameRow[];
 
+
     /*
      * Keep one invocation bounded.
      *
@@ -318,6 +373,7 @@ export async function POST(
      * The limit prevents one cron execution from
      * accidentally becoming an unbounded workload.
      */
+
     const selectedGames =
       games.slice(
         0,
@@ -325,14 +381,18 @@ export async function POST(
       );
 
     const gameResults:
-      Array<Record<
-        string,
-        unknown
-      >> = [];
+      Array<
+        Record<
+          string,
+          unknown
+        >
+      > = [];
+
 
     /*
      * --------------------------------------------------
      * STEP 3
+     *
      * Official NHL Gamecenter synchronization.
      *
      * Sequential execution is deliberate:
@@ -340,12 +400,18 @@ export async function POST(
      * Gamecenter resources and writes player/team
      * statistics. This avoids a burst of many
      * simultaneous external requests.
+     *
+     * IMPORTANT AUTH FIX:
+     *
+     * sync-game-stats authenticates against
+     * GRIDIRON_SYNC_SECRET ?? NFL_SYNC_SECRET,
+     * so use gridironSyncSecret here.
      * --------------------------------------------------
      */
 
     for (
       const game of
-      selectedGames
+        selectedGames
     ) {
       if (!game.nhl_game_id) {
         continue;
@@ -354,7 +420,7 @@ export async function POST(
       const result =
         await callInternalRoute(
           `${baseUrl}/api/nhl/sync-game-stats`,
-          nhlSyncSecret,
+          gridironSyncSecret,
           {
             nhlGameId:
               game.nhl_game_id,
@@ -382,9 +448,11 @@ export async function POST(
       });
     }
 
+
     /*
      * --------------------------------------------------
      * STEP 4
+     *
      * NHL Pick'em lifecycle.
      *
      * prepare:
@@ -448,6 +516,13 @@ export async function POST(
     } = await supabase.rpc(
       "advance_nhl_pickem_period_lifecycle"
     );
+
+
+    /*
+     * --------------------------------------------------
+     * RESULT / HEALTH SUMMARY
+     * --------------------------------------------------
+     */
 
     const failedGameSyncs =
       gameResults.filter(
