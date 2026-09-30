@@ -1063,9 +1063,9 @@ export default function TraditionalPlayersBrowser({
         @media (max-width:760px){
           .g365-position-tabs{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;overflow:visible!important;gap:8px!important}
           .g365-position-button{width:100%!important;padding:0 8px!important}
-          .g365-players-filters{grid-template-columns:minmax(0,1fr)!important;gap:12px!important}
-          .g365-checkbox-field{min-height:44px!important;padding:0 2px!important;gap:10px!important;white-space:normal!important}
-          .g365-checkbox-field input{width:20px;height:20px;flex:0 0 auto;margin:0}
+          .g365-players-filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:10px!important}
+          .g365-players-filters > label{grid-column:1 / -1!important}
+          .g365-filter-toggle{width:100%!important;min-height:42px!important;justify-content:center!important;padding:0 10px!important}
           .g365-players-table{width:100%!important;max-width:100%!important;overflow:hidden!important}
           .g365-players-table-header{display:none!important}
           .g365-players-row{min-width:0!important;width:100%!important;grid-template-columns:minmax(0,1fr) auto!important;grid-template-areas:"player action" "meta action"!important;gap:7px 12px!important;padding:12px!important;min-height:78px!important}
@@ -1665,56 +1665,44 @@ export default function TraditionalPlayersBrowser({
           </label>
 
 
-          <label
-            className="g365-checkbox-field"
-            style={
-              styles.checkboxField
-            }
+          <button
+            type="button"
+            className="g365-filter-toggle"
+            aria-pressed={activeOnly}
+            onClick={() => setActiveOnly((current) => !current)}
+            style={{
+              ...styles.filterToggle,
+              ...(activeOnly ? styles.filterToggleActive : {}),
+            }}
           >
-            <input
-              type="checkbox"
-              checked={
-                activeOnly
-              }
-              onChange={
-                (
-                  event
-                ) =>
-                  setActiveOnly(
-                    event.target
-                      .checked
-                  )
-              }
+            <span
+              style={{
+                ...styles.toggleDot,
+                ...(activeOnly ? styles.toggleDotActive : {}),
+              }}
             />
+            Active only
+          </button>
 
-            Active players only
-          </label>
 
-
-          <label
-            className="g365-checkbox-field"
-            style={
-              styles.checkboxField
-            }
+          <button
+            type="button"
+            className="g365-filter-toggle"
+            aria-pressed={injuryOnly}
+            onClick={() => setInjuryOnly((current) => !current)}
+            style={{
+              ...styles.filterToggle,
+              ...(injuryOnly ? styles.filterToggleActive : {}),
+            }}
           >
-            <input
-              type="checkbox"
-              checked={
-                injuryOnly
-              }
-              onChange={
-                (
-                  event
-                ) =>
-                  setInjuryOnly(
-                    event.target
-                      .checked
-                  )
-              }
+            <span
+              style={{
+                ...styles.toggleDot,
+                ...(injuryOnly ? styles.toggleDotActive : {}),
+              }}
             />
-
-            Injury report only
-          </label>
+            Injuries only
+          </button>
         </div>
       </section>
 
@@ -2005,17 +1993,27 @@ const PlayerRow = memo(function PlayerRow({
         className="g365-player-desktop-cell"
         style={styles.weekProjectionCell}
       >
-        <strong style={styles.projectionValue}>
-          {player.weeklyProjectedPoints !== null
-            ? player.weeklyProjectedPoints.toFixed(1)
-            : "—"}
-        </strong>
-        <small style={styles.weekOpponent}>
+        <strong style={styles.weekOpponentPrimary}>
           {matchupLabel(
             player.opponentAbbreviation,
             player.homeOrAway,
             player.isBye
           )}
+        </strong>
+
+        {!player.isBye && player.kickoffAt ? (
+          <small style={styles.weekKickoff}>
+            {formatKickoff(player.kickoffAt)}
+          </small>
+        ) : null}
+
+        <small style={styles.weekProjectionLabel}>
+          PROJ{" "}
+          <strong style={styles.projectionValue}>
+            {player.weeklyProjectedPoints !== null
+              ? player.weeklyProjectedPoints.toFixed(1)
+              : "—"}
+          </strong>
         </small>
       </div>
 
@@ -2089,6 +2087,16 @@ const PlayerRow = memo(function PlayerRow({
         </strong>
         <span style={styles.nflTeam}>
           {player.teamAbbreviation ?? "FA"}
+        </span>
+        <span style={styles.mobileMatchup}>
+          {matchupLabel(
+            player.opponentAbbreviation,
+            player.homeOrAway,
+            player.isBye
+          )}
+          {!player.isBye && player.kickoffAt
+            ? ` • ${formatKickoff(player.kickoffAt)}`
+            : ""}
         </span>
         <strong style={styles.projectionInline}>
           PROJ {player.weeklyProjectedPoints !== null
@@ -2647,17 +2655,11 @@ const styles = {
 
 
   filterGrid: {
-    display:
-      "grid",
-
+    display: "grid",
     gridTemplateColumns:
-      "repeat(auto-fit,minmax(170px,1fr))",
-
-    gap:
-      "13px",
-
-    alignItems:
-      "end",
+      "minmax(180px,290px) minmax(180px,290px) auto auto",
+    gap: "12px",
+    alignItems: "end",
   },
 
 
@@ -2733,27 +2735,41 @@ const styles = {
   },
 
 
-  checkboxField: {
-    minHeight:
-      "39px",
+  filterToggle: {
+    minHeight: "39px",
+    padding: "0 12px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    border: "1px solid rgba(255,255,255,.08)",
+    borderRadius: "13px",
+    background: "#0a0a0b",
+    color: "#8d949e",
+    fontSize: "12px",
+    fontWeight: 850,
+    cursor: "pointer",
+    whiteSpace: "nowrap" as const,
+  },
 
-    display:
-      "flex",
+  filterToggleActive: {
+    border: "1px solid rgba(255,95,20,.38)",
+    background:
+      "linear-gradient(135deg,rgba(190,20,20,.22),rgba(255,80,0,.12))",
+    color: "#ffffff",
+  },
 
-    alignItems:
-      "center",
+  toggleDot: {
+    width: "8px",
+    height: "8px",
+    borderRadius: "999px",
+    background: "#555b64",
+    boxShadow: "0 0 0 3px rgba(255,255,255,.03)",
+  },
 
-    gap:
-      "14px",
-
-    color:
-      "#949aa3",
-
-    fontSize:
-      "13px",
-
-    cursor:
-      "pointer",
+  toggleDotActive: {
+    background: "#ff6a16",
+    boxShadow: "0 0 0 3px rgba(255,106,22,.12)",
   },
 
 
@@ -3248,9 +3264,28 @@ const styles = {
 
   weekProjectionCell: {
     display: "grid",
-    gap: "3px",
+    gap: "2px",
+    alignContent: "center",
   },
 
+  weekOpponentPrimary: {
+    color: "#ffffff",
+    fontSize: "12px",
+    fontWeight: 900,
+  },
+
+  weekKickoff: {
+    color: "#7f8792",
+    fontSize: "10px",
+    fontWeight: 750,
+  },
+
+  weekProjectionLabel: {
+    color: "#6f7680",
+    fontSize: "9px",
+    fontWeight: 900,
+    letterSpacing: ".06em",
+  },
 
   projectionValue: {
     color: "#ff922f",
@@ -3258,10 +3293,15 @@ const styles = {
     fontWeight: 950,
   },
 
-
   weekOpponent: {
     color: "#777e88",
     fontSize: "10px",
+    fontWeight: 800,
+  },
+
+  mobileMatchup: {
+    color: "#aab0b8",
+    fontSize: "9px",
     fontWeight: 800,
   },
 

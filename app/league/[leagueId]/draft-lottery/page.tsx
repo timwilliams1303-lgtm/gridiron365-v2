@@ -1,0 +1,115 @@
+import { redirect } from "next/navigation";
+
+import TraditionalDynastyLotteryOfficial from "@/components/traditional/TraditionalDynastyLotteryOfficial";
+import { requireLeagueMember } from "@/lib/leagues/requireLeagueMember";
+
+type PageProps = {
+  params: Promise<{
+    leagueId: string;
+  }>;
+};
+
+export default async function TraditionalDraftLotteryPage({
+  params,
+}: PageProps) {
+  const { leagueId } = await params;
+
+  const access = await requireLeagueMember(leagueId);
+
+  if (String(access.league.leagueType) !== "traditional") {
+    redirect(`/league/${leagueId}`);
+  }
+
+  /*
+   * Permanent NFL Dynasty Draft Lottery route.
+   *
+   * This route is for the CURRENT league-season startup draft.
+   *
+   * Example:
+   *   league season = 2026
+   *   source season = 2026
+   *   draft season  = 2026
+   *   lottery type  = startup
+   *
+   * The future 2027 annual Dynasty lottery belongs to the
+   * 2026 -> 2027 offseason workflow and uses:
+   *
+   *   source season = 2026
+   *   draft season  = 2027
+   *   lottery type  = annual
+   */
+  const draftSeason = Number(access.league.season);
+
+  if (!Number.isFinite(draftSeason)) {
+    redirect(`/league/${leagueId}`);
+  }
+
+  return (
+    <main
+      style={{
+        minHeight: "100vh",
+        padding: "18px",
+        background:
+          "linear-gradient(180deg,#07080c,#0b0d12 50%,#07080b)",
+        color: "#f5f7fa",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: "1550px",
+          margin: "0 auto",
+        }}
+      >
+        <div
+          style={{
+            marginBottom: "14px",
+            padding: "16px",
+            border: "1px solid rgba(255,92,40,.28)",
+            borderRadius: "14px",
+            background:
+              "linear-gradient(135deg,rgba(140,14,14,.22),rgba(255,90,30,.08),rgba(255,255,255,.02))",
+          }}
+        >
+          <div
+            style={{
+              color: "#ff6b2c",
+              fontSize: "11px",
+              fontWeight: 900,
+              letterSpacing: ".14em",
+            }}
+          >
+            G365 NFL DYNASTY
+          </div>
+
+          <h1
+            style={{
+              margin: "5px 0 0",
+              fontSize: "28px",
+              fontWeight: 950,
+            }}
+          >
+            Draft Lottery
+          </h1>
+
+          <p
+            style={{
+              margin: "6px 0 0",
+              color: "#9ca3ad",
+              fontSize: "12px",
+              lineHeight: 1.5,
+            }}
+          >
+            Watch the official {draftSeason} Dynasty startup draft
+            lottery and follow each published draft position live.
+          </p>
+        </div>
+
+        <TraditionalDynastyLotteryOfficial
+          leagueId={leagueId}
+          draftSeason={draftSeason}
+          viewerOnly
+        />
+      </div>
+    </main>
+  );
+}

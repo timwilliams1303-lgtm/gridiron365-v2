@@ -17,6 +17,8 @@ import {
   useRouter,
 } from "next/navigation";
 
+import DraftTradesPanel from "@/components/traditional/DraftTradesPanel";
+
 
 type DraftStatus =
   | "scheduled"
@@ -31,11 +33,20 @@ type WorkspaceTab =
   | "queue"
   | "rankings"
   | "board"
+  | "trades"
   | "chat";
 
 
+type DraftType =
+  | "redraft"
+  | "startup"
+  | "dynasty";
+
 type DraftRow = {
   id: string;
+
+  draft_type:
+    DraftType;
 
   league_id: string;
 
@@ -2747,13 +2758,16 @@ export default function TraditionalDraftPage() {
 
 
           const draftSlot =
-            round %
-              2 ===
-            1
+            draft.draft_type ===
+              "dynasty"
               ? pickInRound
-              : teamCount -
-                pickInRound +
-                1;
+              : round %
+                    2 ===
+                  1
+                ? pickInRound
+                : teamCount -
+                  pickInRound +
+                  1;
 
 
           const slot =
@@ -5460,7 +5474,9 @@ export default function TraditionalDraftPage() {
     if (
       !draft ||
       draft.status !==
-        "completed"
+        "completed" ||
+      draft.draft_type !==
+        "redraft"
     ) {
       return;
     }
@@ -5861,13 +5877,16 @@ export default function TraditionalDraftPage() {
 
 
         const draftSlot =
-          round %
-            2 ===
-          1
+          draft.draft_type ===
+            "dynasty"
             ? pickInRound
-            : teamCount -
-              pickInRound +
-              1;
+            : round %
+                  2 ===
+                1
+              ? pickInRound
+              : teamCount -
+                pickInRound +
+                1;
 
 
         if (
@@ -5996,7 +6015,11 @@ export default function TraditionalDraftPage() {
                     styles.brandTitle
                   }
                 >
-                  DRAFT COMPLETE
+                  {draft.draft_type === "startup"
+                    ? "DYNASTY STARTUP DRAFT COMPLETE"
+                    : draft.draft_type === "dynasty"
+                      ? `${draft.season} DYNASTY DRAFT COMPLETE`
+                      : "DRAFT COMPLETE"}
                 </div>
 
                 <div
@@ -6004,7 +6027,7 @@ export default function TraditionalDraftPage() {
                     styles.brandSub
                   }
                 >
-                  {picks.length} selections • Complete Draft Board
+                  {draft.season} • {picks.length} selections • Complete Draft Board
                 </div>
               </div>
             </div>
@@ -6015,17 +6038,15 @@ export default function TraditionalDraftPage() {
                 styles.headerActions
               }
             >
-              <button
-                type="button"
-                onClick={
-                  openDraftGrades
-                }
-                style={
-                  styles.completeButton
-                }
-              >
-                VIEW DRAFT GRADES
-              </button>
+              {draft.draft_type === "redraft" ? (
+                <button
+                  type="button"
+                  onClick={openDraftGrades}
+                  style={styles.completeButton}
+                >
+                  VIEW DRAFT GRADES
+                </button>
+              ) : null}
             </div>
           </header>
 
@@ -6106,7 +6127,11 @@ export default function TraditionalDraftPage() {
                 "center",
             }}
           >
-            Draft is complete! Go to the Draft Grades page to see your results.
+            {draft.draft_type === "redraft"
+              ? "Draft is complete! Go to the Draft Grades page to see your results."
+              : draft.draft_type === "startup"
+                ? "Dynasty startup draft is complete. These selections now form the league's initial permanent Dynasty rosters."
+                : "Annual Dynasty draft is complete. Drafted players and traded-pick ownership are preserved by the Dynasty engine."}
           </div>
         </div>
       </main>
@@ -6355,7 +6380,11 @@ export default function TraditionalDraftPage() {
                   styles.brandTitle
                 }
               >
-                LIVE DRAFT
+                {draft.draft_type === "startup"
+                  ? "NFL DYNASTY • STARTUP DRAFT"
+                  : draft.draft_type === "dynasty"
+                    ? `NFL DYNASTY • ${draft.season} ANNUAL DRAFT`
+                    : "NFL REDRAFT • LIVE DRAFT"}
               </div>
 
               <div
@@ -6363,7 +6392,7 @@ export default function TraditionalDraftPage() {
                   styles.brandSub
                 }
               >
-                2026 • Snake Draft • {teamCount || 12} Teams
+                {draft.season} • {draft.draft_type === "dynasty" ? "Linear Draft" : "Snake Draft"} • {teamCount || 12} Teams
               </div>
             </div>
           </div>
@@ -7115,6 +7144,12 @@ export default function TraditionalDraftPage() {
                       "board",
                       "DRAFT BOARD",
                     ],
+                    ...(
+                      draft.draft_type === "startup" ||
+                      draft.draft_type === "dynasty"
+                        ? [["trades", "TRADES"]]
+                        : []
+                    ),
                     [
                       "chat",
                       "CHAT",
@@ -7354,6 +7389,20 @@ export default function TraditionalDraftPage() {
                       myTeamId={
                         myTeamId
                       }
+                    />
+                  ) : null}
+
+
+                  {activeTab ===
+                  "trades" ? (
+                    <DraftTradesPanel
+                      leagueId={leagueId}
+                      season={draft.season}
+                      draftType={draft.draft_type}
+                      teams={teams}
+                      players={players}
+                      myTeamId={myTeamId}
+                      currentUserId={currentUserId}
                     />
                   ) : null}
 
@@ -7792,13 +7841,16 @@ function DraftHistorySidebar({
 
 
         const draftSlot =
-          round %
-            2 ===
-          1
+          draft.draft_type ===
+            "dynasty"
             ? pickInRound
-            : teamCount -
-              pickInRound +
-              1;
+            : round %
+                  2 ===
+                1
+              ? pickInRound
+              : teamCount -
+                pickInRound +
+                1;
 
 
         const slot =
@@ -10741,11 +10793,11 @@ function DraftBoardPanel({
                   </strong>
 
                   <span>
-                    {round %
-                      2 ===
-                    1
+                    {draft.draft_type === "dynasty"
                       ? "→"
-                      : "←"}
+                      : round % 2 === 1
+                        ? "→"
+                        : "←"}
                   </span>
                 </div>
               );
@@ -10774,13 +10826,16 @@ function DraftBoardPanel({
 
 
                   const pickInRound =
-                    round %
-                      2 ===
-                    1
+                    draft.draft_type ===
+                      "dynasty"
                       ? slot.draft_slot
-                      : teamCount -
-                        slot.draft_slot +
-                        1;
+                      : round %
+                            2 ===
+                          1
+                        ? slot.draft_slot
+                        : teamCount -
+                          slot.draft_slot +
+                          1;
 
 
                   const overall =

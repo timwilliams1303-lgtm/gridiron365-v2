@@ -197,16 +197,14 @@ const leagueFormats:
 
 
 
-type TraditionalCreationStatus = {
-  season: number;
-  allowed: boolean;
-  scheduleReady: boolean;
-  firstKickoffAt: string | null;
-  cutoffAt: string | null;
-  timeZone: string;
-  message: string;
-};
 
+type TraditionalLeagueFormat =
+  | "redraft"
+  | "dynasty";
+
+type TraditionalDynastyDraftOrderMethod =
+  | "lottery"
+  | "reverse_standings";
 
 type NhlTraditionalLeagueFormat =
   | "redraft"
@@ -322,6 +320,31 @@ export default function CreateLeaguePage() {
 
 
   const [
+    traditionalLeagueFormat,
+    setTraditionalLeagueFormat,
+  ] = useState<TraditionalLeagueFormat>("redraft");
+
+  const [
+    dynastyProtectedPlayers,
+    setDynastyProtectedPlayers,
+  ] = useState("15");
+
+  const [
+    dynastyFuturePickYears,
+    setDynastyFuturePickYears,
+  ] = useState("2");
+
+  const [
+    dynastyAnnualDraftRounds,
+    setDynastyAnnualDraftRounds,
+  ] = useState("3");
+
+  const [
+    dynastyDraftOrderMethod,
+    setDynastyDraftOrderMethod,
+  ] = useState<TraditionalDynastyDraftOrderMethod>("lottery");
+
+  const [
     nhlLeagueFormat,
     setNhlLeagueFormat,
   ] = useState<NhlTraditionalLeagueFormat>("redraft");
@@ -400,22 +423,6 @@ export default function CreateLeaguePage() {
     useState(false);
 
 
-  const [
-    traditionalCreationStatus,
-    setTraditionalCreationStatus,
-  ] =
-    useState<
-      TraditionalCreationStatus | null
-    >(null);
-
-
-  const [
-    traditionalStatusLoading,
-    setTraditionalStatusLoading,
-  ] =
-    useState(true);
-
-
   const selectedFormat =
     leagueFormats.find(
       (
@@ -425,106 +432,6 @@ export default function CreateLeaguePage() {
         selectedFormatId
     ) ??
     leagueFormats[0];
-
-
-  const parsedSeasonForAvailability =
-    Number(
-      season
-    );
-
-
-  useEffect(
-    () => {
-      let cancelled =
-        false;
-
-      async function loadTraditionalCreationStatus() {
-        if (
-          !Number.isInteger(
-            parsedSeasonForAvailability
-          ) ||
-          parsedSeasonForAvailability <
-            2000 ||
-          parsedSeasonForAvailability >
-            2200
-        ) {
-          if (!cancelled) {
-            setTraditionalCreationStatus(
-              null
-            );
-
-            setTraditionalStatusLoading(
-              false
-            );
-          }
-
-          return;
-        }
-
-        setTraditionalStatusLoading(
-          true
-        );
-
-        const {
-          data,
-          error,
-        } =
-          await supabase.rpc(
-            "get_traditional_league_creation_status",
-            {
-              p_season:
-                parsedSeasonForAvailability,
-            }
-          );
-
-        if (cancelled) {
-          return;
-        }
-
-        if (
-          error ||
-          !data ||
-          typeof data !==
-            "object"
-        ) {
-          setTraditionalCreationStatus(
-            null
-          );
-
-          setTraditionalStatusLoading(
-            false
-          );
-
-          return;
-        }
-
-        setTraditionalCreationStatus(
-          data as TraditionalCreationStatus
-        );
-
-        setTraditionalStatusLoading(
-          false
-        );
-      }
-
-      void loadTraditionalCreationStatus();
-
-      return () => {
-        cancelled =
-          true;
-      };
-    },
-    [
-      parsedSeasonForAvailability,
-      supabase,
-    ]
-  );
-
-
-  const traditionalCreationClosed =
-    traditionalCreationStatus
-      ?.allowed ===
-    false;
 
 
   const isTraditional =
@@ -641,18 +548,41 @@ export default function CreateLeaguePage() {
         );
 
 
-      if (
-        selectedFormat
-          .leagueType ===
-          "traditional" &&
-        traditionalCreationStatus
-          ?.allowed ===
-          false
-      ) {
-        throw new Error(
-          traditionalCreationStatus
-            .message
-        );
+
+      if (isTraditional && traditionalLeagueFormat === "dynasty") {
+        const protectedPlayers = Number(dynastyProtectedPlayers);
+        const futurePickYears = Number(dynastyFuturePickYears);
+        const annualDraftRounds = Number(dynastyAnnualDraftRounds);
+
+        if (
+          !Number.isInteger(protectedPlayers) ||
+          protectedPlayers < 0 ||
+          protectedPlayers > 100
+        ) {
+          throw new Error(
+            "Protected players must be a whole number between 0 and 100."
+          );
+        }
+
+        if (
+          !Number.isInteger(futurePickYears) ||
+          futurePickYears < 1 ||
+          futurePickYears > 10
+        ) {
+          throw new Error(
+            "Future draft pick years must be a whole number between 1 and 10."
+          );
+        }
+
+        if (
+          !Number.isInteger(annualDraftRounds) ||
+          annualDraftRounds < 1 ||
+          annualDraftRounds > 20
+        ) {
+          throw new Error(
+            "Annual draft rounds must be a whole number between 1 and 20."
+          );
+        }
       }
 
 
@@ -819,6 +749,31 @@ export default function CreateLeaguePage() {
               regularSeasonWeeks:
                 isTraditional
                   ? 14
+                  : undefined,
+
+              traditionalLeagueFormat:
+                isTraditional
+                  ? traditionalLeagueFormat
+                  : undefined,
+
+              dynastyProtectedPlayers:
+                isTraditional && traditionalLeagueFormat === "dynasty"
+                  ? Number(dynastyProtectedPlayers)
+                  : undefined,
+
+              dynastyFuturePickYears:
+                isTraditional && traditionalLeagueFormat === "dynasty"
+                  ? Number(dynastyFuturePickYears)
+                  : undefined,
+
+              dynastyAnnualDraftRounds:
+                isTraditional && traditionalLeagueFormat === "dynasty"
+                  ? Number(dynastyAnnualDraftRounds)
+                  : undefined,
+
+              dynastyDraftOrderMethod:
+                isTraditional && traditionalLeagueFormat === "dynasty"
+                  ? dynastyDraftOrderMethod
                   : undefined,
             }
           );
@@ -1011,10 +966,6 @@ export default function CreateLeaguePage() {
                 selectedFormatId;
 
 
-              const unavailable =
-                format.leagueType ===
-                  "traditional" &&
-                traditionalCreationClosed;
 
               return (
                 <button
@@ -1022,17 +973,8 @@ export default function CreateLeaguePage() {
                     format.id
                   }
                   type="button"
-                  disabled={
-                    unavailable
-                  }
                   onClick={
                     () => {
-                      if (
-                        unavailable
-                      ) {
-                        return;
-                      }
-
                       setSelectedFormatId(
                         format.id
                       );
@@ -1048,9 +990,6 @@ export default function CreateLeaguePage() {
                       ? styles.formatButtonSelected
                       : {}),
 
-                    ...(unavailable
-                      ? styles.formatButtonDisabled
-                      : {}),
                   }}
                 >
                   <span
@@ -1082,32 +1021,9 @@ export default function CreateLeaguePage() {
 
                   {format.leagueType ===
                   "traditional" ? (
-                    <>
-                      <span
-                        style={
-                          unavailable
-                            ? styles.closedBadge
-                            : styles.traditionalBadge
-                        }
-                      >
-                        {traditionalStatusLoading
-                          ? "CHECKING AVAILABILITY"
-                          : unavailable
-                            ? "CLOSED"
-                            : "UP TO 12 TEAMS"}
-                      </span>
-
-                      {unavailable &&
-                      traditionalCreationStatus ? (
-                        <span
-                          style={
-                            styles.closedMessage
-                          }
-                        >
-                          {traditionalCreationStatus.message}
-                        </span>
-                      ) : null}
-                    </>
+                    <span style={styles.traditionalBadge}>
+                      REDRAFT OR DYNASTY • H2H
+                    </span>
                   ) : format.leagueType ===
                     "nhl_traditional" ? (
                     <span
@@ -1263,20 +1179,301 @@ export default function CreateLeaguePage() {
             {isTraditional ? (
               <div
                 style={
-                  styles.traditionalInfo
+                  styles.traditionalSetup
                 }
               >
-                <strong>
-                  Traditional league
-                </strong>
+                <div
+                  style={
+                    styles.traditionalSectionHead
+                  }
+                >
+                  <p
+                    style={
+                      styles.traditionalEyebrow
+                    }
+                  >
+                    NFL TRADITIONAL
+                  </p>
 
-                <span>
-                  Draft permanent rosters and compete in weekly
-                  head-to-head matchups. After creation, the
-                  commissioner can configure roster settings,
-                  scoring, waivers, trades, playoffs, invitations,
-                  and draft settings.
-                </span>
+                  <h3
+                    style={
+                      styles.traditionalTitle
+                    }
+                  >
+                    League Format
+                  </h3>
+
+                  <p
+                    style={
+                      styles.traditionalHelp
+                    }
+                  >
+                    Choose a full seasonal redraft or a Dynasty league that carries
+                    protected player ownership and future draft-pick assets forward.
+                  </p>
+                </div>
+
+                <div
+                  style={
+                    styles.traditionalChoiceGrid
+                  }
+                >
+                  {([
+                    [
+                      "redraft",
+                      "Redraft",
+                      "Draft a new full roster every season. League history, trophies, and records remain, but player ownership resets for the next season.",
+                    ],
+                    [
+                      "dynasty",
+                      "Dynasty",
+                      "Carry protected players between seasons, trade future draft picks, and use annual Dynasty drafts to refill and reshape rosters.",
+                    ],
+                  ] as const).map(
+                    ([
+                      value,
+                      title,
+                      description,
+                    ]) => {
+                      const selected =
+                        traditionalLeagueFormat ===
+                        value;
+
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          disabled={working}
+                          onClick={() => {
+                            setTraditionalLeagueFormat(value);
+                            setMessage("");
+                            setIsError(false);
+                          }}
+                          style={{
+                            ...styles.traditionalChoice,
+                            ...(selected
+                              ? styles.traditionalChoiceSelected
+                              : {}),
+                          }}
+                        >
+                          <strong>{title}</strong>
+
+                          <span>{description}</span>
+
+                          <span
+                            style={{
+                              ...styles.choicePill,
+                              ...(selected
+                                ? styles.choicePillSelected
+                                : {}),
+                            }}
+                          >
+                            {selected
+                              ? "SELECTED"
+                              : "SELECT"}
+                          </span>
+                        </button>
+                      );
+                    }
+                  )}
+                </div>
+
+                {traditionalLeagueFormat === "dynasty" ? (
+                  <div
+                    style={
+                      styles.traditionalDynastySection
+                    }
+                  >
+                    <div>
+                      <p
+                        style={
+                          styles.traditionalEyebrow
+                        }
+                      >
+                        DYNASTY SETTINGS
+                      </p>
+
+                      <h3
+                        style={
+                          styles.traditionalSubTitle
+                        }
+                      >
+                        Carryover & Annual Draft
+                      </h3>
+
+                      <p
+                        style={
+                          styles.traditionalHelp
+                        }
+                      >
+                        These are the starting Dynasty rules. The commissioner can
+                        adjust supported settings later from the league Commissioner area.
+                      </p>
+                    </div>
+
+                    <div
+                      style={
+                        styles.traditionalNumberGrid
+                      }
+                    >
+                      <label
+                        style={
+                          styles.inputLabel
+                        }
+                      >
+                        Protected Players
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={dynastyProtectedPlayers}
+                          disabled={working}
+                          onChange={(event) =>
+                            setDynastyProtectedPlayers(event.target.value)
+                          }
+                          style={styles.textInput}
+                        />
+                        <span style={styles.fieldHelp}>
+                          Players each team may protect for the next season. Default: 15.
+                        </span>
+                      </label>
+
+                      <label
+                        style={
+                          styles.inputLabel
+                        }
+                      >
+                        Future Draft Pick Years
+                        <input
+                          type="number"
+                          min={1}
+                          max={10}
+                          step={1}
+                          value={dynastyFuturePickYears}
+                          disabled={working}
+                          onChange={(event) =>
+                            setDynastyFuturePickYears(event.target.value)
+                          }
+                          style={styles.textInput}
+                        />
+                        <span style={styles.fieldHelp}>
+                          Number of future draft seasons available for pick assets. Default: 2.
+                        </span>
+                      </label>
+
+                      <label
+                        style={
+                          styles.inputLabel
+                        }
+                      >
+                        Annual Draft Rounds
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          step={1}
+                          value={dynastyAnnualDraftRounds}
+                          disabled={working}
+                          onChange={(event) =>
+                            setDynastyAnnualDraftRounds(event.target.value)
+                          }
+                          style={styles.textInput}
+                        />
+                        <span style={styles.fieldHelp}>
+                          Number of rounds in each future annual Dynasty draft. Default: 3.
+                        </span>
+                      </label>
+                    </div>
+
+                    <div>
+                      <p
+                        style={
+                          styles.traditionalEyebrow
+                        }
+                      >
+                        ANNUAL DRAFT ORDER
+                      </p>
+
+                      <div
+                        style={
+                          styles.traditionalChoiceGrid
+                        }
+                      >
+                        {([
+                          [
+                            "lottery",
+                            "Draft Lottery",
+                            "Use the Dynasty lottery process to establish the annual draft order.",
+                          ],
+                          [
+                            "reverse_standings",
+                            "Reverse Standings",
+                            "Use the prior season finish to build the annual draft order from the bottom of the standings upward.",
+                          ],
+                        ] as const).map(
+                          ([value, title, description]) => {
+                            const selected =
+                              dynastyDraftOrderMethod === value;
+
+                            return (
+                              <button
+                                key={value}
+                                type="button"
+                                disabled={working}
+                                onClick={() =>
+                                  setDynastyDraftOrderMethod(value)
+                                }
+                                style={{
+                                  ...styles.traditionalChoice,
+                                  minHeight: "120px",
+                                  ...(selected
+                                    ? styles.traditionalChoiceSelected
+                                    : {}),
+                                }}
+                              >
+                                <strong>{title}</strong>
+                                <span>{description}</span>
+                                <span
+                                  style={{
+                                    ...styles.choicePill,
+                                    ...(selected
+                                      ? styles.choicePillSelected
+                                      : {}),
+                                  }}
+                                >
+                                  {selected
+                                    ? "SELECTED"
+                                    : "SELECT"}
+                                </span>
+                              </button>
+                            );
+                          }
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div
+                  style={
+                    styles.traditionalSummary
+                  }
+                >
+                  <strong>
+                    {traditionalLeagueFormat === "dynasty"
+                      ? "Dynasty"
+                      : "Redraft"}
+                    {" • NFL Traditional • Head-to-Head"}
+                  </strong>
+
+                  <span>
+                    Draft permanent in-season rosters and compete in weekly
+                    head-to-head matchups. Roster, scoring, waivers, trades,
+                    playoffs, invitations, and draft settings remain configurable
+                    by the commissioner after league creation.
+                  </span>
+                </div>
               </div>
             ) : null}
 
@@ -2001,13 +2198,7 @@ export default function CreateLeaguePage() {
 
               <Button
                 type="submit"
-                disabled={
-                  working ||
-                  (
-                    isTraditional &&
-                    traditionalCreationClosed
-                  )
-                }
+                disabled={working}
                 style={
                   styles.submitButton
                 }
@@ -2435,6 +2626,113 @@ const styles = {
 
     lineHeight:
       1.5,
+  },
+
+  traditionalSetup: {
+    display: "grid",
+    gap: "18px",
+    padding: "16px",
+    border: "1px solid rgba(255,94,0,.24)",
+    borderRadius: "14px",
+    background:
+      "linear-gradient(180deg,rgba(255,69,0,.055),rgba(8,8,10,.7))",
+  },
+
+  traditionalSectionHead: {
+    display: "grid",
+    gap: "5px",
+  },
+
+  traditionalEyebrow: {
+    margin: 0,
+    color: "#ff8c00",
+    fontSize: "9px",
+    fontWeight: 900,
+    letterSpacing: ".12em",
+  },
+
+  traditionalTitle: {
+    margin: 0,
+    color: "#fff",
+    fontSize: "20px",
+  },
+
+  traditionalSubTitle: {
+    margin: "3px 0 0",
+    color: "#fff",
+    fontSize: "16px",
+  },
+
+  traditionalHelp: {
+    margin: "4px 0 0",
+    color: "#949ba7",
+    fontSize: "12px",
+    lineHeight: 1.5,
+  },
+
+  traditionalChoiceGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(210px,1fr))",
+    gap: "10px",
+  },
+
+  traditionalChoice: {
+    minHeight: "145px",
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "flex-start",
+    gap: "8px",
+    padding: "14px",
+    border: "1px solid rgba(255,255,255,.09)",
+    borderRadius: "12px",
+    background: "#101114",
+    color: "#fff",
+    textAlign: "left" as const,
+    cursor: "pointer",
+    lineHeight: 1.5,
+    fontSize: "11px",
+  },
+
+  traditionalChoiceSelected: {
+    border: "1px solid rgba(255,94,0,.78)",
+    boxShadow:
+      "0 10px 28px rgba(255,69,0,.12)",
+    background:
+      "linear-gradient(145deg,rgba(76,20,8,.42),#101114)",
+  },
+
+  traditionalDynastySection: {
+    display: "grid",
+    gap: "14px",
+    paddingTop: "16px",
+    borderTop: "1px solid rgba(255,255,255,.08)",
+  },
+
+  traditionalNumberGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(180px,1fr))",
+    gap: "10px",
+  },
+
+  traditionalSummary: {
+    display: "grid",
+    gap: "6px",
+    padding: "12px",
+    border: "1px solid rgba(255,140,0,.18)",
+    borderRadius: "10px",
+    background: "rgba(255,140,0,.05)",
+    color: "#b8bdc6",
+    fontSize: "11px",
+    lineHeight: 1.5,
+  },
+
+  fieldHelp: {
+    color: "#7f8793",
+    fontSize: "10px",
+    fontWeight: 600,
+    lineHeight: 1.4,
   },
 
   contestInfo: {
