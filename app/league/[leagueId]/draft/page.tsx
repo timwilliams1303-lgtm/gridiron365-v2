@@ -18,6 +18,18 @@ import {
 } from "next/navigation";
 
 import DraftTradesPanel from "@/components/traditional/DraftTradesPanel";
+import DraftBoard from "@/components/traditional/draft/DraftBoard";
+import DraftCommissionerControls from "@/components/traditional/draft/DraftCommissionerControls";
+import DraftCompleted from "@/components/traditional/draft/DraftCompleted";
+import DraftDynastyInfo from "@/components/traditional/draft/DraftDynastyInfo";
+import DraftHeader from "@/components/traditional/draft/DraftHeader";
+import DraftTracker from "@/components/traditional/draft/DraftTracker";
+import {
+  getDraftSlotForPick,
+  getPickInRoundForSlot,
+  getRoundDirection,
+  getDraftFormatLabel,
+} from "@/components/traditional/draft/draftHelpers";
 
 
 type DraftStatus =
@@ -2758,16 +2770,12 @@ export default function TraditionalDraftPage() {
 
 
           const draftSlot =
-            draft.draft_type ===
-              "dynasty"
-              ? pickInRound
-              : round %
-                    2 ===
-                  1
-                ? pickInRound
-                : teamCount -
-                  pickInRound +
-                  1;
+            getDraftSlotForPick({
+              draftType: draft.draft_type,
+              round,
+              pickInRound,
+              teamCount,
+            });
 
 
           const slot =
@@ -5877,16 +5885,12 @@ export default function TraditionalDraftPage() {
 
 
         const draftSlot =
-          draft.draft_type ===
-            "dynasty"
-            ? pickInRound
-            : round %
-                  2 ===
-                1
-              ? pickInRound
-              : teamCount -
-                pickInRound +
-                1;
+          getDraftSlotForPick({
+            draftType: draft.draft_type,
+            round,
+            pickInRound,
+            teamCount,
+          });
 
 
         if (
@@ -5991,64 +5995,12 @@ export default function TraditionalDraftPage() {
               "1800px",
           }}
         >
-          <header
-            style={
-              styles.topHeader
-            }
-          >
-            <div
-              style={
-                styles.brandBlock
-              }
-            >
-              <div
-                style={
-                  styles.brandBadge
-                }
-              >
-                G365
-              </div>
-
-              <div>
-                <div
-                  style={
-                    styles.brandTitle
-                  }
-                >
-                  {draft.draft_type === "startup"
-                    ? "DYNASTY STARTUP DRAFT COMPLETE"
-                    : draft.draft_type === "dynasty"
-                      ? `${draft.season} DYNASTY DRAFT COMPLETE`
-                      : "DRAFT COMPLETE"}
-                </div>
-
-                <div
-                  style={
-                    styles.brandSub
-                  }
-                >
-                  {draft.season} • {picks.length} selections • Complete Draft Board
-                </div>
-              </div>
-            </div>
-
-
-            <div
-              style={
-                styles.headerActions
-              }
-            >
-              {draft.draft_type === "redraft" ? (
-                <button
-                  type="button"
-                  onClick={openDraftGrades}
-                  style={styles.completeButton}
-                >
-                  VIEW DRAFT GRADES
-                </button>
-              ) : null}
-            </div>
-          </header>
+          <DraftCompleted
+            leagueId={leagueId}
+            draftType={draft.draft_type}
+            season={draft.season}
+            pickCount={picks.length}
+          />
 
 
           <section
@@ -6081,25 +6033,28 @@ export default function TraditionalDraftPage() {
                   "12px",
               }}
             >
-              <DraftBoardPanel
-                draft={
-                  draft
-                }
-                slots={
-                  slots
-                }
-                picks={
-                  picks
-                }
-                teamMap={
-                  teamMap
-                }
-                playerMap={
-                  playerMap
-                }
-                myTeamId={
-                  myTeamId
-                }
+              <DraftBoard
+                draftType={draft.draft_type}
+                totalRounds={draft.total_rounds}
+                teamCount={teamCount}
+                picks={picks.map((pick) => {
+                  const team = teamMap.get(pick.fantasy_team_id) ?? null;
+                  const player = playerMap.get(pick.player_id) ?? null;
+                  return {
+                    overall: pick.overall_pick,
+                    round: pick.round_number,
+                    pickInRound: pick.pick_in_round,
+                    draftSlot: pick.draft_slot,
+                    currentOwner: team ? { id: team.id, teamName: team.team_name } : null,
+                    originalOwner: null,
+                    player: player ? {
+                      id: player.id,
+                      name: player.full_name,
+                      position: player.primary_position,
+                      nflTeam: player.team_abbreviation,
+                    } : null,
+                  };
+                })}
               />
             </div>
           </section>
@@ -6355,176 +6310,46 @@ export default function TraditionalDraftPage() {
           styles.shell
         }
       >
-        <header
-          className="g365-draft-top-header"
-          style={
-            styles.topHeader
-          }
-        >
-          <div
-            style={
-              styles.brandBlock
-            }
-          >
-            <div
-              style={
-                styles.brandBadge
-              }
-            >
-              G365
-            </div>
+        <DraftHeader
+          draftType={draft.draft_type}
+          season={draft.season}
+          teamCount={teamCount || 12}
+          currentRound={draft.current_round}
+          totalRounds={draft.total_rounds}
+          currentOverallPick={draft.current_overall_pick}
+          totalPicks={totalPicks}
+          status={draft.status}
+          isPaused={draft.is_paused}
+          secondsRemaining={localSeconds}
+        />
 
-            <div>
-              <div
-                style={
-                  styles.brandTitle
-                }
-              >
-                {draft.draft_type === "startup"
-                  ? "NFL DYNASTY • STARTUP DRAFT"
-                  : draft.draft_type === "dynasty"
-                    ? `NFL DYNASTY • ${draft.season} ANNUAL DRAFT`
-                    : "NFL REDRAFT • LIVE DRAFT"}
-              </div>
-
-              <div
-                style={
-                  styles.brandSub
-                }
-              >
-                {draft.season} • {draft.draft_type === "dynasty" ? "Linear Draft" : "Snake Draft"} • {teamCount || 12} Teams
-              </div>
-            </div>
+        {isCommissioner && draft.status === "scheduled" ? (
+          <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+            <button type="button" onClick={() => { void handleStartDraft(); }} disabled={working || draftStarting} style={styles.primaryButton}>
+              {draftStarting ? "DRAFT IS STARTING..." : "START DRAFT"}
+            </button>
           </div>
+        ) : null}
 
-
-          <div
-            style={
-              styles.headerStatus
-            }
-          >
-            <span>
-              ROUND{" "}
-              <strong>
-                {draft.current_round}
-              </strong>
-            </span>
-
-            <span
-              style={
-                styles.dot
-              }
-            >
-              •
-            </span>
-
-            <span>
-              PICK{" "}
-              <strong>
-                {draft.current_overall_pick}
-              </strong>
-            </span>
-
-            <span
-              style={
-                styles.dot
-              }
-            >
-              •
-            </span>
-
-            <span
-              style={{
-                ...styles.statusPill,
-
-                ...(draft.status ===
-                "live"
-                  ? styles.statusLive
-                  : styles.statusScheduled),
-              }}
-            >
-              {draft.is_paused
-                ? "PAUSED"
-                : draft.status.toUpperCase()}
-            </span>
+        {isCommissioner && draft.status === "live" ? (
+          <div style={{ marginTop: 10 }}>
+            <DraftCommissionerControls
+              status={draft.status}
+              isPaused={draft.is_paused}
+              busy={working}
+              onPause={() => { void handlePauseResume(); }}
+              onResume={() => { void handlePauseResume(); }}
+            />
           </div>
+        ) : null}
 
-
-          <div
-            style={
-              styles.headerActions
-            }
-          >
-            {draft.status ===
-              "scheduled" &&
-            isCommissioner ? (
-              <button
-                type="button"
-                onClick={
-                  () => {
-                    void handleStartDraft();
-                  }
-                }
-                disabled={
-                  working ||
-                  draftStarting
-                }
-                style={
-                  styles.primaryButton
-                }
-              >
-                {draftStarting
-                  ? "DRAFT IS STARTING..."
-                  : "START DRAFT"}
-              </button>
-            ) : null}
-
-            {isCommissioner &&
-            draft.status ===
-              "live" ? (
-              <button
-                type="button"
-                onClick={
-                  () => {
-                    void handlePauseResume();
-                  }
-                }
-                disabled={
-                  working
-                }
-                style={
-                  styles.secondaryButton
-                }
-              >
-                {draft.is_paused
-                  ? "▶ RESUME"
-                  : "Ⅱ PAUSE"}
-              </button>
-            ) : null}
-
-            {isCommissioner &&
-            picks.length >
-              0 ? (
-              <button
-                type="button"
-                onClick={() => {
-                  void undoLastPick();
-                }}
-                disabled={
-                  working
-                }
-                style={
-                  styles.undoButton
-                }
-                title="Undo the most recent draft pick and pause the draft"
-              >
-                ↶ UNDO LAST PICK
-              </button>
-            ) : null}
-
-
+        {isCommissioner && picks.length > 0 ? (
+          <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
+            <button type="button" onClick={() => { void undoLastPick(); }} disabled={working} style={styles.undoButton} title="Undo the most recent draft pick and pause the draft">
+              ↶ UNDO LAST PICK
+            </button>
           </div>
-        </header>
+        ) : null}
 
 
         {error ? (
@@ -6536,6 +6361,13 @@ export default function TraditionalDraftPage() {
             {error}
           </div>
         ) : null}
+
+        <DraftDynastyInfo
+          draftType={draft.draft_type}
+          season={draft.season}
+          totalRounds={draft.total_rounds}
+          teamCount={teamCount}
+        />
 
 
         {mySlot &&
@@ -6590,138 +6422,19 @@ export default function TraditionalDraftPage() {
         ) : null}
 
 
-        <section
-          className="g365-draft-train"
-          style={
-            styles.draftTrain
-          }
-        >
-          {upcomingPicks.map(
-            (
-              item
-            ) => {
-              const team =
-                teamMap.get(
-                  item.fantasyTeamId
-                );
-
-
-              const current =
-                item.overallPick ===
-                draft.current_overall_pick;
-
-              const isMyDraftSlot =
-                myTeamId !==
-                  null &&
-                item.fantasyTeamId ===
-                  myTeamId;
-
-              const slot =
-                slots.find(
-                  (
-                    row
-                  ) =>
-                    row.draft_slot ===
-                    item.draftSlot
-                ) ??
-                null;
-
-              const ownerIsOnline =
-                Boolean(
-                  team
-                    ?.owner_id &&
-                  onlineUserIds.includes(
-                    team.owner_id
-                  )
-                );
-
-              const participationLabel =
-                slot
-                  ?.is_cpu
-                  ? "CPU"
-                  : slot
-                      ?.auto_pick
-                    ? "AUTO-PICK"
-                    : ownerIsOnline
-                      ? current
-                        ? "ONLINE • PICKING"
-                        : "ONLINE • MANUAL"
-                      : "OFFLINE • MANUAL";
-
-
-              return (
-                <div
-                  key={
-                    item.overallPick
-                  }
-                  style={{
-                    ...styles.trainCard,
-
-                    ...(isMyDraftSlot
-                      ? styles.trainCardCurrent
-                      : {}),
-                  }}
-                >
-                  <div
-                    style={
-                      styles.trainPickNumber
-                    }
-                  >
-                    {item.overallPick}
-                  </div>
-
-                  <div
-                    style={
-                      styles.trainStatus
-                    }
-                  >
-                    {isMyDraftSlot
-                      ? "YOUR PICK"
-                      : current
-                        ? "ON THE CLOCK"
-                        : "UP NEXT"}
-                  </div>
-
-                  <strong
-                    style={
-                      styles.trainTeamName
-                    }
-                  >
-                    {team
-                      ?.team_name ??
-                      `Team ${item.draftSlot}`}
-                  </strong>
-
-                  <span
-                    style={
-                      styles.trainMeta
-                    }
-                  >
-                    R{item.round} • S{item.draftSlot}
-                  </span>
-
-                  <span
-                    style={{
-                      ...styles.trainPresence,
-
-                      ...(ownerIsOnline &&
-                      !slot?.is_cpu &&
-                      !slot?.auto_pick
-                        ? styles.trainPresenceOnline
-                        : {}),
-
-                      ...(slot?.auto_pick
-                        ? styles.trainPresenceAuto
-                        : {}),
-                    }}
-                  >
-                    {participationLabel}
-                  </span>
-                </div>
-              );
-            }
-          )}
-        </section>
+        <DraftTracker
+          picks={upcomingPicks.map((item) => {
+            const team = teamMap.get(item.fantasyTeamId) ?? null;
+            return {
+              overall: item.overallPick,
+              round: item.round,
+              pickInRound: item.pickInRound,
+              team: team ? { id: team.id, teamName: team.team_name } : null,
+              player: null,
+              current: item.overallPick === draft.current_overall_pick,
+            };
+          })}
+        />
 
 
         <section
@@ -7370,25 +7083,28 @@ export default function TraditionalDraftPage() {
 
                   {activeTab ===
                   "board" ? (
-                    <DraftBoardPanel
-                      draft={
-                        draft
-                      }
-                      slots={
-                        slots
-                      }
-                      picks={
-                        picks
-                      }
-                      teamMap={
-                        teamMap
-                      }
-                      playerMap={
-                        playerMap
-                      }
-                      myTeamId={
-                        myTeamId
-                      }
+                    <DraftBoard
+                      draftType={draft.draft_type}
+                      totalRounds={draft.total_rounds}
+                      teamCount={teamCount}
+                      picks={picks.map((pick) => {
+                        const team = teamMap.get(pick.fantasy_team_id) ?? null;
+                        const player = playerMap.get(pick.player_id) ?? null;
+                        return {
+                          overall: pick.overall_pick,
+                          round: pick.round_number,
+                          pickInRound: pick.pick_in_round,
+                          draftSlot: pick.draft_slot,
+                          currentOwner: team ? { id: team.id, teamName: team.team_name } : null,
+                          originalOwner: null,
+                          player: player ? {
+                            id: player.id,
+                            name: player.full_name,
+                            position: player.primary_position,
+                            nflTeam: player.team_abbreviation,
+                          } : null,
+                        };
+                      })}
                     />
                   ) : null}
 
@@ -7841,16 +7557,12 @@ function DraftHistorySidebar({
 
 
         const draftSlot =
-          draft.draft_type ===
-            "dynasty"
-            ? pickInRound
-            : round %
-                  2 ===
-                1
-              ? pickInRound
-              : teamCount -
-                pickInRound +
-                1;
+          getDraftSlotForPick({
+            draftType: draft.draft_type,
+            round,
+            pickInRound,
+            teamCount,
+          });
 
 
         const slot =
@@ -10604,342 +10316,6 @@ function HistoryPanel({
           Draft history will appear after the first selection.
         </div>
       ) : null}
-    </div>
-  );
-}
-
-
-function DraftBoardPanel({
-  draft,
-  slots,
-  picks,
-  teamMap,
-  playerMap,
-  myTeamId,
-}: {
-  draft:
-    DraftRow;
-
-  slots:
-    DraftSlotRow[];
-
-  picks:
-    DraftPickRow[];
-
-  teamMap:
-    Map<
-      number,
-      FantasyTeamRow
-    >;
-
-  playerMap:
-    Map<
-      number,
-      PlayerRow
-    >;
-
-  myTeamId:
-    number |
-    null;
-}) {
-  const pickMap =
-    new Map(
-      picks.map(
-        (
-          pick
-        ) => [
-          `${pick.round_number}-${pick.draft_slot}`,
-          pick,
-        ] as const
-      )
-    );
-
-
-  return (
-    <div
-      style={
-        styles.boardOuter
-      }
-    >
-      <div
-        style={
-          styles.boardHeader
-        }
-      >
-        <div>
-          <span
-            style={
-              styles.workspaceEyebrow
-            }
-          >
-            LIVE DRAFT
-          </span>
-
-          <strong
-            style={
-              styles.boardTitle
-            }
-          >
-            Draft Board
-          </strong>
-        </div>
-
-        <span
-          style={
-            styles.boardProgressText
-          }
-        >
-          {picks.length} of {slots.length * draft.total_rounds} picks completed
-        </span>
-      </div>
-
-
-      <div
-        className="g365-draft-board-scroll"
-        style={
-          styles.boardScroll
-        }
-      >
-        <div
-          style={{
-            ...styles.boardGrid,
-
-            gridTemplateColumns:
-              `76px repeat(${slots.length}, minmax(148px, 148px))`,
-          }}
-        >
-          <div
-            style={
-              styles.boardCorner
-            }
-          >
-            ROUND
-          </div>
-
-          {slots.map(
-            (
-              slot
-            ) => {
-              const team =
-                teamMap.get(
-                  slot.fantasy_team_id
-                );
-
-
-              const mine =
-                slot.fantasy_team_id ===
-                myTeamId;
-
-
-              return (
-                <div
-                  key={
-                    `header-${slot.id}`
-                  }
-                  style={{
-                    ...styles.boardTeamHeader,
-
-                    ...(mine
-                      ? styles.boardTeamHeaderMine
-                      : {}),
-                  }}
-                >
-                  <span>
-                    #{slot.draft_slot}
-                  </span>
-
-                  <strong>
-                    {team
-                      ?.team_name ??
-                      `Team ${slot.draft_slot}`}
-                  </strong>
-                </div>
-              );
-            }
-          )}
-
-
-          {Array.from(
-            {
-              length:
-                draft.total_rounds,
-            },
-            (
-              _,
-              index
-            ) =>
-              index +
-              1
-          ).flatMap(
-            (
-              round
-            ) => {
-              const row:
-                React.ReactNode[] =
-                  [];
-
-
-              row.push(
-                <div
-                  key={
-                    `round-${round}`
-                  }
-                  style={
-                    styles.boardRoundCell
-                  }
-                >
-                  <strong>
-                    {round}
-                  </strong>
-
-                  <span>
-                    {draft.draft_type === "dynasty"
-                      ? "→"
-                      : round % 2 === 1
-                        ? "→"
-                        : "←"}
-                  </span>
-                </div>
-              );
-
-
-              slots.forEach(
-                (
-                  slot
-                ) => {
-                  const pick =
-                    pickMap.get(
-                      `${round}-${slot.draft_slot}`
-                    );
-
-
-                  const player =
-                    pick
-                      ? playerMap.get(
-                          pick.player_id
-                        )
-                      : null;
-
-
-                  const teamCount =
-                    slots.length;
-
-
-                  const pickInRound =
-                    draft.draft_type ===
-                      "dynasty"
-                      ? slot.draft_slot
-                      : round %
-                            2 ===
-                          1
-                        ? slot.draft_slot
-                        : teamCount -
-                          slot.draft_slot +
-                          1;
-
-
-                  const overall =
-                    (
-                      round -
-                      1
-                    ) *
-                      teamCount +
-                    pickInRound;
-
-
-                  const current =
-                    overall ===
-                    draft.current_overall_pick &&
-                    draft.status ===
-                      "live";
-
-
-                  const mine =
-                    slot.fantasy_team_id ===
-                    myTeamId;
-
-
-                  row.push(
-                    <div
-                      key={
-                        `cell-${round}-${slot.draft_slot}`
-                      }
-                      style={{
-                        ...styles.boardCell,
-
-                        ...(current
-                          ? styles.boardCellCurrent
-                          : {}),
-
-                        ...(mine
-                          ? styles.boardCellMine
-                          : {}),
-
-                        ...(draft.status === "completed" &&
-                        pick &&
-                        player
-                          ? completedDraftBoardCellStyle(
-                              player.primary_position
-                            )
-                          : {}),
-                      }}
-                    >
-                      <span
-                        style={
-                          styles.boardPickNumber
-                        }
-                      >
-                        {round}.{String(pickInRound).padStart(2, "0")}
-                      </span>
-
-                      {pick ? (
-                        <>
-                          <strong
-                            style={
-                              styles.boardPlayerName
-                            }
-                          >
-                            {player
-                              ?.full_name ??
-                              `Player ${pick.player_id}`}
-                          </strong>
-
-                          <span
-                            style={
-                              styles.boardPlayerMeta
-                            }
-                          >
-                            {player
-                              ?.primary_position ??
-                              "—"}
-                            {" • "}
-                            {player
-                              ?.team_abbreviation ??
-                              "FA"}
-                          </span>
-                        </>
-                      ) : (
-                        <span
-                          style={
-                            styles.boardOpen
-                          }
-                        >
-                          {current
-                            ? "ON CLOCK"
-                            : "Open"}
-                        </span>
-                      )}
-                    </div>
-                  );
-                }
-              );
-
-
-              return row;
-            }
-          )}
-        </div>
-      </div>
     </div>
   );
 }

@@ -1356,6 +1356,22 @@ function ScoreTeam({
             : {}),
         }}
       >
+        <span
+          style={
+            styles.mutedMeta
+          }
+        >
+          {team.record}
+        </span>
+
+        <span
+          style={
+            styles.metaDivider
+          }
+        >
+          •
+        </span>
+
         {team.isMyTeam ? (
           <span
             style={

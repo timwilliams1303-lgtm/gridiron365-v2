@@ -1,3619 +1,2105 @@
 "use client";
 
-
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import { createBrowserClient } from "@supabase/ssr";
 
-
-
 type Props = {
-
   leagueId: string;
-
   draftSeason: number;
-
   viewerOnly?: boolean;
-
 };
-
-
 
 type LotteryStatus = "setup" | "locked" | "live" | "completed";
 
-
-
 type LotteryEntry = {
-
   fantasyTeamId: number;
-
   teamName: string;
-
   finalStanding: number | null;
-
   lotteryPosition: number | null;
-
   percentage: number;
-
   ballCount: number;
-
 };
-
-
 
 type RevealedPick = {
-
   eventId?: number;
-
   revealOrder: number;
-
   draftPick: number;
-
   fantasyTeamId: number;
-
   teamName: string;
-
   finalStanding: number | null;
-
   originalNumberOnePercentage: number;
-
   revealedAt?: string;
-
 };
-
-
 
 type LotteryState = {
-
   success: boolean;
-
   exists: boolean;
-
-
-
   lotteryId?: number;
-
   leagueId?: string;
-
-
-
   sourceSeason?: number;
-
   draftSeason: number;
-
-
-
   lotteryType?: "startup" | "rookie" | null;
-
   isStartup?: boolean;
-
   drawMethod?: string | null;
-
   draftStyle?: "snake" | "linear" | null;
-
   displayName?: string | null;
-
-
-
   status?: LotteryStatus;
-
-
-
   teamCount?: number;
-
   pickCount?: number;
-
   revealSeconds?: number;
-
-
-
   revealedCount?: number;
-
   remainingCount?: number;
-
-
-
   lockedAt?: string | null;
-
   startedAt?: string | null;
-
   completedAt?: string | null;
-
-
-
   entries?: LotteryEntry[];
-
   revealed?: RevealedPick[];
-
 };
-
-
 
 type PrepareResult = {
-
   success: boolean;
-
   lotteryId: number;
-
   leagueId: string;
-
   sourceSeason: number;
-
   draftSeason: number;
-
   teamCount: number;
-
   status: "setup";
-
 };
-
-
 
 type LockResult = {
-
   success: boolean;
-
   lotteryId: number;
-
   draftSeason: number;
-
   status: "locked";
-
   teamCount: number;
-
   pickCount: number;
-
 };
-
-
 
 type StartResult = {
-
   success: boolean;
-
   lotteryId: number;
-
   draftSeason: number;
-
   status: "live";
-
   teamCount: number;
-
   pickCount: number;
-
   revealSeconds: number;
-
 };
-
-
 
 type RevealResult = {
-
   success: boolean;
-
   lotteryId: number;
-
   draftSeason: number;
-
   status: "live" | "completed";
-
-
-
   revealOrder: number;
-
   draftPick: number;
-
-
-
   team: {
-
     fantasyTeamId: number;
-
     teamName: string;
-
     finalStanding: number;
-
     originalNumberOnePercentage: number;
-
   };
-
-
-
   revealedCount: number;
-
   remainingCount: number;
-
   isFinalReveal: boolean;
-
   draftOrderApplied: boolean;
-
   assetResult?: unknown;
-
 };
 
-
-
-type MachinePhase =
-
-  | "idle"
-
-  | "mixing"
-
-  | "suction"
-
-  | "reveal"
-
-  | "complete";
-
-
+type MachinePhase = "idle" | "mixing" | "suction" | "reveal" | "complete";
 
 const supabase = createBrowserClient(
-
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
 );
 
-
-
 function wait(ms: number) {
-
   return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
-
 }
 
-
-
 function normalizeState(value: unknown): LotteryState {
-
   const raw = (value ?? {}) as Record<string, unknown>;
 
-
-
   return {
-
     success: raw.success === true,
-
     exists: raw.exists === true,
-
-
-
-    lotteryId:
-
-      raw.lotteryId == null ? undefined : Number(raw.lotteryId),
-
-
-
-    leagueId:
-
-      raw.leagueId == null ? undefined : String(raw.leagueId),
-
-
-
+    lotteryId: raw.lotteryId == null ? undefined : Number(raw.lotteryId),
+    leagueId: raw.leagueId == null ? undefined : String(raw.leagueId),
     sourceSeason:
-
       raw.sourceSeason == null ? undefined : Number(raw.sourceSeason),
-
-
-
-    draftSeason:
-
-      raw.draftSeason == null ? 0 : Number(raw.draftSeason),
-
-
+    draftSeason: raw.draftSeason == null ? 0 : Number(raw.draftSeason),
 
     lotteryType:
-
       raw.lotteryType === "startup" || raw.lotteryType === "rookie"
-
         ? raw.lotteryType
-
         : null,
-
-
 
     isStartup: raw.isStartup === true,
 
-
-
     drawMethod:
-
       raw.drawMethod == null ? null : String(raw.drawMethod),
 
-
-
     draftStyle:
-
       raw.draftStyle === "snake" || raw.draftStyle === "linear"
-
         ? raw.draftStyle
-
         : null,
 
-
-
     displayName:
-
       raw.displayName == null ? null : String(raw.displayName),
 
-
-
     status:
-
       raw.status === "setup" ||
-
       raw.status === "locked" ||
-
       raw.status === "live" ||
-
       raw.status === "completed"
-
         ? raw.status
-
         : undefined,
 
-
-
     teamCount:
-
       raw.teamCount == null ? undefined : Number(raw.teamCount),
 
-
-
     pickCount:
-
       raw.pickCount == null ? undefined : Number(raw.pickCount),
 
-
-
     revealSeconds:
-
       raw.revealSeconds == null ? undefined : Number(raw.revealSeconds),
 
-
-
     revealedCount:
-
       raw.revealedCount == null ? undefined : Number(raw.revealedCount),
 
-
-
     remainingCount:
-
       raw.remainingCount == null ? undefined : Number(raw.remainingCount),
 
-
-
     lockedAt:
-
       raw.lockedAt == null ? null : String(raw.lockedAt),
 
-
-
     startedAt:
-
       raw.startedAt == null ? null : String(raw.startedAt),
 
-
-
     completedAt:
-
       raw.completedAt == null ? null : String(raw.completedAt),
 
-
-
     entries: Array.isArray(raw.entries)
-
       ? raw.entries.map((item) => {
-
           const entry = item as Record<string, unknown>;
 
-
-
           return {
-
             fantasyTeamId: Number(entry.fantasyTeamId),
-
             teamName: String(entry.teamName ?? "Unknown Team"),
-
             finalStanding:
-
-              entry.finalStanding == null ? null : Number(entry.finalStanding),
-
+              entry.finalStanding == null
+                ? null
+                : Number(entry.finalStanding),
             lotteryPosition:
-
-              entry.lotteryPosition == null ? null : Number(entry.lotteryPosition),
-
+              entry.lotteryPosition == null
+                ? null
+                : Number(entry.lotteryPosition),
             percentage: Number(entry.percentage),
-
             ballCount: Number(entry.ballCount),
-
           };
-
         })
-
       : [],
-
-
 
     revealed: Array.isArray(raw.revealed)
-
       ? raw.revealed.map((item) => {
-
           const pick = item as Record<string, unknown>;
 
-
-
           return {
-
             eventId:
-
               pick.eventId == null ? undefined : Number(pick.eventId),
-
-
-
             revealOrder: Number(pick.revealOrder),
-
             draftPick: Number(pick.draftPick),
-
             fantasyTeamId: Number(pick.fantasyTeamId),
-
             teamName: String(pick.teamName ?? "Unknown Team"),
-
             finalStanding:
-
-              pick.finalStanding == null ? null : Number(pick.finalStanding),
-
+              pick.finalStanding == null
+                ? null
+                : Number(pick.finalStanding),
             originalNumberOnePercentage: Number(
-
               pick.originalNumberOnePercentage
-
             ),
-
             revealedAt:
-
               pick.revealedAt == null
-
                 ? undefined
-
                 : String(pick.revealedAt),
-
           };
-
         })
-
       : [],
-
   };
-
 }
 
-
-
 export default function TraditionalDynastyLotteryOfficial({
-
   leagueId,
-
   draftSeason,
-
   viewerOnly = false,
-
 }: Props) {
-
   const [lotteryState, setLotteryState] =
-
     useState<LotteryState | null>(null);
 
-
-
   const [loading, setLoading] = useState(true);
-
   const [actionRunning, setActionRunning] = useState(false);
-
   const [machineRunning, setMachineRunning] = useState(false);
 
-
-
   const [errorMessage, setErrorMessage] =
-
     useState<string | null>(null);
-
-
 
   const [successMessage, setSuccessMessage] =
-
     useState<string | null>(null);
 
-
-
   const [countdown, setCountdown] =
-
     useState<number | null>(null);
-
-
 
   const [currentPick, setCurrentPick] =
-
     useState<number | null>(null);
 
-
-
   const [drawnTeam, setDrawnTeam] =
-
     useState<RevealedPick | null>(null);
 
-
-
   const [phase, setPhase] =
-
     useState<MachinePhase>("idle");
-
-
 
   const runRef = useRef(0);
 
-
-
   const entries = useMemo(
-
     () => lotteryState?.entries ?? [],
-
     [lotteryState]
-
   );
-
-
 
   const revealedPicks = useMemo(
-
     () => lotteryState?.revealed ?? [],
-
     [lotteryState]
-
   );
 
-
-
   const isStartupLottery =
-
     lotteryState?.lotteryType === "startup" ||
-
     lotteryState?.isStartup === true;
 
-
-
-  /*
-
-   * Lottery copy must describe the draft this lottery is actually ordering.
-
-   * Startup = initial Dynasty startup draft.
-
-   * Annual = next-season Dynasty annual draft, using prior-season standings.
-
-   */
-
   const lotteryTitle = isStartupLottery
-
     ? `${draftSeason} Dynasty Startup Draft Lottery`
-
     : `${draftSeason} Dynasty Annual Draft Lottery`;
 
   const lotteryDraftBadge = isStartupLottery
-
     ? `${draftSeason} STARTUP DRAFT`
-
     : `${draftSeason} ANNUAL DRAFT`;
 
   const lotterySourceLabel =
-
     !isStartupLottery && lotteryState?.sourceSeason
-
       ? `${lotteryState.sourceSeason} FINAL STANDINGS`
-
       : null;
-
-
 
   const revealedByPick = useMemo(() => {
-
     const result: Record<number, RevealedPick> = {};
 
-
-
     for (const item of revealedPicks) {
-
       result[item.draftPick] = item;
-
     }
 
-
-
     return result;
-
   }, [revealedPicks]);
 
-
-
   const pickCount =
-
     lotteryState?.pickCount ??
-
     lotteryState?.teamCount ??
-
     entries.length;
 
-
-
   const nextPick =
-
     lotteryState?.status === "live"
-
       ? Math.max(
-
           pickCount - (lotteryState.revealedCount ?? 0),
-
           1
-
         )
-
       : null;
 
-
-
   const displayBalls = useMemo(() => {
-
     const balls: Array<{
-
       key: string;
-
       team: LotteryEntry;
-
     }> = [];
 
-
-
     entries.forEach((team) => {
-
       const count = Math.max(
-
         2,
-
         Math.round(Number(team.percentage) * 0.7)
-
       );
 
-
-
       for (let i = 0; i < count; i += 1) {
-
         balls.push({
-
           key: `${team.fantasyTeamId}-${i}`,
-
           team,
-
         });
-
       }
-
     });
 
-
-
     return balls;
-
   }, [entries]);
 
-
-
   const loadState = useCallback(
-
     async (showLoader = false) => {
-
       if (!leagueId || !draftSeason) return;
 
-
-
       if (showLoader) {
-
         setLoading(true);
-
       }
 
-
-
       try {
-
         const { data, error } = await supabase.rpc(
-
           "get_traditional_dynasty_draft_lottery_state",
-
           {
-
             p_league_id: leagueId,
-
             p_draft_season: draftSeason,
-
           }
-
         );
 
-
-
         if (error) {
-
           throw new Error(error.message);
-
         }
-
-
 
         const nextState = normalizeState(data);
 
-
-
         if (!nextState.success) {
-
           throw new Error(
-
             "The Dynasty lottery state could not be loaded."
-
           );
-
         }
-
-
 
         setLotteryState(nextState);
 
-
-
         if (nextState.status === "completed") {
-
           setPhase("complete");
-
         } else if (!machineRunning) {
-
           setPhase("idle");
-
         }
-
       } catch (error) {
-
         setErrorMessage(
-
           error instanceof Error
-
             ? error.message
-
             : "The Dynasty lottery state could not be loaded."
-
         );
-
       } finally {
-
         if (showLoader) {
-
           setLoading(false);
-
         }
-
       }
-
     },
-
     [draftSeason, leagueId, machineRunning]
-
   );
 
-
-
   useEffect(() => {
-
     void loadState(true);
-
   }, [loadState]);
 
-
-
   useEffect(() => {
-
     if (!viewerOnly) return;
 
-
-
     const interval = window.setInterval(() => {
-
       void loadState(false);
-
     }, 2000);
 
-
-
     return () => window.clearInterval(interval);
-
   }, [loadState, viewerOnly]);
 
-
-
   async function prepareLottery() {
-
     if (actionRunning || machineRunning) return;
 
-
-
     setActionRunning(true);
-
     setErrorMessage(null);
-
     setSuccessMessage(null);
 
-
-
     try {
-
       const { data, error } = await supabase.rpc(
-
         "prepare_traditional_dynasty_draft_lottery",
-
         {
-
           p_league_id: leagueId,
-
           p_draft_season: draftSeason,
-
         }
-
       );
 
-
-
       if (error) {
-
         throw new Error(error.message);
-
       }
-
-
 
       const result = data as PrepareResult | null;
 
-
-
-      if (
-
-        !result?.success ||
-
-        result.status !== "setup"
-
-      ) {
-
+      if (!result?.success || result.status !== "setup") {
         throw new Error(
-
           "The server returned an invalid lottery preparation result."
-
         );
-
       }
 
-
-
       setSuccessMessage(
-
         `${lotteryTitle} prepared. Review the official odds before locking the results.`
-
       );
-
-
 
       await loadState();
-
     } catch (error) {
-
       setErrorMessage(
-
         error instanceof Error
-
           ? error.message
-
           : "The Dynasty lottery could not be prepared."
-
       );
-
     } finally {
-
       setActionRunning(false);
-
     }
-
   }
 
-
-
   async function lockLottery() {
-
     if (
-
       actionRunning ||
-
       machineRunning ||
-
       lotteryState?.status !== "setup"
-
     ) {
-
       return;
-
     }
 
-
-
     const confirmed = window.confirm(
-
-      `LOCK THE ${draftSeason} ${isStartupLottery ? "STARTUP" : "ANNUAL"} DYNASTY LOTTERY?\n\n` +
-
+      `LOCK THE ${draftSeason} ${
+        isStartupLottery ? "STARTUP" : "ANNUAL"
+      } DYNASTY LOTTERY?\n\n` +
         (isStartupLottery
-
           ? "This generates and permanently stores the official equal-odds startup draft order. Every remaining franchise has the same chance at the next available pick.\n\n"
-
           : "This generates and permanently stores the official weighted Dynasty draft order.\n\n") +
-
         "The result cannot be rerolled after it is locked. The picks will remain hidden and will only be published one at a time during the official reveal.\n\n" +
-
         "Continue?"
-
     );
-
-
 
     if (!confirmed) return;
 
-
-
     const secondConfirmed = window.confirm(
-
       "FINAL CONFIRMATION\n\n" +
-
         "Once you lock this lottery, the official result is permanent.\n\n" +
-
         "Lock official results now?"
-
     );
-
-
 
     if (!secondConfirmed) return;
 
-
-
     setActionRunning(true);
-
     setErrorMessage(null);
-
     setSuccessMessage(null);
 
-
-
     try {
-
       const { data, error } = await supabase.rpc(
-
         "lock_traditional_dynasty_draft_lottery",
-
         {
-
           p_league_id: leagueId,
-
           p_draft_season: draftSeason,
-
         }
-
       );
 
-
-
       if (error) {
-
         throw new Error(error.message);
-
       }
-
-
 
       const result = data as LockResult | null;
 
-
-
-      if (
-
-        !result?.success ||
-
-        result.status !== "locked"
-
-      ) {
-
+      if (!result?.success || result.status !== "locked") {
         throw new Error(
-
           "The server returned an invalid lottery lock result."
-
         );
-
       }
-
-
-
-      /*
-
-       * The lock RPC intentionally returns NO hidden team/pick result.
-
-       * Future picks stay server-side until reveal_next publishes them.
-
-       */
 
       setSuccessMessage(
-
         "Official lottery results are locked. No draft positions have been revealed."
-
       );
-
-
 
       await loadState();
-
     } catch (error) {
-
       setErrorMessage(
-
         error instanceof Error
-
           ? error.message
-
           : "The official Dynasty lottery could not be locked."
-
       );
-
     } finally {
-
       setActionRunning(false);
-
     }
-
   }
-
-
-
-  async function startLottery() {
-
+    async function startLottery() {
     if (
-
       actionRunning ||
-
       machineRunning ||
-
       lotteryState?.status !== "locked"
-
     ) {
-
       return;
-
     }
-
-
-
-    const confirmed = window.confirm(
-
-      `Start the ${draftSeason} G365 NFL Dynasty ${isStartupLottery ? "Startup" : "Annual"} Draft Lottery?\n\n` +
-
-        `The official result is already locked. Starting the lottery will move it into live reveal mode, beginning with pick #${pickCount} and ending with pick #1.`
-
-    );
-
-
-
-    if (!confirmed) return;
-
-
 
     setActionRunning(true);
-
     setErrorMessage(null);
-
     setSuccessMessage(null);
 
-
-
     try {
-
       const { data, error } = await supabase.rpc(
-
         "start_traditional_dynasty_draft_lottery",
-
         {
-
           p_league_id: leagueId,
-
           p_draft_season: draftSeason,
-
         }
-
       );
 
-
-
       if (error) {
-
         throw new Error(error.message);
-
       }
-
-
 
       const result = data as StartResult | null;
 
-
-
-      if (
-
-        !result?.success ||
-
-        result.status !== "live"
-
-      ) {
-
+      if (!result?.success || result.status !== "live") {
         throw new Error(
-
           "The server returned an invalid lottery start result."
-
         );
-
       }
-
-
 
       setSuccessMessage(
-
-        `The ${draftSeason} Dynasty Draft Lottery is live. Reveal pick #${result.pickCount} when ready.`
-
+        `${lotteryTitle} is live. Pick ${result.pickCount} will be revealed first.`
       );
-
-
 
       await loadState();
-
     } catch (error) {
-
       setErrorMessage(
-
         error instanceof Error
-
           ? error.message
-
-          : "The official Dynasty lottery could not be started."
-
+          : "The Dynasty lottery could not be started."
       );
-
     } finally {
-
       setActionRunning(false);
-
     }
-
   }
 
-
-
   async function revealNextPick() {
-
     if (
-
+      viewerOnly ||
       actionRunning ||
-
       machineRunning ||
-
-      lotteryState?.status !== "live" ||
-
-      !nextPick
-
+      lotteryState?.status !== "live"
     ) {
-
       return;
-
     }
 
-
-
-    const expectedPick = nextPick;
-
-    const runId = runRef.current + 1;
-
-
-
-    runRef.current = runId;
-
-
+    const thisRun = runRef.current + 1;
+    runRef.current = thisRun;
 
     setMachineRunning(true);
-
+    setActionRunning(true);
     setErrorMessage(null);
-
     setSuccessMessage(null);
-
-    setCurrentPick(expectedPick);
-
     setDrawnTeam(null);
 
-    setCountdown(null);
-
-    setPhase("mixing");
-
-
-
-    try {
-
-      /*
-
-       * Keep the existing G365 five-second lottery presentation.
-
-       * The RPC is not called until the countdown finishes, so the
-
-       * browser does not know which team is coming during the mix.
-
-       */
-
-      for (let seconds = 5; seconds >= 1; seconds -= 1) {
-
-        if (runRef.current !== runId) return;
-
-
-
-        setCountdown(seconds);
-
-        await wait(1000);
-
-      }
-
-
-
-      if (runRef.current !== runId) return;
-
-
-
-      setCountdown(null);
-
-
-
-      /*
-
-       * The server publishes exactly ONE previously hidden pick.
-
-       * It never returns future lottery results.
-
-       */
-
-      const { data, error } = await supabase.rpc(
-
-        "reveal_next_traditional_dynasty_lottery_pick",
-
-        {
-
-          p_league_id: leagueId,
-
-          p_draft_season: draftSeason,
-
-        }
-
+    const pickToReveal =
+      nextPick ??
+      Math.max(
+        pickCount - (lotteryState.revealedCount ?? 0),
+        1
       );
 
+    setCurrentPick(pickToReveal);
 
+    try {
+      setPhase("mixing");
 
-      if (error) {
+      const revealSeconds = Math.max(
+        3,
+        Number(lotteryState.revealSeconds ?? 5)
+      );
 
-        throw new Error(error.message);
+      for (
+        let remaining = revealSeconds;
+        remaining >= 1;
+        remaining -= 1
+      ) {
+        if (runRef.current !== thisRun) {
+          return;
+        }
 
+        setCountdown(remaining);
+        await wait(1000);
       }
 
+      if (runRef.current !== thisRun) {
+        return;
+      }
 
+      setCountdown(null);
+      setPhase("suction");
+
+      await wait(900);
+
+      if (runRef.current !== thisRun) {
+        return;
+      }
+
+      const { data, error } = await supabase.rpc(
+        "reveal_next_traditional_dynasty_draft_lottery_pick",
+        {
+          p_league_id: leagueId,
+          p_draft_season: draftSeason,
+        }
+      );
+
+      if (error) {
+        throw new Error(error.message);
+      }
 
       const result = data as RevealResult | null;
 
-
-
-      if (
-
-        !result?.success ||
-
-        !result.team ||
-
-        Number(result.draftPick) !== expectedPick
-
-      ) {
-
+      if (!result?.success) {
         throw new Error(
-
-          "The server returned an invalid official reveal result."
-
+          "The server returned an invalid lottery reveal result."
         );
-
       }
 
-
-
-      const revealedPick: RevealedPick = {
-
-        revealOrder: Number(result.revealOrder),
-
-        draftPick: Number(result.draftPick),
-
-        fantasyTeamId: Number(
-
-          result.team.fantasyTeamId
-
-        ),
-
-        teamName: String(result.team.teamName),
-
-        finalStanding:
-
-          result.team.finalStanding == null
-
-            ? null
-
-            : Number(result.team.finalStanding),
-
-        originalNumberOnePercentage: Number(
-
-          result.team.originalNumberOnePercentage
-
-        ),
-
+      const revealed: RevealedPick = {
+        revealOrder: result.revealOrder,
+        draftPick: result.draftPick,
+        fantasyTeamId: result.team.fantasyTeamId,
+        teamName: result.team.teamName,
+        finalStanding: result.team.finalStanding,
+        originalNumberOnePercentage:
+          result.team.originalNumberOnePercentage,
       };
 
-
-
-      setPhase("suction");
-
-      setDrawnTeam(revealedPick);
-
-
-
-      await wait(1100);
-
-
-
-      if (runRef.current !== runId) return;
-
-
-
+      setDrawnTeam(revealed);
+      setCurrentPick(result.draftPick);
       setPhase("reveal");
 
-
-
-      /*
-
-       * Refresh the safe state after the event has been published.
-
-       * Only this newly revealed pick becomes visible.
-
-       */
-
       await loadState();
 
+      await wait(2500);
 
+      if (runRef.current !== thisRun) {
+        return;
+      }
 
-      await wait(
-
-        result.isFinalReveal ? 1900 : 1200
-
-      );
-
-
-
-      if (runRef.current !== runId) return;
-
-
-
-      if (result.isFinalReveal) {
-
-        setCurrentPick(null);
-
-        setCountdown(null);
-
+      if (result.isFinalReveal || result.status === "completed") {
         setPhase("complete");
-
-
-
         setSuccessMessage(
-
-          result.draftOrderApplied
-
-            ? isStartupLottery
-
-              ? `The ${draftSeason} Dynasty Startup Lottery is complete. The official Round 1 order has been applied to the startup snake draft.`
-
-              : `The ${draftSeason} Dynasty Annual Draft Lottery is complete. The official order has been applied automatically to the annual Dynasty draft-pick assets.`
-
-            : `The ${lotteryTitle} is complete.`
-
+          `The ${draftSeason} Dynasty draft lottery is complete. The official draft order has been applied.`
         );
-
       } else {
-
-        setCurrentPick(null);
-
-        setDrawnTeam(null);
-
-        setCountdown(null);
-
         setPhase("idle");
-
-
-
-        setSuccessMessage(
-
-          `Pick #${result.draftPick} is official. ${
-
-            result.remainingCount
-
-          } ${
-
-            result.remainingCount === 1
-
-              ? "pick remains"
-
-              : "picks remain"
-
-          }.`
-
-        );
-
+        setCurrentPick(null);
+        setDrawnTeam(null);
       }
-
-
-
-      await loadState();
-
     } catch (error) {
+      setPhase("idle");
+      setCountdown(null);
+      setCurrentPick(null);
+      setDrawnTeam(null);
 
-      if (runRef.current === runId) {
-
-        setCurrentPick(null);
-
-        setCountdown(null);
-
-        setDrawnTeam(null);
-
-        setPhase("idle");
-
-
-
-        setErrorMessage(
-
-          error instanceof Error
-
-            ? error.message
-
-            : "The next official lottery pick could not be revealed."
-
-        );
-
-
-
-        /*
-
-         * A network interruption could occur after the server
-
-         * publishes a pick but before the browser receives it.
-
-         * Reload the safe state so we never accidentally reveal
-
-         * another pick based on stale client state.
-
-         */
-
-        await loadState();
-
-      }
-
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "The next lottery pick could not be revealed."
+      );
     } finally {
-
-      if (runRef.current === runId) {
-
-        setMachineRunning(false);
-
-      }
-
+      setMachineRunning(false);
+      setActionRunning(false);
     }
-
   }
 
-
-
-  const statusLabel = !lotteryState?.exists
-
-    ? "NOT PREPARED"
-
-    : lotteryState.status === "setup"
-
-      ? "PREPARED"
-
-      : lotteryState.status === "locked"
-
-        ? "OFFICIAL RESULTS LOCKED"
-
-        : lotteryState.status === "live"
-
-          ? "LIVE LOTTERY"
-
-          : lotteryState.status === "completed"
-
-            ? "LOTTERY COMPLETE"
-
-            : "UNKNOWN";
-
-
-
-  const button = (() => {
-
-    if (loading) {
-
-      return {
-
-        label: "LOADING LOTTERY…",
-
-        disabled: true,
-
-        action: () => undefined,
-
-      };
-
-    }
-
-
-
-    if (!lotteryState?.exists) {
-
-      return {
-
-        label: `PREPARE ${draftSeason} ${isStartupLottery ? "STARTUP" : "ANNUAL"} LOTTERY`,
-
-        disabled: actionRunning || machineRunning,
-
-        action: () => void prepareLottery(),
-
-      };
-
-    }
-
-
-
-    if (lotteryState.status === "setup") {
-
-      return {
-
-        label: "LOCK OFFICIAL RESULTS",
-
-        disabled: actionRunning || machineRunning,
-
-        action: () => void lockLottery(),
-
-      };
-
-    }
-
-
-
-    if (lotteryState.status === "locked") {
-
-      return {
-
-        label: `START ${isStartupLottery ? "STARTUP" : "ANNUAL"} LOTTERY`,
-
-        disabled: actionRunning || machineRunning,
-
-        action: () => void startLottery(),
-
-      };
-
-    }
-
-
-
-    if (lotteryState.status === "live") {
-
-      return {
-
-        label: machineRunning
-
-          ? `REVEALING PICK #${currentPick ?? nextPick ?? "…"}`
-
-          : `REVEAL PICK #${nextPick ?? "…"}`,
-
-        disabled:
-
-          actionRunning ||
-
-          machineRunning ||
-
-          !nextPick,
-
-        action: () => void revealNextPick(),
-
-      };
-
-    }
-
-
-
-    return {
-
-      label: "OFFICIAL LOTTERY COMPLETE",
-
-      disabled: true,
-
-      action: () => undefined,
-
+  useEffect(() => {
+    return () => {
+      runRef.current += 1;
     };
+  }, []);
 
-  })();
-
-
-
-  if (loading && lotteryState == null) {
-
+  if (loading) {
     return (
+      <section className="dynasty-lottery-page">
+        <style>{lotteryStyles}</style>
 
-      <div className="g365-official-lottery-loading">
-
-        Loading official Dynasty draft lottery…
-
-      </div>
-
+        <div className="lottery-loading">
+          <div className="loading-spinner" />
+          <strong>Loading NFL Dynasty lottery...</strong>
+        </div>
+      </section>
     );
-
   }
 
-
-
-  return (
-
-    <div className="g365-official-lottery">
-
-      <style>{`
-
-        .g365-official-lottery {
-
-          margin-top:18px;
-
-          border:1px solid rgba(255,72,24,.48);
-
-          border-radius:16px;
-
-          overflow:hidden;
-
-          background:
-
-            radial-gradient(circle at 50% 0%,rgba(255,67,20,.15),transparent 38%),
-
-            linear-gradient(180deg,#090a0f,#050609);
-
-          color:#f7f7f8;
-
-          box-shadow:0 18px 48px rgba(0,0,0,.24);
-
-        }
-
-
-
-        .g365-official-lottery-loading {
-
-          margin-top:18px;
-
-          padding:18px;
-
-          border:1px solid rgba(255,91,31,.28);
-
-          border-radius:14px;
-
-          background:#08090d;
-
-          color:#aeb4bd;
-
-          font-size:12px;
-
-          font-weight:800;
-
-        }
-
-
-
-        .g365-official-head {
-
-          display:flex;
-
-          justify-content:space-between;
-
-          align-items:center;
-
-          gap:16px;
-
-          padding:16px 18px;
-
-          border-bottom:1px solid rgba(255,255,255,.08);
-
-          background:
-
-            linear-gradient(
-
-              90deg,
-
-              rgba(151,16,10,.35),
-
-              rgba(255,91,25,.08)
-
-            );
-
-        }
-
-
-
-        .g365-official-kicker {
-
-          color:#ff6829;
-
-          font-size:10px;
-
-          font-weight:950;
-
-          letter-spacing:.14em;
-
-        }
-
-
-
-        .g365-official-title {
-
-          margin:3px 0 0;
-
-          font-size:21px;
-
-          font-weight:950;
-
-        }
-
-
-
-        .g365-official-purpose {
-
-          margin-top:5px;
-
-          color:#9aa2ad;
-
-          font-size:10px;
-
-          font-weight:750;
-
-          line-height:1.4;
-
-        }
-
-
-
-        .g365-official-badges {
-
-          display:flex;
-
-          flex-wrap:wrap;
-
-          justify-content:flex-end;
-
-          gap:7px;
-
-        }
-
-
-
-        .g365-official-badge {
-
-          border:1px solid rgba(255,84,34,.55);
-
-          border-radius:999px;
-
-          padding:6px 9px;
-
-          color:#ff9a68;
-
-          background:rgba(196,40,16,.13);
-
-          font-size:9px;
-
-          font-weight:950;
-
-          letter-spacing:.08em;
-
-          white-space:nowrap;
-
-        }
-
-
-
-        .g365-official-badge-live {
-
-          color:#fff;
-
-          border-color:rgba(255,72,24,.85);
-
-          background:
-
-            linear-gradient(
-
-              135deg,
-
-              rgba(174,26,12,.72),
-
-              rgba(239,77,24,.48)
-
-            );
-
-          box-shadow:0 0 20px rgba(239,77,24,.18);
-
-        }
-
-
-
-        .g365-official-warning {
-
-          margin:14px 14px 0;
-
-          padding:11px 12px;
-
-          border:1px solid rgba(255,122,36,.28);
-
-          border-radius:10px;
-
-          background:rgba(255,95,24,.06);
-
-          color:#d9a183;
-
-          font-size:10px;
-
-          font-weight:750;
-
-          line-height:1.5;
-
-        }
-
-
-
-        .g365-official-layout {
-
-          display:grid;
-
-          grid-template-columns:
-
-            minmax(230px,.75fr)
-
-            minmax(340px,1.25fr)
-
-            minmax(220px,.7fr);
-
-          gap:14px;
-
-          padding:14px;
-
-        }
-
-
-
-        .g365-official-panel {
-
-          min-width:0;
-
-          padding:13px;
-
-          border:1px solid rgba(255,255,255,.08);
-
-          border-radius:12px;
-
-          background:rgba(255,255,255,.025);
-
-        }
-
-
-
-        .g365-official-panel-title {
-
-          margin-bottom:10px;
-
-          color:#ff6a2a;
-
-          font-size:10px;
-
-          font-weight:950;
-
-          letter-spacing:.1em;
-
-        }
-
-
-
-        .g365-official-empty {
-
-          padding:16px 8px;
-
-          color:#777f8b;
-
-          font-size:10px;
-
-          font-weight:750;
-
-          line-height:1.5;
-
-        }
-
-
-
-        .g365-official-odds-row {
-
-          display:grid;
-
-          grid-template-columns:36px minmax(0,1fr) 58px;
-
-          gap:8px;
-
-          align-items:center;
-
-          padding:8px 0;
-
-          border-bottom:1px solid rgba(255,255,255,.055);
-
-        }
-
-
-
-        .g365-official-odds-row:last-child {
-
-          border-bottom:0;
-
-        }
-
-
-
-        .g365-official-standing {
-
-          width:30px;
-
-          height:30px;
-
-          display:flex;
-
-          align-items:center;
-
-          justify-content:center;
-
-          border-radius:8px;
-
-          background:rgba(255,83,24,.09);
-
-          color:#ff7b3b;
-
-          font-size:11px;
-
-          font-weight:950;
-
-        }
-
-
-
-        .g365-official-odds-name {
-
-          overflow:hidden;
-
-          text-overflow:ellipsis;
-
-          white-space:nowrap;
-
-          color:#fff;
-
-          font-size:11px;
-
-          font-weight:850;
-
-        }
-
-
-
-        .g365-official-odds-sub {
-
-          margin-top:2px;
-
-          color:#777f8b;
-
-          font-size:9px;
-
-        }
-
-
-
-        .g365-official-percent {
-
-          text-align:right;
-
-          color:#fff;
-
-          font-size:14px;
-
-          font-weight:950;
-
-        }
-
-
-
-        .g365-official-machine-wrap {
-
-          position:relative;
-
-          min-height:440px;
-
-          display:flex;
-
-          flex-direction:column;
-
-          align-items:center;
-
-          justify-content:flex-end;
-
-        }
-
-
-
-        .g365-official-tube {
-
-          position:absolute;
-
-          z-index:8;
-
-          top:8px;
-
-          left:50%;
-
-          width:68px;
-
-          height:126px;
-
-          transform:translateX(-50%);
-
-          border:3px solid rgba(255,255,255,.24);
-
-          border-bottom:0;
-
-          border-radius:16px 16px 0 0;
-
-          background:
-
-            linear-gradient(
-
-              90deg,
-
-              rgba(255,255,255,.025),
-
-              rgba(255,255,255,.08),
-
-              rgba(255,255,255,.02)
-
-            );
-
-          box-shadow:
-
-            inset 0 0 18px rgba(255,255,255,.04),
-
-            0 0 22px rgba(255,75,20,.09);
-
-        }
-
-
-
-        .g365-official-machine {
-
-          position:relative;
-
-          width:min(100%,390px);
-
-          height:310px;
-
-          overflow:hidden;
-
-          border:4px solid rgba(255,255,255,.18);
-
-          border-radius:50% 50% 43% 43%;
-
-          background:
-
-            radial-gradient(
-
-              circle at 35% 22%,
-
-              rgba(255,255,255,.09),
-
-              transparent 17%
-
-            ),
-
-            radial-gradient(
-
-              circle at 50% 65%,
-
-              rgba(255,67,15,.08),
-
-              transparent 48%
-
-            ),
-
-            rgba(5,7,11,.78);
-
-          box-shadow:
-
-            inset 0 0 45px rgba(255,255,255,.04),
-
-            0 0 32px rgba(255,63,15,.08);
-
-        }
-
-
-
-        .g365-official-ball {
-
-          position:absolute;
-
-          left:calc(8% + (var(--x) * 1%));
-
-          top:calc(10% + (var(--y) * 1%));
-
-          width:42px;
-
-          height:42px;
-
-          display:flex;
-
-          align-items:center;
-
-          justify-content:center;
-
-          box-sizing:border-box;
-
-          padding:3px;
-
-          transform:translate(-50%,-50%);
-
-          border:2px solid rgba(255,255,255,.55);
-
-          border-radius:50%;
-
-          background:
-
-            radial-gradient(
-
-              circle at 32% 27%,
-
-              #fff1df,
-
-              #ff8b43 38%,
-
-              #d82d13 72%,
-
-              #71120c
-
-            );
-
-          color:#170705;
-
-          text-align:center;
-
-          font-size:7px;
-
-          line-height:1.05;
-
-          font-weight:1000;
-
-          box-shadow:0 4px 10px rgba(0,0,0,.35);
-
-        }
-
-
-
-        .g365-official-mixing .g365-official-ball {
-
-          animation:
-
-            g365OfficialBounce
-
-            var(--speed)
-
-            ease-in-out
-
-            infinite
-
-            alternate;
-
-        }
-
-
-
-        @keyframes g365OfficialBounce {
-
-          0% {
-
-            transform:
-
-              translate(-50%,-50%)
-
-              translate(-16px,24px)
-
-              rotate(-18deg);
-
-          }
-
-
-
-          35% {
-
-            transform:
-
-              translate(-50%,-50%)
-
-              translate(22px,-26px)
-
-              rotate(40deg);
-
-          }
-
-
-
-          70% {
-
-            transform:
-
-              translate(-50%,-50%)
-
-              translate(-25px,-10px)
-
-              rotate(105deg);
-
-          }
-
-
-
-          100% {
-
-            transform:
-
-              translate(-50%,-50%)
-
-              translate(18px,22px)
-
-              rotate(165deg);
-
-          }
-
-        }
-
-
-
-        .g365-official-suction-ball {
-
-          position:absolute;
-
-          z-index:12;
-
-          top:72px;
-
-          left:50%;
-
-          width:52px;
-
-          height:52px;
-
-          display:flex;
-
-          align-items:center;
-
-          justify-content:center;
-
-          box-sizing:border-box;
-
-          padding:4px;
-
-          transform:translateX(-50%);
-
-          border:2px solid rgba(255,255,255,.7);
-
-          border-radius:50%;
-
-          background:
-
-            radial-gradient(
-
-              circle at 32% 27%,
-
-              #fff4e5,
-
-              #ff9149 38%,
-
-              #df3517 72%,
-
-              #72120c
-
-            );
-
-          color:#160705;
-
-          text-align:center;
-
-          font-size:8px;
-
-          line-height:1.05;
-
-          font-weight:1000;
-
-          box-shadow:0 0 24px rgba(255,91,31,.55);
-
-          animation:
-
-            g365OfficialSuck
-
-            1s
-
-            cubic-bezier(.2,.7,.2,1)
-
-            both;
-
-        }
-
-
-
-        @keyframes g365OfficialSuck {
-
-          from {
-
-            top:300px;
-
-            transform:
-
-              translateX(-50%)
-
-              scale(.8)
-
-              rotate(-90deg);
-
-          }
-
-
-
-          to {
-
-            top:42px;
-
-            transform:
-
-              translateX(-50%)
-
-              scale(1)
-
-              rotate(0deg);
-
-          }
-
-        }
-
-
-
-        .g365-official-countdown {
-
-          position:absolute;
-
-          z-index:20;
-
-          inset:0;
-
-          display:flex;
-
-          align-items:center;
-
-          justify-content:center;
-
-          pointer-events:none;
-
-          color:#fff;
-
-          font-size:86px;
-
-          font-weight:1000;
-
-          text-shadow:
-
-            0 0 12px #ff4b1a,
-
-            0 0 34px rgba(255,64,10,.8);
-
-        }
-
-
-
-        .g365-official-pick-banner {
-
-          width:100%;
-
-          min-height:70px;
-
-          margin-top:12px;
-
-          display:flex;
-
-          flex-direction:column;
-
-          align-items:center;
-
-          justify-content:center;
-
-          border:1px solid rgba(255,89,29,.24);
-
-          border-radius:10px;
-
-          background:
-
-            linear-gradient(
-
-              90deg,
-
-              rgba(130,15,12,.18),
-
-              rgba(255,89,29,.06),
-
-              rgba(130,15,12,.18)
-
-            );
-
-          text-align:center;
-
-        }
-
-
-
-        .g365-official-pick-label {
-
-          color:#ff7534;
-
-          font-size:10px;
-
-          font-weight:950;
-
-          letter-spacing:.13em;
-
-        }
-
-
-
-        .g365-official-pick-name {
-
-          margin-top:4px;
-
-          color:#fff;
-
-          font-size:24px;
-
-          font-weight:1000;
-
-        }
-
-
-
-        .g365-official-results {
-
-          display:grid;
-
-          gap:7px;
-
-        }
-
-
-
-        .g365-official-result-row {
-
-          min-height:45px;
-
-          display:grid;
-
-          grid-template-columns:42px minmax(0,1fr);
-
-          gap:8px;
-
-          align-items:center;
-
-          padding:7px;
-
-          border:1px solid rgba(255,255,255,.065);
-
-          border-radius:9px;
-
-          background:rgba(255,255,255,.018);
-
-        }
-
-
-
-        .g365-official-result-pick {
-
-          width:34px;
-
-          height:34px;
-
-          display:flex;
-
-          align-items:center;
-
-          justify-content:center;
-
-          border:1px solid rgba(255,93,27,.3);
-
-          border-radius:8px;
-
-          background:
-
-            linear-gradient(
-
-              135deg,
-
-              rgba(222,42,18,.28),
-
-              rgba(255,125,25,.12)
-
-            );
-
-          color:#ff7c36;
-
-          font-weight:1000;
-
-        }
-
-
-
-        .g365-official-result-name {
-
-          color:#fff;
-
-          font-size:11px;
-
-          font-weight:900;
-
-        }
-
-
-
-        .g365-official-result-wait {
-
-          color:#59606a;
-
-          font-size:10px;
-
-          font-weight:800;
-
-        }
-
-
-
-        .g365-official-actions {
-
-          display:flex;
-
-          flex-wrap:wrap;
-
-          justify-content:center;
-
-          gap:9px;
-
-          padding:0 14px 16px;
-
-        }
-
-
-
-        .g365-official-button {
-
-          min-height:48px;
-
-          border:1px solid rgba(255,94,25,.65);
-
-          border-radius:9px;
-
-          padding:10px 18px;
-
-          background:
-
-            linear-gradient(
-
-              135deg,
-
-              #97180f,
-
-              #e94516,
-
-              #ff7622
-
-            );
-
-          color:#fff;
-
-          font-size:11px;
-
-          font-weight:1000;
-
-          letter-spacing:.05em;
-
-          cursor:pointer;
-
-          box-shadow:0 8px 24px rgba(178,43,15,.2);
-
-        }
-
-
-
-        .g365-official-button:disabled {
-
-          opacity:.45;
-
-          cursor:not-allowed;
-
-        }
-
-
-
-        .g365-official-refresh {
-
-          min-height:48px;
-
-          border:1px solid rgba(255,255,255,.12);
-
-          border-radius:9px;
-
-          padding:10px 15px;
-
-          background:rgba(255,255,255,.035);
-
-          color:#b8bec7;
-
-          font-size:10px;
-
-          font-weight:900;
-
-          cursor:pointer;
-
-        }
-
-
-
-        .g365-official-refresh:disabled {
-
-          opacity:.45;
-
-          cursor:not-allowed;
-
-        }
-
-
-
-        .g365-official-error,
-
-        .g365-official-success {
-
-          margin:0 14px 14px;
-
-          padding:10px 12px;
-
-          border-radius:9px;
-
-          font-size:10px;
-
-          font-weight:850;
-
-          line-height:1.45;
-
-          text-align:center;
-
-        }
-
-
-
-        .g365-official-error {
-
-          border:1px solid rgba(255,76,55,.42);
-
-          background:rgba(150,24,18,.13);
-
-          color:#ffb0a5;
-
-        }
-
-
-
-        .g365-official-success {
-
-          border:1px solid rgba(55,210,118,.28);
-
-          background:rgba(20,118,66,.11);
-
-          color:#8de7b3;
-
-        }
-
-
-
-        .g365-official-note {
-
-          padding:0 16px 15px;
-
-          color:#777f8b;
-
-          text-align:center;
-
-          font-size:9px;
-
-          line-height:1.5;
-
-        }
-
-
-
-        @media (max-width:980px) {
-
-          .g365-official-layout {
-
-            grid-template-columns:1fr 1.3fr;
-
-          }
-
-
-
-          .g365-official-results-panel {
-
-            grid-column:1 / -1;
-
-          }
-
-
-
-          .g365-official-results {
-
-            grid-template-columns:
-
-              repeat(3,minmax(0,1fr));
-
-          }
-
-        }
-
-
-
-        @media (max-width:680px) {
-
-          .g365-official-lottery {
-
-            width:100%;
-
-            max-width:100%;
-
-            min-width:0;
-
-            overflow-x:hidden;
-
-          }
-
-
-
-          .g365-official-lottery *,
-
-          .g365-official-layout > * {
-
-            min-width:0;
-
-            max-width:100%;
-
-          }
-
-
-
-          .g365-official-head {
-
-            align-items:flex-start;
-
-            flex-direction:column;
-
-          }
-
-
-
-          .g365-official-badges {
-
-            justify-content:flex-start;
-
-          }
-
-
-
-          .g365-official-layout {
-
-            grid-template-columns:1fr;
-
-            padding:10px;
-
-          }
-
-
-
-          .g365-official-results-panel {
-
-            grid-column:auto;
-
-          }
-
-
-
-          .g365-official-results {
-
-            grid-template-columns:
-
-              repeat(2,minmax(0,1fr));
-
-          }
-
-
-
-          .g365-official-machine-wrap {
-
-            min-height:400px;
-
-          }
-
-
-
-          .g365-official-machine {
-
-            height:280px;
-
-          }
-
-
-
-          .g365-official-ball {
-
-            width:38px;
-
-            height:38px;
-
-            font-size:6px;
-
-          }
-
-
-
-          .g365-official-countdown {
-
-            font-size:70px;
-
-          }
-
-
-
-          .g365-official-pick-name {
-
-            font-size:20px;
-
-          }
-
-
-
-          .g365-official-actions {
-
-            align-items:stretch;
-
-            flex-direction:column;
-
-          }
-
-
-
-          .g365-official-button,
-
-          .g365-official-refresh {
-
-            width:100%;
-
-          }
-
-        }
-
-      `}</style>
-
-
-
-      <div className="g365-official-head">
-
-        <div>
-
-          <div className="g365-official-kicker">
-
-            G365 NFL DYNASTY
-
+  if (!lotteryState?.exists) {
+    return (
+      <section className="dynasty-lottery-page">
+        <style>{lotteryStyles}</style>
+
+        <div className="lottery-card empty-card">
+          <div>
+            <p className="lottery-kicker">
+              G365 NFL DYNASTY
+            </p>
+
+            <h2>{lotteryTitle}</h2>
+
+            <p>
+              The annual Dynasty lottery has not been prepared yet.
+              The completed season standings will determine the
+              weighted lottery entries.
+            </p>
           </div>
 
-
-
-          <h3 className="g365-official-title">
-
-            {lotteryTitle}
-
-          </h3>
-
-          <div className="g365-official-purpose">
-
-            {isStartupLottery
-
-              ? "Sets the initial Round 1 order for the Dynasty startup draft."
-
-              : `Sets the ${draftSeason} annual Dynasty draft order${
-
-                  lotteryState?.sourceSeason
-
-                    ? ` from ${lotteryState.sourceSeason} final standings`
-
-                    : ""
-
-                }.`}
-
-          </div>
-
-        </div>
-
-
-
-        <div className="g365-official-badges">
-
-          <div className="g365-official-badge">
-
-            {lotteryDraftBadge}
-
-          </div>
-
-
-
-          {lotterySourceLabel ? (
-
-            <div className="g365-official-badge">
-
-              {lotterySourceLabel}
-
+          {errorMessage ? (
+            <div className="lottery-error">
+              {errorMessage}
             </div>
-
           ) : null}
 
-
-
-          <div
-
-            className={`g365-official-badge ${
-
-              lotteryState?.status === "live"
-
-                ? "g365-official-badge-live"
-
-                : ""
-
-            }`}
-
-          >
-
-            {statusLabel}
-
-          </div>
-
-        </div>
-
-      </div>
-
-
-
-      <div className="g365-official-warning">
-
-        {viewerOnly ? "League member view — commissioner controls are hidden. This page refreshes automatically while the lottery is open or live. " : ""}
-
-        {isStartupLottery
-
-          ? "This is the official Dynasty startup lottery. Every active franchise has equal odds for each remaining draft slot. Once a franchise is drawn, it is removed and every remaining franchise again has equal odds for the next slot. Locking creates the permanent result server-side. The result cannot be rerolled, and unrevealed picks remain hidden until each official reveal."
-
-          : `This is the official ${draftSeason} Dynasty annual draft lottery. Preparing the lottery snapshots the eligible teams and weighted odds${lotteryState?.sourceSeason ? ` from the ${lotteryState.sourceSeason} final standings` : " from the prior season"}. Locking generates the permanent weighted result server-side. Once locked, the result cannot be rerolled. Future picks remain hidden until each official reveal.`}
-
-      </div>
-
-
-
-      <div className="g365-official-layout">
-
-        <div className="g365-official-panel">
-
-          <div className="g365-official-panel-title">
-
-            {isStartupLottery ? "STARTUP — EQUAL ODDS" : `${draftSeason} ANNUAL — ORIGINAL #1 PICK ODDS`}
-
-          </div>
-
-
-
-          {entries.length ? (
-
-            [...entries]
-
-              .sort(
-
-                (a, b) =>
-
-                  isStartupLottery
-
-                    ? a.teamName.localeCompare(b.teamName)
-
-                    : (b.lotteryPosition ?? 0) -
-
-                      (a.lotteryPosition ?? 0)
-
-              )
-
-              .map((team) => (
-
-                <div
-
-                  className="g365-official-odds-row"
-
-                  key={team.fantasyTeamId}
-
-                >
-
-                  <div className="g365-official-standing">
-
-                    {isStartupLottery ? "EQ" : team.finalStanding ?? "—"}
-
-                  </div>
-
-
-
-                  <div>
-
-                    <div className="g365-official-odds-name">
-
-                      {team.teamName}
-
-                    </div>
-
-
-
-                    <div className="g365-official-odds-sub">
-
-                      {isStartupLottery
-
-                        ? "Equal chance at each remaining slot"
-
-                        : `Lottery position ${team.lotteryPosition ?? "—"} • ${team.ballCount} balls`}
-
-                    </div>
-
-                  </div>
-
-
-
-                  <div className="g365-official-percent">
-
-                    {team.percentage.toFixed(0)}%
-
-                  </div>
-
-                </div>
-
-              ))
-
-          ) : (
-
-            <div className="g365-official-empty">
-
-              {isStartupLottery
-
-                ? "Prepare the official startup lottery to snapshot the active franchises and equal odds."
-
-                : lotteryState?.sourceSeason
-
-                  ? `Prepare the ${draftSeason} annual draft lottery using ${lotteryState.sourceSeason} final standings and weighted odds.`
-
-                  : `Prepare the ${draftSeason} annual draft lottery to snapshot the prior-season final standings and weighted odds.`}
-
-            </div>
-
-          )}
-
-        </div>
-
-
-
-        <div className="g365-official-panel">
-
-          <div className="g365-official-panel-title">
-
-            {currentPick
-
-              ? `REVEALING PICK #${currentPick}`
-
-              : lotteryState?.status === "completed"
-
-                ? "LOTTERY COMPLETE"
-
-                : lotteryState?.status === "live"
-
-                  ? `NEXT: PICK #${nextPick ?? "—"}`
-
-                  : "OFFICIAL LOTTERY MACHINE"}
-
-          </div>
-
-
-
-          <div className="g365-official-machine-wrap">
-
-            <div className="g365-official-tube" />
-
-
-
-            {drawnTeam &&
-
-            (phase === "suction" ||
-
-              phase === "reveal") ? (
-
-              <div className="g365-official-suction-ball">
-
-                {drawnTeam.teamName}
-
-              </div>
-
-            ) : null}
-
-
-
-            <div
-
-              className={`g365-official-machine ${
-
-                phase === "mixing"
-
-                  ? "g365-official-mixing"
-
-                  : ""
-
-              }`}
-
+          {!viewerOnly ? (
+            <button
+              type="button"
+              className="primary-action"
+              disabled={actionRunning}
+              onClick={() => void prepareLottery()}
             >
-
-              {displayBalls.map((ball, index) => {
-
-                const x =
-
-                  10 + ((index * 37) % 80);
-
-
-
-                const y =
-
-                  15 + ((index * 53) % 72);
-
-
-
-                const speed =
-
-                  0.55 +
-
-                  (index % 7) * 0.08;
-
-
-
-                return (
-
-                  <div
-
-                    key={ball.key}
-
-                    className="g365-official-ball"
-
-                    style={
-
-                      {
-
-                        "--x": x,
-
-                        "--y": y,
-
-                        "--speed": `${speed}s`,
-
-                      } as React.CSSProperties
-
-                    }
-
-                  >
-
-                    {ball.team.teamName}
-
-                  </div>
-
-                );
-
-              })}
-
-
-
-              {countdown != null ? (
-
-                <div className="g365-official-countdown">
-
-                  {countdown}
-
-                </div>
-
-              ) : null}
-
+              {actionRunning
+                ? "PREPARING..."
+                : "PREPARE ANNUAL LOTTERY"}
+            </button>
+          ) : (
+            <div className="viewer-waiting">
+              Waiting for the commissioner to prepare the lottery.
             </div>
-
-
-
-            <div className="g365-official-pick-banner">
-
-              {currentPick ? (
-
-                <>
-
-                  <div className="g365-official-pick-label">
-
-                    PICK #{currentPick}
-
-                  </div>
-
-
-
-                  <div className="g365-official-pick-name">
-
-                    {phase === "reveal" &&
-
-                    drawnTeam
-
-                      ? drawnTeam.teamName
-
-                      : "MIXING…"}
-
-                  </div>
-
-                </>
-
-              ) : lotteryState?.status ===
-
-                "completed" ? (
-
-                <>
-
-                  <div className="g365-official-pick-label">
-
-                    #1 OVERALL
-
-                  </div>
-
-
-
-                  <div className="g365-official-pick-name">
-
-                    {revealedByPick[1]
-
-                      ?.teamName ?? "—"}
-
-                  </div>
-
-                </>
-
-              ) : lotteryState?.status ===
-
-                "live" ? (
-
-                <>
-
-                  <div className="g365-official-pick-label">
-
-                    READY
-
-                  </div>
-
-
-
-                  <div className="g365-official-pick-name">
-
-                    Reveal Pick #
-
-                    {nextPick ?? "—"}
-
-                  </div>
-
-                </>
-
-              ) : lotteryState?.status ===
-
-                "locked" ? (
-
-                <>
-
-                  <div className="g365-official-pick-label">
-
-                    RESULTS LOCKED
-
-                  </div>
-
-
-
-                  <div className="g365-official-pick-name">
-
-                    Ready to Go Live
-
-                  </div>
-
-                </>
-
-              ) : lotteryState?.status ===
-
-                "setup" ? (
-
-                <>
-
-                  <div className="g365-official-pick-label">
-
-                    PREPARED
-
-                  </div>
-
-
-
-                  <div className="g365-official-pick-name">
-
-                    Review & Lock
-
-                  </div>
-
-                </>
-
-              ) : (
-
-                <>
-
-                  <div className="g365-official-pick-label">
-
-                    OFFICIAL LOTTERY
-
-                  </div>
-
-
-
-                  <div className="g365-official-pick-name">
-
-                    Not Prepared
-
-                  </div>
-
-                </>
-
-              )}
-
-            </div>
-
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  const status = lotteryState.status ?? "setup";
+  const revealedCount = lotteryState.revealedCount ?? 0;
+  const remainingCount =
+    lotteryState.remainingCount ??
+    Math.max(0, pickCount - revealedCount);
+
+  return (
+    <section className="dynasty-lottery-page">
+      <style>{lotteryStyles}</style>
+
+      <header className="lottery-hero">
+        <div>
+          <div className="hero-badges">
+            <span className="g365-badge">
+              G365 NFL DYNASTY
+            </span>
+
+            <span className="draft-badge">
+              {lotteryDraftBadge}
+            </span>
+
+            {lotterySourceLabel ? (
+              <span className="source-badge">
+                {lotterySourceLabel}
+              </span>
+            ) : null}
           </div>
 
-        </div>
+          <h2>{lotteryTitle}</h2>
 
-
-
-        <div className="g365-official-panel g365-official-results-panel">
-
-          <div className="g365-official-panel-title">
-
+          <p>
             {isStartupLottery
-
-              ? `${draftSeason} STARTUP DRAFT ORDER`
-
-              : `${draftSeason} ANNUAL DRAFT ORDER`}
-
-          </div>
-
-
-
-          <div className="g365-official-results">
-
-            {pickCount > 0
-
-              ? Array.from(
-
-                  { length: pickCount },
-
-                  (_, index) =>
-
-                    pickCount - index
-
-                ).map((pick) => (
-
-                  <div
-
-                    className="g365-official-result-row"
-
-                    key={pick}
-
-                  >
-
-                    <div className="g365-official-result-pick">
-
-                      #{pick}
-
-                    </div>
-
-
-
-                    <div
-
-                      className={
-
-                        revealedByPick[pick]
-
-                          ? "g365-official-result-name"
-
-                          : "g365-official-result-wait"
-
-                      }
-
-                    >
-
-                      {revealedByPick[pick]
-
-                        ?.teamName ??
-
-                        "Waiting…"}
-
-                    </div>
-
-                  </div>
-
-                ))
-
-              : (
-
-                <div className="g365-official-empty">
-
-                  Draft positions will appear here
-
-                  as they are officially revealed.
-
-                </div>
-
-              )}
-
-          </div>
-
+              ? "Each franchise has equal odds for the next available startup draft position."
+              : "The official weighted annual draft order is generated on the server and permanently locked before any pick is revealed."}
+          </p>
         </div>
 
-      </div>
-
-
-
-      <div className="g365-official-actions">
-
-        {!viewerOnly ? (
-
-          <button
-
-            type="button"
-
-            className="g365-official-button"
-
-            disabled={button.disabled}
-
-            onClick={button.action}
-
-          >
-
-            {actionRunning
-
-              ? "PLEASE WAIT…"
-
-              : button.label}
-
-          </button>
-
-        ) : null}
-
-
-
-        <button
-
-          type="button"
-
-          className="g365-official-refresh"
-
-          disabled={
-
-            actionRunning ||
-
-            machineRunning
-
-          }
-
-          onClick={() => {
-
-            setErrorMessage(null);
-
-            setSuccessMessage(null);
-
-            void loadState(true);
-
-          }}
-
-        >
-
-          {viewerOnly ? "REFRESH LOTTERY" : "REFRESH STATE"}
-
-        </button>
-
-      </div>
-
-
+        <div className={`status-pill status-${status}`}>
+          {status === "setup"
+            ? "SETUP"
+            : status === "locked"
+              ? "RESULT LOCKED"
+              : status === "live"
+                ? "LIVE"
+                : "COMPLETE"}
+        </div>
+      </header>
 
       {errorMessage ? (
-
-        <div className="g365-official-error">
-
+        <div className="lottery-error">
           {errorMessage}
-
         </div>
-
       ) : null}
-
-
 
       {successMessage ? (
-
-        <div className="g365-official-success">
-
+        <div className="lottery-success">
           {successMessage}
-
         </div>
-
       ) : null}
 
+      <div className="lottery-summary-grid">
+        <article className="summary-box">
+          <span>TEAMS</span>
+          <strong>{lotteryState.teamCount ?? entries.length}</strong>
+        </article>
 
+        <article className="summary-box">
+          <span>REVEALED</span>
+          <strong>
+            {revealedCount}/{pickCount}
+          </strong>
+        </article>
 
-      <div className="g365-official-note">
+        <article className="summary-box">
+          <span>REMAINING</span>
+          <strong>{remainingCount}</strong>
+        </article>
 
-        Official results are generated once and stored server-side.
-
-        The browser never receives future unrevealed picks. Picks are
-
-        published one at a time from #{pickCount || "—"} through #1.{" "}
-
-        {isStartupLottery
-
-          ? "The final reveal applies the official Round 1 order to the startup draft. The startup draft then snakes each round."
-
-          : `The final reveal applies the official ${draftSeason} annual Dynasty draft order to the draft-pick assets while preserving traded pick ownership.`}
-
+        <article className="summary-box">
+          <span>DRAFT STYLE</span>
+          <strong>
+            {(lotteryState.draftStyle ?? "linear").toUpperCase()}
+          </strong>
+        </article>
       </div>
 
-    </div>
+      <div className="lottery-layout">
+        <div className="lottery-main-column">
+          <section className="lottery-card machine-card">
+            <div className="section-heading">
+              <div>
+                <p className="lottery-kicker">
+                  OFFICIAL LOTTERY MACHINE
+                </p>
 
+                <h3>
+                  {status === "completed"
+                    ? "Final Draft Order"
+                    : status === "live"
+                      ? `Drawing Pick #${currentPick ?? nextPick ?? pickCount}`
+                      : "Weighted Lottery Chamber"}
+                </h3>
+              </div>
+
+              {status === "live" ? (
+                <span className="live-indicator">
+                  <i />
+                  LIVE
+                </span>
+              ) : null}
+            </div>
+
+            <div
+              className={`lottery-machine phase-${phase}`}
+            >
+              <div className="machine-top">
+                <div className="machine-neck">
+                  <div className="machine-tube" />
+                </div>
+              </div>
+
+              <div className="machine-chamber">
+                <div className="chamber-glass">
+                  <div className="ball-field">
+                    {displayBalls.map((ball, index) => {
+                      const angle =
+                        (index * 137.5) % 360;
+
+                      const radius =
+                        22 + ((index * 17) % 27);
+
+                      const left =
+                        50 +
+                        Math.cos(
+                          (angle * Math.PI) / 180
+                        ) *
+                          radius;
+
+                      const top =
+                        50 +
+                        Math.sin(
+                          (angle * Math.PI) / 180
+                        ) *
+                          radius;
+
+                      return (
+                        <div
+                          key={ball.key}
+                          className="lottery-ball"
+                          style={{
+                            left: `${left}%`,
+                            top: `${top}%`,
+                            animationDelay: `${
+                              (index % 12) * -0.13
+                            }s`,
+                          }}
+                          title={ball.team.teamName}
+                        >
+                          {ball.team.lotteryPosition ??
+                            index + 1}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="machine-center">
+                    {phase === "mixing" ? (
+                      <>
+                        <span className="machine-label">
+                          MIXING
+                        </span>
+
+                        <strong>
+                          {countdown ?? ""}
+                        </strong>
+
+                        <small>
+                          PICK #
+                          {currentPick ?? nextPick ?? ""}
+                        </small>
+                      </>
+                    ) : phase === "suction" ? (
+                      <>
+                        <span className="machine-label">
+                          SELECTING
+                        </span>
+
+                        <strong className="pulse-text">
+                          ...
+                        </strong>
+
+                        <small>
+                          OFFICIAL SERVER RESULT
+                        </small>
+                      </>
+                    ) : phase === "reveal" &&
+                      drawnTeam ? (
+                      <>
+                        <span className="machine-label">
+                          PICK #{drawnTeam.draftPick}
+                        </span>
+
+                        <strong className="winner-name">
+                          {drawnTeam.teamName}
+                        </strong>
+
+                        <small>
+                          {isStartupLottery
+                            ? "EQUAL ODDS DRAW"
+                            : `${drawnTeam.originalNumberOnePercentage.toFixed(
+                                1
+                              )}% ORIGINAL #1 ODDS`}
+                        </small>
+                      </>
+                    ) : phase === "complete" ? (
+                      <>
+                        <span className="machine-label">
+                          LOTTERY
+                        </span>
+
+                        <strong className="complete-text">
+                          COMPLETE
+                        </strong>
+
+                        <small>
+                          OFFICIAL ORDER APPLIED
+                        </small>
+                      </>
+                    ) : (
+                      <>
+                        <span className="machine-label">
+                          {status === "locked"
+                            ? "RESULTS LOCKED"
+                            : status === "live"
+                              ? "READY"
+                              : "LOTTERY ODDS"}
+                        </span>
+
+                        <strong>
+                          {status === "live"
+                            ? `#${nextPick ?? pickCount}`
+                            : `${entries.length}`}
+                        </strong>
+
+                        <small>
+                          {status === "live"
+                            ? "NEXT PICK"
+                            : "FRANCHISES"}
+                        </small>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="machine-base">
+                  <span>GRIDIRON365</span>
+                  <strong>NFL DYNASTY LOTTERY</strong>
+                </div>
+              </div>
+            </div>
+
+            {!viewerOnly ? (
+              <div className="machine-actions">
+                {status === "setup" ? (
+                  <button
+                    type="button"
+                    className="danger-action"
+                    disabled={
+                      actionRunning || machineRunning
+                    }
+                    onClick={() => void lockLottery()}
+                  >
+                    {actionRunning
+                      ? "LOCKING..."
+                      : "LOCK OFFICIAL RESULT"}
+                  </button>
+                ) : null}
+
+                {status === "locked" ? (
+                  <button
+                    type="button"
+                    className="primary-action"
+                    disabled={
+                      actionRunning || machineRunning
+                    }
+                    onClick={() => void startLottery()}
+                  >
+                    {actionRunning
+                      ? "STARTING..."
+                      : "START LIVE LOTTERY"}
+                  </button>
+                ) : null}
+
+                {status === "live" ? (
+                  <button
+                    type="button"
+                    className="primary-action reveal-button"
+                    disabled={
+                      actionRunning || machineRunning
+                    }
+                    onClick={() =>
+                      void revealNextPick()
+                    }
+                  >
+                    {machineRunning
+                      ? "DRAWING..."
+                      : `REVEAL PICK #${
+                          nextPick ?? pickCount
+                        }`}
+                  </button>
+                ) : null}
+              </div>
+            ) : status === "live" ? (
+              <div className="viewer-waiting">
+                Live viewer mode - waiting for the
+                commissioner to reveal the next pick.
+              </div>
+            ) : null}
+          </section>
+
+          <section className="lottery-card">
+            <div className="section-heading">
+              <div>
+                <p className="lottery-kicker">
+                  OFFICIAL DRAFT ORDER
+                </p>
+
+                <h3>
+                  {status === "completed"
+                    ? `${draftSeason} Draft Order`
+                    : "Live Reveal Board"}
+                </h3>
+              </div>
+            </div>
+
+            <div className="draft-order-board">
+              {Array.from(
+                { length: pickCount },
+                (_, index) => pickCount - index
+              ).map((pickNumber) => {
+                const result =
+                  revealedByPick[pickNumber];
+
+                return (
+                  <article
+                    key={pickNumber}
+                    className={`draft-slot ${
+                      result ? "revealed" : "hidden"
+                    }`}
+                  >
+                    <div className="pick-number">
+                      <span>PICK</span>
+                      <strong>
+                        #{pickNumber}
+                      </strong>
+                    </div>
+
+                    {result ? (
+                      <div className="pick-team">
+                        <strong>
+                          {result.teamName}
+                        </strong>
+
+                        <span>
+                          {result.finalStanding
+                            ? `Previous finish: #${result.finalStanding}`
+                            : "Startup franchise"}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="pick-team hidden-team">
+                        <strong>
+                          NOT REVEALED
+                        </strong>
+
+                        <span>
+                          Official result remains hidden
+                        </span>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+                <aside className="lottery-side-column">
+          <section className="lottery-card">
+            <div className="section-heading">
+              <div>
+                <p className="lottery-kicker">
+                  LOTTERY ODDS
+                </p>
+
+                <h3>
+                  {isStartupLottery
+                    ? "Equal Odds"
+                    : "Weighted Odds"}
+                </h3>
+              </div>
+            </div>
+
+            <div className="odds-list">
+              {entries
+                .slice()
+                .sort(
+                  (a, b) =>
+                    (a.lotteryPosition ?? 999) -
+                    (b.lotteryPosition ?? 999)
+                )
+                .map((entry) => (
+                  <article
+                    key={entry.fantasyTeamId}
+                    className="odds-row"
+                  >
+                    <div className="odds-position">
+                      <span>LOTTO</span>
+                      <strong>
+                        #
+                        {entry.lotteryPosition ??
+                          "-"}
+                      </strong>
+                    </div>
+
+                    <div className="odds-team">
+                      <strong>
+                        {entry.teamName}
+                      </strong>
+
+                      <span>
+                        {entry.finalStanding
+                          ? `Previous finish #${entry.finalStanding}`
+                          : isStartupLottery
+                            ? "Startup franchise"
+                            : "Final standing unavailable"}
+                      </span>
+                    </div>
+
+                    <div className="odds-value">
+                      <strong>
+                        {Number(
+                          entry.percentage
+                        ).toFixed(1)}
+                        %
+                      </strong>
+
+                      <span>
+                        {entry.ballCount} balls
+                      </span>
+                    </div>
+                  </article>
+                ))}
+            </div>
+          </section>
+
+          <section className="lottery-card">
+            <div className="section-heading">
+              <div>
+                <p className="lottery-kicker">
+                  LOTTERY STATUS
+                </p>
+
+                <h3>Official State</h3>
+              </div>
+            </div>
+
+            <div className="info-list">
+              <div>
+                <span>Draft Season</span>
+                <strong>
+                  {draftSeason}
+                </strong>
+              </div>
+
+              <div>
+                <span>Source Season</span>
+                <strong>
+                  {lotteryState.sourceSeason ??
+                    "-"}
+                </strong>
+              </div>
+
+              <div>
+                <span>Lottery Type</span>
+                <strong>
+                  {isStartupLottery
+                    ? "Startup"
+                    : "Annual"}
+                </strong>
+              </div>
+
+              <div>
+                <span>Draw Method</span>
+                <strong>
+                  {String(
+                    lotteryState.drawMethod ??
+                      (isStartupLottery
+                        ? "Equal Odds"
+                        : "Weighted")
+                  )
+                    .replaceAll("_", " ")
+                    .toUpperCase()}
+                </strong>
+              </div>
+
+              <div>
+                <span>Draft Style</span>
+                <strong>
+                  {(
+                    lotteryState.draftStyle ??
+                    "linear"
+                  ).toUpperCase()}
+                </strong>
+              </div>
+
+              <div>
+                <span>Status</span>
+                <strong>
+                  {status.toUpperCase()}
+                </strong>
+              </div>
+            </div>
+          </section>
+
+          <section className="lottery-card rules-card">
+            <p className="lottery-kicker">
+              HOW IT WORKS
+            </p>
+
+            <h3>
+              {isStartupLottery
+                ? "Startup Lottery"
+                : "Annual Dynasty Lottery"}
+            </h3>
+
+            {isStartupLottery ? (
+              <p>
+                Every franchise has equal odds
+                when each available startup draft
+                position is selected. Once a team
+                receives a position, it is removed
+                from the remaining draw.
+              </p>
+            ) : (
+              <p>
+                Lottery odds are based on the
+                completed prior season. The
+                official order is generated and
+                stored on the server before the
+                live reveal begins.
+              </p>
+            )}
+
+            <p>
+              Locking the result makes the
+              official order permanent. The live
+              reveal only publishes the already
+              stored result one pick at a time.
+            </p>
+
+            <p>
+              When the final pick is revealed,
+              the official base order is applied
+              to the Dynasty annual draft.
+              Traded pick ownership remains with
+              the draft-pick assets.
+            </p>
+          </section>
+
+          {viewerOnly ? (
+            <section className="lottery-card viewer-card">
+              <p className="lottery-kicker">
+                LEAGUE VIEW
+              </p>
+
+              <h3>Live Viewer</h3>
+
+              <p>
+                Commissioner controls are hidden.
+                This page automatically refreshes
+                while the lottery is being run.
+              </p>
+            </section>
+          ) : (
+            <section className="lottery-card commissioner-card">
+              <p className="lottery-kicker">
+                COMMISSIONER
+              </p>
+
+              <h3>Lottery Control</h3>
+
+              <p>
+                Prepare the lottery, verify the
+                displayed odds, permanently lock
+                the result, then start the live
+                reveal.
+              </p>
+
+              <div className="commissioner-state">
+                {status === "setup" ? (
+                  <span>
+                    NEXT: LOCK OFFICIAL RESULT
+                  </span>
+                ) : status === "locked" ? (
+                  <span>
+                    NEXT: START LIVE LOTTERY
+                  </span>
+                ) : status === "live" ? (
+                  <span>
+                    NEXT: REVEAL PICK #
+                    {nextPick ?? pickCount}
+                  </span>
+                ) : (
+                  <span>
+                    LOTTERY COMPLETE
+                  </span>
+                )}
+              </div>
+            </section>
+          )}
+        </aside>
+      </div>
+    </section>
   );
-
 }
+
+const lotteryStyles = `
+.dynasty-lottery-page{
+  width:100%;
+  color:#f6f7f9;
+}
+.lottery-loading{
+  min-height:320px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:16px;
+  background:#0d1015;
+}
+.loading-spinner{
+  width:34px;
+  height:34px;
+  border:3px solid rgba(255,255,255,.1);
+  border-top-color:#ff5b1f;
+  border-radius:999px;
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{
+  to{transform:rotate(360deg)}
+}
+.lottery-hero{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:18px;
+  padding:18px;
+  border:1px solid rgba(255,91,31,.24);
+  border-radius:14px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(129,20,12,.18),
+      rgba(255,86,24,.04)
+    ),
+    #0d1015;
+}
+.hero-badges{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-bottom:8px;
+}
+.g365-badge,
+.draft-badge,
+.source-badge{
+  display:inline-flex;
+  align-items:center;
+  min-height:23px;
+  padding:4px 8px;
+  border-radius:999px;
+  font-size:8px;
+  font-weight:950;
+  letter-spacing:.08em;
+}
+.g365-badge{
+  color:#fff;
+  border:1px solid rgba(255,91,31,.4);
+  background:rgba(255,91,31,.13);
+}
+.draft-badge{
+  color:#ff9366;
+  border:1px solid rgba(255,91,31,.22);
+  background:rgba(255,91,31,.06);
+}
+.source-badge{
+  color:#aeb5be;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);
+}
+.lottery-hero h2,
+.lottery-card h2,
+.lottery-card h3{
+  margin:0;
+  font-weight:950;
+  letter-spacing:-.02em;
+}
+.lottery-hero h2{
+  font-size:clamp(24px,4vw,38px);
+}
+.lottery-hero p{
+  max-width:760px;
+  margin:7px 0 0;
+  color:#9da5af;
+  font-size:11px;
+  line-height:1.55;
+}
+.status-pill{
+  flex:none;
+  padding:8px 10px;
+  border-radius:999px;
+  font-size:9px;
+  font-weight:950;
+  letter-spacing:.08em;
+}
+.status-setup{
+  color:#d4d8dd;
+  border:1px solid rgba(255,255,255,.1);
+  background:#15181d;
+}
+.status-locked{
+  color:#ff9b73;
+  border:1px solid rgba(255,91,31,.3);
+  background:rgba(255,91,31,.08);
+}
+.status-live{
+  color:#ff7540;
+  border:1px solid rgba(255,91,31,.45);
+  background:rgba(255,72,22,.12);
+}
+.status-completed{
+  color:#72df91;
+  border:1px solid rgba(34,197,94,.28);
+  background:rgba(22,101,52,.13);
+}
+.lottery-error,
+.lottery-success{
+  margin-top:12px;
+  padding:11px 13px;
+  border-radius:9px;
+  font-size:11px;
+  line-height:1.45;
+}
+.lottery-error{
+  color:#ffb5a5;
+  border:1px solid rgba(239,68,68,.3);
+  background:rgba(127,29,29,.16);
+}
+.lottery-success{
+  color:#77e398;
+  border:1px solid rgba(34,197,94,.27);
+  background:rgba(20,83,45,.15);
+}
+.lottery-summary-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+  margin-top:12px;
+}
+.summary-box{
+  padding:12px;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:10px;
+  background:#0d1015;
+}
+.summary-box span{
+  display:block;
+  color:#828b96;
+  font-size:8px;
+  font-weight:950;
+  letter-spacing:.08em;
+}
+.summary-box strong{
+  display:block;
+  margin-top:5px;
+  font-size:18px;
+}
+.lottery-layout{
+  display:grid;
+  grid-template-columns:minmax(0,1.8fr) minmax(280px,.75fr);
+  gap:12px;
+  margin-top:12px;
+}
+.lottery-main-column,
+.lottery-side-column{
+  min-width:0;
+}
+.lottery-side-column{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.lottery-card{
+  padding:16px;
+  border:1px solid rgba(255,255,255,.075);
+  border-radius:13px;
+  background:#0d1015;
+}
+.lottery-main-column>.lottery-card+.lottery-card{
+  margin-top:12px;
+}
+.empty-card{
+  min-height:280px;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:center;
+  gap:15px;
+}
+.empty-card p{
+  max-width:700px;
+  color:#9ba3ad;
+  line-height:1.55;
+}
+.lottery-kicker{
+  margin:0 0 5px;
+  color:#ff6429!important;
+  font-size:8px!important;
+  font-weight:950;
+  letter-spacing:.12em;
+}
+.section-heading{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  margin-bottom:13px;
+}
+.live-indicator{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  color:#ff6b35;
+  font-size:9px;
+  font-weight:950;
+}
+.live-indicator i{
+  width:7px;
+  height:7px;
+  border-radius:999px;
+  background:#ff4d22;
+  box-shadow:0 0 12px rgba(255,77,34,.8);
+  animation:livePulse 1s ease-in-out infinite;
+}
+@keyframes livePulse{
+  50%{opacity:.35}
+}
+.lottery-machine{
+  position:relative;
+  width:min(560px,100%);
+  margin:8px auto 4px;
+  padding-top:34px;
+}
+.machine-top{
+  position:absolute;
+  top:0;
+  left:50%;
+  z-index:4;
+  transform:translateX(-50%);
+}
+.machine-neck{
+  width:86px;
+  height:55px;
+  padding:0 17px;
+  border:2px solid rgba(255,255,255,.16);
+  border-bottom:0;
+  border-radius:18px 18px 0 0;
+  background:#171b21;
+}
+.machine-tube{
+  width:100%;
+  height:100%;
+  border-left:2px solid rgba(255,255,255,.1);
+  border-right:2px solid rgba(255,255,255,.1);
+  background:linear-gradient(
+    90deg,
+    rgba(255,255,255,.02),
+    rgba(255,255,255,.08),
+    rgba(255,255,255,.02)
+  );
+}
+.machine-chamber{
+  position:relative;
+  z-index:2;
+}
+.chamber-glass{
+  position:relative;
+  width:min(430px,90vw);
+  aspect-ratio:1/1;
+  margin:0 auto;
+  overflow:hidden;
+  border:5px solid #242a32;
+  border-radius:999px;
+  background:
+    radial-gradient(
+      circle at 35% 28%,
+      rgba(255,255,255,.09),
+      transparent 18%
+    ),
+    radial-gradient(
+      circle,
+      rgba(255,73,24,.06),
+      rgba(7,9,13,.82) 68%
+    );
+  box-shadow:
+    inset 0 0 35px rgba(255,255,255,.025),
+    0 16px 45px rgba(0,0,0,.35);
+}
+.ball-field{
+  position:absolute;
+  inset:8%;
+}
+.lottery-ball{
+  position:absolute;
+  width:29px;
+  height:29px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  transform:translate(-50%,-50%);
+  border:2px solid rgba(255,255,255,.28);
+  border-radius:999px;
+  color:#fff;
+  background:
+    radial-gradient(
+      circle at 32% 27%,
+      #ff9a65,
+      #e84418 42%,
+      #861d0b 100%
+    );
+  box-shadow:0 3px 9px rgba(0,0,0,.45);
+  font-size:8px;
+  font-weight:950;
+}
+.phase-mixing .lottery-ball{
+  animation:ballMix .72s ease-in-out infinite alternate;
+}
+.phase-suction .lottery-ball{
+  animation:ballSuction .55s ease-in forwards;
+}
+@keyframes ballMix{
+  from{
+    transform:
+      translate(-50%,-50%)
+      rotate(-10deg)
+      translateY(-5px);
+  }
+  to{
+    transform:
+      translate(-50%,-50%)
+      rotate(14deg)
+      translateY(7px);
+  }
+}
+@keyframes ballSuction{
+  to{
+    transform:
+      translate(-50%,-50%)
+      scale(.8)
+      translateY(-18px);
+  }
+}
+.machine-center{
+  position:absolute;
+  top:50%;
+  left:50%;
+  z-index:5;
+  width:190px;
+  min-height:128px;
+  padding:15px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  transform:translate(-50%,-50%);
+  text-align:center;
+  border:1px solid rgba(255,91,31,.26);
+  border-radius:18px;
+  background:rgba(8,10,14,.9);
+  box-shadow:0 12px 35px rgba(0,0,0,.45);
+  backdrop-filter:blur(8px);
+}
+.machine-label{
+  color:#ff6b30;
+  font-size:8px;
+  font-weight:950;
+  letter-spacing:.12em;
+}
+.machine-center>strong{
+  margin:5px 0;
+  font-size:38px;
+  line-height:1;
+}
+.machine-center small{
+  color:#919aa5;
+  font-size:8px;
+  font-weight:800;
+}
+.machine-center .winner-name{
+  max-width:165px;
+  font-size:20px;
+  line-height:1.05;
+}
+.complete-text{
+  color:#6ee28f;
+  font-size:24px!important;
+}
+.pulse-text{
+  animation:textPulse .7s ease-in-out infinite;
+}
+@keyframes textPulse{
+  50%{opacity:.3}
+}
+.machine-base{
+  width:min(360px,78%);
+  margin:-23px auto 0;
+  padding:32px 15px 13px;
+  position:relative;
+  z-index:1;
+  text-align:center;
+  border:2px solid #292f37;
+  border-radius:0 0 20px 20px;
+  background:
+    linear-gradient(
+      180deg,
+      #1d2229,
+      #101318
+    );
+  box-shadow:0 16px 30px rgba(0,0,0,.35);
+}
+.machine-base span,
+.machine-base strong{
+  display:block;
+}
+.machine-base span{
+  color:#ff632a;
+  font-size:8px;
+  font-weight:950;
+  letter-spacing:.13em;
+}
+.machine-base strong{
+  margin-top:3px;
+  font-size:11px;
+}
+.machine-actions{
+  display:flex;
+  justify-content:center;
+  margin-top:16px;
+}
+.primary-action,
+.danger-action{
+  min-height:42px;
+  padding:10px 16px;
+  border-radius:8px;
+  color:#fff;
+  font-size:9px;
+  font-weight:950;
+  letter-spacing:.05em;
+  cursor:pointer;
+}
+.primary-action{
+  border:1px solid rgba(255,91,31,.58);
+  background:
+    linear-gradient(
+      135deg,
+      #b81e16,
+      #ff5a1f
+    );
+}
+.danger-action{
+  border:1px solid rgba(239,68,68,.5);
+  background:
+    linear-gradient(
+      135deg,
+      #7f1515,
+      #d82b1f
+    );
+}
+.primary-action:disabled,
+.danger-action:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+.reveal-button{
+  min-width:190px;
+}
+.viewer-waiting{
+  margin-top:13px;
+  padding:10px;
+  text-align:center;
+  color:#9ba3ad;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:8px;
+  background:rgba(255,255,255,.025);
+  font-size:10px;
+}
+.draft-order-board{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:7px;
+}
+.draft-slot{
+  min-width:0;
+  display:grid;
+  grid-template-columns:58px minmax(0,1fr);
+  align-items:center;
+  gap:10px;
+  padding:10px;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:9px;
+  background:#11151a;
+}
+.draft-slot.revealed{
+  border-color:rgba(255,91,31,.25);
+  background:
+    linear-gradient(
+      135deg,
+      rgba(124,27,14,.16),
+      #11151a
+    );
+}
+.pick-number span,
+.pick-number strong,
+.pick-team strong,
+.pick-team span{
+  display:block;
+}
+.pick-number span{
+  color:#747d88;
+  font-size:7px;
+  font-weight:950;
+}
+.pick-number strong{
+  margin-top:2px;
+  color:#ff6a31;
+  font-size:18px;
+}
+.pick-team{
+  min-width:0;
+}
+.pick-team strong{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:11px;
+}
+.pick-team span{
+  margin-top:3px;
+  color:#808995;
+  font-size:8px;
+}
+.hidden-team strong{
+  color:#626a74;
+}
+.odds-list{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.odds-row{
+  display:grid;
+  grid-template-columns:42px minmax(0,1fr) auto;
+  align-items:center;
+  gap:8px;
+  padding:9px;
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:8px;
+  background:#111419;
+}
+.odds-position span,
+.odds-position strong,
+.odds-team strong,
+.odds-team span,
+.odds-value strong,
+.odds-value span{
+  display:block;
+}
+.odds-position span{
+  color:#727b86;
+  font-size:6px;
+  font-weight:950;
+}
+.odds-position strong{
+  margin-top:2px;
+  color:#ff6b31;
+  font-size:14px;
+}
+.odds-team{
+  min-width:0;
+}
+.odds-team strong{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:10px;
+}
+.odds-team span{
+  margin-top:2px;
+  color:#79828d;
+  font-size:7px;
+}
+.odds-value{
+  text-align:right;
+}
+.odds-value strong{
+  font-size:11px;
+}
+.odds-value span{
+  margin-top:2px;
+  color:#7e8792;
+  font-size:7px;
+}
+.info-list{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.info-list>div{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  padding:8px 0;
+  border-bottom:1px solid rgba(255,255,255,.055);
+}
+.info-list>div:last-child{
+  border-bottom:0;
+}
+.info-list span{
+  color:#818a95;
+  font-size:8px;
+  font-weight:850;
+}
+.info-list strong{
+  text-align:right;
+  font-size:9px;
+}
+.rules-card p,
+.viewer-card p,
+.commissioner-card p{
+  color:#929ba6;
+  font-size:9px;
+  line-height:1.55;
+}
+.commissioner-state{
+  margin-top:10px;
+  padding:9px;
+  text-align:center;
+  color:#ff7a43;
+  border:1px solid rgba(255,91,31,.18);
+  border-radius:7px;
+  background:rgba(255,91,31,.05);
+  font-size:8px;
+  font-weight:950;
+}
+@media(max-width:1000px){
+  .lottery-layout{
+    grid-template-columns:1fr;
+  }
+  .lottery-side-column{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media(max-width:700px){
+  .lottery-hero{
+    flex-direction:column;
+  }
+  .status-pill{
+    align-self:flex-start;
+  }
+  .lottery-summary-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .draft-order-board{
+    grid-template-columns:1fr;
+  }
+  .lottery-side-column{
+    display:flex;
+  }
+  .chamber-glass{
+    width:min(340px,88vw);
+  }
+  .lottery-ball{
+    width:25px;
+    height:25px;
+    font-size:7px;
+  }
+  .machine-center{
+    width:165px;
+    min-height:112px;
+  }
+  .machine-center>strong{
+    font-size:31px;
+  }
+  .machine-center .winner-name{
+    font-size:17px;
+  }
+}
+@media(max-width:430px){
+  .lottery-card{
+    padding:12px;
+  }
+  .lottery-summary-grid{
+    gap:6px;
+  }
+  .summary-box{
+    padding:10px;
+  }
+  .chamber-glass{
+    width:min(300px,86vw);
+  }
+  .machine-center{
+    width:145px;
+    min-height:100px;
+    padding:11px;
+  }
+  .machine-center>strong{
+    font-size:27px;
+  }
+  .machine-center .winner-name{
+    max-width:125px;
+    font-size:15px;
+  }
+  .lottery-ball{
+    width:22px;
+    height:22px;
+  }
+  .machine-base{
+    width:75%;
+  }
+}
+`;

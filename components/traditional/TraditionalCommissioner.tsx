@@ -618,10 +618,48 @@ export default function TraditionalCommissioner({
       return;
     }
 
-    setLeague(results[0].data as League);
+    const loadedLeague = results[0].data as League;
+    const loadedTraditionalSettings = results[2].data as TraditionalLeagueSettings | null;
+    const loadedRosterSettings = results[3].data as RosterSettings | null;
+    const loadedDraft = results[5].data as Draft | null;
+
+    const loadedRosterSize = loadedRosterSettings
+      ? Number(loadedRosterSettings.starting_qb || 0) +
+        Number(loadedRosterSettings.starting_rb || 0) +
+        Number(loadedRosterSettings.starting_wr || 0) +
+        Number(loadedRosterSettings.starting_te || 0) +
+        Number(loadedRosterSettings.starting_flex || 0) +
+        Number(loadedRosterSettings.starting_superflex || 0) +
+        Number(loadedRosterSettings.starting_k || 0) +
+        Number(loadedRosterSettings.starting_dst || 0) +
+        Number(loadedRosterSettings.bench_slots || 0)
+      : 0;
+
+    const leagueLooksDynasty =
+      loadedTraditionalSettings?.league_format === "dynasty" ||
+      loadedDraft?.draft_type === "dynasty" ||
+      loadedDraft?.draft_type === "startup";
+
+    const dynastySettingsForUi: TraditionalLeagueSettings | null =
+      loadedTraditionalSettings ??
+      (leagueLooksDynasty
+        ? {
+            league_id: leagueId,
+            season: Number(loadedLeague.season ?? new Date().getFullYear()),
+            league_format: "dynasty",
+            dynasty_protected_players: Math.max(1, loadedRosterSize > 1 ? loadedRosterSize - 3 : 15),
+            dynasty_future_pick_years: 2,
+            dynasty_annual_draft_rounds: Math.max(1, loadedRosterSize > 1 ? 3 : 3),
+            dynasty_draft_order_method: "lottery",
+            dynasty_protection_status: "protection_closed",
+            dynasty_protection_deadline: null,
+          }
+        : null);
+
+    setLeague(loadedLeague);
     setLeagueSettings(results[1].data as LeagueSettings | null);
-    setTraditionalSettings(results[2].data as TraditionalLeagueSettings | null);
-    setRosterSettings(results[3].data as RosterSettings | null);
+    setTraditionalSettings(dynastySettingsForUi);
+    setRosterSettings(loadedRosterSettings);
     setScoring(results[4].data as Scoring | null);
     setDraft(results[5].data as Draft | null);
     setWaivers(results[6].data as WaiverSettings | null);
@@ -776,11 +814,25 @@ export default function TraditionalCommissioner({
   }
 
   async function saveDynastySettings() {
-    if (!traditionalSettings || traditionalSettings.league_format !== "dynasty") return;
+    if (!traditionalSettings || traditionalSettings.league_format !== "dynasty" || !rosterSettings) return;
 
-    const protectedPlayers = Math.max(1, Math.min(100, Number(traditionalSettings.dynasty_protected_players || 15)));
+    const dynastyRosterSize =
+      Number(rosterSettings?.starting_qb || 0) +
+      Number(rosterSettings?.starting_rb || 0) +
+      Number(rosterSettings?.starting_wr || 0) +
+      Number(rosterSettings?.starting_te || 0) +
+      Number(rosterSettings?.starting_flex || 0) +
+      Number(rosterSettings?.starting_superflex || 0) +
+      Number(rosterSettings?.starting_k || 0) +
+      Number(rosterSettings?.starting_dst || 0) +
+      Number(rosterSettings?.bench_slots || 0);
+
+    const protectedPlayers = Math.max(
+      1,
+      Math.min(Math.max(1, dynastyRosterSize - 1), Number(traditionalSettings.dynasty_protected_players || 15))
+    );
     const futurePickYears = Math.max(1, Math.min(10, Number(traditionalSettings.dynasty_future_pick_years || 2)));
-    const annualDraftRounds = Math.max(1, Math.min(20, Number(traditionalSettings.dynasty_annual_draft_rounds || 3)));
+    const annualDraftRounds = Math.max(1, dynastyRosterSize - protectedPlayers);
 
     setSaving(true);
     setError(null);
@@ -789,15 +841,23 @@ export default function TraditionalCommissioner({
     try {
       const updateResult = await supabase
         .from("traditional_league_settings")
-        .update({
-          dynasty_protected_players: protectedPlayers,
-          dynasty_future_pick_years: futurePickYears,
-          dynasty_annual_draft_rounds: annualDraftRounds,
-          dynasty_draft_order_method: traditionalSettings.dynasty_draft_order_method,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("league_id", leagueId)
-        .eq("season", traditionalSettings.season);
+        .upsert(
+          {
+            league_id: leagueId,
+            season: traditionalSettings.season,
+            league_format: "dynasty",
+            dynasty_protected_players: protectedPlayers,
+            dynasty_future_pick_years: futurePickYears,
+            dynasty_annual_draft_rounds: annualDraftRounds,
+            dynasty_draft_order_method: traditionalSettings.dynasty_draft_order_method,
+            dynasty_protection_status:
+              traditionalSettings.dynasty_protection_status || "protection_closed",
+            dynasty_protection_deadline:
+              traditionalSettings.dynasty_protection_deadline ?? null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "league_id,season" }
+        );
 
       if (updateResult.error) throw updateResult.error;
 
@@ -1198,8 +1258,12 @@ export default function TraditionalCommissioner({
           }
           .g365-commissioner-mobile section { max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
         }
+        @media (max-width: 760px) {
+          .g365-dynasty-control-grid { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+        }
         @media (max-width: 430px) {
           .g365-commissioner-grid, .g365-commissioner-stats { grid-template-columns: minmax(0,1fr) !important; }
+          .g365-dynasty-control-grid { grid-template-columns: minmax(0,1fr) !important; }
         }
       `}</style>
       <div className="g365-commissioner-shell" style={styles.shell}>
@@ -1377,15 +1441,15 @@ export default function TraditionalCommissioner({
                       () =>
                         supabase.rpc("save_traditional_roster_settings", {
                           p_league_id: leagueId,
-                          p_starting_qb: rosterSettings.starting_qb,
-                          p_starting_rb: rosterSettings.starting_rb,
-                          p_starting_wr: rosterSettings.starting_wr,
-                          p_starting_te: rosterSettings.starting_te,
-                          p_starting_flex: rosterSettings.starting_flex,
-                          p_starting_superflex: rosterSettings.starting_superflex,
-                          p_starting_k: rosterSettings.starting_k,
-                          p_starting_dst: rosterSettings.starting_dst,
-                          p_bench_slots: rosterSettings.bench_slots,
+                          p_starting_qb: rosterSettings?.starting_qb,
+                          p_starting_rb: rosterSettings?.starting_rb,
+                          p_starting_wr: rosterSettings?.starting_wr,
+                          p_starting_te: rosterSettings?.starting_te,
+                          p_starting_flex: rosterSettings?.starting_flex,
+                          p_starting_superflex: rosterSettings?.starting_superflex,
+                          p_starting_k: rosterSettings?.starting_k,
+                          p_starting_dst: rosterSettings?.starting_dst,
+                          p_bench_slots: rosterSettings?.bench_slots,
                           p_ir_slots: rosterSettings.ir_slots,
                           p_max_qb: rosterSettings.max_qb,
                           p_max_rb: rosterSettings.max_rb,
@@ -1410,30 +1474,41 @@ export default function TraditionalCommissioner({
             {isDynasty && traditionalSettings ? (
               <Section
                 title="Dynasty Settings"
-                subtitle="NFL Dynasty roster protection, annual draft and future-pick configuration. These settings mirror the Dynasty controls used by NHL Traditional while staying on the NFL Traditional backend."
+                subtitle="Set the number of keepers and future pick years. Annual draft rounds and tradable future pick assets are generated from these settings."
               >
                 <div className="g365-commissioner-grid" style={styles.grid}>
                   <Input
-                    label="Players Protected Per Team"
+                    label="Dynasty Keepers Per Team"
                     value={traditionalSettings.dynasty_protected_players}
-                    onChange={(v) =>
+                    onChange={(v) => {
+                      const dynastyRosterSize =
+                        Number(rosterSettings?.starting_qb || 0) +
+                        Number(rosterSettings?.starting_rb || 0) +
+                        Number(rosterSettings?.starting_wr || 0) +
+                        Number(rosterSettings?.starting_te || 0) +
+                        Number(rosterSettings?.starting_flex || 0) +
+                        Number(rosterSettings?.starting_superflex || 0) +
+                        Number(rosterSettings?.starting_k || 0) +
+                        Number(rosterSettings?.starting_dst || 0) +
+                        Number(rosterSettings?.bench_slots || 0);
+                      const keepers = Math.max(
+                        1,
+                        Math.min(Math.max(1, dynastyRosterSize - 1), n(v, 15))
+                      );
                       setTraditionalSettings({
                         ...traditionalSettings,
-                        dynasty_protected_players: Math.max(1, Math.min(100, n(v, 15))),
-                      })
-                    }
+                        dynasty_protected_players: keepers,
+                        dynasty_annual_draft_rounds: Math.max(1, dynastyRosterSize - keepers),
+                      });
+                    }}
                   />
 
-                  <Input
-                    label="Annual Dynasty Draft Rounds"
-                    value={traditionalSettings.dynasty_annual_draft_rounds}
-                    onChange={(v) =>
-                      setTraditionalSettings({
-                        ...traditionalSettings,
-                        dynasty_annual_draft_rounds: Math.max(1, Math.min(20, n(v, 3))),
-                      })
-                    }
-                  />
+                  <label style={styles.field}>
+                    <span style={styles.fieldLabel}>Annual Dynasty Draft Rounds</span>
+                    <div style={styles.readOnly}>
+                      {traditionalSettings.dynasty_annual_draft_rounds}
+                    </div>
+                  </label>
 
                   <Input
                     label="Future Pick Years"
@@ -1483,10 +1558,44 @@ export default function TraditionalCommissioner({
                   </label>
                 </div>
 
+                <div className="g365-commissioner-stats" style={styles.stats}>
+                  <Stat
+                    label="Active Roster Size"
+                    value={
+                      Number(rosterSettings?.starting_qb || 0) +
+                      Number(rosterSettings?.starting_rb || 0) +
+                      Number(rosterSettings?.starting_wr || 0) +
+                      Number(rosterSettings?.starting_te || 0) +
+                      Number(rosterSettings?.starting_flex || 0) +
+                      Number(rosterSettings?.starting_superflex || 0) +
+                      Number(rosterSettings?.starting_k || 0) +
+                      Number(rosterSettings?.starting_dst || 0) +
+                      Number(rosterSettings?.bench_slots || 0)
+                    }
+                  />
+                  <Stat label="Keepers Per Team" value={traditionalSettings.dynasty_protected_players} />
+                  <Stat label="Picks Per Team / Draft Year" value={traditionalSettings.dynasty_annual_draft_rounds} />
+                  <Stat
+                    label="Tradable Future Picks / Team"
+                    value={
+                      Number(traditionalSettings.dynasty_annual_draft_rounds || 0) *
+                      Number(traditionalSettings.dynasty_future_pick_years || 0)
+                    }
+                  />
+                  <Stat
+                    label="League Future Pick Assets"
+                    value={
+                      Number(traditionalSettings.dynasty_annual_draft_rounds || 0) *
+                      Number(traditionalSettings.dynasty_future_pick_years || 0) *
+                      teams.filter((team) => team.active).length
+                    }
+                  />
+                </div>
+
                 <div style={styles.commissionerNotice}>
                   <strong>Dynasty Draft Lifecycle</strong>
                   <span>
-                    Startup drafts fill the initial permanent roster. After each season, protected players carry forward and the annual Dynasty draft uses the configured rounds. Future pick assets are created for every configured future season and remain attached to their current owner after trades.
+                    Choose how many players each team keeps from one season to the next. The annual draft rounds are generated automatically from the active NFL roster size minus the keeper amount. For example, an 18-player roster with 15 keepers creates a 3-round annual draft. Each team then receives one future pick in every generated round for every configured Future Pick Year. Saving these settings synchronizes those future pick assets immediately so they can be included in Dynasty trades.
                   </span>
                 </div>
 
@@ -1504,24 +1613,74 @@ export default function TraditionalCommissioner({
               </Section>
             ) : null}
 
-            <Section
-              title="Dynasty Control Center"
-              subtitle="Startup and annual Dynasty draft controls stay separate from Redraft commissioner tools."
-            >
-              <div className="g365-commissioner-stats" style={styles.stats}>
-                <Stat label="League Format" value="Dynasty" />
-                <Stat label="Current Draft" value={draftType === "startup" ? "Startup Draft" : draftType === "dynasty" ? "Annual Dynasty Draft" : pretty(draftType)} />
-                <Stat label="Draft Status" value={pretty(draft?.status)} />
-                <Stat label="Future Pick Years" value={traditionalSettings?.dynasty_future_pick_years ?? "—"} />
-                <Stat label="Annual Draft Rounds" value={traditionalSettings?.dynasty_annual_draft_rounds ?? "—"} />
-                <Stat label="Protection Status" value={pretty(traditionalSettings?.dynasty_protection_status)} />
-              </div>
-              <div className="g365-commissioner-actions" style={styles.actions}>
-                <Button disabled={saving} onClick={() => router.push(`/league/${leagueId}/draft`)}>OPEN DYNASTY DRAFT</Button>
-                <Button disabled={saving} onClick={() => setTab("trades")}>OPEN DYNASTY TRADES</Button>
-                <Button disabled={saving} onClick={() => setTab("draft")}>OPEN SEASON CONTROL</Button>
-              </div>
-            </Section>
+            {season?.season_complete ? (
+              <Section
+                title="Dynasty Offseason Control Center"
+                subtitle={`The ${Number(league?.season ?? 2026) + 1} NFL Dynasty offseason is available because the current season is complete.`}
+              >
+                <div className="g365-commissioner-stats" style={styles.stats}>
+                  <Stat label="League Format" value="Dynasty" />
+                  <Stat label="Next Season" value={Number(league?.season ?? 2026) + 1} />
+                  <Stat label="Dynasty Keepers" value={traditionalSettings?.dynasty_protected_players ?? "—"} />
+                  <Stat label="Future Pick Years" value={traditionalSettings?.dynasty_future_pick_years ?? "—"} />
+                  <Stat label="Annual Draft Rounds" value={traditionalSettings?.dynasty_annual_draft_rounds ?? "—"} />
+                  <Stat label="Protection Status" value={pretty(traditionalSettings?.dynasty_protection_status)} />
+                  <Stat label="Draft Status" value={pretty(draft?.status)} />
+                  <Stat label="Draft Order" value={traditionalSettings?.dynasty_draft_order_method === "reverse_standings" ? "Reverse Standings" : "Draft Lottery"} />
+                </div>
+
+                <div style={styles.dynastyWorkflow}>
+                  <div style={styles.dynastyWorkflowHead}>
+                    <div>
+                      <div style={styles.subsectionTitle}>NFL DYNASTY OFFSEASON WORKFLOW</div>
+                      <p style={styles.sectionSub}>
+                        The offseason workflow unlocks only after the current NFL season is complete. Complete keepers, establish the annual draft order, run the annual draft, verify roster integrity, and then activate the next season.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="g365-dynasty-control-grid" style={styles.dynastyControlGrid}>
+                    <DynastyControlCard number="1" title="Offseason" text="Open the Dynasty offseason control center and follow the complete season-to-season workflow." status="Season Complete" onClick={() => router.push(`/league/${leagueId}/offseason`)} />
+                    <DynastyControlCard number="2" title="Keepers" text={`Manage each team's ${traditionalSettings?.dynasty_protected_players ?? "—"} Dynasty keepers before the annual draft.`} status={pretty(traditionalSettings?.dynasty_protection_status)} onClick={() => router.push(`/league/${leagueId}/keepers`)} />
+                    <DynastyControlCard number="3" title="Draft Lottery" text={traditionalSettings?.dynasty_draft_order_method === "lottery" ? "Run and watch the official weighted NFL Dynasty annual draft lottery." : "This league uses reverse final standings instead of the lottery."} status={traditionalSettings?.dynasty_draft_order_method === "lottery" ? "Lottery" : "Reverse Standings"} disabled={traditionalSettings?.dynasty_draft_order_method !== "lottery"} onClick={() => router.push(`/league/${leagueId}/draft-lottery`)} />
+                    <DynastyControlCard number="4" title="Annual Dynasty Draft" text="Open the annual Dynasty draft room. Traded future picks stay with their current owner." status={pretty(draft?.status)} onClick={() => router.push(`/league/${leagueId}/draft`)} />
+                    <DynastyControlCard number="5" title="New Season" text={`Check rollover readiness and activate the ${Number(league?.season ?? 2026) + 1} NFL Dynasty season after the annual draft and roster checks are complete.`} status="Rollover Stage" onClick={() => router.push(`/league/${leagueId}/new-season`)} />
+                  </div>
+                </div>
+
+                <div style={styles.commissionerNotice}>
+                  <strong>Dynasty Lifecycle</strong>
+                  <span>Season Complete → Keepers → Finalize Keepers → Prepare Annual Draft → Lottery or Reverse Standings → Annual Draft → Roster Integrity → New Season. Trades and waivers remain separate league tools rather than offseason workflow steps.</span>
+                </div>
+
+                <div className="g365-commissioner-actions" style={styles.actions}>
+                  <Button disabled={saving} onClick={() => router.push(`/league/${leagueId}/offseason`)}>OPEN DYNASTY OFFSEASON</Button>
+                  <Button disabled={saving} onClick={() => router.push(`/league/${leagueId}/keepers`)}>OPEN KEEPERS</Button>
+                  {traditionalSettings?.dynasty_draft_order_method === "lottery" ? <Button disabled={saving} onClick={() => router.push(`/league/${leagueId}/draft-lottery`)}>OPEN DRAFT LOTTERY</Button> : null}
+                  <Button disabled={saving} onClick={() => router.push(`/league/${leagueId}/draft`)}>OPEN ANNUAL DRAFT</Button>
+                  <Button disabled={saving} onClick={() => router.push(`/league/${leagueId}/new-season`)}>OPEN NEW SEASON</Button>
+                </div>
+              </Section>
+            ) : (
+              <Section
+                title="Dynasty Season Status"
+                subtitle="The Dynasty offseason workflow stays locked until the current NFL season is complete."
+              >
+                <div className="g365-commissioner-stats" style={styles.stats}>
+                  <Stat label="Current Season" value={league?.season ?? "—"} />
+                  <Stat label="Season Phase" value={pretty(season?.phase)} />
+                  <Stat label="Dynasty Keepers" value={traditionalSettings?.dynasty_protected_players ?? "—"} />
+                  <Stat label="Future Pick Years" value={traditionalSettings?.dynasty_future_pick_years ?? "—"} />
+                  <Stat label="Annual Draft Rounds" value={traditionalSettings?.dynasty_annual_draft_rounds ?? "—"} />
+                  <Stat label="Offseason" value="Locked" />
+                </div>
+
+                <div style={styles.commissionerNotice}>
+                  <strong>Offseason Locked During Active Season</strong>
+                  <span>Keeper selection, the annual draft lottery, annual Dynasty draft, roster-integrity checks and new-season rollover become available after season_complete is true. You can still configure keeper count, future pick years and annual draft rounds now. Saving Dynasty settings synchronizes future draft-pick assets so eligible picks are available for trades.</span>
+                </div>
+              </Section>
+            )}
           </>
         ) : null}
 
@@ -2503,6 +2662,27 @@ function Guide(props: { title: string; text: string }) {
   );
 }
 
+function DynastyControlCard(props: {
+  number: string;
+  title: string;
+  text: string;
+  status: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button type="button" disabled={props.disabled} onClick={props.onClick} style={{ ...styles.dynastyControlCard, ...(props.disabled ? styles.dynastyControlCardDisabled : {}) }}>
+      <div style={styles.dynastyControlTop}>
+        <span style={styles.dynastyControlNumber}>{props.number}</span>
+        <span style={styles.dynastyControlStatus}>{props.status}</span>
+      </div>
+      <strong style={styles.dynastyControlTitle}>{props.title}</strong>
+      <span style={styles.dynastyControlText}>{props.text}</span>
+      <span style={styles.dynastyControlOpen}>{props.disabled ? "NOT ACTIVE" : "OPEN →"}</span>
+    </button>
+  );
+}
+
 function Transactions(props: { rows: Array<{ id: number; a: string; b: string; c: string }> }) {
   if (!props.rows.length) return <div style={styles.empty}>No records to show.</div>;
   return (
@@ -2605,4 +2785,15 @@ const styles: Record<string, React.CSSProperties> = {
   teamIndex: { color: "#ff6c31", textAlign: "center" },
   ownerStatus: { display: "flex", flexDirection: "column", gap: "3px", color: "#9299a4", fontSize: "10px" },
   teamActions: { display: "flex", gap: "6px", justifyContent: "flex-end" },
+  dynastyWorkflow: { marginTop: "18px", padding: "16px", border: "1px solid rgba(255,95,35,.22)", borderRadius: "12px", background: "linear-gradient(135deg,rgba(120,18,12,.10),rgba(255,90,25,.035))" },
+  dynastyWorkflowHead: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", marginBottom: "14px" },
+  dynastyControlGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: "10px" },
+  dynastyControlCard: { minHeight: "175px", padding: "14px", display: "flex", flexDirection: "column", alignItems: "stretch", gap: "9px", border: "1px solid rgba(255,255,255,.08)", borderRadius: "10px", background: "linear-gradient(145deg,#101218,#0b0d11)", color: "#f5f7fa", textAlign: "left", cursor: "pointer" },
+  dynastyControlCardDisabled: { opacity: 0.45, cursor: "not-allowed" },
+  dynastyControlTop: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" },
+  dynastyControlNumber: { width: "28px", height: "28px", display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "999px", border: "1px solid rgba(255,100,40,.38)", background: "linear-gradient(135deg,#b51b18,#ef531d)", color: "#fff", fontSize: "11px", fontWeight: 950 },
+  dynastyControlStatus: { padding: "4px 7px", borderRadius: "999px", border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", color: "#aeb4bd", fontSize: "9px", fontWeight: 900, textTransform: "uppercase", letterSpacing: ".05em" },
+  dynastyControlTitle: { marginTop: "3px", color: "#fff", fontSize: "15px", fontWeight: 950 },
+  dynastyControlText: { flex: 1, color: "#9299a4", fontSize: "11px", lineHeight: 1.55 },
+  dynastyControlOpen: { color: "#ff6b2c", fontSize: "10px", fontWeight: 950, letterSpacing: ".07em" },
 };

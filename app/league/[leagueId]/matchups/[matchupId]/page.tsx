@@ -1419,6 +1419,19 @@ function ScoreTeam({
       </strong>
 
 
+      <span
+        style={{
+          ...styles.teamRecord,
+
+          ...(right
+            ? styles.teamRecordRight
+            : {}),
+        }}
+      >
+        {team.record}
+      </span>
+
+
       <div
         style={{
           ...styles.teamMetaLine,
@@ -3085,6 +3098,20 @@ const styles = {
 
     direction:
       "ltr" as const,
+  },
+
+
+  teamRecord: {
+    color: "#8a919b",
+    fontSize: "11px",
+    fontWeight: 900,
+    lineHeight: 1.15,
+    direction: "ltr" as const,
+  },
+
+
+  teamRecordRight: {
+    textAlign: "right" as const,
   },
 
 

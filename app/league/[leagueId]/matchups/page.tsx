@@ -1,154 +1,103 @@
 import Link from "next/link";
-
 import Card from "@/components/ui/Card";
-
 import {
   createSupabaseServerClient,
 } from "@/lib/supabase/server";
-
 import {
   getTraditionalMatchupsData,
   type TraditionalMatchupRow,
 } from "@/lib/traditional/matchups.service";
-
 import {
   requireTraditionalLeague,
 } from "@/lib/traditional/requireTraditionalLeague";
-
-
 type PageProps = {
   params:
     Promise<{
       leagueId: string;
     }>;
-
   searchParams:
     Promise<{
       week?: string;
     }>;
 };
-
-
 type PlayoffSettingsRow = {
   playoff_teams: number;
-
   playoff_start_week: number;
-
   championship_week: number;
 };
-
-
 type PlayoffMatchupDbRow = {
   id: number;
-
   playoff_week: number;
-
   round_number: number;
-
   round_name: string;
-
   matchup_number: number;
-
   home_seed:
     number |
     null;
-
   away_seed:
     number |
     null;
-
   home_fantasy_team_id:
     number |
     null;
-
   away_fantasy_team_id:
     number |
     null;
-
   home_points:
     number |
     string |
     null;
-
   away_points:
     number |
     string |
     null;
-
   is_live:
     boolean |
     null;
-
   is_final:
     boolean |
     null;
-
   winner_fantasy_team_id:
     number |
     null;
-
   tied:
     boolean |
     null;
 };
-
-
 type FantasyTeamNameRow = {
   id: number;
-
   team_name: string;
 };
-
-
 type PlayoffMatchupView = {
   matchupId: number;
-
   week: number;
-
   roundNumber: number;
-
   roundName: string;
-
   matchupNumber: number;
-
   homeSeed:
     number |
     null;
-
   awaySeed:
     number |
     null;
-
   homeFantasyTeamId:
     number |
     null;
-
   awayFantasyTeamId:
     number |
     null;
-
   homeTeamName: string;
-
   awayTeamName: string;
-
   homePoints: number;
-
   awayPoints: number;
-
   isLive: boolean;
-
   isFinal: boolean;
-
   tied: boolean;
-
   winnerFantasyTeamId:
     number |
     null;
-
   isMyMatchup: boolean;
 };
-
-
 function formatPoints(
   value: number
 ) {
@@ -156,8 +105,6 @@ function formatPoints(
     2
   );
 }
-
-
 function numericValue(
   value:
     number |
@@ -170,16 +117,12 @@ function numericValue(
       value ??
       0
     );
-
-
   return Number.isFinite(
     parsed
   )
     ? parsed
     : 0;
 }
-
-
 function getPlayoffStatusLabel(
   matchup:
     PlayoffMatchupView
@@ -190,34 +133,24 @@ function getPlayoffStatusLabel(
   ) {
     return "FINAL • TIEBREAK";
   }
-
-
   if (
     matchup.isFinal
   ) {
     return "FINAL";
   }
-
-
   if (
     matchup.isLive
   ) {
     return "LIVE";
   }
-
-
   if (
     !matchup.homeFantasyTeamId ||
     !matchup.awayFantasyTeamId
   ) {
     return "TBD";
   }
-
-
   return "SCHEDULED";
 }
-
-
 function getPlayoffWeekLabel(
   week: number,
   playoffStartWeek: number,
@@ -230,24 +163,18 @@ function getPlayoffWeekLabel(
   ) {
     return `W${week}`;
   }
-
-
   if (
     week ===
     championshipWeek
   ) {
     return "CH";
   }
-
-
   if (
     playoffTeams ===
     4
   ) {
     return "SF";
   }
-
-
   if (
     week ===
     playoffStartWeek
@@ -257,12 +184,8 @@ function getPlayoffWeekLabel(
       ? "QF"
       : "WC";
   }
-
-
   return "SF";
 }
-
-
 function getStatusLabel(
   matchup:
     TraditionalMatchupRow
@@ -273,26 +196,18 @@ function getStatusLabel(
   ) {
     return "FINAL • TIE";
   }
-
-
   if (
     matchup.isFinal
   ) {
     return "FINAL";
   }
-
-
   if (
     matchup.isLive
   ) {
     return "LIVE";
   }
-
-
   return "SCHEDULED";
 }
-
-
 export default async function TraditionalMatchupsPage({
   params,
   searchParams,
@@ -301,26 +216,18 @@ export default async function TraditionalMatchupsPage({
     leagueId,
   } =
     await params;
-
-
   const query =
     await searchParams;
-
-
   const access =
     await requireTraditionalLeague(
       leagueId
     );
-
-
   const requestedWeek =
     query.week
       ? Number(
           query.week
         )
       : null;
-
-
   const selectedWeekInput =
     requestedWeek !==
       null &&
@@ -329,22 +236,14 @@ export default async function TraditionalMatchupsPage({
     )
       ? requestedWeek
       : null;
-
-
   const supabase =
     await createSupabaseServerClient();
-
-
   const season =
     access.league.season;
-
-
   const myFantasyTeamId =
     access.fantasyTeam
       ?.id ??
     null;
-
-
   const [
     playoffSettingsResult,
     teamResult,
@@ -369,7 +268,6 @@ export default async function TraditionalMatchupsPage({
           season
         )
         .maybeSingle(),
-
       supabase
         .from(
           "fantasy_teams"
@@ -381,7 +279,6 @@ export default async function TraditionalMatchupsPage({
           "league_id",
           leagueId
         ),
-
       supabase
         .from(
           "traditional_season_state"
@@ -399,8 +296,6 @@ export default async function TraditionalMatchupsPage({
         )
         .maybeSingle(),
     ]);
-
-
   if (
     playoffSettingsResult.error
   ) {
@@ -408,8 +303,6 @@ export default async function TraditionalMatchupsPage({
       `Could not load playoff settings: ${playoffSettingsResult.error.message}`
     );
   }
-
-
   if (
     teamResult.error
   ) {
@@ -417,8 +310,6 @@ export default async function TraditionalMatchupsPage({
       `Could not load fantasy teams: ${teamResult.error.message}`
     );
   }
-
-
   if (
     seasonStateResult.error
   ) {
@@ -426,32 +317,22 @@ export default async function TraditionalMatchupsPage({
       `Could not load active week: ${seasonStateResult.error.message}`
     );
   }
-
-
   const playoffSettings =
     playoffSettingsResult.data as
       PlayoffSettingsRow |
       null;
-
-
   const playoffTeams =
     playoffSettings
       ?.playoff_teams ??
     6;
-
-
   const playoffStartWeek =
     playoffSettings
       ?.playoff_start_week ??
     15;
-
-
   const championshipWeek =
     playoffSettings
       ?.championship_week ??
     17;
-
-
   const activeWeek =
     Number(
       seasonStateResult
@@ -459,13 +340,9 @@ export default async function TraditionalMatchupsPage({
         ?.active_week ??
       1
     );
-
-
   const requestedDisplayWeek =
     selectedWeekInput ??
     activeWeek;
-
-
   const selectedWeek =
     Math.min(
       championshipWeek,
@@ -474,20 +351,16 @@ export default async function TraditionalMatchupsPage({
         requestedDisplayWeek
       )
     );
-
-
   const isPlayoffWeek =
     selectedWeek >=
     playoffStartWeek;
-
-
   /*
-   * The existing regular-season service remains responsible
-   * for Weeks 1 through the end of the regular season.
-   *
-   * When a playoff week is selected, keep that service on the
-   * final regular-season week and read playoff matchups from
-   * traditional_playoff_matchups below.
+   \* The existing regular-season service remains responsible
+   \* for Weeks 1 through the end of the regular season.
+   \*
+   \* When a playoff week is selected, keep that service on the
+   \* final regular-season week and read playoff matchups from
+   \* traditional_playoff_matchups below.
    */
   const regularData =
     await getTraditionalMatchupsData(
@@ -500,15 +373,11 @@ export default async function TraditionalMatchupsPage({
         : selectedWeek,
       myFantasyTeamId
     );
-
-
   const teamNames =
     new Map<
       number,
       string
     >();
-
-
   for (
     const team
     of (
@@ -521,20 +390,16 @@ export default async function TraditionalMatchupsPage({
       team.team_name
     );
   }
-
-
   let playoffMatchups:
     PlayoffMatchupView[] =
       [];
-
-
   if (
     isPlayoffWeek
   ) {
     /*
-     * Keep playoff scores/lifecycle current when viewing a
-     * playoff week. If the bracket is not built yet, this RPC
-     * simply has nothing to refresh.
+     \* Keep playoff scores/lifecycle current when viewing a
+     \* playoff week. If the bracket is not built yet, this RPC
+     \* simply has nothing to refresh.
      */
     const {
       error:
@@ -545,34 +410,27 @@ export default async function TraditionalMatchupsPage({
         {
           p_league_id:
             leagueId,
-
           p_season:
             season,
-
           p_playoff_week:
             selectedWeek,
         }
       );
-
-
     if (
       playoffRefreshError
     ) {
       /*
-       * Before the bracket exists or before playoff lineups are
-       * ready, do not prevent users from opening Matchups.
+       \* Before the bracket exists or before playoff lineups are
+       \* ready, do not prevent users from opening Matchups.
        */
       console.error(
         "Could not refresh playoff week:",
         playoffRefreshError
       );
     }
-
-
     const {
       data:
         playoffData,
-
       error:
         playoffError,
     } =
@@ -616,8 +474,6 @@ export default async function TraditionalMatchupsPage({
               true,
           }
         );
-
-
     if (
       playoffError
     ) {
@@ -625,8 +481,6 @@ export default async function TraditionalMatchupsPage({
         `Could not load playoff matchups: ${playoffError.message}`
       );
     }
-
-
     playoffMatchups =
       (
         playoffData ??
@@ -638,46 +492,31 @@ export default async function TraditionalMatchupsPage({
           const matchup =
             row as
               PlayoffMatchupDbRow;
-
-
           const homeId =
             matchup
               .home_fantasy_team_id;
-
-
           const awayId =
             matchup
               .away_fantasy_team_id;
-
-
           return {
             matchupId:
               matchup.id,
-
             week:
               matchup.playoff_week,
-
             roundNumber:
               matchup.round_number,
-
             roundName:
               matchup.round_name,
-
             matchupNumber:
               matchup.matchup_number,
-
             homeSeed:
               matchup.home_seed,
-
             awaySeed:
               matchup.away_seed,
-
             homeFantasyTeamId:
               homeId,
-
             awayFantasyTeamId:
               awayId,
-
             homeTeamName:
               homeId
                 ? (
@@ -687,7 +526,6 @@ export default async function TraditionalMatchupsPage({
                     "Home Team"
                   )
                 : "TBD",
-
             awayTeamName:
               awayId
                 ? (
@@ -697,36 +535,29 @@ export default async function TraditionalMatchupsPage({
                     "Away Team"
                   )
                 : "TBD",
-
             homePoints:
               numericValue(
                 matchup.home_points
               ),
-
             awayPoints:
               numericValue(
                 matchup.away_points
               ),
-
             isLive:
               matchup
                 .is_live ??
               false,
-
             isFinal:
               matchup
                 .is_final ??
               false,
-
             tied:
               matchup
                 .tied ??
               false,
-
             winnerFantasyTeamId:
               matchup
                 .winner_fantasy_team_id,
-
             isMyMatchup:
               myFantasyTeamId !==
                 null &&
@@ -740,14 +571,10 @@ export default async function TraditionalMatchupsPage({
         }
       );
   }
-
-
   const visibleMatchupCount =
     isPlayoffWeek
       ? playoffMatchups.length
       : regularData.matchups.length;
-
-
   return (
     <main
       style={
@@ -765,21 +592,18 @@ export default async function TraditionalMatchupsPage({
             touch-action: manipulation !important;
             -webkit-tap-highlight-color: rgba(255, 112, 24, .16);
           }
-
           .g365-matchup-link > div {
             width: 100% !important;
             min-height: 0 !important;
             padding: 12px !important;
             cursor: pointer !important;
           }
-
           .g365-matchup-link:active > div {
             transform: scale(.992);
             border-color: rgba(255, 112, 24, .48) !important;
           }
         }
       `}</style>
-
       <section
         style={
           styles.shell
@@ -788,7 +612,6 @@ export default async function TraditionalMatchupsPage({
         {/* =========================================
             HEADER
         ========================================== */}
-
         <header
           style={
             styles.pageHeader
@@ -802,7 +625,6 @@ export default async function TraditionalMatchupsPage({
             >
               HEAD-TO-HEAD
             </p>
-
             <h1
               style={
                 styles.title
@@ -810,7 +632,6 @@ export default async function TraditionalMatchupsPage({
             >
               Matchups
             </h1>
-
             <p
               style={
                 styles.subtitle
@@ -821,8 +642,6 @@ export default async function TraditionalMatchupsPage({
               full live game center.
             </p>
           </div>
-
-
           <div
             style={
               styles.activeWeekCard
@@ -835,7 +654,6 @@ export default async function TraditionalMatchupsPage({
             >
               ACTIVE WEEK
             </span>
-
             <strong
               style={
                 styles.activeWeekValue
@@ -846,12 +664,9 @@ export default async function TraditionalMatchupsPage({
             </strong>
           </div>
         </header>
-
-
         {/* =========================================
             WEEK SELECTOR
         ========================================== */}
-
         <section
           style={
             styles.weekSection
@@ -872,7 +687,6 @@ export default async function TraditionalMatchupsPage({
                   ? "PLAYOFFS"
                   : "REGULAR SEASON"}
               </span>
-
               <strong
                 style={
                   styles.weekTitle
@@ -881,8 +695,6 @@ export default async function TraditionalMatchupsPage({
                 Select Week
               </strong>
             </div>
-
-
             <span
               style={
                 styles.viewingWeek
@@ -892,8 +704,6 @@ export default async function TraditionalMatchupsPage({
               {selectedWeek}
             </span>
           </div>
-
-
           <nav
             aria-label="Matchup week navigation"
             style={
@@ -922,13 +732,9 @@ export default async function TraditionalMatchupsPage({
                   const selected =
                     week ===
                     selectedWeek;
-
-
                   const active =
                     week ===
                     activeWeek;
-
-
                   return (
                     <Link
                       key={
@@ -939,11 +745,9 @@ export default async function TraditionalMatchupsPage({
                       }
                       style={{
                         ...styles.weekButton,
-
                         ...(selected
                           ? styles.weekButtonSelected
                           : {}),
-
                         ...(active &&
                         !selected
                           ? styles.weekButtonActive
@@ -958,7 +762,6 @@ export default async function TraditionalMatchupsPage({
                           playoffTeams
                         )}
                       </span>
-
                       {active ? (
                         <small
                           style={
@@ -975,12 +778,9 @@ export default async function TraditionalMatchupsPage({
             </div>
           </nav>
         </section>
-
-
         {/* =========================================
             MATCHUPS
         ========================================== */}
-
         <section>
           <div
             style={
@@ -995,7 +795,6 @@ export default async function TraditionalMatchupsPage({
               >
                 LEAGUE SCOREBOARD
               </p>
-
               <h2
                 style={
                   styles.sectionTitle
@@ -1006,8 +805,6 @@ export default async function TraditionalMatchupsPage({
                   : `Week ${selectedWeek} Matchups`}
               </h2>
             </div>
-
-
             <span
               style={
                 styles.matchupCount
@@ -1022,8 +819,6 @@ export default async function TraditionalMatchupsPage({
                 : "s"}
             </span>
           </div>
-
-
           {visibleMatchupCount >
           0 ? (
             <div
@@ -1078,7 +873,6 @@ export default async function TraditionalMatchupsPage({
                   ? "Playoff matchups not set yet"
                   : "No matchups scheduled"}
               </strong>
-
               <span>
                 {isPlayoffWeek
                   ? "The playoff games will appear here automatically once the bracket reaches this week."
@@ -1091,8 +885,6 @@ export default async function TraditionalMatchupsPage({
     </main>
   );
 }
-
-
 function clampProbability(
   value: number
 ) {
@@ -1104,8 +896,6 @@ function clampProbability(
     )
   );
 }
-
-
 function getWinProbabilities(
   matchup:
     TraditionalMatchupRow
@@ -1118,8 +908,6 @@ function getWinProbabilities(
   ) {
     return null;
   }
-
-
   if (
     matchup.isFinal
   ) {
@@ -1131,34 +919,26 @@ function getWinProbabilities(
         home: 50,
       };
     }
-
-
     return {
       away:
         matchup.away.isWinner
           ? 100
           : 0,
-
       home:
         matchup.home.isWinner
           ? 100
           : 0,
     };
   }
-
-
   /*
-   * Keep this synchronized with Matchup Detail.
-   *
-   * matchups.service.ts maps each team's projectedPoints
-   * directly from detail.expectedFinalPoints.
+   \* Keep this synchronized with Matchup Detail.
+   \*
+   \* matchups.service.ts maps each team's projectedPoints
+   \* directly from detail.expectedFinalPoints.
    */
-
   const expectedDifference =
     matchup.away.projectedPoints -
     matchup.home.projectedPoints;
-
-
   const rawAway =
     100 /
     (
@@ -1168,37 +948,27 @@ function getWinProbabilities(
         14
       )
     );
-
-
   const awayProbability =
     clampProbability(
       rawAway
     );
-
-
   const roundedAway =
     Math.round(
       awayProbability
     );
-
-
   return {
     away:
       roundedAway,
-
     home:
       100 -
       roundedAway,
   };
 }
-
-
 function PlayoffMatchupCard({
   leagueId,
   matchup,
 }: {
   leagueId: string;
-
   matchup:
     PlayoffMatchupView;
 }) {
@@ -1208,16 +978,12 @@ function PlayoffMatchupCard({
       .winnerFantasyTeamId ===
       matchup
         .homeFantasyTeamId;
-
-
   const awayWinner =
     matchup.isFinal &&
     matchup
       .winnerFantasyTeamId ===
       matchup
         .awayFantasyTeamId;
-
-
   return (
     <Link
       className="g365-matchup-link"
@@ -1232,11 +998,9 @@ function PlayoffMatchupCard({
       <Card
         style={{
           ...styles.matchupCard,
-
           ...(matchup.isMyMatchup
             ? styles.myMatchupCard
             : {}),
-
           ...(matchup.isLive
             ? styles.liveMatchupCard
             : {}),
@@ -1260,8 +1024,6 @@ function PlayoffMatchupCard({
               matchup
             )}
           </span>
-
-
           <span
             style={
               styles.playoffRoundBadge
@@ -1270,8 +1032,6 @@ function PlayoffMatchupCard({
             {matchup.roundName.toUpperCase()}
           </span>
         </div>
-
-
         <PlayoffTeamRow
           seed={
             matchup.awaySeed
@@ -1286,15 +1046,11 @@ function PlayoffMatchupCard({
             awayWinner
           }
         />
-
-
         <div
           style={
             styles.scoreDivider
           }
         />
-
-
         <PlayoffTeamRow
           seed={
             matchup.homeSeed
@@ -1309,8 +1065,6 @@ function PlayoffMatchupCard({
             homeWinner
           }
         />
-
-
         <div
           style={
             styles.matchupFooter
@@ -1325,8 +1079,6 @@ function PlayoffMatchupCard({
             {" • "}
             Open live matchup
           </span>
-
-
           <span
             style={
               styles.arrow
@@ -1339,8 +1091,6 @@ function PlayoffMatchupCard({
     </Link>
   );
 }
-
-
 function PlayoffTeamRow({
   seed,
   teamName,
@@ -1350,18 +1100,14 @@ function PlayoffTeamRow({
   seed:
     number |
     null;
-
   teamName: string;
-
   points: number;
-
   isWinner: boolean;
 }) {
   return (
     <div
       style={{
         ...styles.teamRow,
-
         ...(isWinner
           ? styles.winnerTeamRow
           : {}),
@@ -1376,8 +1122,6 @@ function PlayoffTeamRow({
           ? `#${seed}`
           : "—"}
       </div>
-
-
       <div
         style={
           styles.teamIdentity
@@ -1390,7 +1134,6 @@ function PlayoffTeamRow({
         >
           {teamName}
         </strong>
-
         <span
           style={
             styles.teamMeta
@@ -1401,12 +1144,9 @@ function PlayoffTeamRow({
             : "Awaiting winner"}
         </span>
       </div>
-
-
       <strong
         style={{
           ...styles.teamPoints,
-
           ...(isWinner
             ? styles.winnerPoints
             : {}),
@@ -1419,14 +1159,11 @@ function PlayoffTeamRow({
     </div>
   );
 }
-
-
 function MatchupLinkCard({
   leagueId,
   matchup,
 }: {
   leagueId: string;
-
   matchup:
     TraditionalMatchupRow;
 }) {
@@ -1434,8 +1171,6 @@ function MatchupLinkCard({
     getWinProbabilities(
       matchup
     );
-
-
   return (
     <Link
       className="g365-matchup-link"
@@ -1450,11 +1185,9 @@ function MatchupLinkCard({
       <Card
         style={{
           ...styles.matchupCard,
-
           ...(matchup.isMyMatchup
             ? styles.myMatchupCard
             : {}),
-
           ...(matchup.isLive
             ? styles.liveMatchupCard
             : {}),
@@ -1478,8 +1211,6 @@ function MatchupLinkCard({
               matchup
             )}
           </span>
-
-
           {matchup.isMyMatchup ? (
             <span
               style={
@@ -1498,11 +1229,12 @@ function MatchupLinkCard({
             </span>
           )}
         </div>
-
-
         <TeamRow
           teamName={
             matchup.away.teamName
+          }
+          record={
+            matchup.away.record
           }
           points={
             matchup.away.points
@@ -1533,18 +1265,17 @@ function MatchupLinkCard({
             null
           }
         />
-
-
         <div
           style={
             styles.scoreDivider
           }
         />
-
-
         <TeamRow
           teamName={
             matchup.home.teamName
+          }
+          record={
+            matchup.home.record
           }
           points={
             matchup.home.points
@@ -1575,8 +1306,6 @@ function MatchupLinkCard({
             null
           }
         />
-
-
         {probability ? (
           <div
             style={
@@ -1591,8 +1320,6 @@ function MatchupLinkCard({
               <span>
                 {probability.away}% WIN
               </span>
-
-
               <span
                 style={
                   styles.probabilityTitle
@@ -1600,8 +1327,6 @@ function MatchupLinkCard({
               >
                 WIN PROBABILITY
               </span>
-
-
               <span
                 style={{
                   textAlign:
@@ -1611,8 +1336,6 @@ function MatchupLinkCard({
                 {probability.home}% WIN
               </span>
             </div>
-
-
             <div
               style={
                 styles.probabilityTrack
@@ -1621,17 +1344,13 @@ function MatchupLinkCard({
               <div
                 style={{
                   ...styles.awayProbabilityFill,
-
                   width:
                     `${probability.away}%`,
                 }}
               />
-
-
               <div
                 style={{
                   ...styles.homeProbabilityFill,
-
                   width:
                     `${probability.home}%`,
                 }}
@@ -1647,8 +1366,6 @@ function MatchupLinkCard({
             Win probability appears when both teams have starting lineups.
           </div>
         )}
-
-
         <div
           style={
             styles.matchupFooter
@@ -1661,8 +1378,6 @@ function MatchupLinkCard({
           >
             Open live matchup
           </span>
-
-
           <span
             style={
               styles.arrow
@@ -1675,10 +1390,9 @@ function MatchupLinkCard({
     </Link>
   );
 }
-
-
 function TeamRow({
   teamName,
+  record,
   points,
   projectedPoints,
   isMyTeam,
@@ -1690,23 +1404,15 @@ function TeamRow({
   winProbability,
 }: {
   teamName: string;
-
+  record: string;
   points: number;
-
   projectedPoints: number;
-
   isMyTeam: boolean;
-
   isWinner: boolean;
-
   isLive: boolean;
-
   playersLive: number;
-
   playersRemaining: number;
-
   starterCount: number;
-
   winProbability:
     number |
     null;
@@ -1715,11 +1421,9 @@ function TeamRow({
     <div
       style={{
         ...styles.teamRow,
-
         ...(isWinner
           ? styles.winnerRow
           : {}),
-
         ...(isMyTeam
           ? styles.myTeamRow
           : {}),
@@ -1733,7 +1437,6 @@ function TeamRow({
         <div
           style={{
             ...styles.teamIcon,
-
             ...(isMyTeam
               ? styles.myTeamIcon
               : {}),
@@ -1746,8 +1449,6 @@ function TeamRow({
             )
             .toUpperCase()}
         </div>
-
-
         <div
           style={
             styles.teamText
@@ -1760,8 +1461,13 @@ function TeamRow({
           >
             {teamName}
           </strong>
-
-
+          <span
+            style={
+              styles.teamRecord
+            }
+          >
+            {record}
+          </span>
           <div
             style={
               styles.teamLabels
@@ -1776,8 +1482,6 @@ function TeamRow({
                 MY TEAM
               </span>
             ) : null}
-
-
             {isWinner ? (
               <span
                 style={
@@ -1787,8 +1491,6 @@ function TeamRow({
                 WINNER
               </span>
             ) : null}
-
-
             {starterCount >
             0 ? (
               <>
@@ -1802,8 +1504,6 @@ function TeamRow({
                     {playersLive} LIVE
                   </span>
                 ) : null}
-
-
                 <span
                   style={
                     styles.playersRemainingLabel
@@ -1824,8 +1524,6 @@ function TeamRow({
           </div>
         </div>
       </div>
-
-
       <div
         style={
           styles.scoreBlock
@@ -1846,8 +1544,6 @@ function TeamRow({
               projectedPoints
             )}
           </span>
-
-
           {winProbability !==
           null ? (
             <span
@@ -1859,16 +1555,12 @@ function TeamRow({
             </span>
           ) : null}
         </div>
-
-
         <strong
           style={{
             ...styles.teamScore,
-
             ...(isLive
               ? styles.liveScore
               : {}),
-
             ...(isWinner
               ? styles.winnerScore
               : {}),
@@ -1882,1134 +1574,764 @@ function TeamRow({
     </div>
   );
 }
-
 const styles = {
   page: {
     minHeight:
       "calc(100vh - 96px)",
-
     padding:
       "18px 16px 36px",
-
     background:
       "radial-gradient(circle at 50% 0%,rgba(255,67,0,.05),transparent 34%)",
   },
-
-
   shell: {
     width:
       "min(1180px,100%)",
-
     margin:
       "0 auto",
-
     display:
       "grid",
-
     gap:
       "28px",
   },
-
-
   pageHeader: {
     display:
       "flex",
-
     alignItems:
       "flex-end",
-
     justifyContent:
       "space-between",
-
     gap:
       "20px",
-
     flexWrap:
       "wrap" as const,
   },
-
-
   eyebrow: {
     margin:
       0,
-
     color:
       "#ff7a18",
-
     fontSize:
       "10px",
-
     fontWeight:
       900,
-
     letterSpacing:
       ".15em",
   },
-
-
   title: {
     margin:
       "7px 0 0",
-
     color:
       "#ffffff",
-
     fontSize:
       "36px",
   },
-
-
   subtitle: {
     maxWidth:
       "650px",
-
     margin:
       "8px 0 0",
-
     color:
       "#8f96a3",
-
     fontSize:
       "13px",
-
     lineHeight:
       1.5,
   },
-
-
   activeWeekCard: {
     minWidth:
       "130px",
-
     padding:
       "12px 15px",
-
     display:
       "grid",
-
     gap:
       "4px",
-
     border:
       "1px solid rgba(255,110,20,.18)",
-
     borderRadius:
       "9px",
-
     background:
       "rgba(255,80,0,.05)",
   },
-
-
   activeWeekLabel: {
     color:
       "#707781",
-
     fontSize:
       "7px",
-
     fontWeight:
       900,
-
     letterSpacing:
       ".09em",
   },
-
-
   activeWeekValue: {
     color:
       "#ff8624",
-
     fontSize:
       "12px",
   },
-
-
   weekSection: {
     padding:
       "16px",
-
     display:
       "grid",
-
     gap:
       "12px",
-
     border:
       "1px solid rgba(255,255,255,.075)",
-
     borderRadius:
       "11px",
-
     background:
       "linear-gradient(145deg,#141415,#09090a)",
   },
-
-
   weekHeader: {
     display:
       "flex",
-
     alignItems:
       "flex-end",
-
     justifyContent:
       "space-between",
-
     gap:
       "12px",
-
     flexWrap:
       "wrap" as const,
   },
-
-
   weekEyebrow: {
     display:
       "block",
-
     color:
       "#6f7680",
-
     fontSize:
       "7px",
-
     fontWeight:
       900,
-
     letterSpacing:
       ".10em",
   },
-
-
   weekTitle: {
     display:
       "block",
-
     marginTop:
       "3px",
-
     color:
       "#ffffff",
-
     fontSize:
       "13px",
   },
-
-
   viewingWeek: {
     color:
       "#8d949e",
-
     fontSize:
       "9px",
-
     fontWeight:
       800,
   },
-
-
   weekViewport: {
     width:
       "100%",
-
     overflowX:
       "auto" as const,
   },
-
-
   weekNav: {
     width:
       "max-content",
-
     minWidth:
       "100%",
-
     display:
       "flex",
-
     gap:
       "6px",
   },
-
-
   weekButton: {
     minWidth:
       "56px",
-
     minHeight:
       "42px",
-
     padding:
       "6px 8px",
-
     display:
       "grid",
-
     alignContent:
       "center",
-
     justifyItems:
       "center",
-
     gap:
       "2px",
-
     border:
       "1px solid rgba(255,255,255,.075)",
-
     borderRadius:
       "7px",
-
     background:
       "rgba(255,255,255,.025)",
-
     color:
       "#777e88",
-
     fontSize:
       "9px",
-
     fontWeight:
       900,
-
     textDecoration:
       "none",
   },
-
-
   weekButtonSelected: {
     border:
       "1px solid rgba(255,100,15,.36)",
-
     background:
       "linear-gradient(135deg,rgba(190,22,22,.24),rgba(255,80,0,.15))",
-
     color:
       "#ffffff",
   },
-
-
   weekButtonActive: {
     border:
       "1px solid rgba(70,215,130,.18)",
-
     color:
       "#45d987",
   },
-
-
   activeMarker: {
     color:
       "#45d987",
-
     fontSize:
       "6px",
-
     fontWeight:
       950,
   },
-
-
   sectionHeader: {
     marginBottom:
       "12px",
-
     display:
       "flex",
-
     alignItems:
       "flex-end",
-
     justifyContent:
       "space-between",
-
     gap:
       "14px",
   },
-
-
   sectionEyebrow: {
     margin:
       0,
-
     color:
       "#ff7a18",
-
     fontSize:
       "8px",
-
     fontWeight:
       900,
-
     letterSpacing:
       ".12em",
   },
-
-
   sectionTitle: {
     margin:
       "4px 0 0",
-
     color:
       "#ffffff",
-
     fontSize:
       "20px",
   },
-
-
   matchupCount: {
     color:
       "#7c838d",
-
     fontSize:
       "9px",
   },
-
-
   matchupGrid: {
     display:
       "grid",
-
     gridTemplateColumns:
       "repeat(auto-fit,minmax(330px,1fr))",
-
     gap:
       "13px",
   },
-
-
   matchupLink: {
     display:
       "block",
-
     color:
       "inherit",
-
     textDecoration:
       "none",
-
     cursor:
       "pointer",
   },
-
-
   matchupCard: {
     minHeight:
       "220px",
-
     padding:
       "15px",
-
     display:
       "grid",
-
     gap:
       "10px",
-
     border:
       "1px solid rgba(255,255,255,.075)",
-
     transition:
       "border-color .15s ease, transform .15s ease",
   },
-
-
   myMatchupCard: {
     border:
       "1px solid rgba(255,105,20,.34)",
-
     background:
       "linear-gradient(145deg,rgba(170,20,20,.10),rgba(255,75,0,.045),#09090a)",
   },
-
-
   liveMatchupCard: {
     boxShadow:
       "inset 0 0 0 1px rgba(65,215,130,.06)",
   },
-
-
   playoffRoundBadge: {
     padding:
       "3px 6px",
-
     border:
       "1px solid rgba(255,125,25,.22)",
-
     borderRadius:
       "4px",
-
     color:
       "#ff8a27",
-
     fontSize:
       "6px",
-
     fontWeight:
       950,
-
     letterSpacing:
       ".05em",
   },
-
-
   playoffSeedCircle: {
     width:
       "31px",
-
     height:
       "31px",
-
     display:
       "flex",
-
     alignItems:
       "center",
-
     justifyContent:
       "center",
-
     border:
       "1px solid rgba(255,115,25,.22)",
-
     borderRadius:
       "50%",
-
     background:
       "rgba(255,95,15,.055)",
-
     color:
       "#ff8a27",
-
     fontSize:
       "7px",
-
     fontWeight:
       950,
   },
-
-
   winnerTeamRow: {
     background:
       "linear-gradient(90deg,rgba(58,205,120,.08),transparent 70%)",
   },
-
-
   winnerPoints: {
     color:
       "#4ddd89",
   },
-
-
   matchupHeader: {
     minHeight:
       "22px",
-
     display:
       "flex",
-
     alignItems:
       "center",
-
     justifyContent:
       "space-between",
-
     gap:
       "8px",
   },
-
-
   scheduledBadge: {
     color:
       "#777e88",
-
     fontSize:
       "7px",
-
     fontWeight:
       950,
-
     letterSpacing:
       ".08em",
   },
-
-
   liveBadge: {
     padding:
       "4px 7px",
-
     borderRadius:
       "5px",
-
     background:
       "rgba(55,210,125,.09)",
-
     color:
       "#42dc83",
-
     fontSize:
       "7px",
-
     fontWeight:
       950,
-
     letterSpacing:
       ".08em",
   },
-
-
   finalBadge: {
     color:
       "#c3c8cf",
-
     fontSize:
       "7px",
-
     fontWeight:
       950,
-
     letterSpacing:
       ".08em",
   },
-
-
   myMatchupBadge: {
     padding:
       "4px 7px",
-
     borderRadius:
       "5px",
-
     background:
       "rgba(255,90,15,.09)",
-
     color:
       "#ff8927",
-
     fontSize:
       "7px",
-
     fontWeight:
       950,
   },
-
-
   teamRow: {
     minHeight:
       "60px",
-
     padding:
       "7px 8px",
-
     display:
       "flex",
-
     alignItems:
       "center",
-
     justifyContent:
       "space-between",
-
     gap:
       "12px",
-
     borderRadius:
       "7px",
   },
-
-
   myTeamRow: {
     boxShadow:
       "inset 3px 0 0 rgba(255,105,20,.55)",
   },
-
-
   winnerRow: {
     background:
       "rgba(60,205,125,.045)",
   },
-
-
   teamIdentity: {
     minWidth:
       0,
-
     display:
       "flex",
-
     alignItems:
       "center",
-
     gap:
       "10px",
   },
-
-
   teamIcon: {
     width:
       "38px",
-
     height:
       "38px",
-
     flex:
       "0 0 auto",
-
     display:
       "flex",
-
     alignItems:
       "center",
-
     justifyContent:
       "center",
-
     border:
       "1px solid rgba(255,255,255,.08)",
-
     borderRadius:
       "50%",
-
     background:
       "#171719",
-
     color:
       "#7c838c",
-
     fontSize:
       "11px",
-
     fontWeight:
       950,
   },
-
-
   myTeamIcon: {
     border:
       "1px solid rgba(255,110,25,.28)",
-
     color:
       "#ff8c29",
   },
-
-
   teamText: {
     minWidth:
       0,
-
     display:
       "grid",
-
     gap:
       "4px",
   },
-
-
   teamName: {
     overflow:
       "hidden",
-
     textOverflow:
       "ellipsis",
-
     whiteSpace:
       "nowrap" as const,
-
     color:
       "#ffffff",
-
     fontSize:
       "12px",
   },
-
-
   teamMeta: {
     color:
       "#737a84",
-
     fontSize:
       "6px",
-
     fontWeight:
       850,
   },
-
-
   teamPoints: {
     flex:
       "0 0 auto",
-
     minWidth:
       "58px",
-
     textAlign:
       "right" as const,
-
     color:
       "#ffffff",
-
     fontSize:
       "15px",
-
     fontWeight:
       950,
-
     fontVariantNumeric:
       "tabular-nums",
   },
-
-
+  teamRecord: {
+    color: "#8a919b",
+    fontSize: "11px",
+    fontWeight: 850,
+    lineHeight: 1.15,
+  },
   teamLabels: {
     minHeight:
       "10px",
-
     display:
       "flex",
-
     gap:
       "6px",
   },
-
-
   myTeamLabel: {
     color:
       "#ff8b28",
-
     fontSize:
       "6px",
-
     fontWeight:
       950,
   },
-
-
   winnerLabel: {
     color:
       "#43d982",
-
     fontSize:
       "6px",
-
     fontWeight:
       950,
   },
-
-
   teamScore: {
     color:
       "#ffffff",
-
     fontSize:
       "21px",
-
     fontVariantNumeric:
       "tabular-nums",
   },
-
-
   liveScore: {
     color:
       "#ff8927",
   },
-
-
   winnerScore: {
     color:
       "#43d982",
   },
-
-
   scoreDivider: {
     height:
       "1px",
-
     background:
       "rgba(255,255,255,.055)",
   },
-
-
   matchupFooter: {
     marginTop:
       "2px",
-
     paddingTop:
       "9px",
-
     display:
       "flex",
-
     alignItems:
       "center",
-
     justifyContent:
       "space-between",
-
     gap:
       "8px",
-
     borderTop:
       "1px solid rgba(255,255,255,.045)",
   },
-
-
   detailHint: {
     color:
       "#777e88",
-
     fontSize:
       "8px",
-
     fontWeight:
       800,
   },
-
-
   arrow: {
     color:
       "#ff8423",
-
     fontSize:
       "13px",
-
     fontWeight:
       950,
   },
-
-
   weekMiniLabel: {
     color:
       "#5f6670",
-
     fontSize:
       "6px",
-
     fontWeight:
       900,
-
     letterSpacing:
       ".08em",
   },
-
-
   playersLiveLabel: {
     color:
       "#43d982",
-
     fontSize:
       "6px",
-
     fontWeight:
       950,
   },
-
-
   playersRemainingLabel: {
     color:
       "#737b86",
-
     fontSize:
       "6px",
-
     fontWeight:
       900,
   },
-
-
   noLineupLabel: {
     color:
       "#686f79",
-
     fontSize:
       "6px",
-
     fontWeight:
       900,
   },
-
-
   scoreBlock: {
     flex:
       "0 0 auto",
-
     display:
       "flex",
-
     alignItems:
       "center",
-
     gap:
       "9px",
   },
-
-
   projectionStack: {
     display:
       "grid",
-
     justifyItems:
       "end",
-
     gap:
       "2px",
   },
-
-
   teamProjection: {
     color:
       "#ff942f",
-
     fontSize:
       "8px",
-
     fontWeight:
       950,
-
     letterSpacing:
       ".03em",
-
     fontVariantNumeric:
       "tabular-nums",
-
     whiteSpace:
       "nowrap",
   },
-
-
   teamProbability: {
     color:
       "#7f8791",
-
     fontSize:
       "7px",
-
     fontWeight:
       900,
-
     fontVariantNumeric:
       "tabular-nums",
   },
-
-
   probabilitySection: {
     display:
       "grid",
-
     gap:
       "4px",
   },
-
-
   probabilityLabels: {
     display:
       "grid",
-
     gridTemplateColumns:
       "1fr auto 1fr",
-
     alignItems:
       "center",
-
     gap:
       "7px",
-
     color:
       "#b2b8c0",
-
     fontSize:
       "6px",
-
     fontWeight:
       950,
-
     fontVariantNumeric:
       "tabular-nums",
   },
-
-
   probabilityTitle: {
     color:
       "#606873",
-
     textAlign:
       "center" as const,
-
     letterSpacing:
       ".08em",
   },
-
-
   probabilityTrack: {
     height:
       "4px",
-
     display:
       "flex",
-
     overflow:
       "hidden",
-
     borderRadius:
       "999px",
-
     background:
       "#202125",
   },
-
-
   awayProbabilityFill: {
     height:
       "100%",
-
     background:
       "linear-gradient(90deg,#9e1717,#e1451c)",
   },
-
-
   homeProbabilityFill: {
     height:
       "100%",
-
     background:
       "linear-gradient(90deg,#ff6b16,#ff9a2e)",
   },
-
-
   probabilityUnavailable: {
     minHeight:
       "14px",
-
     display:
       "flex",
-
     alignItems:
       "center",
-
     color:
       "#5f6670",
-
     fontSize:
       "6px",
-
     fontWeight:
       750,
   },
-
-
   emptyState: {
     minHeight:
       "150px",
-
     padding:
       "24px",
-
     display:
       "grid",
-
     alignContent:
       "center",
-
     gap:
       "6px",
   },
