@@ -308,6 +308,36 @@ type EspnScoreboard = {
 
 
 
+type EspnSummary = {
+
+  header?:
+
+    EspnEvent;
+
+};
+
+
+type ExistingCollegeGameRow = {
+
+  provider_event_id:
+
+    string;
+
+  kickoff_at:
+
+    string;
+
+  is_started:
+
+    boolean;
+
+  is_final:
+
+    boolean;
+
+};
+
+
 type SyncRequestBody = {
 
   leagueId?: string;
@@ -2349,6 +2379,328 @@ async function fetchCollegeScoreboard(
   );
 
 }
+
+/*
+
+ * =====================================================
+
+ * NCAA ESPN EVENT-ID RECOVERY
+
+ * =====================================================
+
+ *
+
+ * Daily scoreboards remain the discovery source. Already-known
+
+ * CFB games near kickoff, live, or overdue are also refreshed
+
+ * directly by ESPN event ID so they cannot become stranded.
+
+ */
+
+function collegeSummaryUrl(
+
+  eventId:
+
+    string
+
+) {
+
+  return (
+
+    "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary" +
+
+    `?event=${encodeURIComponent(
+
+      eventId
+
+    )}`
+
+  );
+
+}
+
+
+async function fetchCollegeEventById(
+
+  eventId:
+
+    string
+
+): Promise<EspnEvent> {
+
+  const response =
+
+    await fetch(
+
+      collegeSummaryUrl(
+
+        eventId
+
+      ),
+
+      {
+
+        method:
+
+          "GET",
+
+        cache:
+
+          "no-store",
+
+        headers: {
+
+          Accept:
+
+            "application/json",
+
+          "User-Agent":
+
+            "Mozilla/5.0 Gridiron365/2.0",
+
+        },
+
+      }
+
+    );
+
+
+  const text =
+
+    await response.text();
+
+
+  if (!response.ok) {
+
+    throw new Error(
+
+      `ESPN NCAAF summary ${eventId} returned HTTP ${response.status}: ${text.slice(0, 180)}`
+
+    );
+
+  }
+
+
+  let payload:
+
+    EspnSummary;
+
+
+  try {
+
+    payload =
+
+      JSON.parse(
+
+        text
+
+      ) as EspnSummary;
+
+  } catch {
+
+    throw new Error(
+
+      `ESPN NCAAF summary ${eventId} returned invalid JSON.`
+
+    );
+
+  }
+
+
+  if (
+
+    !payload.header ||
+
+    !payload.header.competitions?.[0]
+
+  ) {
+
+    throw new Error(
+
+      `ESPN NCAAF summary ${eventId} did not contain a usable header competition.`
+
+    );
+
+  }
+
+
+  return {
+
+    ...payload.header,
+
+    id:
+
+      payload.header.id ??
+
+      eventId,
+
+  };
+
+}
+
+
+async function loadCollegeRecoveryEventIds(
+
+  supabase:
+
+    ReturnType<
+
+      typeof createSupabaseAdmin
+
+    >,
+
+  leagueId:
+
+    string,
+
+  season:
+
+    number,
+
+  week:
+
+    number
+
+): Promise<string[]> {
+
+  const refreshThrough =
+
+    new Date(
+
+      Date.now() +
+
+        90 * 60 * 1000
+
+    ).toISOString();
+
+
+  const {
+
+    data,
+
+    error,
+
+  } =
+
+    await supabase
+
+      .from(
+
+        "pickem_games"
+
+      )
+
+      .select(
+
+        "provider_event_id,kickoff_at,is_started,is_final"
+
+      )
+
+      .eq(
+
+        "league_id",
+
+        leagueId
+
+      )
+
+      .eq(
+
+        "season",
+
+        season
+
+      )
+
+      .eq(
+
+        "week",
+
+        week
+
+      )
+
+      .eq(
+
+        "sport",
+
+        "ncaaf"
+
+      )
+
+      .eq(
+
+        "provider",
+
+        "espn"
+
+      )
+
+      .eq(
+
+        "is_final",
+
+        false
+
+      )
+
+      .lte(
+
+        "kickoff_at",
+
+        refreshThrough
+
+      );
+
+
+  if (error) {
+
+    throw new Error(
+
+      `Could not load known NCAAF games for event-ID recovery: ${error.message}`
+
+    );
+
+  }
+
+
+  return [
+
+    ...new Set(
+
+      (
+
+        (data ?? []) as ExistingCollegeGameRow[]
+
+      )
+
+        .map(
+
+          (row) =>
+
+            String(
+
+              row.provider_event_id ??
+
+                ""
+
+            ).trim()
+
+        )
+
+        .filter(
+
+          Boolean
+
+        )
+
+    ),
+
+  ];
+
+}
+
 
 /*
 
@@ -5194,6 +5546,18 @@ export async function POST(
 
 
 
+    const collegeEventCache =
+
+      new Map<
+
+        string,
+
+        EspnEvent | null
+
+      >();
+
+
+
     const nflCache =
 
       new Map<
@@ -5237,6 +5601,30 @@ export async function POST(
 
 
     let collegeFeedsFetched =
+
+      0;
+
+
+
+    let collegeEventRecoveryCandidates =
+
+      0;
+
+
+
+    let collegeEventRecoveryFetches =
+
+      0;
+
+
+
+    let collegeEventRecoverySucceeded =
+
+      0;
+
+
+
+    let collegeEventRecoveryFailed =
 
       0;
 
@@ -5580,9 +5968,217 @@ export async function POST(
 
 
 
+          const eventsById =
+
+            new Map<
+
+              string,
+
+              EspnEvent
+
+            >();
+
+
+
+          for (
+
+            const event
+
+            of events
+
+          ) {
+
+            const eventId =
+
+              String(
+
+                event.id ??
+
+                  event.competitions?.[0]
+
+                    ?.id ??
+
+                  ""
+
+              ).trim();
+
+
+
+            if (eventId) {
+
+              eventsById.set(
+
+                eventId,
+
+                event
+
+              );
+
+            }
+
+          }
+
+
+
+          const recoveryEventIds =
+
+            await loadCollegeRecoveryEventIds(
+
+              supabase,
+
+              pickemWeek.league_id,
+
+              pickemWeek.season,
+
+              pickemWeek.week
+
+            );
+
+
+
+          collegeEventRecoveryCandidates +=
+
+            recoveryEventIds.length;
+
+
+
+          for (
+
+            const eventId
+
+            of recoveryEventIds
+
+          ) {
+
+            let recoveredEvent =
+
+              collegeEventCache.get(
+
+                eventId
+
+              );
+
+
+
+            if (
+
+              recoveredEvent ===
+
+              undefined
+
+            ) {
+
+              collegeEventRecoveryFetches +=
+
+                1;
+
+
+
+              try {
+
+                recoveredEvent =
+
+                  await fetchCollegeEventById(
+
+                    eventId
+
+                  );
+
+
+
+                collegeEventCache.set(
+
+                  eventId,
+
+                  recoveredEvent
+
+                );
+
+
+
+                collegeEventRecoverySucceeded +=
+
+                  1;
+
+              } catch (
+
+                recoveryError
+
+              ) {
+
+                collegeEventCache.set(
+
+                  eventId,
+
+                  null
+
+                );
+
+
+
+                collegeEventRecoveryFailed +=
+
+                  1;
+
+
+
+                const recoveryMessage =
+
+                  recoveryError instanceof Error
+
+                    ? recoveryError.message
+
+                    : String(
+
+                        recoveryError
+
+                      );
+
+
+
+                console.error(
+
+                  `NCAAF event-ID recovery failed for ${eventId}:`,
+
+                  recoveryMessage
+
+                );
+
+
+
+                recoveredEvent =
+
+                  null;
+
+              }
+
+            }
+
+
+
+            if (recoveredEvent) {
+
+              eventsById.set(
+
+                eventId,
+
+                recoveredEvent
+
+              );
+
+            }
+
+          }
+
+
+
           games =
 
-            events
+            Array.from(
+
+              eventsById.values()
+
+            )
 
               .map(
 
@@ -5608,7 +6204,11 @@ export async function POST(
 
           source =
 
-            "ESPN NCAA";
+            recoveryEventIds.length > 0
+
+              ? "ESPN NCAA scoreboard + event-ID recovery"
+
+              : "ESPN NCAA scoreboard";
 
         }
 
@@ -7237,6 +7837,22 @@ export async function POST(
 
 
       collegeFeedsFetched,
+
+
+
+      collegeEventRecoveryCandidates,
+
+
+
+      collegeEventRecoveryFetches,
+
+
+
+      collegeEventRecoverySucceeded,
+
+
+
+      collegeEventRecoveryFailed,
 
 
 
