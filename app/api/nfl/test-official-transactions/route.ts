@@ -4,29 +4,40 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const maxDuration = 30;
 
-type TransactionRow = {
-  date: string | null;
-  name: string | null;
-  transaction: string | null;
+type InjuryRow = {
+  player: string;
+  position: string | null;
+  injury: string | null;
+  practiceStatus: string | null;
+  gameStatus: string | null;
   raw: string;
 };
 
-function cleanText(value: string) {
+function decodeHtml(value: string) {
   return value
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
+    .replace(/&#x27;/gi, "'")
     .replace(/&#39;/gi, "'")
     .replace(/&apos;/gi, "'")
     .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, "&")
+    .replace(/&nbsp;/gi, " ")
     .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/<[^>]*>/g, " ")
+    .replace(/&gt;/gi, ">");
+}
+
+function cleanText(value: string) {
+  return decodeHtml(
+    value
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]*>/g, " ")
+  )
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function extractRows(html: string): TransactionRow[] {
-  const rows: TransactionRow[] = [];
+function parseInjuryRows(html: string): InjuryRow[] {
+  const rows: InjuryRow[] = [];
 
   const trMatches =
     html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/gi) ?? [];
@@ -38,86 +49,63 @@ function extractRows(html: string): TransactionRow[] {
       )
     ).map((match) => cleanText(match[1] ?? ""));
 
-    if (cells.length < 2) {
+    if (cells.length < 4) {
       continue;
     }
 
-    const raw = cells.join(" | ");
+    const normalized = cells.map((cell) => cell.trim());
 
-    const date =
-      cells.find((value) =>
-        /^\d{1,2}\/\d{1,2}$/.test(value)
-      ) ?? null;
-
-    const transaction =
-      cells.find((value) =>
-        /reserve\/|injured|pup|nfi|suspend|activate/i.test(
-          value
-        )
-      ) ?? null;
-
-    let name: string | null = null;
-
-    if (date) {
-      const dateIndex = cells.indexOf(date);
-
-      for (
-        let index = dateIndex + 1;
-        index < cells.length;
-        index += 1
-      ) {
-        const candidate = cells[index];
-
-        if (
-          !candidate ||
-          candidate === transaction ||
-          /^\d{1,2}\/\d{1,2}$/.test(candidate)
-        ) {
-          continue;
-        }
-
-        if (
-          /reserve\/|injured|pup|nfi|suspend|activate/i.test(
-            candidate
-          )
-        ) {
-          continue;
-        }
-
-        name = candidate;
-        break;
-      }
-    }
+    const headerText = normalized
+      .join(" ")
+      .toLowerCase();
 
     if (
-      date ||
-      transaction ||
-      /achane/i.test(raw)
+      headerText.includes("player") &&
+      headerText.includes("position") &&
+      headerText.includes("practice")
     ) {
-      rows.push({
-        date,
-        name,
-        transaction,
-        raw,
-      });
+      continue;
     }
+
+    const player = normalized[0] ?? "";
+    const position = normalized[1] || null;
+    const injury = normalized[2] || null;
+    const practiceStatus = normalized[3] || null;
+    const gameStatus = normalized[4] || null;
+
+    if (!player) {
+      continue;
+    }
+
+    rows.push({
+      player,
+      position,
+      injury,
+      practiceStatus,
+      gameStatus,
+      raw: normalized.join(" | "),
+    });
   }
 
   return rows;
 }
 
-export async function GET() {
-  const now = new Date();
+export async function GET(request: Request) {
+  const url = new URL(request.url);
 
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth() + 1;
+  const requestedSeason =
+    Number(url.searchParams.get("season")) || 2026;
+
+  const requestedWeek =
+    Number(url.searchParams.get("week")) || 3;
 
   const sourceUrl =
-    `https://www.nfl.com/transactions/league/reserve-list/${year}/${month}`;
+    `https://www.nfl.com/injuries/league/${requestedSeason}/reg${requestedWeek}`;
 
   try {
     const response = await fetch(sourceUrl, {
       method: "GET",
+
       headers: {
         Accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -125,92 +113,121 @@ export async function GET() {
         "User-Agent":
           "Mozilla/5.0 (compatible; Gridiron365/1.0)",
       },
+
       cache: "no-store",
       redirect: "follow",
     });
 
     const html = await response.text();
 
-    const rows = extractRows(html);
+    const rows = parseInjuryRows(html);
+
+    const fantasyPositions = new Set([
+      "QB",
+      "RB",
+      "FB",
+      "WR",
+      "TE",
+      "K",
+    ]);
+
+    const fantasyRows = rows.filter((row) =>
+      row.position
+        ? fantasyPositions.has(
+            row.position.toUpperCase()
+          )
+        : false
+    );
+
+    const designatedRows = rows.filter((row) => {
+      const status =
+        row.gameStatus?.toLowerCase() ?? "";
+
+      return (
+        status.includes("out") ||
+        status.includes("doubtful") ||
+        status.includes("questionable")
+      );
+    });
 
     const achaneRows = rows.filter((row) =>
-      row.raw
+      row.player
         .toLowerCase()
         .includes("achane")
     );
-
-    const reserveInjuredRows =
-      rows.filter((row) =>
-        row.raw
-          .toLowerCase()
-          .includes("reserve/injured")
-      );
-
-    const containsAchaneAnywhere =
-      html
-        .toLowerCase()
-        .includes("achane");
-
-    const containsReserveInjured =
-      html
-        .toLowerCase()
-        .includes("reserve/injured");
 
     return NextResponse.json({
       success: response.ok,
 
       testOnly: true,
-
       databaseWrites: false,
 
-      source: "NFL.com",
-
+      source: "NFL.com Official Injury Report",
       sourceUrl,
 
-      fetchedAt:
-        new Date().toISOString(),
+      season: requestedSeason,
+      week: requestedWeek,
+
+      fetchedAt: new Date().toISOString(),
 
       http: {
         status: response.status,
-        statusText:
-          response.statusText,
+        statusText: response.statusText,
         contentType:
-          response.headers.get(
-            "content-type"
-          ),
+          response.headers.get("content-type"),
         finalUrl: response.url,
       },
 
       page: {
         htmlLength: html.length,
-        containsReserveInjured,
-        containsAchaneAnywhere,
+
+        containsPracticeStatus:
+          html
+            .toLowerCase()
+            .includes("practice status"),
+
+        containsGameStatus:
+          html
+            .toLowerCase()
+            .includes("game status"),
+
+        containsQuestionable:
+          html
+            .toLowerCase()
+            .includes("questionable"),
+
+        containsDoubtful:
+          html
+            .toLowerCase()
+            .includes("doubtful"),
+
+        containsOut:
+          html
+            .toLowerCase()
+            .includes(">out<"),
       },
 
       parser: {
         rowsFound: rows.length,
-        reserveInjuredRowsFound:
-          reserveInjuredRows.length,
+        fantasyRowsFound: fantasyRows.length,
+        designatedRowsFound:
+          designatedRows.length,
       },
 
       achane: {
-        found:
-          achaneRows.length > 0 ||
-          containsAchaneAnywhere,
-
+        found: achaneRows.length > 0,
         rows: achaneRows,
       },
 
-      sampleTransactions:
-        reserveInjuredRows.slice(
-          0,
-          15
-        ),
+      sampleDesignatedPlayers:
+        designatedRows.slice(0, 20),
 
-      note:
-        response.ok
-          ? "NFL page was reachable from the G365 server."
-          : "NFL page returned a non-success HTTP status.",
+      sampleFantasyPlayers:
+        fantasyRows.slice(0, 20),
+
+      note: response.ok
+        ? "NFL injury report was reachable from the G365 server."
+        : "NFL injury report returned a non-success HTTP status.",
     });
   } catch (error) {
     return NextResponse.json(
@@ -218,10 +235,10 @@ export async function GET() {
         success: false,
 
         testOnly: true,
-
         databaseWrites: false,
 
-        source: "NFL.com",
+        source:
+          "NFL.com Official Injury Report",
 
         sourceUrl,
 
